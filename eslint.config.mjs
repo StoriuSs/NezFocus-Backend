@@ -2,10 +2,13 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import prettierConfig from 'eslint-config-prettier'
 import globals from 'globals'
+import { readdirSync } from 'node:fs'
 
-// The feature modules under src/modules: a new module's folder name goes here
-// (the import rule below).
-const MODULES = ['auth', 'users']
+// The feature modules: every folder under src/modules, so a new module is held
+// by the import rules below from its first file (CONSTRAINTS.md, architecture).
+const MODULES = readdirSync(new URL('./src/modules', import.meta.url), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
 
 // What a module may not import from another module's insides.
 const moduleBans = (self) =>

@@ -2,7 +2,7 @@
 
 Chuẩn chất lượng của repo này, chốt ở G0 (04/11/2026) qua skill `agent-skills:constraint-driven-development`. Mỗi luật có lệnh kiểm tra và lý do. AI và người viết code đều đọc file này trước khi code; **không hạ chuẩn ở đây để một thay đổi qua được kiểm tra**. Muốn nới một luật thì chủ dự án quyết, ghi lý do, và sửa file này trong một commit riêng, không chung với code đang đỏ.
 
-Lần rà gần nhất: 04/11/2026, Phạm Trung Hiếu.
+Lần rà gần nhất: 05/11/2026, Phạm Trung Hiếu.
 
 ## Chạy lúc nào
 
@@ -44,7 +44,7 @@ Kiểm bởi `node scripts/constraints/floor-guard.mjs`, chuyển thể từ b�
 | Lint | 0 lỗi ESLint theo `eslint.config.mjs` (cảnh báo không chặn) | `node scripts/constraints/lint-changed.mjs`; toàn bộ: `pnpm lint` | `check:fast`, commit (lint-staged), `check:full`, CI | Cấu hình của base đã cấm `any` và giữ ranh giới module |
 | Format | 0 file lệch Prettier | `pnpm format:check` | commit (lint-staged), `check:full`, CI | Như base |
 | Kiến trúc: ranh giới lớp | 0 vi phạm: `domain/` không import `@nestjs`, `@prisma`, `@/generated` hay lớp khác; `application/` không import `infrastructure/`, `presentation/`, Prisma | Luật `no-restricted-imports` (`LAYER_BANS`) trong `eslint.config.mjs`, chạy cùng lint | như Lint | Luật phụ thuộc của hexagonal (docs/hexagonal-architecture.md) trước đây chỉ có trên giấy. Test được miễn vì cố ý nối adapter thật |
-| Kiến trúc: ranh giới module | 0 vi phạm: module chỉ dùng module khác qua `index.ts` | Luật `no-restricted-imports` (`moduleBans`) trong `eslint.config.mjs` | như Lint | Có sẵn từ base |
+| Kiến trúc: ranh giới module | 0 vi phạm: module chỉ dùng module khác qua `index.ts` | Luật `no-restricted-imports` (`moduleBans`) trong `eslint.config.mjs` | như Lint | Có sẵn từ base. Từ 05/11/2026 danh sách module đọc từ thư mục `src/modules`, nên module mới bị giữ ngay từ file đầu tiên thay vì phải nhớ thêm tên vào danh sách |
 | Test liên quan | Mọi test liên quan đến file đã đổi phải xanh | `jest --findRelatedTests` trong `coverage-changed.mjs` | `check:task` | Bắt lỗi trước khi chạy cả suite |
 | Coverage dòng đổi | Dòng đổi chạy được trong `domain/` và `application/`: ≥ 80% được test chạy qua | `node scripts/constraints/coverage-changed.mjs` (CI: đọc lcov của `pnpm test --coverage`, không chạy lại) | `check:task`, CI. Trên `learn/*`: chỉ báo, không chặn | 80% đủ để bắt phải có test, vẫn chừa chỗ cho dòng cấu hình. Chỉ đo hai lớp chứa luật nghiệp vụ; repository và controller do integration / e2e phủ, mà hai bộ đó cần Docker hoặc chạy lâu |
 | Suite đầy đủ | unit, e2e, integration đều xanh | `pnpm test`, `pnpm test:e2e`, `pnpm test:integration` | push (unit + e2e), `check:full`, CI | Như base |
