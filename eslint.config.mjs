@@ -7,6 +7,31 @@ import globals from 'globals'
 // (the import rule below).
 const MODULES = ['auth', 'users']
 
+// What a module may not import from another module's insides.
+const moduleBans = (self) =>
+  MODULES
+    .filter((other) => other !== self)
+    .map((other) => ({
+      group: [`@/modules/${other}/*`, `!@/modules/${other}/${other}.module`],
+      message: `Import from '@/modules/${other}' (its index.ts), or add what you need there.`,
+    }))
+
+// The dependency rule inside a module (docs/hexagonal-architecture.md): the
+// domain is plain TypeScript and imports no other layer; the application
+// reaches storage and the outside world only through ports. CONSTRAINTS.md
+// enforces it. Tests are exempt: they wire real adapters on purpose.
+const LAYER_BANS = {
+  domain: [
+    { regex: '^@nestjs/|^@prisma/|^@/generated/', message: 'The domain is plain TypeScript: no framework or database imports.' },
+    { regex: '(^|/)(application|infrastructure|presentation)(/|$)', message: 'The domain imports nothing from the other layers.' },
+  ],
+  application: [
+    { regex: '^@prisma/|^@/generated/', message: 'The application reaches the database through a repository port, not Prisma.' },
+    { regex: '(^|/)(infrastructure|presentation)(/|$)', message: 'The application talks to adapters through ports; the module file wires them in.' },
+  ],
+}
+const TESTS = ['**/*.spec.ts', '**/*-spec.ts']
+
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -46,22 +71,26 @@ export default tseslint.config(
   // Outside src/modules the rule does not apply, on purpose: app.module.ts,
   // src/maintenance and the CLIs in src/bootstrap are where modules are wired
   // together, and a CLI builds a module's adapters itself, without Nest.
-  ...MODULES.map((self) => ({
-    files: [`src/modules/${self}/**/*.ts`],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: MODULES
-            .filter((other) => other !== self)
-            .map((other) => ({
-              group: [`@/modules/${other}/*`, `!@/modules/${other}/${other}.module`],
-              message: `Import from '@/modules/${other}' (its index.ts), or add what you need there.`,
-            })),
-        },
-      ],
+  //
+  // The layer rule (LAYER_BANS) sets the same ESLint rule on domain/ and
+  // application/, and a later config replaces a rule's options rather than
+  // adding to them, so those configs repeat the module patterns.
+  ...MODULES.flatMap((self) => [
+    {
+      files: [`src/modules/${self}/**/*.ts`],
+      rules: { 'no-restricted-imports': ['error', { patterns: moduleBans(self) }] },
     },
-  })),
+    ...Object.entries(LAYER_BANS).map(([layer, bans]) => ({
+      files: [`src/modules/${self}/${layer}/**/*.ts`],
+      ignores: TESTS,
+      rules: { 'no-restricted-imports': ['error', { patterns: [...moduleBans(self), ...bans] }] },
+    })),
+  ]),
+  {
+    files: ['src/shared/domain/**/*.ts'],
+    ignores: TESTS,
+    rules: { 'no-restricted-imports': ['error', { patterns: LAYER_BANS.domain }] },
+  },
   {
     // Plain CommonJS tooling config (jest configs). Not part of the TypeScript
     // program, so type-aware rules are switched off for them rather than

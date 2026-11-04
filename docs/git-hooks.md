@@ -76,8 +76,14 @@ Git hooks are **automatic scripts that run at specific points** in your Git work
 
 | Hook | When it runs | What it does | Why |
 |------|--------------|--------------|-----|
-| **pre-commit** | Before each commit | `eslint --fix` + `prettier --write` on staged `.ts` and `.js` files | Auto-fixes linting and formatting errors |
+| **pre-commit** | Before each commit | gitleaks on the staged files, then `eslint --fix` + `prettier --write` on staged `.ts` and `.js` files | No secret is committed; auto-fixes linting and formatting errors |
+| **commit-msg** | After you write the message | The [CONSTRAINTS.md](../CONSTRAINTS.md) floor on what the commit holds | No new `@ts-ignore` / `eslint-disable`, stubs, skipped tests, or tests removed without a `Tests-removed:` line |
 | **pre-push** | Before each push | `pnpm test && pnpm test:e2e` | Nothing reaches a branch that fails its own tests |
+
+The pre-commit hook needs [gitleaks](https://github.com/gitleaks/gitleaks)
+on the PATH and fails, saying how to install it, when it is missing
+(Windows: `winget install --id Gitleaks.Gitleaks -e`, then restart the
+terminal or editor).
 
 ---
 
@@ -183,9 +189,17 @@ Together, they create a fast, efficient quality check system.
 
 ### `.husky/pre-commit`
 ```bash
-pnpm exec lint-staged
+node scripts/constraints/secrets.mjs --staged && pnpm exec lint-staged
 ```
-Runs lint-staged on the files about to be committed.
+Scans the staged changes for secrets, then runs lint-staged on the files
+about to be committed.
+
+### `.husky/commit-msg`
+```bash
+node scripts/constraints/floor-guard.mjs --staged --msg-file "$1"
+```
+Here rather than in pre-commit because a removed test needs its reason in
+the message.
 
 ### `.husky/pre-push`
 ```bash

@@ -1,0 +1,4 @@
+# The CONSTRAINTS.md floor on what this commit holds. Runs here rather than in
+# pre-commit because a removed test needs its reason in the message
+# ("Tests-removed: <why>").
+node scripts/constraints/floor-guard.mjs --staged --msg-file "$1"

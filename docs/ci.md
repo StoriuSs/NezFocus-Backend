@@ -113,6 +113,7 @@ Every check is a command you can run yourself, from the project folder.
 | Format (Prettier) | Code not laid out the house way | `pnpm format:check` (`pnpm format` fixes it) |
 | Types (TypeScript) | A value used as the wrong type, in the app and the tests | `pnpm exec tsc --noEmit` |
 | Unit tests | A piece of logic that no longer does what its test says | `pnpm test` |
+| Changed-line coverage | New or changed lines in `domain/` and `application/` that fewer than 80% of are run by a test ([CONSTRAINTS.md](../CONSTRAINTS.md)); read from the coverage report of the unit run, not a second run | `pnpm check:task` |
 | e2e tests | The HTTP API answering wrong: status codes, response shapes | `pnpm test:e2e` |
 | OpenAPI | `openapi.json` (the API's description, which the frontend's types come from) out of date | `pnpm openapi:check` |
 | Env check | `.env.example` missing a setting the app needs | `pnpm env:check` |
@@ -136,6 +137,16 @@ and every alert rule passes its tests. Yourself: `pnpm monitoring:check`
 ships has a known security hole rated high or critical. The list of known
 holes (*advisories*) is public and grows every day, so this check can fail
 on a day you changed nothing. Yourself: `pnpm audit --prod --audit-level high`.
+
+**Constraints floor and secrets** (under a minute, documentation-only
+pushes included, since weakening [CONSTRAINTS.md](../CONSTRAINTS.md) is one):
+no new suppression comments, stubs, skipped tests, tests removed without a
+`Tests-removed:` line in a commit message, or loosened constraints; and
+gitleaks finds no secret in the pushed commits. Yourself: `pnpm check:fast`.
+
+**Code scan** (a few minutes): Semgrep's `p/default` rules over the source
+files the push changed; a finding rated high, critical or `ERROR` fails it.
+CI only, since Semgrep is heavy for a laptop.
 
 ## The production image
 

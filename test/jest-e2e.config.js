@@ -32,8 +32,9 @@ module.exports = {
     // Setup files
     setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
 
-    // E2E specs share real backing services (Postgres, Redis), so run them
-    // serially rather than racing workers against the same state.
+    // E2E specs need nothing but Node: each builds a small Nest app with
+    // Postgres and Redis replaced by fakes (docs/testing.md). One worker keeps
+    // the run light; real services are the integration suite's job.
     maxWorkers: 1,
 
     // Longer timeout for E2E tests (they spin up the full app)

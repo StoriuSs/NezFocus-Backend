@@ -46,6 +46,7 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
       image: ${{ steps.diff.outputs.image }}
+      base: ${{ steps.base.outputs.base }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,6 +81,19 @@ jobs:
           [ "$code" = true ] || echo "::notice title=Checks skipped::This branch differs from main only in documentation (docs/ and .md files)."
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "image=$image" >> "$GITHUB_OUTPUT"
+      # The commit the constraint checks (CONSTRAINTS.md) measure this run's
+      # change against: a fork's base, else the branch tip before this push,
+      # else where the branch left main. Empty when none exists.
+      - name: What is the change measured against?
+        id: base
+        env:
+          PR_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=$PR_BASE
+          if [ -z "$base" ] && [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then base=$BEFORE; fi
+          if [ -z "$base" ]; then base=$(git merge-base origin/main "$GITHUB_SHA" 2>/dev/null || true); fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
 
   checks:
     name: Lint, types, unit and e2e tests
@@ -89,6 +103,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The changed-line coverage below diffs against an earlier commit.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -102,7 +119,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm exec tsc --noEmit
-      - run: pnpm test
+      - run: pnpm test --coverage --collectCoverageFrom='src/**/*.ts' --coverageReporters=lcov --coverageReporters=text-summary
+      # Read from the report the run above wrote, not a second run (CONSTRAINTS.md).
+      - name: Changed lines in domain/ and application/ are at least 80% covered
+        if: needs.changes.outputs.base != ''
+        run: node scripts/constraints/coverage-changed.mjs --base "${{ needs.changes.outputs.base }}" --lcov coverage/lcov.info
       - run: pnpm test:e2e
       - name: openapi.json matches the code
         run: pnpm openapi:check
@@ -162,6 +183,56 @@ jobs:
         run: grep -oE '(grafana|prom)/[a-z-]+:[A-Za-z0-9._-]+' package.json | sort -u | xargs scripts/pull-images.sh
       # Alloy, Loki, promtool and amtool, each in the image the stack runs.
       - run: pnpm monitoring:check
+
+  # The CONSTRAINTS.md floor and gitleaks, over what this push changes. Runs
+  # for documentation-only pushes too: weakening CONSTRAINTS.md is one.
+  guard:
+    name: Constraints floor and secrets
+    needs: changes
+    if: needs.changes.outputs.base != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      - name: No suppressions, stubs, skipped or removed tests, weakened constraints
+        run: node scripts/constraints/floor-guard.mjs --ci --base "${{ needs.changes.outputs.base }}"
+      - name: No secrets
+        run: node scripts/constraints/secrets.mjs --base "${{ needs.changes.outputs.base }}"
+
+  # Semgrep over the source files this push changes; quality-gate.mjs fails
+  # the step on high or critical findings, or on an incomplete scan.
+  semgrep:
+    name: Code scan
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.base != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SEMGREP_VERSION: 1.181.0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: pipx install "semgrep==${SEMGREP_VERSION}"
+      - name: No high or critical findings in changed code
+        env:
+          BASE: ${{ needs.changes.outputs.base }}
+        run: |
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- 'src/*.ts' | grep -vE '[.-]spec\.ts$' || true)
+          if [ ${#files[@]} -eq 0 ]; then echo "No changed source files to scan."; exit 0; fi
+          semgrep scan --config p/default --strict --metrics=off --json --output semgrep-results.json "${files[@]}"
+          node scripts/constraints/quality-gate.mjs semgrep semgrep-results.json
 
   audit:
     name: Dependency advisories

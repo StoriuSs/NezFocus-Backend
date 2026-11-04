@@ -1,1 +1,3 @@
-pnpm exec lint-staged
+# Secrets first: it takes a second, and a key must not reach a commit even
+# when lint would have stopped it anyway (CONSTRAINTS.md).
+node scripts/constraints/secrets.mjs --staged && pnpm exec lint-staged
