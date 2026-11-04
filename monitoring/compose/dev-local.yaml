@@ -1,0 +1,133 @@
+# Local monitoring for docker-compose.dev.yaml: Prometheus, Grafana, Loki
+# and Alertmanager on this machine. Included by that file when MONITORING is
+# local (the default); with MONITORING=grafana-cloud, the dev-grafana-cloud.yaml
+# file next to this one is included instead. See docs/monitoring.md.
+#
+# Paths are relative to the repository root (the include sets
+# project_directory), and `backend` is the network the main file defines.
+
+# The exporters, which Prometheus scrapes.
+include:
+  - path: monitoring/compose/dev-exporters.yaml
+
+services:
+  # Prometheus - Metrics collection
+  prometheus:
+    container_name: prometheus-hexagonal-auth
+    image: prom/prometheus:v3.14.0
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules
+      - prometheus-data:/prometheus
+    environment:
+      COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}  # the `project` label on alerts
+      ENVIRONMENT: development                  # the `environment` label
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      # The address you open Prometheus at (over an SSH tunnel on a server):
+      # links in alerts ("Source" in Alertmanager) point here.
+      - '--web.external-url=http://localhost:${PROMETHEUS_PORT:-9090}'
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Grafana - Metrics visualization
+  grafana:
+    container_name: grafana-hexagonal-auth
+    # 12.4, the maintained line before 13: Grafana 13.2 grew past 1 GB while
+    # showing these dashboards, and was killed at the production limit (256M).
+    # 12.4 stays near 150 MB. Check memory before moving to a newer major.
+    image: grafana/grafana:12.4.11
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3002}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false  # no usage statistics to Grafana Labs
+      # Grafana logs every query it runs at info: each refresh of a log
+      # dashboard added dozens of lines to the very logs it shows. The
+      # logger names differ between versions (tsdb.loki in 12, plugin.loki
+      # in 13); bleve-backend is the search index, logged on every page.
+      - GF_LOG_FILTERS=tsdb.loki:warn plugin.loki:warn plugin.prometheus:warn bleve-backend:warn
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Loki - Log aggregation
+  loki:
+    container_name: loki-hexagonal-auth
+    image: grafana/loki:3.7.7
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml
+      - ./monitoring/loki/rules:/etc/loki/rules/fake  # "fake": the tenant when auth is off
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Alertmanager - shows firing alerts. Sends nothing, unless ALERT_WEBHOOK_URL
+  # is set in .env.development: then it uses the production configuration and
+  # posts there (use a test channel). See docs/alerts.md, "Development".
+  alertmanager:
+    container_name: alertmanager-hexagonal-auth-dev
+    image: prom/alertmanager:v0.34.1
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+    environment:
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        umask 077 && printf '%s' "$$ALERT_WEBHOOK_URL" > /tmp/alert_webhook_url &&
+        if [ -n "$$ALERT_WEBHOOK_URL" ]; then config=alertmanager.yml; else config=alertmanager.dev.yml; fi &&
+        echo "Using $$config" &&
+        exec /bin/alertmanager --config.file=/etc/alertmanager/$$config --cluster.listen-address=
+        --web.external-url=http://localhost:${ALERTMANAGER_PORT:-9093}
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Alloy - Log shipping to Loki (monitoring/alloy/local.alloy)
+  alloy:
+    container_name: alloy-hexagonal-auth
+    image: grafana/alloy:v1.19.2
+    ports:
+      - "127.0.0.1:${ALLOY_PORT:-12345}:12345"  # UI: each component and its state
+    volumes:
+      - ./monitoring/alloy:/etc/alloy:ro
+      - alloy-data:/var/lib/alloy/data  # read positions
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read Docker container logs
+    environment:
+      COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}  # collect this stack's containers only; the `project` label
+      ENVIRONMENT: development                  # the `environment` label
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting  # no anonymous usage statistics to Grafana Labs
+      - /etc/alloy/local.alloy
+    depends_on:
+      - loki
+    networks:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  alloy-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:

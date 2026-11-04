@@ -1,0 +1,49 @@
+# The exporters for docker-compose.dev.yaml: Postgres, Redis and the machine,
+# as metrics. Included by dev-local.yaml (Prometheus scrapes them) and
+# dev-grafana-cloud.yaml (Alloy does), so MONITORING=off starts none of them:
+# with nothing scraping, they would only use memory. See docs/monitoring.md.
+#
+# `backend` is the network the main file defines.
+
+services:
+  # Node Exporter - Hardware and OS metrics
+  node-exporter:
+    container_name: node-exporter-hexagonal-auth-dev
+    image: prom/node-exporter:v1.12.1
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      # Disk device names from udev. Docker Desktop has none: its node-exporter
+      # logs "Failed to open directory" once, harmlessly.
+      - '--path.udev.data=/rootfs/run/udev/data'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Postgres and Redis exporters - metrics for the alert rules
+  postgres-exporter:
+    container_name: postgres-exporter-hexagonal-auth-dev
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_URI: db:5432/${DB_NAME}?sslmode=disable
+      DATA_SOURCE_USER: ${DB_USERNAME}
+      DATA_SOURCE_PASS: ${DB_PASSWORD}
+    networks:
+      - backend
+    restart: unless-stopped
+
+  redis-exporter:
+    container_name: redis-exporter-hexagonal-auth-dev
+    image: oliver006/redis_exporter:v1.91.1-alpine
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - backend
+    restart: unless-stopped

@@ -1,0 +1,24 @@
+{
+    "$comment": "Build used only by `pnpm openapi:export` / `openapi:check`. It compiles into dist-openapi/ so it never wipes dist/, which the running dev container serves from. The Swagger plugin options must stay identical to nest-cli.json.",
+    "collection": "@nestjs/schematics",
+    "sourceRoot": "src",
+    "compilerOptions": {
+        "deleteOutDir": true,
+        "webpack": false,
+        "tsConfigPath": "tsconfig.openapi.json",
+        "plugins": [
+            {
+                "name": "@nestjs/swagger",
+                "options": {
+                    "introspectComments": true,
+                    "classValidatorShim": true,
+                    "dtoFileNameSuffix": [
+                        ".dto.ts",
+                        ".request.dto.ts",
+                        ".response.dto.ts"
+                    ]
+                }
+            }
+        ]
+    }
+}

@@ -1,0 +1,5 @@
+# Shell scripts run on Linux (the server, or inside containers such as
+# Postgres's initdb). Keep them LF even in a Windows checkout with
+# core.autocrlf=true, where CRLF makes bash fail with "$'\r': command not found".
+*.sh text eol=lf
+.husky/* text eol=lf

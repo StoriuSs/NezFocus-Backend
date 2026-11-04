@@ -1,0 +1,41 @@
+# Alerts about the monitoring stack itself. See docs/alerts.md.
+groups:
+  - name: monitoring
+    rules:
+      - alert: TargetDown
+        # The app has its own alert, in app.yml.
+        expr: up{job!="nestjs-app"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: A monitoring target is down
+          description: Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }}), so the alerts that depend on it cannot fire.
+
+      - alert: PrometheusRuleFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Alert rules fail to evaluate
+          description: 'Rule group {{ $labels.rule_group }} failed to evaluate; its alerts cannot fire. The Prometheus logs show the error.'
+
+      - alert: AlertmanagerNotificationsFailing
+        # Reaches you only through another receiver, or in Grafana: when the
+        # only receiver fails, this alert fails with it.
+        expr: increase(alertmanager_notifications_failed_total[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Alerts are not being delivered
+          description: Alertmanager failed to send to {{ $labels.integration }}. `docker compose logs alertmanager` shows the error; a wrong or deleted webhook is the usual cause.
+
+      - alert: Watchdog
+        # Always firing, by design. Alertmanager sends it to the heartbeat
+        # receiver, never to the chat: when it stops arriving, alerting is broken.
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: Alerting works
+          description: This alert always fires. An outside service watches for it and warns you when it stops.

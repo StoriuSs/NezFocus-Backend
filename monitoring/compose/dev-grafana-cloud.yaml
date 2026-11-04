@@ -1,0 +1,45 @@
+# Grafana Cloud monitoring for docker-compose.dev.yaml: only Alloy runs
+# here, and sends logs and metrics to Grafana Cloud. Included by that file when
+# MONITORING=grafana-cloud; dev-local.yaml is the default. Alert rules,
+# notifications and dashboards live in Grafana Cloud: `pnpm monitoring:cloud-sync`
+# puts them there. See docs/monitoring.md, "Grafana Cloud".
+#
+# Paths are relative to the repository root (the include sets
+# project_directory), and `backend` is the network the main file defines.
+
+# The exporters, which Alloy scrapes.
+include:
+  - path: monitoring/compose/dev-exporters.yaml
+
+services:
+  # Alloy - logs and metrics to Grafana Cloud (monitoring/alloy/grafana-cloud.alloy)
+  alloy:
+    container_name: alloy-hexagonal-auth
+    image: grafana/alloy:v1.19.2
+    ports:
+      - "127.0.0.1:${ALLOY_PORT:-12345}:12345"  # UI: each component and its state
+    volumes:
+      - ./monitoring/alloy:/etc/alloy:ro
+      - alloy-data:/var/lib/alloy/data  # read positions
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read Docker container logs
+    environment:
+      COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}  # collect this stack's containers only; the `project` label
+      ENVIRONMENT: development                  # the `environment` label
+      # Where to send, and as whom (docs/monitoring.md, "Grafana Cloud").
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:?set GRAFANA_CLOUD_PROMETHEUS_URL in .env.development (MONITORING=grafana-cloud)}
+      GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:?set GRAFANA_CLOUD_PROMETHEUS_USER in .env.development (MONITORING=grafana-cloud)}
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:?set GRAFANA_CLOUD_LOKI_URL in .env.development (MONITORING=grafana-cloud)}
+      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER:?set GRAFANA_CLOUD_LOKI_USER in .env.development (MONITORING=grafana-cloud)}
+      GRAFANA_CLOUD_TOKEN: ${GRAFANA_CLOUD_TOKEN:?set GRAFANA_CLOUD_TOKEN in .env.development (MONITORING=grafana-cloud)}
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting  # no anonymous usage statistics to Grafana Labs
+      - /etc/alloy/grafana-cloud.alloy
+    networks:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  alloy-data:

@@ -1,0 +1,110 @@
+<html lang='en'>
+    <head>
+        <meta charset='UTF-8' />
+        <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+        <title>A recovery code was used</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f4f4f4;
+            }
+            .container {
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 40px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            .header h1 {
+                color: #2196f3;
+                margin: 0;
+                font-size: 24px;
+            }
+            .message {
+                font-size: 16px;
+                color: #666;
+                margin: 20px 0;
+            }
+            .actions {
+                text-align: center;
+                margin: 30px 0;
+            }
+            .button {
+                display: inline-block;
+                background-color: #2196f3;
+                color: #ffffff !important;
+                text-decoration: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                font-weight: bold;
+                margin: 6px;
+            }
+            .button.secondary {
+                background-color: #ffffff;
+                color: #2196f3 !important;
+                border: 2px solid #2196f3;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #e0e0e0;
+                font-size: 14px;
+                color: #999;
+            }
+            .warning {
+                background-color: #fff3cd;
+                border-left: 4px solid #ffc107;
+                padding: 12px;
+                margin: 20px 0;
+                font-size: 14px;
+                color: #856404;
+            }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='header'>
+                <h1>{{appName}}</h1>
+            </div>
+
+            <p class='message'>
+                A recovery code was just used to sign in to your
+                {{appName}}
+                account, instead of a code from your authenticator app. Each code works once: you have
+                {{remaining}}
+                left.
+            </p>
+
+            {{#if runningLow}}
+                <p class='message'>
+                    That is not many. Once you are back in, choose New recovery codes in Settings to get a fresh set.
+                </p>
+            {{/if}}
+
+            <div class='warning'>
+                <strong>⚠️ Wasn't you?</strong>
+                Someone has your password and one of your recovery codes. Choose a new password now: it signs out every
+                device.
+            </div>
+
+            <div class='actions'>
+                <a class='button' href='{{resetUrl}}'>Choose a new password</a>
+                <a class='button secondary' href='{{settingsUrl}}'>Settings</a>
+            </div>
+
+            <div class='footer'>
+                <p>© {{appName}} - All rights reserved</p>
+                <p>This is an automated email, please do not reply.</p>
+            </div>
+        </div>
+    </body>
+</html>

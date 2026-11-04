@@ -1,0 +1,15 @@
+apiVersion: 1
+
+# Firing alerts and silences in Grafana: Alerting → Alert list, choosing this
+# Alertmanager. The rules themselves live in monitoring/prometheus/rules and
+# monitoring/loki/rules, not in Grafana.
+datasources:
+  - name: Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    uid: alertmanager
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false

@@ -1,0 +1,7 @@
+# No monitoring for docker-compose.dev.yaml: included by that file when
+# MONITORING=off, a development-only choice. Nothing collects logs or
+# metrics, so nothing runs here, not even the exporters; and the app logs
+# in colour (src/config/pino.config.ts), as no Alloy parses its output.
+# See docs/docker.md, "Lighter ways to run".
+
+services: {}

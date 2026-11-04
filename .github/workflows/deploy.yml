@@ -1,0 +1,101 @@
+# The Deploy button: runs ./deploy.sh on your server over SSH.
+#
+# Actions tab → Deploy → Run workflow. Nothing runs by itself: a push to main
+# builds and publishes an image (ci.yml), and this is how it reaches the
+# server, when you say so.
+#
+# What it needs (docs/deploy.md, "The Deploy button"):
+#   secret  DEPLOY_SSH_KEY     a private key that may log in as the user below
+#   var     DEPLOY_HOST        the server's address
+#   var     DEPLOY_USER        the user to log in as (e.g. ubuntu)
+#   var     DEPLOY_PATH        where this repository is checked out there
+#   var     DEPLOY_HOST_KEY    the server's public host key, so the runner
+#                              can tell it is really your server
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do on the server
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      tag:
+        description: 'Rollback only: which release (empty = the previous one)'
+        type: string
+        default: ''
+
+# One deploy at a time, and never cancel one halfway.
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy:
+    name: ${{ inputs.action }} on ${{ vars.DEPLOY_HOST }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check the settings exist
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+          USER: ${{ vars.DEPLOY_USER }}
+          PATH_ON_SERVER: ${{ vars.DEPLOY_PATH }}
+          HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          missing=()
+          [ -n "$HOST" ] || missing+=("variable DEPLOY_HOST")
+          [ -n "$USER" ] || missing+=("variable DEPLOY_USER")
+          [ -n "$PATH_ON_SERVER" ] || missing+=("variable DEPLOY_PATH")
+          [ -n "$HOST_KEY" ] || missing+=("variable DEPLOY_HOST_KEY")
+          [ -n "$KEY" ] || missing+=("secret DEPLOY_SSH_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf '::error title=Deploy is not set up::Missing: %s. See docs/deploy.md.\n' "$(IFS=', '; echo "${missing[*]}")"
+            exit 1
+          fi
+
+      - name: Set up the key
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ vars.DEPLOY_HOST }}
+          HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # The server's own host key, from the variable: without it the runner
+          # would trust whatever answers on that address.
+          printf '%s %s\n' "$HOST" "$HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: ${{ inputs.action }}
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+          USER: ${{ vars.DEPLOY_USER }}
+          PATH_ON_SERVER: ${{ vars.DEPLOY_PATH }}
+          ACTION: ${{ inputs.action }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$ACTION" = rollback ]; then
+            command="./deploy.sh --rollback $TAG"
+          else
+            command="./deploy.sh"
+          fi
+          echo "::notice title=Deploying::$command in $PATH_ON_SERVER on $HOST"
+          # -T: no terminal, so deploy.sh takes no answers from a prompt and
+          # refuses anything it would have asked about.
+          ssh -T -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o ConnectTimeout=20 \
+            "$USER@$HOST" "cd '$PATH_ON_SERVER' && $command"
+
+      - name: Forget the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

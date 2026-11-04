@@ -1,0 +1,88 @@
+# Alerts about the NestJS app. See docs/alerts.md for what each one means and
+# what to check first.
+#
+# Standard Prometheus rule files: Grafana Cloud (and any Mimir or Prometheus)
+# loads them as they are. Tests: monitoring/prometheus/tests, `pnpm alerts:test`.
+groups:
+  - name: app
+    rules:
+      - alert: AppDown
+        expr: up{job="nestjs-app"} == 0
+        # A deploy restarts the app for a few seconds; that is not an outage.
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The API is down
+          description: Prometheus has not reached the app for 2 minutes. It has stopped, is restarting, or does not answer.
+
+      - alert: AppHighErrorRate
+        # At least 5 errors: two failed requests out of ten at night are not an
+        # incident, and a percentage alone would say they are.
+        expr: |
+          (
+            sum(rate(http_requests_total{job="nestjs-app", status_code=~"5.."}[5m]))
+              / sum(rate(http_requests_total{job="nestjs-app"}[5m]))
+          ) > 0.05
+          and sum(increase(http_requests_total{job="nestjs-app", status_code=~"5.."}[5m])) >= 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The API is failing requests
+          description: '{{ $value | humanizePercentage }} of requests in the last 5 minutes ended in a 5xx error.'
+
+      - alert: AppHighLatency
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="nestjs-app"}[5m]))) > 1
+          and sum(rate(http_request_duration_seconds_count{job="nestjs-app"}[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The API is slow
+          description: 5% of requests took longer than {{ $value | humanizeDuration }} over the last 10 minutes.
+
+      - alert: AppEventLoopLag
+        expr: nodejs_eventloop_lag_p99_seconds{job="nestjs-app"} > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The app's event loop is blocked
+          description: 'The event loop is delayed by {{ $value | humanizeDuration }} (p99): synchronous work is holding up every request.'
+
+      - alert: AppRestarting
+        # Every start has a new process_start_time_seconds. A deploy and its
+        # rollback are two; a crash loop is more.
+        expr: changes(process_start_time_seconds{job="nestjs-app"}[30m]) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: The app keeps restarting
+          description: The app started {{ $value }} times in 30 minutes. It is crashing, or being killed for memory.
+
+  - name: auth
+    rules:
+      - alert: AuthFailedLoginSpike
+        # The per-address and per-IP limits slow each source down; this sees
+        # the total, which is what grows when many addresses or many IPs are
+        # tried at once. Raise the threshold if the app has that many users.
+        expr: sum(increase(auth_events_total{job="nestjs-app", event="login_failed"}[10m])) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Many failed sign-ins
+          description: '{{ $value | humanize }} sign-ins failed in the last 10 minutes. Someone may be guessing passwords.'
+
+      - alert: AuthRefreshTokenReuse
+        # A refresh token presented after it was replaced was copied. The app
+        # has already ended that session; this says it happened. Usually a
+        # stolen cookie, occasionally a device restoring an old one.
+        expr: sum(increase(auth_events_total{job="nestjs-app", event="refresh_reuse_detected"}[15m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A refresh token was used twice
+          description: A session was ended because its refresh token came back after being replaced. Sentry has the user id.

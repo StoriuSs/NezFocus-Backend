@@ -1,0 +1,45 @@
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "declaration": true,
+        "removeComments": true,
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "allowSyntheticDefaultImports": true,
+        "target": "ES2021",
+        "sourceMap": true,
+        "outDir": "./dist",
+        "baseUrl": "./",
+        "ignoreDeprecations": "5.0",
+        "incremental": true,
+        "skipLibCheck": true,
+        
+        // Balanced strict mode
+        "strict": false,
+        "strictNullChecks": true,
+        "noImplicitAny": true,
+        "strictBindCallApply": true,
+        "strictFunctionTypes": true,
+        "strictPropertyInitialization": false,
+        "noImplicitThis": true,
+        
+        "forceConsistentCasingInFileNames": true,
+        "noFallthroughCasesInSwitch": true,
+        
+        "noUnusedLocals": true,
+        "noUnusedParameters": false,
+        
+        "resolveJsonModule": true,
+        "esModuleInterop": true,
+        
+        "paths": {
+            "@/*": ["src/*"],
+            "@/generated/*": ["generated/*"],
+            "@config/*": ["src/config/*"],
+            "@modules/*": ["src/modules/*"],
+            "@shared/*": ["src/shared/*"]
+        }
+    },
+    "include": ["src/**/*", "test/**/*", "scripts/**/*", "generated/**/*", "prisma/**/*.ts", "prisma.config.ts", "jest.config.js", "test/jest-e2e.config.js"],
+    "exclude": ["node_modules", "dist", "dist-openapi"]
+}

@@ -1,0 +1,60 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # Added to every alert, so a notification says which stack it came from.
+  # Compose passes its project name (`name:` in the compose file), and each
+  # compose file its environment (development or production). Prometheus 3
+  # expands environment variables in external labels.
+  external_labels:
+    project: ${COMPOSE_PROJECT}
+    environment: ${ENVIRONMENT}
+
+# Alert rules: standard Prometheus rule files, tested by `pnpm alerts:test`.
+# See docs/alerts.md.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# Job names are part of the alert rules (up{job="nestjs-app"}): rename a job
+# here and rename it in rules/ too.
+scrape_configs:
+  - job_name: 'nestjs-app'
+    scrape_interval: 5s
+    static_configs:
+      # Use internal Docker network name ('app') instead of host.docker.internal
+      - targets: ['app:3000']
+    metrics_path: '/api/v1/metrics'
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # The monitoring stack itself: an alert that can't be evaluated or delivered
+  # is otherwise silent.
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+
+  - job_name: 'alloy'
+    static_configs:
+      - targets: ['alloy:12345']

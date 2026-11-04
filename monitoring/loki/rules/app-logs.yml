@@ -1,0 +1,23 @@
+# Log alert rules, evaluated by Loki's ruler and sent to the same Alertmanager.
+# See docs/alerts.md.
+#
+# Loki has no external labels, so the project label comes from the log
+# streams themselves (Alloy labels them with the Compose project).
+groups:
+  - name: app-logs
+    rules:
+      - alert: AppErrorLogs
+        # The app logs errors at "error" or "fatal": unhandled exceptions, 5xx
+        # responses, and background jobs that failed. 4xx responses are "warn".
+        #
+        # One error line keeps this true for 10 minutes, so `for: 2m` still
+        # reports it. The wait lets PostgresDown or RedisDown (1 minute) fire
+        # first: Alertmanager then holds this one back as their consequence.
+        expr: |
+          sum by (project) (count_over_time({service="app", level=~"error|fatal"}[10m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: The app is logging errors
+          description: '{{ $value }} errors logged in the last 10 minutes. Grafana → NestJS Logs: "Errors by component" and "Most frequent errors" show which.'

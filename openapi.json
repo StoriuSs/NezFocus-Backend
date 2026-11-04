@@ -1,0 +1,2180 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "HealthController_check_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "HealthController_readiness_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "503 when the database or Redis is unreachable.",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "HealthController_liveness_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "operationId": "UsersController_getProfile_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UserProfileResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateProfile_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpdateProfileResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/me/username": {
+      "post": {
+        "operationId": "UsersController_setUsername_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUsernameRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SetUsernameResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/username-available/{username}": {
+      "get": {
+        "operationId": "UsersController_checkUsernameAvailability_v1",
+        "parameters": [
+          {
+            "name": "username",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UsernameAvailabilityResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/me/avatar": {
+      "post": {
+        "operationId": "UsersController_uploadAvatar_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "avatar"
+                ],
+                "properties": {
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UploadAvatarResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthController_register_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create an account and email a code to confirm the address. The answer is the same for any address.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/verify-email": {
+      "post": {
+        "operationId": "AuthController_verifyEmail_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Confirm the address with the emailed code and the sign-up password, and sign in. Sets the refresh cookie.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/resend-verification": {
+      "post": {
+        "operationId": "AuthController_resendVerification_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Send the sign-up email again: a new code, or \"you already have an\naccount\" for a confirmed address. The answer is the same for any address.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sign in. Sets the refresh cookie.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login/2fa": {
+      "post": {
+        "operationId": "AuthController_completeTwoFactorSignIn_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorSignInRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "The second step of signing in: a code from the authenticator app (or a\nrecovery code) for the challenge the first step answered with. Sets the\nrefresh cookie.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "A new access token, from the refresh cookie. Replaces the cookie too: each is used once.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "End this session. Always succeeds, and clears the cookie.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout-all": {
+      "post": {
+        "operationId": "AuthController_logoutEverywhere_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "End every session of the signed-in user, this one included.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/options": {
+      "get": {
+        "operationId": "AuthController_authOptions_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AuthOptionsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "What the sign-in pages need to know: the other providers configured\n(`google`), and Turnstile's site key when it is on.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/forgot-password": {
+      "post": {
+        "operationId": "PasswordController_forgotPassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Email a code for choosing a new password. The answer is the same for any address.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/reset-password": {
+      "post": {
+        "operationId": "PasswordController_resetPassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Choose a new password with the emailed code. Ends every earlier session,\nthen signs in here: sets a new refresh cookie.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "operationId": "PasswordController_changePassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change the password, knowing the current one. Ends every other session.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sign-in-methods": {
+      "get": {
+        "operationId": "PasswordController_signInMethods_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SignInMethodsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "How this account signs in: a password, other providers, or both.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/code": {
+      "post": {
+        "operationId": "PasswordController_sendPasswordSetCode_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "For an account without a password (one made with Google): email a code\nto set one. 409 AUTH_PASSWORD_ALREADY_SET when it has one.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password": {
+      "post": {
+        "operationId": "PasswordController_setPassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPasswordRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set a first password with that code. The account keeps its other sign-in methods, and its sessions.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa": {
+      "get": {
+        "operationId": "TwoFactorController_status_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TwoFactorStatusResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Whether two-step sign-in is on, and how many recovery codes are left.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/setup": {
+      "post": {
+        "operationId": "TwoFactorController_setUp_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TwoFactorSetUpResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start turning two-step sign-in on: a new secret, for the authenticator\napp. Not asked for at sign-in until confirmed with a code.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/confirm": {
+      "post": {
+        "operationId": "TwoFactorController_confirm_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorCodeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RecoveryCodesResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Turn it on with a code from the app. Answers with the recovery codes, this once.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/recovery-codes": {
+      "post": {
+        "operationId": "TwoFactorController_replaceRecoveryCodes_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorCodeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RecoveryCodesResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "New recovery codes, with a code from the app. The earlier ones stop\nworking; the new ones are in the answer, this once.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/disable": {
+      "post": {
+        "operationId": "TwoFactorController_disable_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorCodeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Turn it off, with a code from the app or a recovery code.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/account/delete-code": {
+      "post": {
+        "operationId": "AccountDeletionController_sendCode_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "For deleting an account made with Google, which has no password to\nconfirm with: email a code. 409 AUTH_USE_PASSWORD for one with a password.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/account/delete": {
+      "post": {
+        "operationId": "AccountDeletionController_delete_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete your own account, with proof it is you: the password (or the\nemailed code, for an account without one), and a two-step code when that\nis on. Every session ends, this one included; the owner is emailed.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/{provider}": {
+      "get": {
+        "operationId": "OAuthController_start_v1",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "google",
+              "type": "string"
+            }
+          },
+          {
+            "name": "redirect",
+            "required": false,
+            "in": "query",
+            "description": "A path of the web app to return to. Default `/`.",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To the provider"
+          }
+        },
+        "summary": "Sign in with another provider. Redirects to the provider, and sets a\nshort-lived cookie that ties its return to this browser.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/{provider}/callback": {
+      "get": {
+        "operationId": "OAuthController_finish_v1",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "google",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To the web app"
+          }
+        },
+        "summary": "Where the provider sends the browser back. Signs in and redirects to the\nweb app's `/auth/callback?redirect=<path>`; if it cannot, to\n`/auth/callback?error=cancelled|failed|email_unverified|account_deleted`.",
+        "tags": [
+          "auth"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "testapp-backend-hexagonal-auth API",
+    "description": "REST API documentation",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      },
+      "refresh_token": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token"
+      }
+    },
+    "schemas": {
+      "ApiResponseMetaDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Operation completed successfully"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request_duration": {
+            "type": "number",
+            "description": "Milliseconds"
+          }
+        },
+        "required": [
+          "message",
+          "timestamp"
+        ]
+      },
+      "UserProfileResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "description": "Absent only for an account whose personal data has been erased.",
+            "format": "email"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 25
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "email_verified": {
+            "type": "boolean"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bio": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "has_set_username": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "avatar_url",
+          "email_verified",
+          "roles",
+          "has_set_username"
+        ]
+      },
+      "SetUsernameResponseDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "has_set_username": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "username",
+          "has_set_username"
+        ]
+      },
+      "SetUsernameRequestDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "3-25 lowercase letters, digits or underscores. Normalised to lower case\nfirst, so `Alice` and `alice` are the same name. Permanent once set.",
+            "minLength": 3,
+            "maxLength": 25
+          }
+        },
+        "required": [
+          "username"
+        ]
+      },
+      "UsernameAvailabilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available"
+        ]
+      },
+      "UpdateProfileResponseDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 25
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "has_set_username": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "username",
+          "display_name",
+          "avatar_url",
+          "bio",
+          "has_set_username"
+        ]
+      },
+      "UpdateProfileRequestDto": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "bio": {
+            "type": "string",
+            "description": "An empty string clears the bio.",
+            "maxLength": 500
+          }
+        }
+      },
+      "UploadAvatarResponseDto": {
+        "type": "object",
+        "properties": {
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "width": {
+            "type": "number",
+            "minimum": 1
+          },
+          "height": {
+            "type": "number",
+            "minimum": 1
+          },
+          "uploaded_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "avatar_url",
+          "uploaded_at"
+        ]
+      },
+      "RegisterRequestDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "At least 8 characters with an upper-case letter, a lower-case letter, a digit and a symbol.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "turnstile_token": {
+            "type": "string",
+            "description": "Required when Turnstile is on.",
+            "maxLength": 2048
+          },
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "password",
+          "email"
+        ]
+      },
+      "TokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "Send as `Authorization: Bearer <access_token>`. Keep it in memory only."
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "number",
+            "description": "Seconds until it expires. Refresh shortly before."
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in"
+        ]
+      },
+      "VerifyEmailRequestDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "The password the address was signed up with. Signing up again before\nconfirming replaces it, so only the person who chose the current one can\nconfirm the address.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "code": {
+            "type": "string",
+            "description": "The six digits from the email.",
+            "pattern": "^\\d{6}$"
+          },
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "password",
+          "code",
+          "email"
+        ]
+      },
+      "EmailRequestDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "LoginRequestDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "turnstile_token": {
+            "type": "string",
+            "description": "Needed from the third failed attempt when Turnstile is on (`data.captcha_required` says so).",
+            "maxLength": 2048
+          },
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "password",
+          "email"
+        ]
+      },
+      "TwoFactorSignInRequestDto": {
+        "type": "object",
+        "properties": {
+          "challenge": {
+            "type": "string",
+            "description": "The challenge from the 403 AUTH_TWO_FACTOR_REQUIRED answer. Omitted after\nsigning in with Google: the challenge is then in a cookie.",
+            "maxLength": 256
+          },
+          "code": {
+            "type": "string",
+            "description": "Six digits from the authenticator app, or (where accepted) a recovery code: `K7Q2M-X9HDP`.",
+            "minLength": 6,
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "AuthOptionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "description": "The other providers configured for sign-in, by id (`google`). Empty when\nnone are. Start one with `GET /auth/<id>`.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "turnstile_site_key": {
+            "type": "string",
+            "nullable": true,
+            "description": "The Turnstile widget's site key, when Turnstile is on; null when it is\noff. Public: it is meant to be in the page."
+          }
+        },
+        "required": [
+          "providers",
+          "turnstile_site_key"
+        ]
+      },
+      "ForgotPasswordRequestDto": {
+        "type": "object",
+        "properties": {
+          "turnstile_token": {
+            "type": "string",
+            "description": "Required when Turnstile is on.",
+            "maxLength": 2048
+          },
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ResetPasswordRequestDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "The new password.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "code": {
+            "type": "string",
+            "description": "The six digits from the email.",
+            "pattern": "^\\d{6}$"
+          },
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "password",
+          "code",
+          "email"
+        ]
+      },
+      "ChangePasswordRequestDto": {
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ]
+      },
+      "SignInMethodsResponseDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "boolean",
+            "description": "The account has a password: email-and-password sign-in works. False for one made with Google, until a password is set."
+          },
+          "providers": {
+            "description": "Other providers linked to the account, by id (`google`).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "password",
+          "providers"
+        ]
+      },
+      "SetPasswordRequestDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The six digits from the email.",
+            "pattern": "^\\d{6}$"
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "code",
+          "new_password"
+        ]
+      },
+      "TwoFactorStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "recovery_codes_left": {
+            "type": "number",
+            "description": "Unused recovery codes; 0 when two-step sign-in is off."
+          }
+        },
+        "required": [
+          "enabled",
+          "recovery_codes_left"
+        ]
+      },
+      "TwoFactorSetUpResponseDto": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "For typing into the app by hand, when the QR code cannot be scanned. Base32."
+          },
+          "otpauth_uri": {
+            "type": "string",
+            "description": "The QR code's content: `otpauth://totp/…`."
+          }
+        },
+        "required": [
+          "secret",
+          "otpauth_uri"
+        ]
+      },
+      "RecoveryCodesResponseDto": {
+        "type": "object",
+        "properties": {
+          "recovery_codes": {
+            "description": "Ten codes, each usable once. Shown this once: only their fingerprints are kept.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "recovery_codes"
+        ]
+      },
+      "TwoFactorCodeRequestDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Six digits from the authenticator app, or (where accepted) a recovery code: `K7Q2M-X9HDP`.",
+            "minLength": 6,
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "DeleteAccountRequestDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "The account's password; for an account that has one.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "code": {
+            "type": "string",
+            "description": "The six digits emailed by POST /auth/account/delete-code; for an account without a password.",
+            "pattern": "^\\d{6}$"
+          },
+          "two_factor_code": {
+            "type": "string",
+            "description": "With two-step sign-in on: six digits from the app, or a recovery code.",
+            "minLength": 6,
+            "maxLength": 32
+          }
+        }
+      }
+    }
+  }
+}

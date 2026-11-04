@@ -1,0 +1,88 @@
+# Alerts about the server, from node-exporter. See docs/alerts.md.
+groups:
+  - name: host
+    rules:
+      - alert: HostDiskSpaceLow
+        # Disks only, by filesystem type: not tmpfs, container layers, or (on
+        # Docker Desktop) the host computer's own drives. Add yours if the
+        # server uses another filesystem.
+        expr: |
+          node_filesystem_avail_bytes{fstype=~"ext[234]|xfs|btrfs|zfs"}
+            / node_filesystem_size_bytes
+          < 0.15
+          and node_filesystem_readonly == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Disk space is running low
+          description: '{{ $labels.mountpoint }} has {{ $value | humanizePercentage }} free.'
+
+      - alert: HostDiskSpaceLow
+        # Postgres stops accepting writes when its disk is full.
+        expr: |
+          node_filesystem_avail_bytes{fstype=~"ext[234]|xfs|btrfs|zfs"}
+            / node_filesystem_size_bytes
+          < 0.05
+          and node_filesystem_readonly == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: The disk is almost full
+          description: '{{ $labels.mountpoint }} has {{ $value | humanizePercentage }} free.'
+
+      - alert: HostDiskWillFillIn24Hours
+        # From the last 6 hours' trend; only once the disk is more than 60% used.
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype=~"ext[234]|xfs|btrfs|zfs"}[6h], 24 * 3600) < 0
+          and node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.4
+          and node_filesystem_readonly == 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: The disk will be full within a day
+          description: At the rate of the last 6 hours, {{ $labels.mountpoint }} fills up in less than 24 hours.
+
+      - alert: HostInodesLow
+        # Many small files (Docker layers, logs) can use up a filesystem's
+        # inodes while it still has space: writes then fail with "No space left".
+        expr: |
+          node_filesystem_files_free{fstype=~"ext[234]|xfs|btrfs|zfs"}
+            / node_filesystem_files
+          < 0.1
+          and node_filesystem_readonly == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The filesystem is running out of inodes
+          description: '{{ $labels.mountpoint }} has {{ $value | humanizePercentage }} of its inodes free.'
+
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The server is running out of memory
+          description: '{{ $value | humanizePercentage }} of memory is available.'
+
+      - alert: HostOutOfMemoryKill
+        # Includes a container killed for going over its memory limit.
+        expr: increase(node_vmstat_oom_kill[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A process was killed for lack of memory
+          description: The kernel killed a process for memory in the last 10 minutes, usually a container over its memory limit. `docker ps -a` shows which one restarted.
+
+      - alert: HostCpuHigh
+        expr: 1 - avg without (cpu, mode) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: The CPU is busy
+          description: The CPU has been {{ $value | humanizePercentage }} busy for 15 minutes.

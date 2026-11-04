@@ -1,0 +1,14 @@
+generator client {
+  provider      = "prisma-client"
+  output        = "../generated/prisma"
+  // Materialize engine binaries for both the build host AND the prod runtime
+  // (Alpine + OpenSSL 3). Without `linux-musl-openssl-3.0.x` here, Prisma
+  // tries to download the Alpine engine at runtime, which requires writable
+  // node_modules and network access from the running container — fragile and
+  // a known footgun on first deploy.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}

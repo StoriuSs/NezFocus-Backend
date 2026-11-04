@@ -1,0 +1,104 @@
+// Owned by src/modules/auth. The users module never reads these tables; the
+// two modules meet at a port (see docs/auth/in-the-code.md).
+
+// A user's password. Absent for an account that has never set one.
+model Credential {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash      String // argon2id, parameters inside the string
+  passwordUpdatedAt DateTime @default(now()) @db.Timestamptz(6)
+}
+
+// One row per sign-in. Its id is the access token's `sid` claim, so it
+// survives refresh-token rotation; revoking it ends every token issued in it.
+model Session {
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  lastUsedAt    DateTime       @default(now()) @db.Timestamptz(6)
+  // Absolute: a session ends here however often it is refreshed.
+  expiresAt     DateTime       @db.Timestamptz(6)
+  revokedAt     DateTime?      @db.Timestamptz(6)
+  revokedReason String? // logout | logout-all | password-changed | password-reset | reuse-detected | account-deleted
+  userAgent     String?
+  ip            String?
+  refreshTokens RefreshToken[]
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+// Every refresh token a session has been issued, kept until the session is
+// removed: presenting one already used is how a stolen token is noticed.
+model RefreshToken {
+  id           String    @id @default(uuid())
+  sessionId    String
+  session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // SHA-256 of the token. The token itself is 32 random bytes, so a fast
+  // hash is the right one — and lookups are by this column.
+  tokenHash    String    @unique
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt    DateTime  @db.Timestamptz(6)
+  usedAt       DateTime? @db.Timestamptz(6)
+  replacedById String?
+
+  @@index([sessionId])
+}
+
+// The live code for one purpose. Issuing a new one replaces the row, so an
+// older code stops working at once.
+model VerificationCode {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose    String // email-verify | password-reset | password-set | account-delete
+  codeHash   String
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt  DateTime  @db.Timestamptz(6)
+  attempts   Int       @default(0)
+  consumedAt DateTime? @db.Timestamptz(6)
+
+  @@unique([userId, purpose])
+}
+
+// A sign-in with another provider (Google), linked to one user. The provider's
+// own id for the person (`sub`), not their email: an address can change at the
+// provider, the subject never does.
+model OAuthAccount {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String // google
+  providerAccountId String
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// Two-step sign-in: the authenticator app's secret, sealed with
+// AUTH_ENCRYPTION_KEY. Unconfirmed (confirmedAt null) between setting it up
+// and entering the first code; only a confirmed one is asked for at sign-in.
+model TwoFactor {
+  userId       String    @id
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretSealed String
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  confirmedAt  DateTime? @db.Timestamptz(6)
+  // The 30-second step of the last code accepted: a code is refused if its
+  // step is not later, so the same code cannot be used twice.
+  lastUsedStep Int?
+}
+
+// Codes for signing in without the authenticator app, each usable once.
+// Stored as keyed fingerprints (AUTH_ENCRYPTION_KEY), never as the codes.
+model RecoveryCode {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fingerprint String
+  usedAt      DateTime? @db.Timestamptz(6)
+
+  @@unique([userId, fingerprint])
+}

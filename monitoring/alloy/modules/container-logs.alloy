@@ -1,0 +1,124 @@
+// The log pipeline, shared by local.alloy and grafana-cloud.alloy: collects
+// the logs of this Compose project's containers, labels and parses them, and
+// hands them to `forward_to`. See docs/logging.md, "What Alloy does with each
+// line".
+//
+// Needs COMPOSE_PROJECT and ENVIRONMENT in Alloy's environment (the compose
+// files set them).
+declare "container_logs" {
+	argument "forward_to" {
+		comment = "Receivers of the processed entries (a loki.write)."
+	}
+
+	// Only this stack's containers, selected by Compose project at the Docker
+	// API, so other containers on the host are never picked up. One value only:
+	// Docker ANDs multiple values of the `label` filter.
+	discovery.docker "containers" {
+		host             = "unix:///var/run/docker.sock"
+		refresh_interval = "5s"
+
+		filter {
+			name   = "label"
+			values = ["com.docker.compose.project=" + sys.env("COMPOSE_PROJECT")]
+		}
+	}
+
+	// The labels every entry gets.
+	discovery.relabel "containers" {
+		targets = []
+
+		// Container name, without Docker's leading slash
+		rule {
+			source_labels = ["__meta_docker_container_name"]
+			regex         = "/(.+)"
+			target_label  = "container"
+		}
+
+		// Compose service name (app, db, redis, loki, ...): stable
+		// across dev and prod, whatever the container names are.
+		rule {
+			source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+			target_label  = "service"
+		}
+
+		// Compose project (hexagonal-auth-dev / hexagonal-auth-prod)
+		rule {
+			source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+			target_label  = "project"
+		}
+
+		// development or production: alerts from log rules are routed by it.
+		rule {
+			target_label = "environment"
+			replacement  = sys.env("ENVIRONMENT")
+		}
+	}
+
+	// Reads each container's output from the Docker API. The read position is
+	// kept in --storage.path (a volume), so a recreated container carries on
+	// where it was.
+	loki.source.docker "containers" {
+		host             = "unix:///var/run/docker.sock"
+		targets          = discovery.docker.containers.targets
+		relabel_rules    = discovery.relabel.containers.rules
+		refresh_interval = "5s"
+		forward_to       = [loki.process.app.receiver]
+	}
+
+	// The NestJS app logs one JSON object per line to stdout (pino). Parse it
+	// so the level becomes a label and the event time is the one pino
+	// recorded, not the time Alloy read the line. Lines that are not JSON
+	// (pnpm/prisma output at container start) pass through unchanged. Other
+	// services pass through as they are.
+	loki.process "app" {
+		forward_to = argument.forward_to.value
+
+		stage.match {
+			selector = "{service=\"app\"}"
+
+			// Text printed around the logger (a crash, a library's
+			// console.error) spans lines: indented stack frames, a closing
+			// brace. Join them to the line they belong to, so one error is one
+			// entry. Pino's lines start with "{", so each of them stays an entry
+			// of its own.
+			stage.multiline {
+				firstline     = "^[^\\s}]"
+				max_wait_time = "3s"
+			}
+
+			// A joined entry with a stack trace ("Error: ...\n    at ...") is an
+			// error, though it carries no level: found here, labelled below.
+			stage.regex {
+				expression = "^(?P<stack_trace>[^{][^\\n]*\\n\\s+at )"
+			}
+
+			stage.json {
+				expressions = {
+					level = "level",
+					time  = "time",
+				}
+			}
+
+			// pino levels are numbers; label them by name. Low cardinality, so
+			// it is safe as a label: {service="app", level="error"}. Non-JSON
+			// lines have no level: "error" for a stack trace, else the template
+			// yields an empty string, and an empty label is not attached.
+			stage.template {
+				source   = "level"
+				template = `{{ if not .Value }}{{ if .stack_trace }}error{{ end }}{{ else if eq .Value "10" }}trace{{ else if eq .Value "20" }}debug{{ else if eq .Value "30" }}info{{ else if eq .Value "40" }}warn{{ else if eq .Value "50" }}error{{ else if eq .Value "60" }}fatal{{ else }}{{ .Value }}{{ end }}`
+			}
+
+			stage.labels {
+				values = {
+					level = "",
+				}
+			}
+
+			stage.timestamp {
+				source            = "time"
+				format            = "UnixMs"
+				action_on_failure = "skip"
+			}
+		}
+	}
+}

@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+dist/
+dist-openapi/
+build/
+
+# Environment
+# Only .env.example is committed. Copy it to create:
+#   .env.development  — for local dev
+#   .env.production   — for VPS (fill in real values)
+# Every other env file is ignored too: a copy made for a test, or for another
+# environment (.env.staging), must not be committed either.
+.env*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Uploads
+# The directory's contents, not the directory: a negation cannot re-include a
+# file inside an ignored directory, so .gitkeep was never committed.
+uploads/*
+!uploads/.gitkeep
+
+# Testing
+coverage/
+.nyc_output/
+
+# Prisma
+# Uncomment if you want to ignore migrations in git
+# prisma/migrations/
+/generated
+
+# Temp files
+*.tmp
+*.temp
+
+# Agents
+.agents
+
+# pnpm content-addressable store (created when the store path is set locally)
+.pnpm-store/
+
+# Deploy state on the server (deploy.sh)
+.deploy/

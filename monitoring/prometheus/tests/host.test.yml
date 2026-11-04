@@ -1,0 +1,174 @@
+# promtool unit tests for rules/host.yml. Run all of them: pnpm alerts:test
+rule_files:
+  - ../rules/host.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: HostDiskSpaceLow warns below 15% and is critical below 5%, on disks only
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_size_bytes{instance="node-exporter:9100", job="node-exporter", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '100x20'
+      - series: 'node_filesystem_avail_bytes{instance="node-exporter:9100", job="node-exporter", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '10x10 3x10'
+      - series: 'node_filesystem_readonly{instance="node-exporter:9100", job="node-exporter", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '0x20'
+      # Not disks: tmpfs, and a Docker Desktop host drive.
+      - series: 'node_filesystem_size_bytes{instance="node-exporter:9100", job="node-exporter", device="tmpfs", fstype="tmpfs", mountpoint="/run"}'
+        values: '100x20'
+      - series: 'node_filesystem_avail_bytes{instance="node-exporter:9100", job="node-exporter", device="tmpfs", fstype="tmpfs", mountpoint="/run"}'
+        values: '1x20'
+      - series: 'node_filesystem_readonly{instance="node-exporter:9100", job="node-exporter", device="tmpfs", fstype="tmpfs", mountpoint="/run"}'
+        values: '0x20'
+      - series: 'node_filesystem_size_bytes{instance="node-exporter:9100", job="node-exporter", device="C:\\", fstype="9p", mountpoint="/mnt/host/c"}'
+        values: '100x20'
+      - series: 'node_filesystem_avail_bytes{instance="node-exporter:9100", job="node-exporter", device="C:\\", fstype="9p", mountpoint="/mnt/host/c"}'
+        values: '1x20'
+      - series: 'node_filesystem_readonly{instance="node-exporter:9100", job="node-exporter", device="C:\\", fstype="9p", mountpoint="/mnt/host/c"}'
+        values: '0x20'
+      # A read-only disk can't fill up.
+      - series: 'node_filesystem_size_bytes{instance="node-exporter:9100", job="node-exporter", device="/dev/sdb1", fstype="ext4", mountpoint="/mnt/ro"}'
+        values: '100x20'
+      - series: 'node_filesystem_avail_bytes{instance="node-exporter:9100", job="node-exporter", device="/dev/sdb1", fstype="ext4", mountpoint="/mnt/ro"}'
+        values: '0x20'
+      - series: 'node_filesystem_readonly{instance="node-exporter:9100", job="node-exporter", device="/dev/sdb1", fstype="ext4", mountpoint="/mnt/ro"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: HostDiskSpaceLow
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: HostDiskSpaceLow
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: 'node-exporter:9100', job: node-exporter, device: /dev/sda1, fstype: ext4, mountpoint: / }
+            exp_annotations:
+              summary: Disk space is running low
+              description: / has 10% free.
+      - eval_time: 16m
+        alertname: HostDiskSpaceLow
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: 'node-exporter:9100', job: node-exporter, device: /dev/sda1, fstype: ext4, mountpoint: / }
+            exp_annotations:
+              summary: Disk space is running low
+              description: / has 3% free.
+          - exp_labels: { severity: critical, instance: 'node-exporter:9100', job: node-exporter, device: /dev/sda1, fstype: ext4, mountpoint: / }
+            exp_annotations:
+              summary: The disk is almost full
+              description: / has 3% free.
+
+  - name: HostDiskWillFillIn24Hours follows the trend once the disk is over 60% used
+    interval: 5m
+    input_series:
+      - series: 'node_filesystem_size_bytes{instance="n", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '100x40'
+      # 1% an hour: about 38 hours left when the alert would apply.
+      - series: 'node_filesystem_avail_bytes{instance="n", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '39-0.0833x40'
+      - series: 'node_filesystem_readonly{instance="n", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '0x40'
+      # 8% an hour on a disk that is half full: fills in ~6 hours.
+      - series: 'node_filesystem_size_bytes{instance="n", device="/dev/sdb1", fstype="xfs", mountpoint="/data"}'
+        values: '100x40'
+      - series: 'node_filesystem_avail_bytes{instance="n", device="/dev/sdb1", fstype="xfs", mountpoint="/data"}'
+        values: '50-0.6667x40'
+      - series: 'node_filesystem_readonly{instance="n", device="/dev/sdb1", fstype="xfs", mountpoint="/data"}'
+        values: '0x40'
+    alert_rule_test:
+      # /data is above 40% free at first; it drops below at ~75 minutes, then pending for 1h.
+      - eval_time: 90m
+        alertname: HostDiskWillFillIn24Hours
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: HostDiskWillFillIn24Hours
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: n, device: /dev/sdb1, fstype: xfs, mountpoint: /data }
+            exp_annotations:
+              summary: The disk will be full within a day
+              description: At the rate of the last 6 hours, /data fills up in less than 24 hours.
+
+  - name: HostInodesLow
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_files{instance="n", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '1000x20'
+      - series: 'node_filesystem_files_free{instance="n", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '50x20'
+      - series: 'node_filesystem_readonly{instance="n", device="/dev/sda1", fstype="ext4", mountpoint="/"}'
+        values: '0x20'
+      # btrfs reports no inode counts at all.
+      - series: 'node_filesystem_files{instance="n", device="/dev/sdb1", fstype="btrfs", mountpoint="/b"}'
+        values: '0x20'
+      - series: 'node_filesystem_files_free{instance="n", device="/dev/sdb1", fstype="btrfs", mountpoint="/b"}'
+        values: '0x20'
+      - series: 'node_filesystem_readonly{instance="n", device="/dev/sdb1", fstype="btrfs", mountpoint="/b"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HostInodesLow
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: n, device: /dev/sda1, fstype: ext4, mountpoint: / }
+            exp_annotations:
+              summary: The filesystem is running out of inodes
+              description: / has 5% of its inodes free.
+
+  - name: HostMemoryLow
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemTotal_bytes{instance="n"}'
+        values: '1000x20'
+      - series: 'node_memory_MemAvailable_bytes{instance="n"}'
+        values: '200 80x19'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HostMemoryLow
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: HostMemoryLow
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: n }
+            exp_annotations:
+              summary: The server is running out of memory
+              description: 8% of memory is available.
+
+  - name: HostOutOfMemoryKill fires for 10 minutes after a kill
+    interval: 1m
+    input_series:
+      - series: 'node_vmstat_oom_kill{instance="n"}'
+        values: '0 0 0 1x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HostOutOfMemoryKill
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: HostOutOfMemoryKill
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: n }
+            exp_annotations:
+              summary: A process was killed for lack of memory
+              description: The kernel killed a process for memory in the last 10 minutes, usually a container over its memory limit. `docker ps -a` shows which one restarted.
+      - eval_time: 20m
+        alertname: HostOutOfMemoryKill
+        exp_alerts: []
+
+  - name: HostCpuHigh averages all cores
+    interval: 1m
+    input_series:
+      # Two cores: one 99% busy, one 91% busy.
+      - series: 'node_cpu_seconds_total{instance="n", cpu="0", mode="idle"}'
+        values: '0+0.6x30'
+      - series: 'node_cpu_seconds_total{instance="n", cpu="1", mode="idle"}'
+        values: '0+5.4x30'
+      - series: 'node_cpu_seconds_total{instance="n", cpu="0", mode="user"}'
+        values: '0+59.4x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: HostCpuHigh
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: HostCpuHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: n }
+            exp_annotations:
+              summary: The CPU is busy
+              description: The CPU has been 95% busy for 15 minutes.

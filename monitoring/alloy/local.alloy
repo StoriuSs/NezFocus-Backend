@@ -1,0 +1,27 @@
+// Grafana Alloy with MONITORING=local (the default): sends this stack's
+// container logs to the Loki next to it. Prometheus scrapes the metrics
+// itself (monitoring/prometheus/prometheus.yml).
+//
+// Changes apply on `docker compose ... restart alloy`: `up -d` does not
+// recreate a container when only a mounted file changed. The UI on port 12345
+// (ALLOY_PORT) shows each component and its state.
+
+import.file "modules" {
+	filename = "/etc/alloy/modules/container-logs.alloy"
+}
+
+modules.container_logs "default" {
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
+
+// Lets the UI show lines as they pass through a component (Live debugging).
+// The UI is only published on 127.0.0.1.
+livedebugging {
+	enabled = true
+}

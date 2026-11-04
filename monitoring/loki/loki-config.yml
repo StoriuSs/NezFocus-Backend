@@ -1,0 +1,71 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+# How logs are stored. Loki 3 needs the tsdb store with schema v13.
+#
+# A stack that already has logs from Loki 2 (schema v11, boltdb-shipper) must
+# keep its old period and add this one from a date still in the future, or the
+# old logs can no longer be read. See docs/monitoring.md,
+# "Upgrading from Promtail and Loki 2".
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Log alert rules (monitoring/loki/rules, mounted per tenant: "fake" when auth
+# is off), sent to the same Alertmanager as Prometheus' alerts.
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /etc/loki/rules
+  rule_path: /loki/rules-temp
+  alertmanager_url: http://alertmanager:9093
+
+query_scheduler:
+  max_outstanding_requests_per_tenant: 2048
+
+# Retention and Limits
+limits_config:
+  # Retention meaning: How long to retain logs before deleting them.
+  # 336h = 14 days. Bump to 720h (30d) or more if your project has
+  # compliance/forensic needs. The compactor (configured below)
+  # garbage-collects chunks past this window.
+  retention_period: 336h
+  split_queries_by_interval: 24h
+  max_query_parallelism: 32
+  # The log volume histogram in Grafana's Explore and Logs Drilldown.
+  volume_enabled: true
+
+# Compactor for log retention
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  # Where deletion requests are kept; required with retention.
+  delete_request_store: filesystem
+
+# Loki sends anonymous usage statistics to Grafana Labs unless told not to.
+analytics:
+  reporting_enabled: false

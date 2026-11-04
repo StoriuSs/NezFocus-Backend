@@ -1,0 +1,69 @@
+# pnpm v10+ settings (moved here from package.json's "pnpm" field, which v10
+# stopped reading). Docs: https://pnpm.io/settings#onlybuiltdependencies
+#
+# pnpm v9+ ignores ALL install scripts by default. This allowlist permits
+# scripts for the small set of packages that genuinely need them — native
+# bindings (sharp, msgpackr-extract, unrs-resolver), Prisma engines, and
+# Nest's setup script. Everything else stays sandboxed.
+#
+# This allowlist IS the approval — pnpm honours it during `install`, in Docker
+# as well as locally. `pnpm approve-builds` is only the interactive TUI that
+# edits this list; it takes no --all flag and cannot run inside a build.
+#
+# Keep this file alongside package.json AND copy it into Docker build
+# contexts — pnpm reads it during install.
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - msgpackr-extract
+  - prisma
+  - sharp
+  - unrs-resolver
+
+# @nestjs-modules/mailer lists every template engine it supports as an
+# optional peer dependency, so all of them were installed: MJML,
+# preview-email, Liquid, Pug, EJS and Nunjucks, with most of the audit's
+# advisories among them. The app uses Handlebars (a direct dependency); the
+# mailer loads an engine only when its adapter is imported. (ejs is installed
+# all the same — Bull Board needs it. `pnpm why <name>` shows who asks for
+# one.) Without preview-email the mailer warns at every start; the app's
+# logger drops that one line (shared/infrastructure/logging/app-logger.ts).
+ignoredOptionalDependencies:
+  - '@types/ejs'
+  - '@types/mjml'
+  - '@types/pug'
+  - ejs
+  - liquidjs
+  - mjml
+  - nunjucks
+  - preview-email
+  - pug
+
+# Security fixes in dependencies of dependencies: the version each one is
+# raised to, whatever its parent asks for. Read the note on each before
+# changing it — one crosses a major version, and that needs checking against
+# how the parent uses it. Remove an entry once the parent requires the fixed
+# version itself (`pnpm why <name>` shows who pulls it in).
+overrides:
+  # @nestjs/platform-express 11.2.5 pins multer 2.2.0 (upload DoS advisories).
+  multer@<2.5.0: ^2.5.0
+  # The Prisma CLI's `prisma dev` server and its MySQL driver; neither runs in
+  # the app, but they ship in the image with the CLI.
+  fast-uri@>=3 <3.1.9: ^3.1.9
+  mysql2@<3.22.0: ^3.22.0
+  # The mailer pins glob 13.0.6, even in its latest release (4.0.0); 14 is a
+  # major, with minimatch 11 under it. The mailer calls only glob.sync(), in
+  # its Handlebars adapter, for partials, which this app does not configure.
+  # The mailer's only: the dev tools' globs are other majors. Drop this once
+  # the mailer depends on glob >=14.0.2.
+  '@nestjs-modules/mailer>glob': ^14.0.2
+  # The mailer's glob, before 14.
+  brace-expansion@>=4 <5.0.9: ^5.0.9
+  # @prisma/config merges its settings with it (stack exhaustion on recursive
+  # objects). 8.0 broke deepmergeInto, Map merging and type names; Prisma
+  # calls only deepmerge() on plain objects.
+  deepmerge-ts@<8.0.0: ^8.0.0
+  # @nestjs/swagger pins js-yaml 5.3.0 (merge keys can burn CPU); 5.4 is the
+  # same major. Drop this once @nestjs/swagger depends on >=5.4.1.
+  js-yaml@>=5 <5.4.1: ^5.4.1

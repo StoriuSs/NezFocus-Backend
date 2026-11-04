@@ -1,0 +1,210 @@
+# Explicit project name. Without it Compose derives the project from the
+# directory, so dev and prod — which declare identically named volumes
+# (db, prometheus-data, ...) — resolve to the SAME Docker volumes. That
+# lets a dev stack attach to the production PGDATA, and makes a `down -v`
+# against one file destroy the other's data.
+name: hexagonal-auth-dev
+
+# Every published port binds to 127.0.0.1. A bare "5432:5432" listens on all
+# interfaces, and on Linux Docker writes its own iptables rules ahead of ufw —
+# so running this stack on a cloud VM would publish Postgres, Redis, Grafana
+# (admin/admin) and an unauthenticated Loki to the internet. To reach the app
+# from another device on your LAN (e.g. a phone), change only that mapping.
+
+# Monitoring: Prometheus, Grafana, Loki, Alertmanager and Alloy here
+# (MONITORING=local, the default), or only Alloy, sending to Grafana Cloud
+# (MONITORING=grafana-cloud), or none of it (MONITORING=off, development
+# only). The exporters come with the first two. See docs/monitoring.md, and
+# docs/docker.md, "Lighter ways to run".
+include:
+  - path: monitoring/compose/dev-${MONITORING:-local}.yaml
+    project_directory: .
+
+services:
+  # ── NestJS Application (Development) ──
+  app:
+    container_name: nestapp-hexagonal-auth-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    env_file:
+      - .env.development  # complete dev config — copy from .env.example to create
+    environment:
+      # Override hosts/ports to use Docker-internal values
+      # (same pattern as DB_PORT, REDIS_PORT — the host-mapped port in .env.development
+      # differs from the container-internal port)
+
+      # The app always listens on 3000 INSIDE the container; PORT from
+      # .env.development (e.g. 8888) is only the host side of the mapping.
+      # Prometheus scrapes app:3000 on the Docker network — when the
+      # container listened on 8888 instead, every scrape was refused and the
+      # metrics dashboard stayed empty. Startup links print BASE_URL, so they
+      # still point at the host port.
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USERNAME}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Every email the app sends in development lands in Mailpit, whatever
+      # EMAIL_* says: http://localhost:8025. Signing up needs the emailed code.
+      # To send real mail from this container, remove these three.
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: 1025
+      EMAIL_SECURE: "false"
+      # Logs in colour when no Alloy reads them (src/config/pino.config.ts),
+      # whether MONITORING came from .env.development or the shell.
+      MONITORING: ${MONITORING:-local}
+      CI: "true"
+      # Hot reload through the bind mount. On Docker Desktop (Windows, and
+      # macOS without VirtioFS events) file changes made on the host do not
+      # raise inotify events inside the container, so `nest start --watch`
+      # never recompiled. TypeScript's watcher (which the Nest CLI uses) can
+      # poll instead; set here only, so watching natively on the host keeps
+      # event-based watching.
+      TSC_WATCHFILE: DynamicPriorityPolling
+      TSC_WATCHDIRECTORY: DynamicPriorityPolling
+    ports:
+      # Host PORT (e.g. 8888) -> the container's fixed 3000
+      - "127.0.0.1:${PORT:-8888}:3000"
+      - "127.0.0.1:9229:9229" # Node.js debug port
+    volumes:
+      - .:/app # Source code bind-mount for hot-reload
+      # Prevent host node_modules from overriding the container's. It outlives
+      # the container; `command` below installs again when the lockfile changed.
+      - /app/node_modules
+      - /app/generated     # Preserve generated Prisma client
+    depends_on:
+      # Healthy, not just started: the app migrates the database first thing.
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    # scripts/dev-start.sh: `pnpm install` only when package.json, the lockfile
+    # or pnpm's settings changed since the node_modules volume was filled (a
+    # new dependency without rebuilding the image), then the Prisma client,
+    # pending migrations (without them a fresh database has no tables), and
+    # the app with hot reload. Creating a migration is still
+    # `pnpm prisma:migrate` on the host.
+    command: sh scripts/dev-start.sh
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  db:
+    container_name: postgres-hexagonal-auth
+    image: postgres:16.2-alpine
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      PGDATA: /data/postgres
+    volumes:
+      - db:/data/postgres
+    ports:
+      - "127.0.0.1:${DB_PORT}:5432"
+    networks:
+      - backend
+    restart: unless-stopped
+    # The app waits for this before migrating (see the app's command).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Redis Cache
+  redis:
+    container_name: redis-hexagonal-auth
+    image: redis:7.2.4-alpine
+    # Password from the environment rather than a literal argument, which
+    # would show in `docker inspect` and `ps`. redis-cli reads REDISCLI_AUTH.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # ── Test and development storage: RustFS ────────────────────────────────
+  #
+  # An S3-compatible server, so the S3 code path runs without an AWS account:
+  # test/integration/s3-storage.integration-spec.ts, and avatars in
+  # development when STORAGE_TYPE=s3. Under the `testing` profile, so
+  # `pnpm docker:dev` does not start it; `pnpm test:services:up` does.
+  #
+  # RustFS, not MinIO: MinIO stopped publishing images (Docker Hub first, then
+  # quay.io in September 2026). Any S3-compatible server works here — nothing
+  # in the app is specific to one. Console: http://localhost:9101/rustfs/console/
+  rustfs:
+    container_name: rustfs-hexagonal-auth-test
+    image: rustfs/rustfs:1.0.0
+    profiles: [testing]
+    environment:
+      RUSTFS_ACCESS_KEY: ${TEST_S3_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${TEST_S3_SECRET_KEY:-rustfsadmin123}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "127.0.0.1:${TEST_S3_PORT:-9100}:9000"          # S3 API
+      - "127.0.0.1:${TEST_S3_CONSOLE_PORT:-9101}:9001"  # Web console
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - backend
+
+  # Creates AWS_S3_BUCKET (the development bucket) once RustFS is up, then
+  # exits. Creating one that exists is a no-op, so this runs every time. The
+  # same image, for its curl, which signs S3 requests itself (--aws-sigv4).
+  rustfs-buckets:
+    image: rustfs/rustfs:1.0.0
+    profiles: [testing]
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${TEST_S3_ACCESS_KEY:-rustfsadmin}
+      S3_SECRET_KEY: ${TEST_S3_SECRET_KEY:-rustfsadmin123}
+      BUCKET: ${AWS_S3_BUCKET:-}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        [ -z "$$BUCKET" ] && { echo "AWS_S3_BUCKET is empty: no bucket to create"; exit 0; };
+        status=$$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 'aws:amz:us-east-1:s3'
+        -u "$$S3_ACCESS_KEY:$$S3_SECRET_KEY" -X PUT "http://rustfs:9000/$$BUCKET");
+        case "$$status" in 200|409) echo "bucket $$BUCKET is ready";; *) echo "could not create bucket $$BUCKET: HTTP $$status"; exit 1;; esac
+    restart: "no"
+    networks:
+      - backend
+
+  # Mailpit — catches every outbound email and shows it in a web UI
+  # (http://localhost:8025). Part of development, not only of the tests:
+  # signing up is confirmed with an emailed code. Accepts any credentials, or
+  # none, so no real SMTP account is needed.
+  mailpit:
+    container_name: mailpit-hexagonal-auth
+    image: axllent/mailpit:v1.31.1
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - "127.0.0.1:${TEST_SMTP_PORT:-1025}:1025"       # SMTP
+      - "127.0.0.1:${TEST_MAILPIT_UI_PORT:-8025}:8025" # Web UI — open this to read mail
+    networks:
+      - backend
+    restart: unless-stopped
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  db:

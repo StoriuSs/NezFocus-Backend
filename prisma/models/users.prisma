@@ -1,0 +1,45 @@
+model User {
+  id String @id @default(uuid())
+
+  // Profile / searchable fields (store when app needs search/profile views)
+  // Uniqueness is enforced by a hand-written partial, case-insensitive
+  // index (see migration 20260908000000_username_case_insensitive_unique).
+  // Prisma cannot express `UNIQUE (lower(username)) WHERE deleted_at IS NULL`,
+  // so @unique is deliberately absent here.
+  username String?
+
+  // The sign-in address. Registration always sets it, stored lower-case; it
+  // is nullable only because the retention sweep erases it from long-deleted
+  // accounts. Unique among live accounts, case-insensitively — a hand-written
+  // partial index again (migration 20260923000000_self_hosted_auth), so a
+  // deleted account's address can register afresh.
+  email         String?
+  emailVerified Boolean  @default(false)
+  // Checked by @Roles(). Changed with `pnpm user:promote`, not by users.
+  roles         String[] @default(["user"])
+
+  displayName    String?
+  avatarUrl      String?
+  bio            String?
+  hasSetUsername Boolean @default(false)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+  deletedBy String?
+
+  // Owned by the auth module (prisma/models/auth.prisma). Declared here only
+  // because Prisma needs both sides of a relation; the users module never
+  // reads or writes them.
+  credential        Credential?
+  sessions          Session[]
+  verificationCodes VerificationCode[]
+  oauthAccounts     OAuthAccount[]
+  twoFactor         TwoFactor?
+  recoveryCodes     RecoveryCode[]
+
+  @@index([username])
+  @@index([deletedAt])
+  // The sweep that deletes accounts never verified.
+  @@index([emailVerified, createdAt])
+}

@@ -1,0 +1,121 @@
+<html lang='en'>
+    <head>
+        <meta charset='UTF-8' />
+        <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+        <title>You already have an account</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f4f4f4;
+            }
+            .container {
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 40px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            .header h1 {
+                color: #2196f3;
+                margin: 0;
+                font-size: 24px;
+            }
+            .message {
+                font-size: 16px;
+                color: #666;
+                margin: 20px 0;
+            }
+            .actions {
+                text-align: center;
+                margin: 30px 0;
+            }
+            .button {
+                display: inline-block;
+                background-color: #2196f3;
+                color: #ffffff !important;
+                text-decoration: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                font-weight: bold;
+                margin: 6px;
+            }
+            .button.secondary {
+                background-color: #ffffff;
+                color: #2196f3 !important;
+                border: 2px solid #2196f3;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #e0e0e0;
+                font-size: 14px;
+                color: #999;
+            }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='header'>
+                <h1>{{appName}}</h1>
+            </div>
+
+            <p class='message'>
+                Someone, probably you, just tried to create a
+                {{appName}}
+                account with this email address. You already have one, so no new account was made.
+            </p>
+
+            {{#if providerOnly}}
+                <p class='message'>
+                    You created it with
+                    {{providers}}, so it has no password: on the sign-in page, choose
+                    <strong>Continue with {{providers}}</strong>.
+                </p>
+
+                <p class='message'>
+                    Want to sign in with your email address and a password as well? Choose
+                    <strong>Forgot password</strong>
+                    on the sign-in page to set one, or, once signed in,
+                    <strong>Settings → Set a password</strong>.
+                </p>
+
+                <div class='actions'>
+                    <a class='button' href='{{signInUrl}}'>Sign in</a>
+                    <a class='button secondary' href='{{resetUrl}}'>Set a password</a>
+                </div>
+            {{else}}
+                <p class='message'>
+                    {{#if passwordAndProvider}}
+                        Sign in with your password or with
+                        {{providers}}. Forgotten the password? Choose a new one.
+                    {{else}}
+                        Sign in with your password, or choose a new one if you have forgotten it.
+                    {{/if}}
+                </p>
+
+                <div class='actions'>
+                    <a class='button' href='{{signInUrl}}'>Sign in</a>
+                    <a class='button secondary' href='{{resetUrl}}'>Reset your password</a>
+                </div>
+            {{/if}}
+
+            <p class='message'>
+                If it wasn't you, you can ignore this email: nothing about your account has changed.
+            </p>
+
+            <div class='footer'>
+                <p>© {{appName}} - All rights reserved</p>
+                <p>This is an automated email, please do not reply.</p>
+            </div>
+        </div>
+    </body>
+</html>

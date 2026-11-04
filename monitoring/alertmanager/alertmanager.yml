@@ -1,0 +1,72 @@
+# Alertmanager (production): groups the alerts Prometheus and Loki raise, and
+# delivers them. See docs/alerts.md.
+#
+# The receiver is a Discord webhook, read from the file the container writes
+# from ALERT_WEBHOOK_URL at start (docker-compose.prod.yaml). For Slack, Microsoft Teams, Telegram or email, change the
+# `notify` receiver below; docs/alerts.md has each one.
+#
+# Standard Alertmanager configuration: Grafana Cloud's Alertmanager accepts it
+# as it is, with the URL inline instead of a file.
+
+global:
+  resolve_timeout: 5m
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: notify
+  # One message per alert name and severity per stack; alerts of the same name
+  # (a disk on two mount points) arrive together.
+  group_by: [project, alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  # A problem that is still there is reported again after this long.
+  repeat_interval: 4h
+  # The first route that matches decides.
+  routes:
+    # The development stack uses this file too when ALERT_WEBHOOK_URL is set in
+    # .env.development. Its Watchdog must never reach the heartbeat: it would
+    # report "alerting works" for production while production is down. And
+    # restarts on every code change, or no backup service, are not problems.
+    - matchers: ['environment="development"', 'alertname=~"Watchdog|AppRestarting|BackupNeverRan"']
+      receiver: none
+    # Always firing: proves the alerting pipeline works. Goes to the heartbeat
+    # receiver, never to the chat.
+    - matchers: ['alertname="Watchdog"']
+      receiver: heartbeat
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+
+inhibit_rules:
+  # The critical level of an alert replaces its warning: a disk at 97% is
+  # reported once, not also as "below 15%".
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [project, alertname, instance, mountpoint, database]
+  # When the app or a service it depends on is down, the errors and slow
+  # requests that follow are consequences, not separate problems.
+  - source_matchers: ['alertname=~"AppDown|PostgresDown|RedisDown"']
+    target_matchers: ['alertname=~"AppHighErrorRate|AppHighLatency|AppErrorLogs"']
+    equal: [project]
+
+receivers:
+  - name: notify
+    discord_configs:
+      - webhook_url_file: /tmp/alert_webhook_url
+        title: '{{ template "notify.title" . }}'
+        message: '{{ template "notify.message" . }}'
+
+  # A dead man's switch: an outside service that alerts you when the Watchdog
+  # stops arriving, which is what happens when this server, Prometheus or
+  # Alertmanager is down, and nothing here can tell you. Off until you set
+  # ALERT_HEARTBEAT_URL and uncomment the three lines below; docs/alerts.md
+  # has the steps (healthchecks.io).
+  - name: heartbeat
+    # webhook_configs:
+    #   - url_file: /tmp/alert_heartbeat_url
+    #     send_resolved: false
+
+  # Drops what is routed here.
+  - name: none

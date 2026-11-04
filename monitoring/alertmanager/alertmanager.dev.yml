@@ -1,0 +1,10 @@
+# Alertmanager (development, when ALERT_WEBHOOK_URL is not set in
+# .env.development): the same rules fire, and show in Grafana (Alerting →
+# Alert groups) and on http://localhost:${ALERTMANAGER_PORT}, but nothing is
+# sent anywhere. With ALERT_WEBHOOK_URL set, development uses alertmanager.yml.
+
+route:
+  receiver: none
+
+receivers:
+  - name: none

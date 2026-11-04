@@ -1,0 +1,238 @@
+# promtool unit tests for rules/data.yml. Run all of them: pnpm alerts:test
+rule_files:
+  - ../rules/data.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: PostgresDown
+    interval: 1m
+    input_series:
+      - series: 'pg_up{job="postgres", instance="postgres-exporter:9187"}'
+        values: '1 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PostgresDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: PostgresDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: postgres, instance: 'postgres-exporter:9187' }
+            exp_annotations:
+              summary: Postgres is down
+              description: The exporter cannot connect to Postgres, and neither can the app or the backups.
+
+  - name: PostgresConnectionsHigh counts every database's connections
+    interval: 1m
+    input_series:
+      - series: 'pg_settings_max_connections{job="postgres", instance="postgres-exporter:9187", server="db:5432"}'
+        values: '100x10'
+      - series: 'pg_stat_activity_count{job="postgres", instance="postgres-exporter:9187", datname="app", state="idle"}'
+        values: '50x10'
+      - series: 'pg_stat_activity_count{job="postgres", instance="postgres-exporter:9187", datname="analytics", state="active"}'
+        values: '20 35x9'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PostgresConnectionsHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PostgresConnectionsHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, job: postgres, instance: 'postgres-exporter:9187' }
+            exp_annotations:
+              summary: Postgres is running out of connections
+              description: 85% of max_connections are in use.
+
+  - name: PostgresDeadlocks
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_database_deadlocks{job="postgres", instance="i", datname="app"}'
+        values: '0 0 2x20'
+      - series: 'pg_stat_database_deadlocks{job="postgres", instance="i", datname="analytics"}'
+        values: '4x22'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PostgresDeadlocks
+        exp_alerts:
+          - exp_labels: { severity: warning, job: postgres, instance: i, datname: app }
+            exp_annotations:
+              summary: Postgres deadlocks
+              description: Transactions deadlocked in app in the last 10 minutes; Postgres aborted one of each pair.
+      - eval_time: 20m
+        alertname: PostgresDeadlocks
+        exp_alerts: []
+
+  - name: RedisDown
+    interval: 1m
+    input_series:
+      - series: 'redis_up{job="redis", instance="redis-exporter:9121"}'
+        values: '0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: RedisDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: redis, instance: 'redis-exporter:9121' }
+            exp_annotations:
+              summary: Redis is down
+              description: The exporter cannot connect to Redis. Queues, rate limits, idempotency and the auth cache all depend on it.
+
+  - name: RedisMemoryHigh warns at 80%, is critical at 95%, and needs maxmemory
+    interval: 1m
+    input_series:
+      - series: 'redis_memory_max_bytes{job="redis", instance="a"}'
+        values: '100x20'
+      - series: 'redis_memory_used_bytes{job="redis", instance="a"}'
+        values: '85x5 97x15'
+      # No maxmemory (0): nothing to be close to.
+      - series: 'redis_memory_max_bytes{job="redis", instance="b"}'
+        values: '0x20'
+      - series: 'redis_memory_used_bytes{job="redis", instance="b"}'
+        values: '5000x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RedisMemoryHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, job: redis, instance: a }
+            exp_annotations:
+              summary: Redis memory is filling up
+              description: Redis uses 85% of its maxmemory. When it is full, every write fails.
+      - eval_time: 8m
+        alertname: RedisMemoryHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, job: redis, instance: a }
+            exp_annotations:
+              summary: Redis memory is filling up
+              description: Redis uses 97% of its maxmemory. When it is full, every write fails.
+          - exp_labels: { severity: critical, job: redis, instance: a }
+            exp_annotations:
+              summary: Redis is almost out of memory
+              description: Redis uses 97% of its maxmemory. When it is full, every write fails.
+
+  - name: RedisPersistenceFailing on either kind of save
+    interval: 1m
+    input_series:
+      - series: 'redis_rdb_last_bgsave_status{job="redis", instance="a"}'
+        values: '1x10'
+      - series: 'redis_aof_last_write_status{job="redis", instance="a"}'
+        values: '1 0x9'
+      - series: 'redis_rdb_last_bgsave_status{job="redis", instance="b"}'
+        values: '0x10'
+      - series: 'redis_aof_last_write_status{job="redis", instance="b"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RedisPersistenceFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, job: redis, instance: a }
+            exp_annotations:
+              summary: Redis cannot save to disk
+              description: Redis' last write to disk failed (disk full, or permissions). A restart would lose data.
+          - exp_labels: { severity: warning, job: redis, instance: b }
+            exp_annotations:
+              summary: Redis cannot save to disk
+              description: Redis' last write to disk failed (disk full, or permissions). A restart would lose data.
+
+  - name: BackupFailed until a backup succeeds
+    interval: 1h
+    input_series:
+      - series: 'backup_last_attempt_failed{job="node-exporter", instance="node-exporter:9100", database="app"}'
+        values: '0 1 0'
+    alert_rule_test:
+      - eval_time: 0h
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 1h
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels: { severity: critical, job: node-exporter, instance: 'node-exporter:9100', database: app }
+            exp_annotations:
+              summary: The last backup failed
+              description: 'The backup of app failed. `docker compose logs backup` shows why.'
+      - eval_time: 2h
+        alertname: BackupFailed
+        exp_alerts: []
+
+  - name: BackupTooOld after a day and two hours
+    interval: 1h
+    input_series:
+      # Last success at time 0; nothing since.
+      - series: 'backup_last_success_timestamp_seconds{job="node-exporter", instance="i", database="app"}'
+        values: '0x30'
+      # Succeeds every day.
+      - series: 'backup_last_success_timestamp_seconds{job="node-exporter", instance="i", database="analytics"}'
+        values: '0x23 86400x24 172800x5'
+    alert_rule_test:
+      - eval_time: 26h
+        alertname: BackupTooOld
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: BackupTooOld
+        exp_alerts:
+          - exp_labels: { severity: critical, job: node-exporter, instance: i, database: app }
+            exp_annotations:
+              summary: No recent backup
+              description: The last good backup of app is 1d 3h 0m 0s old.
+
+  - name: BackupNeverRan after a day without backup metrics
+    interval: 1h
+    input_series:
+      - series: 'up{job="node-exporter"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 25h
+        alertname: BackupNeverRan
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: BackupNeverRan
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: No backup has run
+              description: There has been no backup for a day. Check that the backup service is running.
+
+  - name: BackupNeverRan stays quiet once a backup has been attempted
+    interval: 1h
+    input_series:
+      - series: 'backup_last_attempt_timestamp_seconds{database="app"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 28h
+        alertname: BackupNeverRan
+        exp_alerts: []
+
+  - name: BackupUploadFailed and BackupUploadTooOld
+    interval: 1h
+    input_series:
+      - series: 'backup_last_upload_failed{job="node-exporter", instance="i", database="uploads"}'
+        values: '1x30'
+      - series: 'backup_last_upload_success_timestamp_seconds{job="node-exporter", instance="i", database="uploads"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: BackupUploadFailed
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node-exporter, instance: i, database: uploads }
+            exp_annotations:
+              summary: The backup upload failed
+              description: 'The copy of uploads to the bucket failed; the local backup is fine. `docker compose logs backup` shows why.'
+      - eval_time: 27h
+        alertname: BackupUploadTooOld
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node-exporter, instance: i, database: uploads }
+            exp_annotations:
+              summary: No recent backup in the bucket
+              description: The last copy of uploads in the bucket is 1d 3h 0m 0s old.
+
+  - name: BackupMetricsUnreadable
+    interval: 1m
+    input_series:
+      - series: 'node_textfile_scrape_error{job="node-exporter", instance="i"}'
+        values: '0 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: BackupMetricsUnreadable
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node-exporter, instance: i }
+            exp_annotations:
+              summary: Backup metrics cannot be read
+              description: node-exporter cannot parse a file in the backup metrics volume, so backup alerts may not fire.

@@ -1,0 +1,210 @@
+# promtool unit tests for rules/app.yml. Run all of them: pnpm alerts:test
+rule_files:
+  - ../rules/app.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: AppDown fires after 2 minutes without a successful scrape
+    interval: 1m
+    input_series:
+      - series: 'up{job="nestjs-app", instance="app:3000"}'
+        values: '1 1 0 0 0 0 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AppDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: AppDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: nestjs-app, instance: 'app:3000' }
+            exp_annotations:
+              summary: The API is down
+              description: Prometheus has not reached the app for 2 minutes. It has stopped, is restarting, or does not answer.
+      - eval_time: 6m
+        alertname: AppDown
+        exp_alerts: []
+
+  - name: AppHighErrorRate needs both a high share and at least 5 errors
+    interval: 1m
+    input_series:
+      # 20% of 10 requests a minute fail.
+      - series: 'http_requests_total{job="nestjs-app", method="GET", path="/users/me", status_code="200"}'
+        values: '0+8x20'
+      - series: 'http_requests_total{job="nestjs-app", method="GET", path="/users/me", status_code="500"}'
+        values: '0+2x20'
+      # Quiet: 1 of 2 requests a minute fails, but that is under 5 errors in 5 minutes.
+      - series: 'http_requests_total{job="quiet", method="GET", path="/users/me", status_code="200"}'
+        values: '0+1x20'
+      - series: 'http_requests_total{job="quiet", method="GET", path="/users/me", status_code="500"}'
+        values: '0+1x20'
+    alert_rule_test:
+      # 5 errors within the window from minute 3, then pending for 2 minutes.
+      - eval_time: 4m
+        alertname: AppHighErrorRate
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: AppHighErrorRate
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: The API is failing requests
+              description: 20% of requests in the last 5 minutes ended in a 5xx error.
+
+  - name: AppHighErrorRate stays quiet with plenty of errors that are a small share
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="nestjs-app", status_code="200"}'
+        values: '0+98x20'
+      - series: 'http_requests_total{job="nestjs-app", status_code="503"}'
+        values: '0+2x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: AppHighErrorRate
+        exp_alerts: []
+
+  - name: AppHighErrorRate stays quiet when few requests fail, even at a high share
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="nestjs-app", status_code="200"}'
+        values: '0+0.5x20'
+      - series: 'http_requests_total{job="nestjs-app", status_code="500"}'
+        values: '0+0.5x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: AppHighErrorRate
+        exp_alerts: []
+
+  - name: AppHighLatency fires on a slow p95 with real traffic
+    interval: 1m
+    input_series:
+      # 10 requests a minute: 5 under 0.5s, 5 between 1s and 2.5s.
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="0.5"}'
+        values: '0+5x30'
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="1"}'
+        values: '0+5x30'
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="2.5"}'
+        values: '0+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="+Inf"}'
+        values: '0+10x30'
+      - series: 'http_request_duration_seconds_count{job="nestjs-app"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AppHighLatency
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: AppHighLatency
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: The API is slow
+              description: 5% of requests took longer than 2.35s over the last 10 minutes.
+
+  - name: AppHighLatency ignores a few slow requests at night
+    interval: 1m
+    input_series:
+      # 2 requests a minute (under 0.1/s), all between 1s and 2.5s.
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="2.5"}'
+        values: '0+2x30'
+      - series: 'http_request_duration_seconds_bucket{job="nestjs-app", le="+Inf"}'
+        values: '0+2x30'
+      - series: 'http_request_duration_seconds_count{job="nestjs-app"}'
+        values: '0+2x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: AppHighLatency
+        exp_alerts: []
+
+  - name: AppEventLoopLag fires after 5 minutes of lag
+    interval: 1m
+    input_series:
+      - series: 'nodejs_eventloop_lag_p99_seconds{job="nestjs-app", instance="app:3000"}'
+        values: '0.01 0.6x10'
+      - series: 'nodejs_eventloop_lag_p99_seconds{job="nestjs-app", instance="other:3000"}'
+        values: '0.4x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AppEventLoopLag
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: AppEventLoopLag
+        exp_alerts:
+          - exp_labels: { severity: warning, job: nestjs-app, instance: 'app:3000' }
+            exp_annotations:
+              summary: The app's event loop is blocked
+              description: 'The event loop is delayed by 600ms (p99): synchronous work is holding up every request.'
+
+  - name: AppRestarting counts restarts, not one deploy and its rollback
+    interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="nestjs-app", instance="app:3000"}'
+        values: '100 100 200 200 300 300 400 400'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AppRestarting
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: AppRestarting
+        exp_alerts:
+          - exp_labels: { severity: warning, job: nestjs-app, instance: 'app:3000' }
+            exp_annotations:
+              summary: The app keeps restarting
+              description: The app started 3 times in 30 minutes. It is crashing, or being killed for memory.
+
+  - name: AuthFailedLoginSpike fires on a sustained burst of failures, not on a few
+    interval: 1m
+    input_series:
+      # 10 failures a minute from minute 5; before that, 1 a minute.
+      - series: 'auth_events_total{job="nestjs-app", instance="app:3000", event="login_failed"}'
+        values: '0+1x5 15+10x20'
+      - series: 'auth_events_total{job="nestjs-app", instance="app:3000", event="login_succeeded"}'
+        values: '0+100x25'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AuthFailedLoginSpike
+        exp_alerts: []
+      # Over 50 in 10 minutes from minute 10, then pending for 5.
+      - eval_time: 12m
+        alertname: AuthFailedLoginSpike
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: AuthFailedLoginSpike
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: Many failed sign-ins
+              description: '100 sign-ins failed in the last 10 minutes. Someone may be guessing passwords.'
+
+  - name: AuthRefreshTokenReuse fires on the first reuse and clears after 15 minutes
+    interval: 1m
+    input_series:
+      # At 0 from the start (the app creates the series), one reuse at minute 3.
+      - series: 'auth_events_total{job="nestjs-app", instance="app:3000", event="refresh_reuse_detected"}'
+        values: '0 0 0 1x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AuthRefreshTokenReuse
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: AuthRefreshTokenReuse
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: A refresh token was used twice
+              description: A session was ended because its refresh token came back after being replaced. Sentry has the user id.
+      - eval_time: 20m
+        alertname: AuthRefreshTokenReuse
+        exp_alerts: []
+
+  - name: AuthRefreshTokenReuse misses a reuse whose series starts at 1 (why the app starts every event at 0)
+    interval: 1m
+    input_series:
+      - series: 'auth_events_total{job="nestjs-app", instance="app:3000", event="refresh_reuse_detected"}'
+        values: '_ _ _ 1x30'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: AuthRefreshTokenReuse
+        exp_alerts: []

@@ -1,0 +1,337 @@
+# ============================================================================
+# Docker Compose — Production (Single VPS Deployment)
+# ============================================================================
+# Usage — deploy with ./deploy.sh (see docs/deploy.md). It tags the app image
+# with the commit, runs migrations once, waits for health and rolls back on
+# failure. Starting the stack by hand still works:
+#   docker compose --env-file .env.production -f docker-compose.prod.yaml up -d --build --remove-orphans
+#
+# This is a standalone file containing all services hardened for production.
+# ============================================================================
+
+# Explicit project name — see the note in docker-compose.dev.yaml. Dev and
+# prod declare identically named volumes and MUST stay in separate projects.
+name: hexagonal-auth-prod
+
+# Monitoring: Prometheus, Grafana, Loki, Alertmanager and Alloy here
+# (MONITORING=local, the default), or only Alloy, sending to Grafana Cloud
+# (MONITORING=grafana-cloud). See docs/monitoring.md.
+include:
+  - path: monitoring/compose/prod-${MONITORING:-local}.yaml
+    project_directory: .
+
+services:
+  # ── NestJS Application ──
+  app:
+    container_name: nestapp-hexagonal-auth-prod
+    # deploy.sh sets APP_TAG to the commit being deployed, so every release is
+    # its own image and the previous one stays available for rollback.
+    # DEPLOY_IMAGE names the image: any local name when the server builds it,
+    # the registry path (ghcr.io/you/app) when CI builds it.
+    image: ${DEPLOY_IMAGE:-hexagonal-auth-prod-app}:${APP_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    env_file:
+      - .env.production   # complete prod config — copy from .env.example on VPS
+    environment:
+      NODE_ENV: production  # safety net in case .env.production is missing
+      # Fixed internal addresses. The *_PORT values in .env.production choose
+      # the HOST side of each port mapping below; the app must still reach
+      # every service on its container port over the Docker network. Without
+      # these, picking a free host port (e.g. REDIS_PORT=6380) made the app
+      # call redis:6380, and every cached read failed.
+      PORT: 3000
+      # The app and its migrations connect through DATABASE_URL, built here
+      # for the db service; the one in .env.production (localhost, for tools
+      # run on a machine) never reaches the app. The name, user and password go
+      # in as they are, so the app refuses to start in production unless they
+      # are URL-safe. With the database elsewhere (a managed server), replace
+      # this line with that server's URL.
+      DATABASE_URL: postgresql://${DB_USERNAME}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Apply pending migrations when the container starts. deploy.sh sets it to
+      # false: it migrates once, before switching versions, so a failing
+      # migration stops the deploy while the old version keeps serving.
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      # The release in error tracking: the commit deploy.sh is deploying.
+      SENTRY_RELEASE: ${APP_TAG:-}
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"  # localhost only — Nginx terminates TLS on the host
+    volumes:
+      - app-uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      # /health/ready, not /health/live: ready answers only when the database
+      # and Redis do. With live, a release that could reach neither was still
+      # reported healthy, so deploy.sh promoted it and never rolled back,
+      # while every real request answered 503 (seen on a test server).
+      #
+      # The global API_PREFIX ("api") and URI version ("v1") apply to every
+      # route, the health endpoint included. If you change API_PREFIX, update
+      # the path here too. 127.0.0.1, not localhost, which can resolve to IPv6.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Covers migrations and boot on a small VPS. Healthcheck failures inside
+      # this window don't count against the retries.
+      start_period: 60s
+      # Probe every 5s while starting (Docker Engine 25+), so a deploy sees the
+      # new release healthy in seconds rather than after the first 30s interval.
+      start_interval: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── PostgreSQL Database ──
+  db:
+    container_name: postgres-hexagonal-auth-prod
+    image: postgres:16.2-alpine
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      PGDATA: /data/postgres
+    volumes:
+      - db:/data/postgres
+    ports:
+      - "127.0.0.1:${DB_PORT}:5432"  # Bind to localhost only to block public internet access. Allows secure DB administration via SSH Tunneling (e.g., DBeaver)
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=128MB"
+      - "-c"
+      - "log_min_duration_statement=1000"  # Log slow queries (>1s)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Redis Cache ──
+  redis:
+    container_name: redis-hexagonal-auth-prod
+    image: redis:7.2.4-alpine
+    # The password comes from the environment, not a literal argument: an
+    # argument shows up in `docker inspect`, `ps` and healthcheck logs.
+    # redis-cli reads REDISCLI_AUTH, so the healthcheck needs no -a either.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.production}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      # --appendonly yes: AOF persistence, so queued jobs survive a restart.
+      # --maxmemory-policy noeviction: this Redis holds BullMQ jobs and locks,
+      # idempotency locks and rate-limit counters — none of them may be
+      # silently evicted. When memory is full, writes fail loudly instead.
+      - >-
+        exec redis-server --requirepass "$$REDIS_PASSWORD"
+        --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data   # Persist AOF + RDB snapshots
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"  # Bind to localhost only
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── Node Exporter — Hardware and OS metrics ──
+  node-exporter:
+    container_name: node-exporter-hexagonal-auth-prod
+    image: prom/node-exporter:v1.12.1
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - backup-metrics:/textfile:ro   # backup_* metrics written by the backup service
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      # Disk device names from udev. Docker Desktop has none: its node-exporter
+      # logs "Failed to open directory" once, harmlessly.
+      - '--path.udev.data=/rootfs/run/udev/data'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.textfile.directory=/textfile'
+    networks:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.2"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── Postgres and Redis exporters — metrics for their alerts ──
+  # Point them at the managed service if you move Postgres or Redis off this
+  # server; see docs/alerts.md.
+  postgres-exporter:
+    container_name: postgres-exporter-hexagonal-auth-prod
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_URI: db:5432/${DB_NAME}?sslmode=disable
+      DATA_SOURCE_USER: ${DB_USERNAME}
+      DATA_SOURCE_PASS: ${DB_PASSWORD}
+    networks:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.2"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  redis-exporter:
+    container_name: redis-exporter-hexagonal-auth-prod
+    image: oliver006/redis_exporter:v1.91.1-alpine
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.2"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── Backups — pg_dump of the application database ──
+  # Nightly dumps to the backups volume, checked and rotated, optionally copied
+  # to a bucket on another provider; deploy.sh also backs up before applying
+  # new migrations. Restore with restore.sh. See docs/backups.md.
+  backup:
+    container_name: backup-hexagonal-auth-prod
+    image: hexagonal-auth-prod-backup
+    build:
+      context: ./backup
+      args:
+        # pg_dump must be at least the server's major version: keep this in
+        # step with the db image, or with the managed server's version.
+        POSTGRES_IMAGE: ${BACKUP_POSTGRES_IMAGE:-postgres:16.2-alpine}
+    init: true
+    environment:
+      # The server to dump: the db service by default. Point BACKUP_DB_* at a
+      # managed Postgres, and these dumps stay an independent copy of it.
+      PGHOST: ${BACKUP_DB_HOST:-db}
+      PGPORT: ${BACKUP_DB_PORT:-5432}
+      PGUSER: ${BACKUP_DB_USER:-${DB_USERNAME}}
+      PGPASSWORD: ${BACKUP_DB_PASSWORD:-${DB_PASSWORD}}
+      PGSSLMODE: ${BACKUP_DB_SSLMODE:-prefer}
+      BACKUP_MAINTENANCE_DB: ${BACKUP_MAINTENANCE_DB:-postgres}
+      BACKUP_DATABASES: ${BACKUP_DATABASES:-${DB_NAME}}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+      BACKUP_KEEP_LABELLED: ${BACKUP_KEEP_LABELLED:-5}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-}
+      BACKUP_S3_KEEP_DAYS: ${BACKUP_S3_KEEP_DAYS:-30}
+    volumes:
+      - backups:/backups
+      - backup-metrics:/metrics
+      # Locally stored uploads (STORAGE_TYPE=local), copied to the bucket.
+      # Writable only so `restore.sh uploads` can copy them back, run as the
+      # app's user; the backup itself only reads.
+      - app-uploads:/uploads
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "supercronic"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  backups:
+  backup-metrics:
+  db:
+  redis-data:
+  app-uploads:

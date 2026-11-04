@@ -1,0 +1,38 @@
+{{/*
+  Notification text. Written for Discord: **bold**, ~~strike~~ and <t:…:R>
+  timestamps, which Discord shows as "5 minutes ago" in the reader's time zone.
+  Slack uses *bold* and has no such timestamps; see docs/alerts.md.
+*/}}
+
+{{/* "🔴 AppDown · shop-prod", "✅ Resolved: AppDown · shop-prod". Discord cuts titles at 256 characters. */}}
+{{ define "notify.title" -}}
+{{ if eq .Status "firing" -}}
+{{ if eq .CommonLabels.severity "critical" }}🔴{{ else }}🟠{{ end }} {{ .CommonLabels.alertname }}
+{{- if gt (len .Alerts.Firing) 1 }} ×{{ len .Alerts.Firing }}{{ end }}
+{{- else -}}
+✅ Resolved: {{ .CommonLabels.alertname }}
+{{- end }}
+{{- with .CommonLabels.project }} · {{ . }}{{ end }}
+{{- end }}
+
+{{/* Labels that tell alerts of the same name apart: the database, the mount point, … */}}
+{{ define "notify.labels" -}}
+{{ range .Labels.SortedPairs -}}
+{{ if not (match "^(alertname|severity|project|job|service|grafana_folder)$" .Name) }}`{{ .Name }}={{ .Value }}` {{ end -}}
+{{ end -}}
+{{ end }}
+
+{{ define "notify.message" -}}
+{{ range .Alerts.Firing -}}
+**{{ or .Annotations.summary .Labels.alertname }}**
+{{ with .Annotations.description }}{{ . }}
+{{ end -}}
+{{ template "notify.labels" . }}since <t:{{ .StartsAt.Unix }}:R>
+
+{{ end -}}
+{{ range .Alerts.Resolved -}}
+~~{{ or .Annotations.summary .Labels.alertname }}~~
+{{ template "notify.labels" . }}resolved <t:{{ .EndsAt.Unix }}:R>
+
+{{ end -}}
+{{ end }}

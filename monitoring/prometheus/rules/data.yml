@@ -1,0 +1,131 @@
+# Alerts about Postgres, Redis and the backups. See docs/alerts.md.
+groups:
+  - name: postgres
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Postgres is down
+          description: The exporter cannot connect to Postgres, and neither can the app or the backups.
+
+      - alert: PostgresConnectionsHigh
+        # The app's pool and every other client share
+        # max_connections; past it, new connections are refused.
+        expr: |
+          sum by (job, instance) (pg_stat_activity_count)
+            / max by (job, instance) (pg_settings_max_connections)
+          > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Postgres is running out of connections
+          description: '{{ $value | humanizePercentage }} of max_connections are in use.'
+
+      - alert: PostgresDeadlocks
+        expr: increase(pg_stat_database_deadlocks[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Postgres deadlocks
+          description: Transactions deadlocked in {{ $labels.datname }} in the last 10 minutes; Postgres aborted one of each pair.
+
+  - name: redis
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis is down
+          description: The exporter cannot connect to Redis. Queues, rate limits, idempotency and the auth cache all depend on it.
+
+      - alert: RedisMemoryHigh
+        # maxmemory-policy noeviction: when Redis is full, writes fail rather
+        # than evicting queued jobs or locks. Only when maxmemory is set.
+        expr: redis_memory_used_bytes / (redis_memory_max_bytes > 0) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis memory is filling up
+          description: Redis uses {{ $value | humanizePercentage }} of its maxmemory. When it is full, every write fails.
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / (redis_memory_max_bytes > 0) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis is almost out of memory
+          description: Redis uses {{ $value | humanizePercentage }} of its maxmemory. When it is full, every write fails.
+
+      - alert: RedisPersistenceFailing
+        # Queued jobs survive a restart only if Redis can write them to disk.
+        expr: redis_rdb_last_bgsave_status == 0 or redis_aof_last_write_status == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis cannot save to disk
+          description: Redis' last write to disk failed (disk full, or permissions). A restart would lose data.
+
+  # From the backup service, through node-exporter's textfile collector.
+  # The age limits assume the default daily BACKUP_SCHEDULE: a day plus two
+  # hours. Change them with the schedule.
+  - name: backups
+    rules:
+      - alert: BackupFailed
+        expr: backup_last_attempt_failed == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: The last backup failed
+          description: 'The backup of {{ $labels.database }} failed. `docker compose logs backup` shows why.'
+
+      - alert: BackupTooOld
+        expr: time() - backup_last_success_timestamp_seconds > 26 * 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: No recent backup
+          description: The last good backup of {{ $labels.database }} is {{ $value | humanizeDuration }} old.
+
+      - alert: BackupNeverRan
+        # Absent for a day: the backup service is not running, or its metrics
+        # never reach node-exporter.
+        expr: absent(backup_last_attempt_timestamp_seconds)
+        for: 26h
+        labels:
+          severity: warning
+        annotations:
+          summary: No backup has run
+          description: There has been no backup for a day. Check that the backup service is running.
+
+      - alert: BackupUploadFailed
+        expr: backup_last_upload_failed == 1
+        labels:
+          severity: warning
+        annotations:
+          summary: The backup upload failed
+          description: 'The copy of {{ $labels.database }} to the bucket failed; the local backup is fine. `docker compose logs backup` shows why.'
+
+      - alert: BackupUploadTooOld
+        expr: time() - backup_last_upload_success_timestamp_seconds > 26 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: No recent backup in the bucket
+          description: The last copy of {{ $labels.database }} in the bucket is {{ $value | humanizeDuration }} old.
+
+      - alert: BackupMetricsUnreadable
+        expr: node_textfile_scrape_error == 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Backup metrics cannot be read
+          description: node-exporter cannot parse a file in the backup metrics volume, so backup alerts may not fire.

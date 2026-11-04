@@ -1,0 +1,208 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency updates. What each rule does and why: docs/renovate.md.",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 10,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": [
+      "dependencies",
+      "security"
+    ],
+    "dependencyDashboardApproval": false,
+    "schedule": [
+      "at any time"
+    ],
+    "minimumReleaseAge": null
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 6am on the first day of the month"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Patch updates, and minor updates of 1.0 and later: one pull request a week, \"Update all non-major dependencies\".",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    },
+    {
+      "description": "Minor updates join the weekly pull request, except below 1.0 (0.x), where a minor version may break things: those get their own.",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "matchCurrentVersion": "!/^v?0\\./",
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    },
+    {
+      "description": "npm releases wait 3 days: a broken or malicious release is usually pulled by then.",
+      "matchDatasources": [
+        "npm"
+      ],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Major updates wait in the Dependency Dashboard until you tick them: each is a task, not a routine update.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true,
+      "labels": [
+        "dependencies",
+        "major"
+      ]
+    },
+    {
+      "description": "Postgres majors need a dump and restore.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "postgres"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "prBodyNotes": [
+        "⚠️ **Postgres major version.** The new server can't read the old data directory: the database must be dumped and restored (docs/backups.md). Merging this alone breaks the existing database."
+      ]
+    },
+    {
+      "description": "Grafana 13 used over 1 GB with these dashboards and was killed at the production limit.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "grafana/grafana"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "prBodyNotes": [
+        "⚠️ **Grafana major version.** Grafana 13.2 grew past 1 GB with these dashboards and was killed at the production memory limit (docs/monitoring.md, \"Versions\"). Measure its memory before merging."
+      ]
+    },
+    {
+      "description": "NestJS majors: every @nestjs/* package moves together, and an upgrade is a project, not a click.",
+      "matchPackageNames": [
+        "@nestjs/**"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "NestJS major",
+      "groupSlug": "nestjs-major",
+      "prBodyNotes": [
+        "⚠️ **NestJS major version.** Read the migration guide (docs.nestjs.com → Migration guide) and the release notes of each @nestjs package here. Expect code changes; run the integration tests and start the app."
+      ]
+    },
+    {
+      "description": "Sign-in libraries: a major can change a token, hash, code or email without breaking the build. A note says which tests prove it still works.",
+      "matchPackageNames": [
+        "jose",
+        "openid-client",
+        "@node-rs/argon2",
+        "otpauth",
+        "@nestjs-modules/mailer"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "prBodyNotes": [
+        "⚠️ **Sign-in library, major version.** It can change tokens, password hashes, two-step codes or emails without failing the build or the unit tests. Before merging, run the integration suites that exercise it (the pre-push hook does not): `pnpm test:services:up`, then `pnpm test:integration -- auth oauth two-step email` (docs/renovate.md)."
+      ]
+    },
+    {
+      "description": "Node's major version is in the Dockerfile, .nvmrc and @types/node: one pull request for all of them.",
+      "matchPackageNames": [
+        "node",
+        "@types/node"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "Node.js major",
+      "groupSlug": "node-major",
+      "prBodyNotes": [
+        "⚠️ **Node.js major version.** Use an LTS release (even-numbered, and marked LTS on nodejs.org; a new even version becomes LTS in October). Keep the Dockerfile, `.nvmrc` and `@types/node` on the same major."
+      ]
+    },
+    {
+      "description": "GitHub Actions: one pull request for all of them, majors included (their majors rarely need changes here).",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions",
+      "dependencyDashboardApproval": false
+    },
+    {
+      "description": "The runners' Ubuntu version (runs-on): on request, like other majors; a new one can change the preinstalled tools.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "ubuntu"
+      ],
+      "groupName": null,
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The security overrides in pnpm-workspace.yaml stay within the major version the parent package asks for: never a major there.",
+      "matchFileNames": [
+        "pnpm-workspace.yaml"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Images named in commands, which the built-in managers don't read: package.json scripts, scripts/*.sh, the workflow's run steps.",
+      "managerFilePatterns": [
+        "/^package\\.json$/",
+        "/^scripts/[^/]+\\.sh$/",
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "(?:^|[\\s\"'])(?<depName>[a-z0-9][a-z0-9.-]*(?:/[a-z0-9._-]+)+):(?<currentValue>v?\\d[\\w.-]*)",
+        "(?:^|\\s)(?<depName>postgres|redis):(?<currentValue>\\d[\\w.-]*)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Images given as a compose variable's default: ${BACKUP_POSTGRES_IMAGE:-postgres:16.2-alpine}.",
+      "managerFilePatterns": [
+        "/^docker-compose\\.[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "\\$\\{[A-Z0-9_]+:-(?<depName>[a-z0-9][a-z0-9./-]*):(?<currentValue>\\d[\\w.-]*)\\}"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "docker-compose": {
+    "managerFilePatterns": [
+      "/(^|/)(?:docker-)?compose[^/]*\\.ya?ml$/",
+      "/^monitoring/compose/[^/]+\\.ya?ml$/"
+    ]
+  }
+}

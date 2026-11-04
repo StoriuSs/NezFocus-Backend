@@ -1,0 +1,70 @@
+# promtool unit tests for rules/platform.yml. Run all of them: pnpm alerts:test
+rule_files:
+  - ../rules/platform.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: TargetDown leaves the app to its own alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="redis", instance="redis-exporter:9121"}'
+        values: '0x10'
+      - series: 'up{job="nestjs-app", instance="app:3000"}'
+        values: '0x10'
+      - series: 'up{job="loki", instance="loki:3100"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: TargetDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: redis, instance: 'redis-exporter:9121' }
+            exp_annotations:
+              summary: A monitoring target is down
+              description: Prometheus cannot scrape redis (redis-exporter:9121), so the alerts that depend on it cannot fire.
+
+  - name: PrometheusRuleFailures
+    interval: 1m
+    input_series:
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus", instance="localhost:9090", rule_group="/etc/prometheus/rules/app.yml;app"}'
+        values: '0 0 3x20'
+      - series: 'prometheus_rule_evaluation_failures_total{job="prometheus", instance="localhost:9090", rule_group="/etc/prometheus/rules/host.yml;host"}'
+        values: '0x22'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PrometheusRuleFailures
+        exp_alerts:
+          - exp_labels: { severity: warning, job: prometheus, instance: 'localhost:9090', rule_group: '/etc/prometheus/rules/app.yml;app' }
+            exp_annotations:
+              summary: Alert rules fail to evaluate
+              description: 'Rule group /etc/prometheus/rules/app.yml;app failed to evaluate; its alerts cannot fire. The Prometheus logs show the error.'
+      - eval_time: 20m
+        alertname: PrometheusRuleFailures
+        exp_alerts: []
+
+  - name: AlertmanagerNotificationsFailing
+    interval: 1m
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager", instance="alertmanager:9093", integration="discord", receiver_name="notify", reason="clientError"}'
+        values: '0 1x20'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager", instance="alertmanager:9093", integration="webhook", receiver_name="heartbeat", reason="other"}'
+        values: '0x21'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AlertmanagerNotificationsFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, job: alertmanager, instance: 'alertmanager:9093', integration: discord, receiver_name: notify, reason: clientError }
+            exp_annotations:
+              summary: Alerts are not being delivered
+              description: Alertmanager failed to send to discord. `docker compose logs alertmanager` shows the error; a wrong or deleted webhook is the usual cause.
+
+  - name: Watchdog always fires
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: { severity: none }
+            exp_annotations:
+              summary: Alerting works
+              description: This alert always fires. An outside service watches for it and warns you when it stops.

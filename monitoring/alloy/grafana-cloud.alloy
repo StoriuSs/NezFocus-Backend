@@ -1,0 +1,94 @@
+// Grafana Alloy with MONITORING=grafana-cloud: the only monitoring service on
+// the server. It sends this stack's container logs, and the metrics that
+// Prometheus would otherwise scrape, to Grafana Cloud. See docs/monitoring.md,
+// "Grafana Cloud".
+//
+// The scrape jobs mirror monitoring/prometheus/prometheus.yml, job names
+// included: the alert rules select by job. A unit test compares the two.
+//
+// Changes apply on `docker compose ... restart alloy`. The UI on port 12345
+// (ALLOY_PORT) shows each component and its state.
+
+import.file "modules" {
+	filename = "/etc/alloy/modules/container-logs.alloy"
+}
+
+modules.container_logs "default" {
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+}
+
+// ── Metrics ──────────────────────────────────────────────────────────────
+// Every 60 seconds: Grafana Cloud includes one data point per minute per
+// series, so a shorter interval counts as more series against the quota.
+
+prometheus.scrape "nestjs_app" {
+	job_name        = "nestjs-app"
+	targets         = [{"__address__" = "app:3000"}]
+	metrics_path    = "/api/v1/metrics"
+	scrape_interval = "60s"
+	forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.scrape "node_exporter" {
+	job_name        = "node-exporter"
+	targets         = [{"__address__" = "node-exporter:9100"}]
+	scrape_interval = "60s"
+	forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.scrape "postgres" {
+	job_name        = "postgres"
+	targets         = [{"__address__" = "postgres-exporter:9187"}]
+	scrape_interval = "60s"
+	forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.scrape "redis" {
+	job_name        = "redis"
+	targets         = [{"__address__" = "redis-exporter:9121"}]
+	scrape_interval = "60s"
+	forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+// Alloy itself. When Alloy stops, nothing reaches Grafana Cloud at all: the
+// MetricsStopped rule that `pnpm monitoring:cloud-sync` adds per project covers
+// that case.
+prometheus.scrape "alloy" {
+	job_name        = "alloy"
+	targets         = [{"__address__" = "localhost:12345"}]
+	scrape_interval = "60s"
+	forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USER")
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+
+	// Added to every series, as Prometheus adds them to alerts locally: a
+	// Grafana Cloud stack can hold several projects and environments.
+	external_labels = {
+		project     = sys.env("COMPOSE_PROJECT"),
+		environment = sys.env("ENVIRONMENT"),
+	}
+}
+
+livedebugging {
+	enabled = true
+}
