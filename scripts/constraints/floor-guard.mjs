@@ -75,7 +75,10 @@ for (const { file, text } of removed) {
 // first cell). Each number carries a direction read from the words around it:
 // a minimum (>=, ≥, at least, must not fall) loosens by going down, a maximum
 // (<=, ≤, under, must not grow) by going up. A number with no readable
-// direction is reported whenever it changes.
+// direction is reported whenever it changes. Digits that belong to a name or
+// a date (M0, NFR-PERF-04, 05/11/2026, 700/1278) are not thresholds: without
+// this, writing a measurement over "measured after M0" reads as a change. A
+// unit written on the number (2500ms) still counts.
 const ruleKey = (t) => {
     const s = t.trim()
     if (s.startsWith('|'))
@@ -95,7 +98,7 @@ const MIN_AFTER = /^\s*\S*\s*(?:\|\s*)?(or more|or higher|must not fall|must not
 const MAX_AFTER = /^\s*\S*\s*(?:\|\s*)?(or less|or lower|must not grow|must not exceed)/
 const thresholds = (t) => {
     const out = []
-    const re = /\d+(?:\.\d+)?/g
+    const re = /(?<![\w./-])\d+(?:\.\d+)?(?![/.-]?\d)/g
     let m
     while ((m = re.exec(t))) {
         const before = t.slice(Math.max(0, m.index - 24), m.index).toLowerCase()

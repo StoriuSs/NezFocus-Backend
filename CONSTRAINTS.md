@@ -60,7 +60,7 @@ Kiểm bởi `node scripts/constraints/floor-guard.mjs`, chuyển thể từ b�
 
 | Chỉ số | Hiện tại | Hướng | Ghi chú |
 |---|---|---|---|
-| Coverage toàn dự án (dòng, `src/`) | đo sau lát dọn base của M0 | must not fall (dung sai 0.5%) | Đo trước lúc đó thì vô nghĩa vì M0 gỡ 2FA và Turnstile. Số đo nằm trong dòng `text-summary` của bước `pnpm test --coverage` trên CI; ghi số vào ô này khi lát dọn base xong |
+| Coverage toàn dự án (dòng, `src/`) | 37.29% | must not fall (dung sai 0.5%) | Đo 05/11/2026 sau lát dọn base của M0 (M0 gỡ 2FA và Turnstile, đo sớm hơn thì vô nghĩa): 1659/4448 dòng, chỉ unit test (`pnpm test`); integration và e2e không tính. Số đo nằm trong dòng `text-summary` của bước `pnpm test --coverage` trên CI. Xuống dưới 36.79% là một phát hiện cần giải thích |
 
 ## Không chọn
 
