@@ -63,7 +63,7 @@ role away or deleting an account takes effect at once instead of when the
 token expires.
 
 The response that carries it (from `POST /auth/login`, `verify-email`,
-`reset-password`, `login/2fa` and `refresh`):
+`reset-password` and `refresh`):
 
 ```json
 {
@@ -154,20 +154,18 @@ browser sees a different path from the one the cookie names and never sends
 it back. Serve the API so the browser-visible path starts with
 `/<API_PREFIX>/v1/auth`.
 
-### The two short-lived cookies
+### The short-lived cookie
 
-Two more cookies exist only during a sign-in with Google. Both are httpOnly,
-use the same `Secure` setting, and use `SameSite=None` when you chose `none`,
+One more cookie exists only during a sign-in with Google. It is httpOnly,
+uses the same `Secure` setting, and uses `SameSite=None` when you chose `none`,
 `Lax` otherwise (never `Strict`, which would not come back with a navigation
 from Google):
 
 | Cookie | Path | Lives | Holds |
 |---|---|---|---|
 | `oauth_state` | `/api/v1/auth/<provider>/callback` | 10 minutes | The `state` of the attempt, matched against Google's return ([state and nonce](./concepts.md#state-and-nonce)) |
-| `two_factor` | `/api/v1/auth/login/2fa` | 5 minutes | The two-step challenge, when the account has two-step sign-in on. Kept out of the URL on purpose |
 
-Details: [google-sign-in.md](./google-sign-in.md) and
-[two-step-sign-in.md](./two-step-sign-in.md).
+Details: [google-sign-in.md](./google-sign-in.md).
 
 ## Sessions
 
@@ -186,10 +184,9 @@ One row per sign-in, in the `Session` table
 | `ip` | The client's IP at sign-in (the real one: the app trusts one proxy hop) |
 
 - **Created** only by [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts),
-  and only after [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)
-  has decided no second step is needed. Every way of signing in (password,
-  confirming an address, resetting a password, Google, the two-step code)
-  ends there.
+  called by [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts).
+  Every way of signing in (password, confirming an address, resetting a
+  password, Google) ends there.
 - **Absolute lifetime.** Refreshing never moves `expiresAt`. After 30 days
   the person signs in again, however active they were.
 - **Removed** a week after it ended (expired or revoked), with its refresh
@@ -291,9 +288,9 @@ more than 10 seconds later. That is indistinguishable from theft by design.
 The mapping is in [session-end.ts](../../src/modules/auth/domain/session-end.ts).
 A session with `revokedAt` set but no reason reads as `logout`.
 
-**Not ended by**: setting a first password, turning two-step sign-in on or
-off, replacing recovery codes, linking Google, or a role change (roles are
-read on every request, so they apply at once without ending anything).
+**Not ended by**: setting a first password, linking Google, or a role change
+(roles are read on every request, so they apply at once without ending
+anything).
 
 **How a device finds out.** On its next request:
 
@@ -371,7 +368,6 @@ features do need it:
 | Cache invalidation | Fails and is logged ("Session cache update failed"). An entry that should have gone lives at most 5 more minutes, once Redis is back |
 | Refresh | Works. The grace replacement cannot be stored, so a second tab racing the first gets `401` and signs in again |
 | Rate limits | Not enforced (they fail open, logged once a minute). See [rate-limits.md](./rate-limits.md) |
-| Signing in to an account with two-step sign-in on | Fails: the challenge lives only in Redis (`500`) |
 | Google sign-in | Fails: the attempt lives only in Redis. Back to the web app with `?error=failed` |
 | Anything that sends an email | Fails: the email queue lives in Redis ([emails.md](./emails.md#when-redis-or-smtp-is-down)) |
 
@@ -530,8 +526,8 @@ More symptoms: [operations.md](./operations.md).
 The React starter already does all of this; another client must too.
 
 1. **Send credentials on every request that sets, reads or clears the
-   cookie**: `login`, `verify-email`, `reset-password`, `login/2fa`,
-   `refresh`, `logout`, `logout-all` and `account/delete`. With `fetch`,
+   cookie**: `login`, `verify-email`, `reset-password`, `refresh`,
+   `logout`, `logout-all` and `account/delete`. With `fetch`,
    `credentials: 'include'`; with axios, `withCredentials: true`. A
    cross-origin answer's `Set-Cookie` (including the one that clears the
    cookie) is ignored unless the request was sent with credentials.
@@ -549,9 +545,6 @@ The React starter already does all of this; another client must too.
 6. **Any other `401` means signed out.** Show `data.reason` in words if
    there is one. `403 AUTH_ACCOUNT_DISABLED` also means signed out: the
    account was deleted.
-7. **`403 AUTH_TWO_FACTOR_REQUIRED` is not a failure**: ask for the code and
-   send it with `data.challenge` to `POST /auth/login/2fa`
-   ([flows.md](./flows.md#sign-in-with-two-step-verification)).
 
 The full error catalogue: [api-reference.md](./api-reference.md).
 
@@ -564,7 +557,7 @@ The full error catalogue: [api-reference.md](./api-reference.md).
 | `AUTH_SESSION_TTL_DAYS` | `30` | Session lifetime, 1 to 365. Absolute |
 | `AUTH_COOKIE_SAMESITE` | `lax` | `lax`, `strict` or `none` (any case) |
 | `AUTH_COOKIE_SECURE` | unset: on in production or with `none` | `false` is refused together with `none` |
-| `CORS_ORIGINS` | `http://localhost:3001` | The web app's exact origins, comma-separated. Also the `Origin` check on refresh, logout and the second step after Google |
+| `CORS_ORIGINS` | `http://localhost:3001` | The web app's exact origins, comma-separated. Also the `Origin` check on refresh and logout |
 | `CORS_CREDENTIALS` | `true` | Must be `true`; production refuses `false` |
 | `BASE_URL` | `http://localhost:${PORT}` | The API's public address: the tokens' `iss` and `aud`, and the Google redirect URI |
 | `API_PREFIX` | `api` | Part of every route and of the cookie paths |
@@ -581,7 +574,7 @@ entry, the 7 days ended sessions are kept. Every setting:
 | [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | Sign-in, `refresh`, `logout`, `logout-all`: the routes that use them |
 | [jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts) | Signs and verifies access tokens; makes and hashes refresh tokens |
 | [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts) | Starts a session |
-| [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts) | The one way into a session; hands out the two-step challenge |
+| [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts) | The one way into a session |
 | [refresh.handler.ts](../../src/modules/auth/application/commands/refresh/refresh.handler.ts) | Refresh, grace, reuse |
 | [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Rotation under a row lock; revocation |
 | [logout.handler.ts](../../src/modules/auth/application/commands/logout/logout.handler.ts) | Sign out, sign out everywhere |

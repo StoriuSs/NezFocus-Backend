@@ -149,9 +149,7 @@ count requests:
 - the global rate limiter caps every route per IP ([rate-limit.md](./rate-limit.md));
 - sign-in has its own limits: 5 failed sign-ins per email address and 10 per
   IP in 15 minutes, limits on code emails, wrong codes and sign-ups
-  ([auth/rate-limits.md](./auth/rate-limits.md));
-- with Cloudflare Turnstile on, a CAPTCHA appears after two failed sign-ins
-  ([auth/turnstile.md](./auth/turnstile.md)).
+  ([auth/rate-limits.md](./auth/rate-limits.md)).
 
 These know which account is being guessed at, which nginx's log does not.
 Adding an nginx jail mainly risks banning a whole office behind one address.
@@ -350,10 +348,6 @@ becomes a problem ([alerts.md](./alerts.md), rules in
 ## The clock
 
 A wrong clock breaks TLS certificates, token expiry and one-time codes.
-Two-step sign-in codes are the sharpest case: they change every 30 seconds
-and the server accepts only the codes either side of now, so a server clock
-a minute off refuses every correct code from an authenticator app
-([two-step-sign-in.md](./auth/two-step-sign-in.md)).
 `systemd-timesyncd` is enabled by default on Ubuntu; `timedatectl` should say
 `System clock synchronized: yes`. That is the whole task.
 
@@ -373,18 +367,13 @@ For a new server, in this order:
 - [ ] nginx and certbot set up (`nginx/bootstrap-nginx.sh`)
 - [ ] `.env.production` filled in and checked (`pnpm env:check .env.production`),
   with `PORT` matching nginx's `--api-port`
-- [ ] `JWT_SECRET` and `AUTH_ENCRYPTION_KEY` generated for this server
-  (`openssl rand -hex 32` each), never the `.env.example` values. Keep a copy
-  of `AUTH_ENCRYPTION_KEY` **outside the server** (a password manager): if it
-  is lost, nobody with two-step sign-in on can sign in until it is turned off
-  for them ([auth/operations.md](./auth/operations.md))
+- [ ] `JWT_SECRET` generated for this server (`openssl rand -hex 32`), never
+  the `.env.example` value
 - [ ] Email sending works: sign-up needs the emailed code, so without SMTP
   nobody can create an account ([setup/email.md](./setup/email.md))
 - [ ] If Google sign-in is on: the production redirect URI
   `https://api.example.com/api/v1/auth/google/callback` is registered with
   Google ([setup/google-sign-in.md](./setup/google-sign-in.md))
-- [ ] If Turnstile is on: real keys, with the production hostname on the
-  widget ([setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md))
 - [ ] Backups running, and one restore tried ([backups.md](./backups.md))
 - [ ] Alerts arriving somewhere you read ([alerts.md](./alerts.md))
 - [ ] An uptime check from outside ([external-monitoring.md](./external-monitoring.md))

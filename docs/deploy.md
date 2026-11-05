@@ -173,16 +173,9 @@ takes effect at the next deploy: `./deploy.sh --skip-build` in `build` mode,
 or `./deploy.sh --no-pull` to redeploy the live commit in `registry` mode. The
 environment check runs first, so a bad value stops there with nothing changed.
 
-Two settings need a step after the deploy:
-
-- **`AUTH_ENCRYPTION_KEY`**: put the old key in `AUTH_ENCRYPTION_KEY_PREVIOUS`
-  and the new one in `AUTH_ENCRYPTION_KEY`, deploy, then re-seal every
-  two-step secret with the new key (below, `rotate-encryption-key.js`). Empty
-  `_PREVIOUS` and deploy again only when that says nothing needs it
-  ([auth/two-step-sign-in.md](./auth/two-step-sign-in.md)).
-- **`BASE_URL`**: register the new Google redirect URI first, if Google sign-in
-  is on; every access token is refused once after the change, and the web app
-  refreshes it.
+One setting needs a step before the deploy: **`BASE_URL`**. Register the new
+Google redirect URI first, if Google sign-in is on; every access token is
+refused once after the change, and the web app refreshes it.
 
 ### Running a command on the server
 
@@ -195,14 +188,6 @@ fills in the compose file's `${...}` from it, and refuses to run anything,
 # Make someone an administrator (pnpm user:promote)
 docker compose --env-file .env.production -f docker-compose.prod.yaml exec app \
     node dist/src/bootstrap/user-roles.js you@example.com
-
-# Re-seal two-step secrets after changing AUTH_ENCRYPTION_KEY (pnpm auth:rotate-key)
-docker compose --env-file .env.production -f docker-compose.prod.yaml exec app \
-    node dist/src/bootstrap/rotate-encryption-key.js
-
-# Turn two-step sign-in off for someone who lost their phone (pnpm auth:two-factor:off)
-docker compose --env-file .env.production -f docker-compose.prod.yaml exec app \
-    node dist/src/bootstrap/two-factor-off.js you@example.com
 ```
 
 What each does, and when: [auth/operations.md](./auth/operations.md).

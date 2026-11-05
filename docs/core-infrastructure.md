@@ -83,9 +83,8 @@ two-layer cache, because it must be the same on every instance:
   database. At most 5 minutes, invalidated at once on sign-out, password
   change or deletion ([cache.md](./cache.md)).
 - The **auth module's own state**: a replaced refresh token's successor for the
-  10-second grace window (`auth:replaced:*`), a Google sign-in in progress
-  (`auth:oauth:*`, 10 minutes), a two-step challenge and its tries
-  (`auth:2fa:*`, 5 minutes).
+  10-second grace window (`auth:replaced:*`) and a Google sign-in in progress
+  (`auth:oauth:*`, 10 minutes).
 - The **sign-in rate limits** (`rl:*`, `src/shared/infrastructure/rate-limit/`)
   and the **global throttler's** counters (`src/shared/infrastructure/throttler/`).
 - **Idempotency** claims and stored responses.
@@ -165,9 +164,6 @@ In `src/modules/auth/infrastructure/email/templates/`, sent by `AuthEmails`;
 | `password-changed.hbs` | The password was changed or reset |
 | `password-added.hbs` | A password was added to an account that had none |
 | `sign-in-method-added.hbs` | Google sign-in was linked to the account |
-| `two-factor-changed.hbs` | Two-step sign-in was turned on or off |
-| `recovery-code-used.hbs` | A recovery code was used, and how many are left |
-| `recovery-codes-replaced.hbs` | New recovery codes were made |
 | `account-deleted.hbs` | The account was deleted, and when its data goes |
 
 ### Configuration
@@ -317,8 +313,8 @@ long-deleted accounts and deletes accounts nobody confirmed
 ([account-deletion.md](./account-deletion.md)). The auth clean-up (auth's
 `CleanUpAuthCommand`), every hour, removes sessions that ended more than a week ago and codes more
 than a day old, and finishes what a lost `AccountDeletedEvent` left behind:
-the sessions, passwords, Google links, two-step secrets and recovery codes of
-deleted accounts ([auth/accounts.md](./auth/accounts.md)).
+the sessions, passwords and Google links of deleted accounts
+([auth/accounts.md](./auth/accounts.md)).
 
 Whatever you schedule, make it **safe to run twice**. A retry, an overlapping
 tick or a second instance starting mid-run must not do damage.
@@ -348,20 +344,16 @@ AppModule
     ├── UsersModule (USER_DIRECTORY: the only way auth reaches user records)
     ├── EmailModule
     ├── queue: auth
-    ├── ──► Google (OpenID Connect discovery and token exchange), when GOOGLE_* is set
-    └── ──► Cloudflare Turnstile (siteverify), when TURNSTILE_* is set
+    └── ──► Google (OpenID Connect discovery and token exchange), when GOOGLE_* is set
 ```
 
 `AccessTokenGuard`, the global authentication guard, is built by `AuthModule`
 and registered in `AppModule` after the throttler.
 
-The outbound calls to know about: **SMTP** (every email, from the queue),
+The outbound calls to know about: **SMTP** (every email, from the queue) and
 **Google** (`accounts.google.com` discovery on the first sign-in, then the
-token exchange, 10-second timeout) and **Cloudflare**
-(`challenges.cloudflare.com/turnstile/v0/siteverify`, 5-second timeout). If
-Cloudflare cannot be reached, the routes that ask for Turnstile answer
-`503 AUTH_CAPTCHA_UNAVAILABLE` rather than skip the check. If Google cannot be
-reached, its sign-in fails and the others keep working.
+token exchange, 10-second timeout). If Google cannot be reached, its sign-in
+fails and the others keep working.
 
 Everything here is stateless and injectable: the state lives in Postgres and
 Redis, which is what makes a second instance possible.

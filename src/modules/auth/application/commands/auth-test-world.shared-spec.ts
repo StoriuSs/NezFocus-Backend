@@ -1,7 +1,5 @@
 import { CommandBus } from '@nestjs/cqrs'
 import { DeleteAccountCommand, DirectoryUser, UserDirectoryPort } from '@/modules/users'
-import { AesSecretBox } from '@/modules/auth/infrastructure/adapters/aes-secret-box.adapter'
-import { OtpauthTotp } from '@/modules/auth/infrastructure/adapters/otpauth-totp.adapter'
 import { AuthSettings } from '../auth-settings'
 import { OAuthSettings } from '../oauth-settings'
 import {
@@ -9,7 +7,6 @@ import {
     AuthEventsPort,
     AuthEventSubject,
     AuthMailerPort,
-    CaptchaPort,
     OAuthAttempt,
     OAuthChecks,
     OAuthIdentity,
@@ -18,7 +15,6 @@ import {
     PasswordHasherPort,
     SessionCachePort,
     TokenServicePort,
-    TwoFactorChallengePort,
     RateLimitPort
 } from '../ports'
 import {
@@ -32,23 +28,16 @@ import {
     SessionEnd,
     SessionRecord,
     SessionRepositoryPort,
-    TwoFactorRecord,
-    TwoFactorRepositoryPort,
     VerificationCodeRepositoryPort
 } from '@/modules/auth/domain'
 import { RateLimitRule, RateLimitState } from '../rate-limits'
-import { CaptchaCheck } from '../services/captcha-check'
 import { CodeIssuer } from '../services/code-issuer'
-import { SecondFactorCheck } from '../services/second-factor'
 import { SessionIssuer } from '../services/session-issuer'
 import { SignInGate } from '../services/sign-in-gate'
 import { SignInMethods } from '../services/sign-in-methods'
 import {
     ChangePasswordHandler,
-    CompleteTwoFactorSignInHandler,
-    ConfirmTwoFactorHandler,
     DeleteOwnAccountHandler,
-    DisableTwoFactorHandler,
     FinishOAuthHandler,
     ForgotPasswordHandler,
     LoginCommand,
@@ -60,7 +49,6 @@ import {
     SendAccountDeletionCodeHandler,
     SendPasswordSetCodeHandler,
     SetPasswordHandler,
-    SetUpTwoFactorHandler,
     StartOAuthHandler,
     VerifyEmailHandler
 } from '..'
@@ -333,9 +321,6 @@ class FakeMailer implements AuthMailerPort {
     async sendPasswordChanged() {}
     async sendPasswordAdded() {}
     async sendSignInMethodAdded() {}
-    async sendTwoFactorChanged() {}
-    async sendRecoveryCodesReplaced() {}
-    async sendRecoveryCodeUsed() {}
     lastCode(to: string, purpose: CodePurpose) {
         return [...this.codes].reverse().find((c) => c.to === to && c.purpose === purpose)?.code
     }
@@ -403,96 +388,6 @@ class FakeOAuthAccounts implements OAuthAccountRepositoryPort {
     }
 }
 
-/** The rules of PrismaTwoFactorRepository, kept in memory. */
-class FakeTwoFactors implements TwoFactorRepositoryPort {
-    records = new Map<string, TwoFactorRecord>()
-    recovery = new Map<string, { fingerprint: string; used: boolean }[]>()
-    async find(userId: string) {
-        const record = this.records.get(userId)
-        return record ? { ...record } : null
-    }
-    async saveUnconfirmed(userId: string, secretSealed: string) {
-        if (this.records.get(userId)?.confirmed) return false
-        this.records.set(userId, { secretSealed, confirmed: false, lastUsedStep: null })
-        return true
-    }
-    async confirm(userId: string) {
-        const record = this.records.get(userId)
-        if (!record || record.confirmed) return false
-        record.confirmed = true
-        return true
-    }
-    async useStep(userId: string, step: number) {
-        const record = this.records.get(userId)
-        if (!record || (record.lastUsedStep !== null && record.lastUsedStep >= step)) return false
-        record.lastUsedStep = step
-        return true
-    }
-    async remove(userId: string) {
-        this.records.delete(userId)
-        this.recovery.delete(userId)
-    }
-    async replaceRecoveryCodes(userId: string, fingerprints: string[]) {
-        this.recovery.set(
-            userId,
-            fingerprints.map((fingerprint) => ({ fingerprint, used: false }))
-        )
-    }
-    async replaceSecret(userId: string, from: string, to: string) {
-        const record = this.records.get(userId)
-        if (record?.secretSealed !== from) return false
-        record.secretSealed = to
-        return true
-    }
-    async useRecoveryCode(userId: string, fingerprints: string[]) {
-        const code = this.recovery.get(userId)?.find((c) => fingerprints.includes(c.fingerprint) && !c.used)
-        if (!code) return false
-        code.used = true
-        return true
-    }
-    async countUnusedRecoveryCodes(userId: string) {
-        return (this.recovery.get(userId) ?? []).filter((c) => !c.used).length
-    }
-    async deleteForDeletedAccounts() {
-        return 0
-    }
-}
-
-/** RedisTwoFactorChallenge's rules, in memory. */
-class FakeChallenges implements TwoFactorChallengePort {
-    live = new Map<string, { userId: string; tries: number }>()
-    private next = 1
-    async create(userId: string) {
-        const challenge = `challenge-${this.next++}`
-        this.live.set(challenge, { userId, tries: 0 })
-        return challenge
-    }
-    async find(challenge: string) {
-        return this.live.get(challenge)?.userId ?? null
-    }
-    async recordFailure(challenge: string, max: number) {
-        const entry = this.live.get(challenge)
-        if (!entry) return 0
-        entry.tries++
-        if (entry.tries < max) return max - entry.tries
-        this.live.delete(challenge)
-        return 0
-    }
-    async take(challenge: string) {
-        const entry = this.live.get(challenge)
-        this.live.delete(challenge)
-        return entry?.userId ?? null
-    }
-}
-
-class FakeCaptcha implements CaptchaPort {
-    siteKey: string | null = null
-    answer: 'passed' | 'failed' | 'unavailable' = 'passed'
-    async verify() {
-        return this.answer
-    }
-}
-
 const oauthSettings: OAuthSettings = { callbackBaseUrl: 'https://api.example.test/api/v1/auth', attemptTtlSeconds: 600 }
 
 const settings: AuthSettings = {
@@ -519,14 +414,7 @@ export function setup() {
     const google = new FakeProvider()
     const oauthState = new FakeOAuthState()
     const oauthAccounts = new FakeOAuthAccounts()
-    const twoFactors = new FakeTwoFactors()
-    const challenges = new FakeChallenges()
-    const captcha = new FakeCaptcha()
-    const box = new AesSecretBox({ current: 'ab'.repeat(32) })
-    const totp = new OtpauthTotp()
-    const gate = new SignInGate(twoFactors, challenges, sessionIssuer)
-    const secondFactor = new SecondFactorCheck(twoFactors, totp, box, mailer)
-    const captchaCheck = new CaptchaCheck(captcha)
+    const gate = new SignInGate(sessionIssuer)
     const signInMethods = new SignInMethods(credentials, oauthAccounts, [google])
     // The users module's side of a deletion: what DeleteAccountHandler does.
     const usersBus = {
@@ -546,28 +434,6 @@ export function setup() {
         mailer,
         google,
         oauthAccounts,
-        twoFactors,
-        captcha,
-        box,
-        setUpTwoFactor: new SetUpTwoFactorHandler(twoFactors, directory, totp, box, { issuer: 'Starter' }),
-        confirmTwoFactor: new ConfirmTwoFactorHandler(
-            twoFactors,
-            directory,
-            box,
-            mailer,
-            limiter,
-            events,
-            secondFactor
-        ),
-        disableTwoFactor: new DisableTwoFactorHandler(twoFactors, directory, mailer, limiter, events, secondFactor),
-        completeTwoFactor: new CompleteTwoFactorSignInHandler(
-            challenges,
-            directory,
-            limiter,
-            events,
-            secondFactor,
-            sessionIssuer
-        ),
         startOAuth: new StartOAuthHandler([google], oauthState, oauthSettings),
         finishOAuth: new FinishOAuthHandler(
             [google],
@@ -589,7 +455,6 @@ export function setup() {
             events,
             mailer,
             codeIssuer,
-            captchaCheck,
             signInMethods
         ),
         verify: new VerifyEmailHandler(directory, credentials, hasher, limiter, cache, events, codeIssuer, gate),
@@ -604,21 +469,19 @@ export function setup() {
             signInMethods,
             codeIssuer
         ),
-        login: new LoginHandler(directory, credentials, hasher, limiter, events, gate, captchaCheck),
+        login: new LoginHandler(directory, credentials, hasher, limiter, events, gate),
         refresh: new RefreshHandler(sessions, tokens, cache, events, settings),
         logoutEverywhere: new LogoutEverywhereHandler(sessions, cache),
-        forgot: new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer, captchaCheck),
+        forgot: new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer),
         sendDeletionCode: new SendAccountDeletionCodeHandler(directory, credentials, limiter, codeIssuer),
         deleteAccount: new DeleteOwnAccountHandler(
             directory,
             credentials,
             hasher,
-            twoFactors,
             limiter,
             mailer,
             events,
             codeIssuer,
-            secondFactor,
             usersBus
         ),
         reset: new ResetPasswordHandler(
@@ -656,8 +519,7 @@ export type World = ReturnType<typeof setup>
 export const signIn = (w: World, email = 'ada@example.test', password = PASSWORD) =>
     w.login.execute(new LoginCommand(email, password, CLIENT))
 
-/** The session a sign-in ended in; fails the test if it asked for a second step instead. */
-export function sessionOf<T extends { session: { accessToken: string } } | { challenge: string }>(outcome: T) {
-    if (!('session' in outcome)) throw new Error('expected a session, got a two-step challenge')
+/** The session a sign-in with a provider ended in. */
+export function sessionOf<T extends { session: { accessToken: string } }>(outcome: T) {
     return outcome.session
 }

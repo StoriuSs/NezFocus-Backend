@@ -6,7 +6,7 @@ install are Node, pnpm and Docker itself.
 
 For what the starter actually *is* (the pieces, how they fit, and why), read
 [the tour](./OVERVIEW.md). For the longer guided setup, with the optional
-services (Google sign-in, Turnstile, S3 storage, Sentry, the web app), follow
+services (Google sign-in, S3 storage, Sentry, the web app), follow
 [docs/setup/prepare-for-development.md](./docs/setup/prepare-for-development.md).
 This page is only about getting it up.
 
@@ -53,14 +53,13 @@ cp .env.example .env.development
 | `DATABASE_URL` | How tools **on this machine** reach that database (`pnpm prisma:migrate`, `pnpm dev`, `pnpm user:promote`) | The template's line already uses the three values above. If you change any of them, change it here too. The app in Docker builds its own and ignores this one |
 | `REDIS_PASSWORD` | Redis' password | Any value |
 | `JWT_SECRET` | Signs sign-in tokens. At least 32 characters | The template's placeholder is long enough for development. Production needs `openssl rand -hex 32` |
-| `AUTH_ENCRYPTION_KEY` | Seals the secrets of two-step sign-in | The template's all-zero key is fine **in development only**; production refuses it |
 | `FRONTEND_URL` | The web app's address: links in emails, and the return from Google sign-in, point there | `http://localhost:3001`, where the [React starter](https://github.com/StoriuSs/React-Starter-No-Keycloak) runs. Required in production |
 | `CORS_ORIGINS` | The web pages allowed to call the API with cookies | `http://localhost:3001`, the same web app |
 | `GRAFANA_ADMIN_PASSWORD` | The Grafana login (user `admin`) | `admin` is fine on your machine |
 | `BULL_BOARD_PASSWORD` | The queue dashboard at `/admin/queues` (user `BULL_BOARD_USER`) | `admin` is fine on your machine |
 
-Leave `GOOGLE_CLIENT_*` and `TURNSTILE_*` empty for now: both features stay off
-until you set them. Every variable is in [docs/environment.md](./docs/environment.md).
+Leave `GOOGLE_CLIENT_*` empty for now: Google sign-in stays off until you set
+them. Every variable is in [docs/environment.md](./docs/environment.md).
 
 To check the file against what the app expects, at any time:
 
@@ -158,21 +157,8 @@ To make that account an administrator (from this machine: it uses the
 pnpm user:promote you@example.com
 ```
 
-**Two-step sign-in**, if you want to try it: `POST $API/auth/2fa/setup` (with
-the token) answers with `data.secret` and `data.otpauth_uri`. Add the secret to
-an authenticator app, then send its current code to `POST $API/auth/2fa/confirm`
-as `{"code":"123456"}`; the answer holds ten recovery codes, shown once. From
-then on, `POST /auth/login` answers `403 AUTH_TWO_FACTOR_REQUIRED` with
-`data.challenge`, and `POST $API/auth/login/2fa` with
-`{"challenge":"...","code":"123456"}` finishes signing in.
-
-**Turnstile and Google**: with `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`
-set, `register` and `forgot-password` also need a `turnstile_token` from the
-widget, so try those from the web app.
-[docs/setup/cloudflare-turnstile.md](./docs/setup/cloudflare-turnstile.md) has
-test keys that always pass. Google sign-in is a browser redirect, also tried
-from the web app: [docs/setup/google-sign-in.md](./docs/setup/google-sign-in.md),
-with `http://localhost:8888/api/v1/auth/google/callback` as the redirect URI.
+**Google sign-in** is a browser redirect, so try it from the web app:
+[docs/setup/google-sign-in.md](./docs/setup/google-sign-in.md), with `http://localhost:8888/api/v1/auth/google/callback` as the redirect URI.
 
 How all of it works: [docs/auth/README.md](./docs/auth/README.md), and
 [docs/auth/api-reference.md](./docs/auth/api-reference.md) for every route.
@@ -249,11 +235,11 @@ locally, set `MONITORING=grafana-cloud`: see
 ```
 ├── src/
 │   ├── bootstrap/      # Scripts: env check, OpenAPI export, user roles,
-│   │                   # encryption-key rotation, two-step off, cloud sync
+│   │                   # monitoring cloud sync
 │   ├── config/         # Settings and their validation schema
 │   ├── health/         # Health endpoints
 │   ├── modules/        # Feature modules (hexagonal: domain/application/…)
-│   │   ├── auth/       # Sign-up, sign-in, sessions, Google, two-step, Turnstile
+│   │   ├── auth/       # Sign-up, sign-in, sessions, Google, account deletion
 │   │   └── users/      # Profiles, usernames, avatars, account deletion
 │   ├── shared/         # Guards, interceptors, filters, infrastructure
 │   └── main.ts         # Entry point

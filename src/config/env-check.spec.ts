@@ -36,8 +36,7 @@ const devEnv = {
     DB_NAME: 'db',
     DB_USERNAME: 'u',
     DB_PASSWORD: 'p',
-    JWT_SECRET: 'dev-only-secret-dev-only-secret-00',
-    AUTH_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+    JWT_SECRET: 'dev-only-secret-dev-only-secret-00'
 }
 
 describe('checkEnv', () => {

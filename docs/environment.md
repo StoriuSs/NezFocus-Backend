@@ -73,8 +73,8 @@ against a plain copy of `.env.example`. Two things are worth knowing:
 `ALERT_WEBHOOK_URL` ships empty: in development alerts are then shown in
 Alertmanager and Grafana and sent nowhere.
 
-Optional services in development (Google sign-in, Turnstile, S3 storage, Sentry)
-are switched on by their variables. [setup/prepare-for-development.md](./setup/prepare-for-development.md)
+Optional services in development (Google sign-in, S3 storage, Sentry) are
+switched on by their variables. [setup/prepare-for-development.md](./setup/prepare-for-development.md)
 walks through each one.
 
 **In production**, these need a value of your own. The app, compose or
@@ -87,7 +87,6 @@ walks through each one.
 | `BULL_BOARD_PASSWORD` | **Required.** A generated password for `/admin/queues` and `/api-docs` | `openssl rand -hex 24` |
 | `GRAFANA_ADMIN_PASSWORD` | **Required** with `MONITORING=local` (compose) | `openssl rand -hex 24` |
 | `JWT_SECRET` | **Required.** Signs access tokens | `openssl rand -hex 32` |
-| `AUTH_ENCRYPTION_KEY` | **Required.** Seals two-step sign-in secrets. Back it up | `openssl rand -hex 32` (a second, different one) |
 | `FRONTEND_URL` | **Required.** The web app's address, e.g. `https://app.example.com` | Your domain ([setup/domain-dns-tls.md](./setup/domain-dns-tls.md)) |
 | `BASE_URL` | The API's public address, e.g. `https://api.example.com`. Required in production: the localhost default would break Google sign-in and upload links | Your domain |
 | `CORS_ORIGINS` | The web app's exact origin, e.g. `https://app.example.com` | Your domain |
@@ -96,7 +95,7 @@ walks through each one.
 | `PORT` | `3000`, the port nginx forwards to (the template's `8888` is for development; anything else answers 502) | [The traps](#things-that-will-catch-you-out) |
 | `NODE_ENV` | `production` (compose sets it anyway) | |
 
-Then, if you use them: `GOOGLE_CLIENT_*`, `TURNSTILE_*`, `SUPPORT_EMAIL`,
+Then, if you use them: `GOOGLE_CLIENT_*`, `SUPPORT_EMAIL`,
 `AWS_*` with `STORAGE_TYPE=s3`, `BACKUP_S3_*`, `SENTRY_DSN`, `DEPLOY_*`.
 [setup/prepare-for-production.md](./setup/prepare-for-production.md) goes
 through the file field by field, in order.
@@ -106,7 +105,6 @@ Generate secrets rather than inventing them:
 ```bash
 openssl rand -hex 24    # a password: letters and digits only, so URL-safe
 openssl rand -hex 32    # JWT_SECRET
-openssl rand -hex 32    # AUTH_ENCRYPTION_KEY (run it again: a different value)
 ```
 
 ## Checking a file
@@ -171,10 +169,10 @@ Set up: the domain and its addresses, [setup/domain-dns-tls.md](./setup/domain-d
 | `NODE_ENV` | | `development` | `development`, `production` or `test`. Picks the env file and turns on [the production rules](#production-is-stricter). `docker-compose.prod.yaml` sets `production` itself | app, tools | |
 | `PORT` | | `3000` (template: `8888`) | Run on this machine (`pnpm dev`): the port the app listens on. In Docker: only the **host** side of the mapping; inside the container the app always listens on 3000. Production: the port nginx forwards to, `3000` unless you gave `bootstrap-nginx.sh` another `--api-port` | app, compose | [server.md](./server.md#the-reverse-proxy-and-https) |
 | `API_PREFIX` | | `api` | The path prefix. URI versioning appends `/v1`, so `api/v1` here gives `/api/v1/v1/*`. Change the healthcheck path in `docker-compose.prod.yaml` with it | app, k6 | |
-| `APP_NAME` | | `Test App` | Shown on `/api-docs`, in email subjects and texts, and as the account name in authenticator apps (two-step sign-in) | app | |
+| `APP_NAME` | | `Test App` | Shown on `/api-docs` and in email subjects and texts | app | |
 | `BASE_URL` | prod | `http://localhost:<PORT>` | The API's public address. Builds the links to locally stored uploads, is the issuer and audience of every access token, and the base of the Google redirect URI: `<BASE_URL>/api/v1/auth/google/callback`. Changing it signs every access token out (sessions refresh) and changes that URI | app | [setup/google-sign-in.md](./setup/google-sign-in.md) |
 | `FRONTEND_URL` | prod | `http://localhost:3001` | The web app's address. Email links ("reset your password") and the Google sign-in return (`/auth/callback`) point there | app | |
-| `SUPPORT_EMAIL` | | empty | An address people can write to. Named in the "two-step sign-in was turned on/off" and "account deleted" emails; empty, they say "contact support" without one | app | |
+| `SUPPORT_EMAIL` | | empty | An address people can write to. Named in the "account deleted" email; empty, it says "contact support" without one | app | |
 | `GRACEFUL_SHUTDOWN_TIMEOUT_MS` | | `5000` | How long cache clean-up may take during shutdown before it carries on ([graceful-shutdown.md](./graceful-shutdown.md)) | app | |
 | `DELETED_ACCOUNT_RETENTION_DAYS` | | `30` | Days a deleted account keeps its personal data before the sweep erases it. Also stated in the "account deleted" email ([account-deletion.md](./account-deletion.md)) | app | |
 | `UNVERIFIED_ACCOUNT_RETENTION_DAYS` | | `7` | Days an account may stay unconfirmed before it is deleted, freeing its address. At least 1 ([auth/accounts.md](./auth/accounts.md)) | app | |
@@ -188,15 +186,14 @@ refresh cookie reaches the API at all.
 
 | Variable | Required | Default | What it does | Read by | Set up |
 | --- | --- | --- | --- | --- | --- |
-| `CORS_ORIGINS` | | `http://localhost:3001` | Comma-separated origins allowed to call the API with credentials: your real frontend origins, nothing else, no trailing slash. Also the only pages allowed to refresh a session, sign out, and send the second step after Google (`403 AUTH_FORBIDDEN` from anywhere else) | app | [auth/sessions-and-tokens.md](./auth/sessions-and-tokens.md) |
+| `CORS_ORIGINS` | | `http://localhost:3001` | Comma-separated origins allowed to call the API with credentials: your real frontend origins, nothing else, no trailing slash. Also the only pages allowed to refresh a session and sign out (`403 AUTH_FORBIDDEN` from anywhere else) | app | [auth/sessions-and-tokens.md](./auth/sessions-and-tokens.md) |
 | `CORS_CREDENTIALS` | | `true` | Must stay `true`: without it the browser never sends the refresh cookie, and every session ends after 15 minutes. Empty means `true`; production refuses `false` | app | |
 
 ### Authentication
 
 How each one is used: [auth/operations.md](./auth/operations.md). Set up:
-[setup/google-sign-in.md](./setup/google-sign-in.md) and
-[setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md). The concepts
-behind them (tokens, cookies, encryption): [auth/concepts.md](./auth/concepts.md).
+[setup/google-sign-in.md](./setup/google-sign-in.md). The concepts behind them
+(tokens, cookies, hashing): [auth/concepts.md](./auth/concepts.md).
 
 | Variable | Required | Default | What it does | Read by | Set up |
 | --- | --- | --- | --- | --- | --- |
@@ -205,13 +202,10 @@ behind them (tokens, cookies, encryption): [auth/concepts.md](./auth/concepts.md
 | `AUTH_SESSION_TTL_DAYS` | | `30` | How long a sign-in lasts however often it is refreshed, 1 to 365 days | app | |
 | `AUTH_COOKIE_SAMESITE` | | `lax` | The refresh cookie's `SameSite`: `lax`, `strict` or `none`. `lax` works when the web app and the API share a registrable domain (`app.example.com` and `api.example.com`). On different domains use `none`, which needs HTTPS | app | [auth/sessions-and-tokens.md](./auth/sessions-and-tokens.md) |
 | `AUTH_COOKIE_SECURE` | | on in production, or with `none` | The cookies' `Secure` flag (sent over HTTPS only). Empty picks the default. `false` is refused with `AUTH_COOKIE_SAMESITE=none`: browsers drop such a cookie | app | |
-| `AUTH_ENCRYPTION_KEY` | always | template: 64 zeros | Seals two-step sign-in secrets (AES-256-GCM) and keys the recovery codes' fingerprints. At least 32 bytes of hex. The all-zero template key is for development; production refuses it. **Keep a copy**: losing it locks everyone with two-step sign-in out of the second step | app, `auth:rotate-key`, `auth:two-factor:off` | `openssl rand -hex 32`; [auth/two-step-sign-in.md](./auth/two-step-sign-in.md) |
-| `AUTH_ENCRYPTION_KEY_PREVIOUS` | | empty | Only while changing `AUTH_ENCRYPTION_KEY`: the old key, read but never used to seal. Must differ from the current key; production refuses the all-zero key. Empty when no change is under way | app, `auth:rotate-key`, `auth:two-factor:off` | [auth/operations.md](./auth/operations.md) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | | empty | "Continue with Google". Both set turns it on, both empty leaves it off, one without the other is refused at boot. Register `<BASE_URL>/api/v1/auth/google/callback` with Google | app | [setup/google-sign-in.md](./setup/google-sign-in.md) |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | | empty | Cloudflare Turnstile (a CAPTCHA) on sign-up, forgot-password, and sign-in after two failures. Both or neither. The site key is public: the web app reads it from `GET /api/v1/auth/options` | app | [setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md) |
 
 Fixed in the code rather than settings: emailed codes last 10 minutes and allow
-5 tries; the two-step challenge lasts 5 minutes; the session check's Redis copy
+5 tries; the session check's Redis copy
 lasts at most 5 minutes; a replaced refresh token is still accepted for 10
 seconds. [auth/in-the-code.md](./auth/in-the-code.md) says where to change them.
 
@@ -460,10 +454,6 @@ sign-in whose return address is not registered exactly
 (`redirect_uri_mismatch`). Register the new
 `<BASE_URL>/api/v1/auth/google/callback` before you change it.
 
-**Changing `AUTH_ENCRYPTION_KEY` without the old one locks people out.** Put
-the old key in `AUTH_ENCRYPTION_KEY_PREVIOUS`, deploy, then run
-`pnpm auth:rotate-key` ([auth/operations.md](./auth/operations.md)).
-
 **`*_PORT` only chooses the host side.** Inside Docker the services always
 reach each other on their standard ports. Changing `REDIS_PORT` to `6501`
 changes where *you* connect from your machine, not what the app does.
@@ -507,30 +497,23 @@ unsafe, or would break something only later.
    of the address.
 3. **`JWT_SECRET`** (at least 32 characters everywhere) must also not be a
    well-known default or start like a template placeholder.
-4. **`AUTH_ENCRYPTION_KEY`** must not be the template's all-zero key, and
-   neither may **`AUTH_ENCRYPTION_KEY_PREVIOUS`**: production never used it.
-5. **`FRONTEND_URL` and `BASE_URL` are required** (`http` or `https` URLs):
+4. **`FRONTEND_URL` and `BASE_URL` are required** (`http` or `https` URLs):
    the links in auth emails point to the web app, and Google sign-in returns
    to the API, whose upload links also start with `BASE_URL`.
-6. **`EMAIL_HOST` is required** and may not be empty: sign-up and password
+5. **`EMAIL_HOST` is required** and may not be empty: sign-up and password
    reset email a code.
-7. **`CORS_CREDENTIALS` must be `true`** (empty counts as `true`): without it
+6. **`CORS_CREDENTIALS` must be `true`** (empty counts as `true`): without it
    the refresh cookie never arrives and every session ends after 15 minutes.
-8. **`ALERT_WEBHOOK_URL` is required**, must be `https`, and must not contain
+7. **`ALERT_WEBHOOK_URL` is required**, must be `https`, and must not contain
    the template's `your_`/`your-` placeholder.
-9. **`AUTH_COOKIE_SECURE` defaults to on**, so the cookies travel over HTTPS
+8. **`AUTH_COOKIE_SECURE` defaults to on**, so the cookies travel over HTTPS
    only (not a refusal, a different default).
 
 These apply in every environment, and are worth knowing because they stop a
 development start too:
 
-- `JWT_SECRET` at least 32 characters; `AUTH_ENCRYPTION_KEY` at least 64 hex
-  characters (32 bytes), and `AUTH_ENCRYPTION_KEY_PREVIOUS` the same shape when
-  set.
-- `AUTH_ENCRYPTION_KEY_PREVIOUS` may not equal `AUTH_ENCRYPTION_KEY`: the new
-  key goes in `AUTH_ENCRYPTION_KEY`, the old one in `_PREVIOUS`.
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set together or not at all;
-  the same for `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
+- `JWT_SECRET` at least 32 characters.
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set together or not at all.
 - `AUTH_COOKIE_SECURE=false` is refused with `AUTH_COOKIE_SAMESITE=none`.
 - `STORAGE_TYPE=s3` requires `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY` and `AWS_S3_BUCKET`.

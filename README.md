@@ -30,7 +30,7 @@ Pick the path that matches what you want right now:
 | Get it running on your machine with an account you can sign in to | **[GETTING_STARTED.md](GETTING_STARTED.md)**: about ten minutes |
 | The full guided setup for development: optional services, the web app | [docs/setup/prepare-for-development.md](docs/setup/prepare-for-development.md) |
 | Put it on a server for real users | [docs/setup/prepare-for-production.md](docs/setup/prepare-for-production.md), then [docs/deployment-guide.md](docs/deployment-guide.md) |
-| Understand or change sign-in, sessions, Google, two-step sign-in | [docs/auth/README.md](docs/auth/README.md) |
+| Understand or change sign-in, sessions, Google sign-in | [docs/auth/README.md](docs/auth/README.md) |
 | Get the keys for an outside service (email, Google, Cloudflare, S3, Sentry, ...) | [docs/setup/README.md](docs/setup/README.md) |
 
 ---
@@ -106,8 +106,8 @@ migrations, health checks, backups, alerting, deploys that roll themselves
 back) is the part that takes months, and it is the part that is already here.
 
 - **Strong defaults**: security, logging, configuration validated at boot
-- **Sign-in you own**: email and password, Google, two-step sign-in, written
-  into the app rather than run as a separate identity server
+- **Sign-in you own**: email and password and Google, written into the app
+  rather than run as a separate identity server
 - **An architecture that survives growth**: hexagonal layers and CQRS, with
   two worked modules to copy (`users`, and the larger `auth`)
 - **Observability**: Prometheus metrics, Loki logs, Grafana dashboards,
@@ -128,7 +128,7 @@ decisions behind it and an honest list of what this starter is *not* for.
 |---|---|
 | **Hexagonal Architecture** | Ports and adapters: business rules never import Prisma, Redis or HTTP |
 | **CQRS** | One small handler per command and query, via `@nestjs/cqrs` |
-| **Authentication** | Email and password, emailed codes, refresh-cookie sessions, Google, two-step sign-in, Turnstile. [See below](#authentication) |
+| **Authentication** | Email and password, emailed codes, refresh-cookie sessions, Google. [See below](#authentication) |
 | **Two-Level Caching** | In-memory LRU + Redis distributed cache |
 | **Rate Limiting** | A global per-IP, per-route limit in Redis, plus per-address, per-IP and per-account limits on the sign-in routes |
 | **Database** | PostgreSQL with Prisma ORM + soft delete |
@@ -159,17 +159,11 @@ system. No identity server runs beside the app.
   on the very next request.
 - **Sign in with Google** (OpenID Connect with PKCE), linking to an existing
   account by verified email. Off until you set two keys.
-- **Two-step sign-in** with an authenticator app (TOTP) and ten one-time
-  recovery codes, with the secrets encrypted at rest.
-- **Cloudflare Turnstile** on sign-up, forgot-password, and sign-in after
-  repeated failures. Off until you set two keys.
 - **Rate limits** per address, per IP and per account on every sign-in route,
   with `Retry-After` and a reason the web app can show.
-- **Account deletion with proof** (password or emailed code, plus the two-step
-  code when it is on), and a notice email for every security change.
-- **Command-line tools** for operators: `pnpm user:promote` (roles),
-  `pnpm auth:rotate-key` (change the encryption key), `pnpm auth:two-factor:off`
-  (a user who lost their phone).
+- **Account deletion with proof** (password or emailed code), and a notice
+  email for every security change.
+- **Command-line tool** for operators: `pnpm user:promote` (roles).
 
 Start at **[docs/auth/README.md](docs/auth/README.md)**: it explains the
 concepts, every flow, the exact rules, and how to run it in production. The
@@ -237,16 +231,16 @@ pnpm test:integration
 ```
 src/
 ├── bootstrap/                       # Command-line scripts: env check, OpenAPI export,
-│                                    # user:promote, auth:rotate-key, auth:two-factor:off, ...
+│                                    # user:promote, ...
 ├── config/                          # App-wide configuration + the Joi schema (validation.ts)
 │   ├── auth.config.ts
 │   ├── database.config.ts
 │   └── ...                          # cache, cors, email, throttle, upload, ...
 ├── modules/                         # Feature modules (Hexagonal Architecture)
-│   ├── auth/                        # Sign-up, sign-in, sessions, Google, two-step, Turnstile
-│   │   ├── domain/                  # Errors, password policy, recovery codes
+│   ├── auth/                        # Sign-up, sign-in, sessions, Google, account deletion
+│   │   ├── domain/                  # Errors, password policy
 │   │   ├── application/             # Commands, ports, services, rate limits
-│   │   ├── infrastructure/          # Argon2, JWT, OIDC, TOTP, AES, Turnstile, Prisma, Redis, BullMQ
+│   │   ├── infrastructure/          # Argon2, JWT, OIDC, Prisma, Redis, BullMQ
 │   │   ├── presentation/            # Controller, DTOs, access-token guard, email consumer
 │   │   └── auth.module.ts           # Port → Adapter wiring
 │   └── users/                       # Profiles, usernames, avatars, account deletion
@@ -308,10 +302,10 @@ Comprehensive documentation is available in the `docs/` folder:
 |----------|-------------|
 | **[The tour](OVERVIEW.md)** | **Start here: the whole starter in one page** |
 | [Getting started](GETTING_STARTED.md) | A fresh clone to a running API and a first account |
-| [Setup guides](docs/setup/README.md) | Every outside service, step by step: email, Google, Turnstile, S3, Sentry, alerts, GitHub, DNS |
+| [Setup guides](docs/setup/README.md) | Every outside service, step by step: email, Google, S3, Sentry, alerts, GitHub, DNS |
 | [Prepare for development](docs/setup/prepare-for-development.md) | The full guided setup on your machine |
 | [Prepare for production](docs/setup/prepare-for-production.md) | The full guided setup for a first deploy |
-| [Authentication](docs/auth/README.md) | Sign-up, sign-in, sessions, Google, two-step sign-in, limits: how it works and why |
+| [Authentication](docs/auth/README.md) | Sign-up, sign-in, sessions, Google sign-in, limits: how it works and why |
 | [Hexagonal Architecture](docs/hexagonal-architecture.md) | Ports & Adapters architecture guide |
 | [CQRS Guide](docs/cqrs-guide.md) | Command/Query separation patterns |
 | [Environment](docs/environment.md) | Every setting: required, default, what it does |

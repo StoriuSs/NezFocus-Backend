@@ -104,7 +104,6 @@ breaking the build:
 | `jose` | signs and checks access tokens (JWTs) |
 | `openid-client` | Google sign-in |
 | `@node-rs/argon2` | hashes passwords |
-| `otpauth` | two-step sign-in codes |
 | `@nestjs-modules/mailer` | sends every email, sign-up and reset codes included |
 
 A rule in `renovate.json` adds a note to their major pull requests saying
@@ -113,7 +112,7 @@ the pre-push hook does not run ([git-hooks.md](./git-hooks.md)):
 
 ```bash
 pnpm test:services:up
-pnpm test:integration -- auth oauth two-step email
+pnpm test:integration -- auth oauth email
 ```
 
 CI runs them too, so a red integration job on that pull request is the

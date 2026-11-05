@@ -21,7 +21,6 @@ import { PrismaCredentialRepository } from '@/modules/auth/infrastructure/persis
 import { PrismaVerificationCodeRepository } from '@/modules/auth/infrastructure/persistence/prisma-verification-code.repository'
 import { RedisSessionCache } from '@/modules/auth/infrastructure/adapters/redis-session-cache.adapter'
 import { PrismaOAuthAccountRepository } from '@/modules/auth/infrastructure/persistence/prisma-oauth-account.repository'
-import { PrismaTwoFactorRepository } from '@/modules/auth/infrastructure/persistence/prisma-two-factor.repository'
 import { databaseTarget, redisTarget } from './targets'
 
 jest.mock('@/shared/infrastructure/monitoring/error-reporting', () => ({ reportError: jest.fn() }))
@@ -43,7 +42,6 @@ describe('Auth persistence and sessions (integration)', () => {
     let codes: PrismaVerificationCodeRepository
     let credentials: PrismaCredentialRepository
     let oauthAccounts: PrismaOAuthAccountRepository
-    let twoFactors: PrismaTwoFactorRepository
     let cache: RedisSessionCache
     let tokens: JoseTokenService
     let refresh: RefreshHandler
@@ -90,7 +88,6 @@ describe('Auth persistence and sessions (integration)', () => {
         codes = new PrismaVerificationCodeRepository(prismaService)
         credentials = new PrismaCredentialRepository(prismaService)
         oauthAccounts = new PrismaOAuthAccountRepository(prismaService)
-        twoFactors = new PrismaTwoFactorRepository(prismaService)
         const directory = new UserDirectory(new PrismaUserRepository(prismaService))
         cache = new RedisSessionCache(redis, sessions, directory, metrics)
         tokens = new JoseTokenService(
@@ -189,21 +186,15 @@ describe('Auth persistence and sessions (integration)', () => {
             await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } })
             await prisma.credential.create({ data: { userId: user.id, passwordHash: 'argon2-hash' } })
             await oauthAccounts.link(user.id, 'google', `sub-${user.id}`)
-            await twoFactors.saveUnconfirmed(user.id, 'sealed')
-            await new EndSessionsOfDeletedAccountHandler(
-                sessions,
-                credentials,
-                oauthAccounts,
-                twoFactors,
-                cache
-            ).handle(new AccountDeletedEvent(user.id))
+            await new EndSessionsOfDeletedAccountHandler(sessions, credentials, oauthAccounts, cache).handle(
+                new AccountDeletedEvent(user.id)
+            )
 
             await expect(cache.resolve(claims)).rejects.toThrow(AccountDisabledError)
             expect(await prisma.session.count({ where: { userId: user.id, revokedReason: 'account-deleted' } })).toBe(1)
-            // Its password, Google link and two-step secret go too: nothing can use them again.
+            // Its password and Google link go too: nothing can use them again.
             expect(await prisma.credential.count({ where: { userId: user.id } })).toBe(0)
             expect(await prisma.oAuthAccount.count({ where: { userId: user.id } })).toBe(0)
-            expect(await prisma.twoFactor.count({ where: { userId: user.id } })).toBe(0)
         })
 
         it('does not cache a session that was revoked while it was being read', async () => {
@@ -226,37 +217,6 @@ describe('Auth persistence and sessions (integration)', () => {
             findActive.mockRestore()
 
             await expect(cache.resolve(claims)).rejects.toThrow(SessionRevokedError)
-        })
-    })
-
-    describe('two-step sign-in', () => {
-        it('accepts a code from a step once and a recovery code once, even when raced', async () => {
-            const user = await newUser()
-            await twoFactors.saveUnconfirmed(user.id, 'secret')
-            const steps = await Promise.all(Array.from({ length: 8 }, () => twoFactors.useStep(user.id, 1000)))
-            expect(steps.filter(Boolean)).toHaveLength(1)
-            expect(await twoFactors.useStep(user.id, 999)).toBe(false) // an older step
-
-            await twoFactors.replaceRecoveryCodes(user.id, ['a', 'b', 'c'])
-            const recoveries = await Promise.all(
-                Array.from({ length: 6 }, () => twoFactors.useRecoveryCode(user.id, ['b'], new Date()))
-            )
-            expect(recoveries.filter(Boolean)).toHaveLength(1)
-            expect(await twoFactors.countUnusedRecoveryCodes(user.id)).toBe(2)
-        })
-
-        // The hourly clean-up: a filter too wide would turn two-step off for everyone.
-        it('removes the two-step data of deleted accounts, and only theirs', async () => {
-            const [live, gone] = [await newUser(), await newUser({ deletedAt: new Date() })]
-            for (const user of [live, gone]) {
-                await twoFactors.saveUnconfirmed(user.id, 'sealed')
-                await twoFactors.replaceRecoveryCodes(user.id, [`fp-${user.id}`])
-            }
-
-            expect(await twoFactors.deleteForDeletedAccounts()).toBeGreaterThanOrEqual(1)
-            expect(await twoFactors.find(gone.id)).toBeNull()
-            expect(await twoFactors.find(live.id)).not.toBeNull()
-            expect(await twoFactors.countUnusedRecoveryCodes(live.id)).toBe(1)
         })
     })
 })

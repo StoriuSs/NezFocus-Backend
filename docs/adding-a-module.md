@@ -31,7 +31,7 @@ equivalent there, and copying a working file beats typing one from a guide.
 
 When your module grows past a handful of operations, look at
 `src/modules/auth/` too. It shows what `users` is too small to: a port with
-several adapters behind it (`OAUTH_PROVIDERS`, `CAPTCHA`, `SECRET_BOX`),
+several adapters behind it (`OAUTH_PROVIDERS`, one per sign-in provider),
 shared steps pulled into `application/services/` instead of copied between
 handlers, and how one module uses another without importing its insides: auth
 imports only what `src/modules/users/index.ts` publishes — the
@@ -262,15 +262,15 @@ here. Two rules that are not optional:
 - **Publishing is not a transaction.** A crash between the write and the
   publish loses the event. If that matters, add a sweep that finds the work
   that never happened. The auth module's hourly clean-up does exactly that
-  for account deletion: it ends the sessions and removes the passwords, Google
-  links and two-step secrets of deleted accounts whose `AccountDeletedEvent`
-  was lost ([account-deletion.md](./account-deletion.md)). Or read the
+  for account deletion: it ends the sessions and removes the passwords and
+  Google links of deleted accounts whose `AccountDeletedEvent` was lost
+  ([account-deletion.md](./account-deletion.md)). Or read the
   [outbox section](./extensions.md#transactional-outbox).
 
 **Extra ports** go here, not in the domain, when the *use case* needs
 something the domain does not: sending mail, queuing a job, calling a payment
 provider. `users` keeps `storage`, `background-jobs` and `user-directory`
-here for that reason; `auth` keeps a dozen (`auth-mailer`, `captcha`, `totp`,
+here for that reason; `auth` keeps nine (`auth-mailer`, `rate-limit`,
 `oauth-provider`, ...).
 
 ## 4. The infrastructure layer
@@ -466,10 +466,10 @@ Both modules follow these, so a file is where you expect it:
 | Settings | Tunables the handlers need, read once from config: an interface and a token in `application/<module>-settings.ts` (`AuthSettings`, `AUTH_SETTINGS`), provided by the module file with `useFactory` |
 | Repository | `infrastructure/persistence/prisma-<name>.repository.ts` |
 | Mapper | `infrastructure/mappers/<name>.mapper.ts`: the Prisma row to the entity and back, used by the repository |
-| Other adapter | `infrastructure/adapters/<what>.adapter.ts`; the class named for its technology and role, no suffix: `BullMqAuthMailer`, `AesSecretBox`, `UploadStorage`. A helper several adapters share sits beside them without the suffix (auth's `cache-keys.ts`) |
-| Controller | `presentation/http/<topic>.controller.ts`, `<Topic>Controller`: the module's name for its main one (`orders.controller.ts`), a topic for the others (`two-factor.controller.ts`). What several share sits beside them without the suffix (auth's `auth-cookies.ts`) |
+| Other adapter | `infrastructure/adapters/<what>.adapter.ts`; the class named for its technology and role, no suffix: `BullMqAuthMailer`, `Argon2PasswordHasher`, `UploadStorage`. A helper several adapters share sits beside them without the suffix (auth's `cache-keys.ts`) |
+| Controller | `presentation/http/<topic>.controller.ts`, `<Topic>Controller`: the module's name for its main one (`orders.controller.ts`), a topic for the others (`password.controller.ts`). What several share sits beside them without the suffix (auth's `auth-cookies.ts`) |
 | Queue consumer | `presentation/consumers/<name>.consumer.ts`: an inbound adapter, like a controller, for jobs the module itself queues. A job on a schedule is not one of these (below) |
-| DI token | The port's role in capitals, no suffix: `ORDER_REPOSITORY`, `CAPTCHA`, `STORAGE`. Its `Symbol` description is the port's name, `Symbol('OrderRepositoryPort')` |
+| DI token | The port's role in capitals, no suffix: `ORDER_REPOSITORY`, `AUTH_MAILER`, `STORAGE`. Its `Symbol` description is the port's name, `Symbol('OrderRepositoryPort')` |
 | Emails | `infrastructure/email/<module>-emails.ts` (each email's subject and context, sent through shared's `EmailService`) and `templates/*.hbs` beside it ([core-infrastructure.md](./core-infrastructure.md#a-modules-emails)) |
 | A job on a schedule | a command of the module's, exported from its `index.ts`, and a line in `src/maintenance/maintenance-tasks.ts` saying how often ([core-infrastructure.md](./core-infrastructure.md#scheduled-work)) |
 | DTO | `presentation/http/dto/<name>.request.dto.ts`, `<name>.response.dto.ts`, `<name>.params.dto.ts` or `<name>.query.dto.ts`: one class per file, a response shared by several routes included. Base classes in `dto/shared/`, in a file ending `.dto.ts` (the Swagger plugin reads only those) |

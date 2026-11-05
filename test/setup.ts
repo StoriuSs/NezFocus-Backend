@@ -40,7 +40,6 @@ process.env.THROTTLE_LIMIT = '1000'
 
 // Authentication
 process.env.JWT_SECRET = 'test-only-jwt-secret-0123456789abcdef0123456789'
-process.env.AUTH_ENCRYPTION_KEY = 'ab'.repeat(32)
 
 // Email Configuration (disabled for testing)
 process.env.EMAIL_HOST = 'localhost'

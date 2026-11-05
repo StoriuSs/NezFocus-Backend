@@ -1,6 +1,5 @@
 import { Test, TestingModuleBuilder } from '@nestjs/testing'
 import { NestExpressApplication } from '@nestjs/platform-express'
-import { Secret, TOTP } from 'otpauth'
 import { register } from 'prom-client'
 import request from 'supertest'
 import { configureApp } from '@/bootstrap/configure-app'
@@ -12,7 +11,7 @@ export const FRONTEND = 'http://localhost:3001'
 
 /**
  * The whole app, as main.ts builds it, against the integration services.
- * `override` replaces providers (a fake Google, Turnstile, other keys).
+ * `override` replaces providers (a fake Google, other keys).
  */
 export async function bootApp(
     override: (builder: TestingModuleBuilder) => TestingModuleBuilder = (builder) => builder
@@ -68,12 +67,6 @@ export async function latestEmail(to: string, subject: string): Promise<{ Text: 
 
 /** The six-digit code in an email. */
 export const codeIn = (email: { Text: string }) => /\b(\d{6})\b/.exec(email.Text)![1]
-
-/** What an authenticator app shows for this secret, `offsetMs` from now. */
-export const totpCode = (secret: string, offsetMs = 0) =>
-    new TOTP({ secret: Secret.fromBase32(secret), digits: 6, period: 30 }).generate({
-        timestamp: Date.now() + offsetMs
-    })
 
 /** The Set-Cookie line a response sent for this cookie. */
 export const cookieOf = (res: request.Response, name: string) =>

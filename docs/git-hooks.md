@@ -124,14 +124,13 @@ when you want it, and CI runs it on every branch.
 
 That matters most for sign-in. The auth module's real checks (sign-up with an
 emailed code, refresh and reuse detection, Google sign-in against a fake
-provider, two-step sign-in, the encryption key) live in the integration
-suites `auth`, `auth-http`, `oauth-http`, `two-step-http`,
-`encryption-key` and `account-lifecycle`. A change that breaks them passes the
+provider) live in the integration suites `auth`, `auth-http`, `oauth-http`
+and `account-lifecycle`. A change that breaks them passes the
 pre-push hook. When you touch `src/modules/auth/`, run them before you push:
 
 ```bash
 pnpm test:services:up
-pnpm test:integration -- auth oauth two-step encryption account-lifecycle
+pnpm test:integration -- auth oauth account-lifecycle
 ```
 
 The list of every suite is in [testing.md](./testing.md#integration-tests).

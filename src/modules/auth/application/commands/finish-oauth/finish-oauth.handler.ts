@@ -25,7 +25,8 @@ import {
     SessionCachePort
 } from '../../ports'
 import { OAUTH_SETTINGS, OAuthSettings, oauthRedirectUri } from '../../oauth-settings'
-import { SignInGate, SignInOutcome } from '../../services/sign-in-gate'
+import { IssuedSession } from '../../services/session-issuer'
+import { SignInGate } from '../../services/sign-in-gate'
 
 /** The account a provider sign-in lands in, and whether linking removed a password. */
 interface Linked {
@@ -33,11 +34,9 @@ interface Linked {
     passwordRemoved: boolean
 }
 
-/**
- * A session, or — with two-step sign-in on — a challenge for the code from the
- * authenticator app; and the web app page to return to afterwards.
- */
-export type OAuthFinished = SignInOutcome & {
+/** A session, and the web app page to return to afterwards. */
+export interface OAuthFinished {
+    session: IssuedSession
     /** A path, checked when the attempt began. */
     redirect: string
     /**
@@ -147,9 +146,9 @@ export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
         }
 
         const { user, passwordRemoved } = await this.accountFor(provider, identity)
-        const outcome = await this.gate.pass(user.id, command.client, new Date())
+        const session = await this.gate.pass(user.id, command.client, new Date())
         return {
-            ...outcome,
+            session,
             redirect,
             ...(passwordRemoved ? { notice: 'password_removed' as const } : {})
         }

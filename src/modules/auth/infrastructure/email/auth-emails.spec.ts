@@ -37,15 +37,11 @@ describe('AuthEmails', () => {
         await emails.sendAccountExists(to)
         await emails.sendPasswordAdded(to)
         await emails.sendSignInMethodAdded(to, 'Google')
-        await emails.sendTwoFactorChanged(to, true)
-        await emails.sendTwoFactorChanged(to, false)
         await emails.sendAccountDeleted(to)
-        await emails.sendRecoveryCodesReplaced(to)
-        await emails.sendRecoveryCodeUsed(to, 2)
     })
 
-    it('has a template for all twelve emails', () => {
-        expect(new Set(sent.map(({ template }) => template)).size).toBe(12)
+    it('has a template for all nine emails', () => {
+        expect(new Set(sent.map(({ template }) => template)).size).toBe(9)
     })
 
     it('renders every one of them, in strict mode, with what it is given', () => {

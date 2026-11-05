@@ -172,8 +172,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         // Error tracking gets server faults only. (DomainExceptionFilter maps
         // every domain error to a 4xx, so this is the one place a request
         // fault is reported.) Not 503: the app answers it on purpose when a
-        // dependency is down or it is at capacity (health check, Turnstile,
-        // image queue), and the alerts already cover those causes.
+        // dependency is down or it is at capacity (health check, image
+        // queue), and the alerts already cover those causes.
         if (status >= 500 && status !== HttpStatus.SERVICE_UNAVAILABLE) {
             // Set by the auth guard; absent on public routes and when the
             // failure happened before authentication. The user's id: the

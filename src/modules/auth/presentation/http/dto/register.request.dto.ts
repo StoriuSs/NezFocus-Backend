@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import { IsString, MaxLength, MinLength } from 'class-validator'
 import { EmailField, PASSWORD_INPUT_MAX } from './shared/fields.dto'
 
 export class RegisterRequestDto extends EmailField {
@@ -7,10 +7,4 @@ export class RegisterRequestDto extends EmailField {
     @MinLength(1)
     @MaxLength(PASSWORD_INPUT_MAX)
     password: string
-
-    /** Required when Turnstile is on. */
-    @IsOptional()
-    @IsString()
-    @MaxLength(2048)
-    turnstileToken?: string
 }

@@ -8,7 +8,6 @@ import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
 import {
     AuthOptions,
-    CompleteTwoFactorSignInCommand,
     GetAuthOptionsQuery,
     IssuedSession,
     LoginCommand,
@@ -25,7 +24,6 @@ import {
     LoginRequestDto,
     RegisterRequestDto,
     TokenResponseDto,
-    TwoFactorSignInRequestDto,
     VerifyEmailRequestDto
 } from './dto'
 import { AuthCookies } from './auth-cookies'
@@ -33,8 +31,8 @@ import { accepted, client, clientIp, ok } from './route-helpers'
 
 /**
  * Signing up, signing in and sessions (docs/auth/api-reference.md). The other
- * /auth routes are in the controllers beside this one: passwords, two-step
- * sign-in, deleting the account, and other providers.
+ * /auth routes are in the controllers beside this one: passwords, deleting
+ * the account, and other providers.
  *
  * The access token goes back in the body and the refresh token in an httpOnly
  * cookie scoped to /auth (auth-cookies.ts).
@@ -54,7 +52,7 @@ export class AuthController {
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiEnvelopeResponse(null, HttpStatus.ACCEPTED)
     async register(@Body() dto: RegisterRequestDto, @Req() req: Request): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new RegisterCommand(dto.email, dto.password, clientIp(req), dto.turnstileToken))
+        await this.commandBus.execute(new RegisterCommand(dto.email, dto.password, clientIp(req)))
         return accepted(MESSAGES.AUTH.REGISTER_ACCEPTED)
     }
 
@@ -98,34 +96,8 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<TokenResponseDto>> {
         const session: IssuedSession = await this.commandBus.execute(
-            new LoginCommand(dto.email, dto.password, client(req), dto.turnstileToken)
+            new LoginCommand(dto.email, dto.password, client(req))
         )
-        return this.cookies.signedIn(res, session, MESSAGES.AUTH.LOGIN_SUCCESS)
-    }
-
-    /**
-     * The second step of signing in: a code from the authenticator app (or a
-     * recovery code) for the challenge the first step answered with. Sets the
-     * refresh cookie.
-     */
-    @Public()
-    @Post('login/2fa')
-    @HttpCode(HttpStatus.OK)
-    @ApiEnvelopeResponse(TokenResponseDto)
-    async completeTwoFactorSignIn(
-        @Body() dto: TwoFactorSignInRequestDto,
-        @Req() req: Request,
-        @Res({ passthrough: true }) res: Response
-    ): Promise<ServiceResponse<TokenResponseDto>> {
-        const fromCookie = this.cookies.readTwoFactorChallenge(req)
-        // After Google, the challenge is a cookie: as with refresh and logout,
-        // only the web app's own pages may send it.
-        if (dto.challenge === undefined) this.cookies.assertAllowedOrigin(req)
-        const challenge = dto.challenge ?? fromCookie ?? ''
-        const session: IssuedSession = await this.commandBus.execute(
-            new CompleteTwoFactorSignInCommand(challenge, dto.code, client(req))
-        )
-        if (fromCookie !== undefined) this.cookies.clearTwoFactorChallenge(res)
         return this.cookies.signedIn(res, session, MESSAGES.AUTH.LOGIN_SUCCESS)
     }
 
@@ -181,7 +153,7 @@ export class AuthController {
 
     /**
      * What the sign-in pages need to know: the other providers configured
-     * (`google`), and Turnstile's site key when it is on.
+     * (`google`).
      */
     @Public()
     @Get('options')

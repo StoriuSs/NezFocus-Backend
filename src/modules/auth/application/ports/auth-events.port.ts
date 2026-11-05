@@ -13,11 +13,7 @@ export const AUTH_EVENT_NAMES = [
     'oauth_login_succeeded',
     'oauth_login_failed',
     'oauth_account_linked',
-    'two_factor_enabled',
-    'two_factor_disabled',
-    'recovery_codes_replaced',
-    'account_deleted',
-    'two_factor_failed'
+    'account_deleted'
 ] as const
 
 export type AuthEvent = (typeof AUTH_EVENT_NAMES)[number]

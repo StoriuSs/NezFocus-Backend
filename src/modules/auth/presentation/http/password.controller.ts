@@ -45,7 +45,7 @@ export class PasswordController {
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiEnvelopeResponse(null, HttpStatus.ACCEPTED)
     async forgotPassword(@Body() dto: ForgotPasswordRequestDto, @Req() req: Request): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new ForgotPasswordCommand(dto.email, clientIp(req), dto.turnstileToken))
+        await this.commandBus.execute(new ForgotPasswordCommand(dto.email, clientIp(req)))
         return accepted(MESSAGES.AUTH.CODE_SENT_IF_ACCOUNT)
     }
 

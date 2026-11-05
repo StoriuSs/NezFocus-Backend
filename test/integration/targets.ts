@@ -60,7 +60,7 @@ export const smtpTarget = {
  * A made-up client address for one suite (sent as X-Forwarded-For). The
  * sign-in limits count per IP for 15 minutes in Redis, which outlives a run:
  * from a handful of addresses, a quick rerun often drew one an earlier run
- * had used up, and sign-in asked for Turnstile. A private 10.x.x.x address
+ * had used up, and sign-in was refused. A private 10.x.x.x address
  * makes a repeat a one-in-millions event.
  */
 export const testClientIp = () => `10.${randomInt(0, 256)}.${randomInt(0, 256)}.${randomInt(1, 255)}`

@@ -107,10 +107,9 @@ In your `.env.development` — and later in `.env.production` on the server:
 
 | Setting | Change it to |
 | --- | --- |
-| `APP_NAME` | Your product's name, as people should see it. It appears in the API docs at `/api-docs`, in every email, and as the label in authenticator apps when someone turns on two-step sign-in. Pick it before real users enable two-step sign-in: entries already added to an authenticator app keep the old label |
+| `APP_NAME` | Your product's name, as people should see it. It appears in the API docs at `/api-docs` and in every email |
 | `BASE_URL` | The API's public address (`http://localhost:8888` in development, `https://api.example.com` in production). It is also the **issuer and audience of every access token**, so changing it signs everyone out at their next request, and Google's redirect URI is built from it |
 | `JWT_SECRET` | `openssl rand -hex 32`. Signs access tokens and keys the stored hashes of emailed codes. Never the placeholder from `.env.example` |
-| `AUTH_ENCRYPTION_KEY` | `openssl rand -hex 32`. Encrypts two-step sign-in secrets. `.env.example`'s all-zero key is for development only, and production refuses it. Keep a copy somewhere safe: losing it locks two-step users out of the second step ([two-step-sign-in.md](./auth/two-step-sign-in.md)) |
 | `DB_NAME` | `myapp` |
 | `DB_USERNAME` | `myapp` |
 | `DB_PASSWORD` | `openssl rand -hex 24` |
@@ -121,7 +120,6 @@ In your `.env.development` — and later in `.env.production` on the server:
 | `FRONTEND_URL` | Your frontend's address. Links in auth emails point there, and Google sign-in returns the browser there |
 | `SUPPORT_EMAIL` | Optional. An address people can write to, named in the emails where only a person can help |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional: both set turns on "Continue with Google". Register the redirect URI `<BASE_URL>/api/v1/auth/google/callback` (in development `http://localhost:8888/api/v1/auth/google/callback`). Steps: [setup/google-sign-in.md](./setup/google-sign-in.md) |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Optional: both set turns on Cloudflare's CAPTCHA on sign-up, "forgot password", and sign-in after failed attempts. Steps: [setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md) |
 
 **`DB_NAME` and `DB_USERNAME` are read only once**, when Postgres first
 creates its data directory. Changing them later needs `pnpm docker:reset` or
@@ -130,7 +128,7 @@ rename first.
 
 Everything else in `.env.example` has a sensible default. The full reference
 is [environment.md](./environment.md). For each outside service (email,
-Google, Turnstile, storage, Sentry...), [setup/README.md](./setup/README.md)
+Google, storage, Sentry...), [setup/README.md](./setup/README.md)
 lists what it is for, whether you need it, and the page with the steps to get
 its keys.
 
@@ -185,10 +183,10 @@ The whole first-time setup, step by step, is in
 
 A second, shorter pass, and the checklist for it is in
 [deployment-guide.md](./deployment-guide.md#the-checklist): new secrets for
-production (`JWT_SECRET`, `AUTH_ENCRYPTION_KEY`, the database and Redis
-passwords), a real `CORS_ORIGINS`, `BASE_URL` on your API's domain, the
-production Google redirect URI, an `ALERT_WEBHOOK_URL`, and the decision
-about where monitoring lives. The ordered walkthrough is
+production (`JWT_SECRET`, the database and Redis passwords), a real
+`CORS_ORIGINS`, `BASE_URL` on your API's domain, the production Google
+redirect URI, an `ALERT_WEBHOOK_URL`, and the decision about where monitoring
+lives. The ordered walkthrough is
 [setup/prepare-for-production.md](./setup/prepare-for-production.md).
 
 ## Related

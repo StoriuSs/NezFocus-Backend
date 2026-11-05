@@ -8,12 +8,9 @@ import {
     PasswordAddedJob,
     AUTH_JOBS,
     PasswordChangedJob,
-    RecoveryCodeUsedJob,
-    RecoveryCodesReplacedJob,
     AccountDeletedJob,
     SendCodeJob,
-    SignInMethodAddedJob,
-    TwoFactorChangedJob
+    SignInMethodAddedJob
 } from '@/modules/auth/infrastructure/email/auth-email-jobs'
 
 /**
@@ -74,23 +71,8 @@ export class AuthJobsConsumer extends WorkerHost implements OnApplicationBootstr
                 await this.emails.sendSignInMethodAdded(to, providerName)
                 return
             }
-            case AUTH_JOBS.TWO_FACTOR_CHANGED: {
-                const { to, enabled } = job.data as TwoFactorChangedJob
-                await this.emails.sendTwoFactorChanged(to, enabled)
-                return
-            }
-            case AUTH_JOBS.RECOVERY_CODE_USED: {
-                const { to, remaining } = job.data as RecoveryCodeUsedJob
-                await this.emails.sendRecoveryCodeUsed(to, remaining)
-                return
-            }
             case AUTH_JOBS.ACCOUNT_DELETED: {
                 await this.emails.sendAccountDeleted((job.data as AccountDeletedJob).to)
-                return
-            }
-            case AUTH_JOBS.RECOVERY_CODES_REPLACED: {
-                const { to } = job.data as RecoveryCodesReplacedJob
-                await this.emails.sendRecoveryCodesReplaced(to)
                 return
             }
             default:

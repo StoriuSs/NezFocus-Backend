@@ -54,8 +54,6 @@
     "sentry:check": "ts-node --transpile-only src/bootstrap/sentry-check.ts",
     "passwords:generate": "ts-node -r tsconfig-paths/register --transpile-only src/bootstrap/generate-common-passwords.ts",
     "user:promote": "ts-node -r tsconfig-paths/register --transpile-only src/bootstrap/user-roles.ts",
-    "auth:rotate-key": "ts-node -r tsconfig-paths/register --transpile-only src/bootstrap/rotate-encryption-key.ts",
-    "auth:two-factor:off": "ts-node -r tsconfig-paths/register --transpile-only src/bootstrap/two-factor-off.ts",
     "monitoring:check": "docker run --rm -e COMPOSE_PROJECT=check -v ./monitoring/alloy:/etc/alloy:ro grafana/alloy:v1.19.2 validate /etc/alloy/local.alloy && docker run --rm -e COMPOSE_PROJECT=check -v ./monitoring/alloy:/etc/alloy:ro grafana/alloy:v1.19.2 validate /etc/alloy/grafana-cloud.alloy && docker run --rm -v ./monitoring/loki:/etc/loki:ro grafana/loki:3.7.7 -config.file=/etc/loki/loki-config.yml -verify-config && pnpm alerts:test",
     "alerts:test": "docker run --rm -v ./monitoring/prometheus:/etc/prometheus:ro --entrypoint sh prom/prometheus:v3.14.0 -c \"promtool check config /etc/prometheus/prometheus.yml && cd /etc/prometheus/tests && promtool test rules *.test.yml\" && docker run --rm -v ./monitoring/alertmanager:/etc/alertmanager:ro --entrypoint sh prom/alertmanager:v0.34.1 -c \"amtool check-config /etc/alertmanager/alertmanager.yml /etc/alertmanager/alertmanager.dev.yml && sh /etc/alertmanager/tests/routes.sh\""
   },
@@ -104,7 +102,6 @@
     "nestjs-pino": "^5.1.0",
     "nodemailer": "^10.1.4",
     "openid-client": "^6.8.8",
-    "otpauth": "^9.5.2",
     "pg": "^8.18.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",

@@ -94,6 +94,6 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
         if (hadPassword) await this.mailer.sendPasswordChanged(email)
         else await this.mailer.sendPasswordAdded(email)
         this.events.record('password_reset')
-        return this.gate.passOrChallenge(user.id, command.client, now)
+        return this.gate.pass(user.id, command.client, now)
     }
 }

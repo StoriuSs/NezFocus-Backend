@@ -34,17 +34,6 @@ export default registerAs('auth', () => {
         // Sign-in with other providers. A provider's return address is
         // <this>/<provider>/callback, registered with it exactly so.
         oauthCallbackBaseUrl: `${baseUrl}/${apiPrefix}/v1/auth`,
-        // Seals the two-step sign-in secrets and keys the recovery codes'
-        // fingerprints. Change it only with the old key in encryptionKeyPrevious:
-        // without it, what the old key sealed cannot be read, and everyone with
-        // two-step sign-in on is refused at the second step.
-        encryptionKey: process.env.AUTH_ENCRYPTION_KEY?.trim() ?? '',
-        encryptionKeyPrevious: process.env.AUTH_ENCRYPTION_KEY_PREVIOUS?.trim() ?? '',
-        // Cloudflare Turnstile on the public forms. Both set: on. Both empty: off.
-        turnstile: {
-            siteKey: process.env.TURNSTILE_SITE_KEY?.trim() ?? '',
-            secretKey: process.env.TURNSTILE_SECRET_KEY?.trim() ?? ''
-        },
         // Both set: "Continue with Google" is on. Both empty: off.
         google: {
             clientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? '',

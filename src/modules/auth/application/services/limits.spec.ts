@@ -25,7 +25,7 @@ class Limiter implements RateLimitPort {
     }
 }
 
-const { twoFactorFailuresPerUser: twoStep } = AUTH_RATE_LIMITS
+const { currentPasswordFailuresPerUser: perUser } = AUTH_RATE_LIMITS
 
 /** A check that takes a moment, like a password hash: long enough for a burst to overlap. */
 const slowly = () => new Promise((resolve) => setTimeout(resolve, 5))
@@ -34,13 +34,13 @@ describe('withGuess', () => {
     it('keeps a wrong guess counted, and gives a right one its place back', async () => {
         const limiter = new Limiter()
         await expect(
-            withGuess(limiter, [[twoStep, 'ada']], async (guess) => {
+            withGuess(limiter, [[perUser, 'ada']], async (guess) => {
                 guess.wrong()
                 throw new Error('wrong code')
             })
         ).rejects.toThrow('wrong code')
-        await expect(withGuess(limiter, [[twoStep, 'ada']], async () => 'signed in')).resolves.toBe('signed in')
-        expect(limiter.counts.get(`${twoStep.name}:ada`)).toBe(1)
+        await expect(withGuess(limiter, [[perUser, 'ada']], async () => 'signed in')).resolves.toBe('signed in')
+        expect(limiter.counts.get(`${perUser.name}:ada`)).toBe(1)
     })
 
     it('lets only as many guesses of a burst through as the limit allows', async () => {
@@ -48,7 +48,7 @@ describe('withGuess', () => {
         let checked = 0
         const results = await Promise.allSettled(
             Array.from({ length: 50 }, () =>
-                withGuess(limiter, [[twoStep, 'ada']], async (guess) => {
+                withGuess(limiter, [[perUser, 'ada']], async (guess) => {
                     checked++
                     await slowly()
                     guess.wrong()
@@ -56,10 +56,10 @@ describe('withGuess', () => {
                 })
             )
         )
-        expect(checked).toBe(twoStep.limit)
+        expect(checked).toBe(perUser.limit)
         expect(results.filter((r) => r.status === 'rejected' && r.reason instanceof RateLimitedError)).toHaveLength(
-            50 - twoStep.limit
+            50 - perUser.limit
         )
-        expect(limiter.counts.get(`${twoStep.name}:ada`)).toBe(twoStep.limit)
+        expect(limiter.counts.get(`${perUser.name}:ada`)).toBe(perUser.limit)
     })
 })

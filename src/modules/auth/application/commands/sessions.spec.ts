@@ -1,13 +1,12 @@
 import {
-    CaptchaRequiredError,
     EmailNotVerifiedError,
     InvalidCredentialsError,
     RateLimitedError,
     RefreshFailedError
 } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
-import { LoginCommand, LogoutEverywhereCommand, RefreshCommand } from '..'
-import { CLIENT, PASSWORD, setup, signIn } from './auth-test-world.shared-spec'
+import { LogoutEverywhereCommand, RefreshCommand } from '..'
+import { setup, signIn } from './auth-test-world.shared-spec'
 
 describe('Signing in', () => {
     it('gives a wrong password and an unknown address the same error, and hashes for both', async () => {
@@ -51,21 +50,6 @@ describe('Signing in', () => {
         w.account()
         for (let i = 0; i < 10; i++) await expect(signIn(w, `n${i}@example.test`)).rejects.toThrow()
         await expect(signIn(w)).rejects.toThrow(RateLimitedError)
-    })
-
-    it('asks for Turnstile from the third failed sign-in, when it is on', async () => {
-        const w = setup()
-        w.captcha.siteKey = 'site-key'
-        w.account()
-        const fail = () => signIn(w, 'ada@example.test', 'Wrong-Password-1').catch((e: InvalidCredentialsError) => e)
-
-        expect(((await fail()) as InvalidCredentialsError).details).toBeUndefined()
-        expect(((await fail()) as InvalidCredentialsError).details).toEqual({ captchaRequired: true })
-        await expect(signIn(w)).rejects.toThrow(CaptchaRequiredError)
-        // With a token, the right password works again.
-        await expect(
-            w.login.execute(new LoginCommand('ada@example.test', PASSWORD, CLIENT, 'good'))
-        ).resolves.toMatchObject({ accessToken: expect.any(String) })
     })
 })
 

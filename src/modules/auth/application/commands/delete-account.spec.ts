@@ -3,7 +3,7 @@ import { AUTH_RATE_LIMITS } from '../rate-limits'
 import { DeleteOwnAccountCommand, SendAccountDeletionCodeCommand } from '..'
 import { IP, otherCode, PASSWORD, setup, World } from './auth-test-world.shared-spec'
 
-type Proof = { password?: string; code?: string; twoFactorCode?: string }
+type Proof = { password?: string; code?: string }
 const deleteWith = (w: World, userId: string, proof: Proof) =>
     w.deleteAccount.execute(new DeleteOwnAccountCommand(userId, proof, IP))
 const needs = (error: unknown) => (error as ConfirmationRequiredError).details.needs

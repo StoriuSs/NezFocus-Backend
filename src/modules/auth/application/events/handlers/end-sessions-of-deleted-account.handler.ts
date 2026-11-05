@@ -8,14 +8,12 @@ import {
     OAUTH_ACCOUNT_REPOSITORY,
     OAuthAccountRepositoryPort,
     SESSION_REPOSITORY,
-    SessionRepositoryPort,
-    TWO_FACTOR_REPOSITORY,
-    TwoFactorRepositoryPort
+    SessionRepositoryPort
 } from '@/modules/auth/domain'
 
 /**
  * A deleted account's sessions end now, not when their access tokens expire,
- * and its password, its two-step secret and recovery codes, and its links
+ * and its password and its links
  * to other providers go: the account can never
  * sign in again (a deleted row is invisible to sign-in), so they would be
  * personal data kept for nothing. Without its Google link, the same Google
@@ -33,7 +31,6 @@ export class EndSessionsOfDeletedAccountHandler implements IEventHandler<Account
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(OAUTH_ACCOUNT_REPOSITORY) private readonly oauthAccounts: OAuthAccountRepositoryPort,
-        @Inject(TWO_FACTOR_REPOSITORY) private readonly twoFactors: TwoFactorRepositoryPort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort
     ) {}
 
@@ -44,7 +41,6 @@ export class EndSessionsOfDeletedAccountHandler implements IEventHandler<Account
             await this.cache.invalidateSessions(ended)
             await this.credentials.delete(event.userId)
             await this.oauthAccounts.deleteForUser(event.userId)
-            await this.twoFactors.remove(event.userId)
         } catch (error) {
             this.logger.error(
                 `Could not end the sessions of deleted account ${event.userId}; the guard still refuses it: ${(error as Error).message}`

@@ -34,7 +34,7 @@ stateDiagram-v2
 | State | Can sign in? | Stored | Ends when |
 |---|---|---|---|
 | **Unconfirmed** | No: the right password gets 403 `AUTH_EMAIL_NOT_VERIFIED` | `User` row with `emailVerified = false`, the password hash, a pending code | the address is confirmed, or after `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (7) it is removed completely |
-| **Confirmed** | Yes | `User` row, plus a password and/or a Google link, sessions, maybe two-step sign-in | the owner deletes it |
+| **Confirmed** | Yes | `User` row, plus a password and/or a Google link, sessions | the owner deletes it |
 | **Deleted** | No: 403 `AUTH_ACCOUNT_DISABLED` | `User` row with `deletedAt` set; sign-in data already removed | after `DELETED_ACCOUNT_RETENTION_DAYS` (30) its personal data is erased |
 | **Erased** | No | the `User` row without personal data: id, roles, flags and dates | never: the row stays so that other data pointing to it keeps working |
 
@@ -46,9 +46,8 @@ sign up afresh.
 
 There are two ways in:
 
-- **Sign up**, `POST /api/v1/auth/register` with `{ email, password }` (and a
-  `turnstile_token` when [Turnstile](turnstile.md) is on). The password must
-  pass the [policy](passwords-and-codes.md). The account is created
+- **Sign up**, `POST /api/v1/auth/register` with `{ email, password }`. The
+  password must pass the [policy](passwords-and-codes.md). The account is created
   **unconfirmed**, and a 6-digit code is emailed. The answer is always 202 "Check
   your email to continue", whatever the address:
   - a new address: a new account and a code;
@@ -139,7 +138,6 @@ has: `{ "password": true, "providers": ["google"] }`.
 | Add a password to a Google account | Signed in: `POST /auth/password/code` emails a code, then `POST /auth/password` with `{ code, new_password }`. Signed out: "Forgot password" (the email offers to *choose* a password). The owner is emailed "A password was added". | kept |
 | Change the password | `POST /auth/change-password` with `{ current_password, new_password }` | every **other** session ends |
 | Reset a forgotten password | `POST /auth/forgot-password`, then `POST /auth/reset-password` with `{ email, code, password }` | **all** sessions end; this one starts fresh |
-| Add two-step sign-in | [two-step-sign-in.md](two-step-sign-in.md); it applies to every way of signing in, Google included | kept |
 | Remove Google, or change the address | Not supported: there are no routes for these | — |
 
 Setting a first password needs an emailed code, not just a session: someone at
@@ -173,23 +171,22 @@ unlocked computer cannot do it.
 |---|---|
 | a password | `password` |
 | no password (made with Google) | `code`, emailed by `POST /api/v1/auth/account/delete-code` first |
-| two-step sign-in on | also `two_factor_code`: an app code or a recovery code |
 
 If something is missing the answer is 400 `AUTH_CONFIRMATION_REQUIRED` with
-`data.needs`, for example `["password", "two_factor_code"]`, so the page knows
+`data.needs`, for example `["password"]`, so the page knows
 which fields to show. Wrong answers count against the same limits as at sign-in.
 
 On success (200):
 
 1. The account is marked deleted at once and the refresh cookie is cleared.
-2. Within moments, every session ends and the password, the Google link, the
-   two-step secret and the recovery codes are deleted.
+2. Within moments, every session ends and the password and the Google link
+   are deleted.
 3. The owner is emailed "Your {app} account was deleted", saying when their
    details will be erased and, if `SUPPORT_EMAIL` is set, who to contact.
 4. After `DELETED_ACCOUNT_RETENTION_DAYS` (30) the email, username, display
    name, bio and avatar are erased from the row.
 
-There is no "undelete" route. The full mechanics (the order of checks, every
+There is no "undelete" route. The full mechanics (the proof, every
 error, what is removed when, the safety net if a step fails, and the web app's
 dialog) are on [../account-deletion.md](../account-deletion.md).
 
@@ -256,7 +253,7 @@ the API's check is the one that counts.
 |---|---|---|
 | `UNVERIFIED_ACCOUNT_RETENTION_DAYS` | 7 (at least 1) | Unconfirmed accounts older than this are removed |
 | `DELETED_ACCOUNT_RETENTION_DAYS` | 30 (0 or more) | Deleted accounts' personal data is erased after this; also stated in the account-deleted email |
-| `SUPPORT_EMAIL` | empty | Named in the account-deleted and two-step emails |
+| `SUPPORT_EMAIL` | empty | Named in the account-deleted email |
 | `APP_NAME` | `Test App` in code, `YourAppName` in `.env.example` | In every email subject |
 
 All environment variables: [../environment.md](../environment.md).

@@ -168,8 +168,8 @@ Then:
   a restart and still describe the database you replaced, for up to five
   minutes. Wait that long, or delete them:
   `docker compose --env-file .env.production -f docker-compose.prod.yaml exec redis sh -c "redis-cli --scan --pattern 'auth:*' | xargs -r redis-cli del"`.
-  That also drops Google sign-ins and two-step challenges in progress; those
-  people simply start again.
+  That also drops Google sign-ins in progress; those people simply start
+  again.
 - **Decide about sessions.** See [What a restore brings back](#what-a-restore-brings-back).
 - **If the dump is older than the running release's migrations**, apply them:
   `docker compose --env-file .env.production -f docker-compose.prod.yaml run --rm app ./node_modules/.bin/prisma migrate deploy`
@@ -191,8 +191,6 @@ after the dump is undone:
   out, or ended by a password change, after the dump is live again, and its
   refresh cookie works.
 - **Password changes and resets are undone**: the old password works again.
-- **Two-step sign-in changes are undone**: turned on, turned off, new recovery
-  codes, used recovery codes.
 - **Deleted accounts are back**, and accounts created since are gone.
 
 If any of that matters (a restore after a breach, or a dump more than a few
@@ -279,18 +277,10 @@ restore.sh restore myapp --yes --role myapp_user
 - **Uploads stored in S3** (`STORAGE_TYPE=s3`): the bucket is already off the
   server. Turn on versioning there if deleted files must be recoverable.
 - **Monitoring data**: Prometheus and Loki keep 30 and 14 days of their own.
-- **`.env.production`**: keep a copy in a password manager. Without its secrets,
-  restored data is hard to use. One of them cannot be replaced at all:
-  **`AUTH_ENCRYPTION_KEY`** (and `AUTH_ENCRYPTION_KEY_PREVIOUS`, while a key
-  change is under way). The two-step sign-in secrets in the dump are sealed
-  with it, and the recovery codes' fingerprints are keyed with it. Restore the
-  database with a different key and everyone with two-step sign-in on gets
-  `503 AUTH_TWO_FACTOR_UNAVAILABLE` at the second step, and their recovery
-  codes stop matching; the only way out is `auth:two-factor:off` for each of
-  them ([auth/two-step-sign-in.md](./auth/two-step-sign-in.md)). `JWT_SECRET`
-  matters less: with a new one, every access token is refused until the web
-  app refreshes it (sessions carry on), and codes already emailed stop
-  working.
+- **`.env.production`**: keep a copy in a password manager. A restore works
+  with a new `JWT_SECRET`, at a small cost: every access token is refused
+  until the web app refreshes it (sessions carry on), and codes already
+  emailed stop working.
 
 ## Settings
 

@@ -32,7 +32,7 @@ The document declares two **security schemes**, in
 
 | Scheme | What it is | Routes that use it |
 |---|---|---|
-| `bearer` | the access token (a JWT) in `Authorization: Bearer <token>` | every route that needs a signed-in user: all of `/users/*` (`@ApiBearerAuth('bearer')` on the controller) and the protected auth routes, such as `/auth/change-password`, `/auth/2fa/*`, `/auth/account/delete` |
+| `bearer` | the access token (a JWT) in `Authorization: Bearer <token>` | every route that needs a signed-in user: all of `/users/*` (`@ApiBearerAuth('bearer')` on the controller) and the protected auth routes, such as `/auth/change-password`, `/auth/account/delete` |
 | `refresh_token` | the httpOnly cookie that holds the refresh token | `/auth/refresh` and `/auth/logout` (`@ApiCookieAuth('refresh_token')`) |
 
 To call a protected route from Swagger UI: run `POST /api/v1/auth/login`,
@@ -150,7 +150,7 @@ present, types and `null`s as declared, no undeclared fields. It runs with
 that is wrong. When you add a route, add it to this test too.
 
 The **auth** routes are not in it. Their response shapes (`TokenResponseDto`,
-`AuthOptionsResponseDto`, the two-step DTOs) are checked only by the auth
+`AuthOptionsResponseDto`, `SignInMethodsResponseDto`) are checked only by the auth
 integration suites, which assert on the fields they use, not against the
 spec. If you change an auth DTO, run `pnpm openapi:export` and look at the
 diff of `openapi.json` yourself; extending the contract test to the auth

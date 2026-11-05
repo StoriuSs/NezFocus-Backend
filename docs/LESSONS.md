@@ -288,6 +288,3 @@ laptop and fail on a server. Each of these is explained, with the fix, in
   failed `send-code` job on `/admin/queues`.
 - **Google says `redirect_uri_mismatch`.** The registered redirect URI is not
   exactly `<BASE_URL>/api/v1/auth/google/callback`.
-- **`503 AUTH_TWO_FACTOR_UNAVAILABLE` for some users.** `AUTH_ENCRYPTION_KEY`
-  changed without the old one in `AUTH_ENCRYPTION_KEY_PREVIOUS`, or was lost.
-  Keep a copy of the key with the database password.

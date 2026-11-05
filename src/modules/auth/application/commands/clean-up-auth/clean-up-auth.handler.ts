@@ -9,8 +9,6 @@ import {
     OAuthAccountRepositoryPort,
     SESSION_REPOSITORY,
     SessionRepositoryPort,
-    TWO_FACTOR_REPOSITORY,
-    TwoFactorRepositoryPort,
     VERIFICATION_CODE_REPOSITORY,
     VerificationCodeRepositoryPort
 } from '@/modules/auth/domain'
@@ -24,8 +22,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
  *
  * Also finishes what an account deletion's event handler would have done, if
  * that event was lost (a crash between saving the deletion and handling it):
- * the account's sessions end, and its password, provider links and two-step
- * data go. They were refused all along — the guard and refresh read the user — so this is tidying, not a fix.
+ * the account's sessions end, and its password and provider links go. They were refused all along — the guard and refresh read the user — so this is tidying, not a fix.
  */
 @CommandHandler(CleanUpAuthCommand)
 export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
@@ -36,7 +33,6 @@ export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
         @Inject(VERIFICATION_CODE_REPOSITORY) private readonly codes: VerificationCodeRepositoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(OAUTH_ACCOUNT_REPOSITORY) private readonly oauthAccounts: OAuthAccountRepositoryPort,
-        @Inject(TWO_FACTOR_REPOSITORY) private readonly twoFactors: TwoFactorRepositoryPort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort
     ) {}
 
@@ -45,16 +41,15 @@ export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
         await this.cache.invalidateSessions(orphaned)
         const passwords = await this.credentials.deleteForDeletedAccounts()
         const links = await this.oauthAccounts.deleteForDeletedAccounts()
-        const twoStep = await this.twoFactors.deleteForDeletedAccounts()
-        if (orphaned.length > 0 || passwords > 0 || links > 0 || twoStep > 0) {
+        if (orphaned.length > 0 || passwords > 0 || links > 0) {
             this.logger.warn(
-                `Ended ${orphaned.length} session(s), removed ${passwords} password(s), ${links} provider link(s) and ${twoStep} two-step setup(s) of deleted accounts: an account deletion's event was not handled`
+                `Ended ${orphaned.length} session(s), removed ${passwords} password(s) and ${links} provider link(s) of deleted accounts: an account deletion's event was not handled`
             )
         }
 
         const sessions = await this.sessions.deleteEnded(new Date(now.getTime() - 7 * DAY_MS))
         const codes = await this.codes.deleteStale(new Date(now.getTime() - DAY_MS))
         if (sessions > 0 || codes > 0) this.logger.log(`Removed ${sessions} ended session(s) and ${codes} old code(s)`)
-        return { sessions, codes, orphans: orphaned.length + passwords + links + twoStep }
+        return { sessions, codes, orphans: orphaned.length + passwords + links }
     }
 }

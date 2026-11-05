@@ -82,11 +82,6 @@ function whyRefused(response) {
         // Not the API's envelope (a proxy's error page): the body says more.
     }
     switch (type) {
-        case 'AUTH_TWO_FACTOR_REQUIRED':
-            return 'The account has two-step sign-in on, which a load test cannot pass: turn it off with pnpm auth:two-factor:off <email>, or use other accounts.'
-        case 'AUTH_CAPTCHA_REQUIRED':
-        case 'AUTH_CAPTCHA_FAILED':
-            return 'Turnstile is asking for a check after failed sign-ins, and k6 cannot send one: fix LOAD_PASSWORD, then wait 15 minutes or run against an API with Turnstile off (docs/load-testing.md).'
         case 'AUTH_EMAIL_NOT_VERIFIED':
             return 'The account is not confirmed yet: pnpm load:accounts makes confirmed ones.'
         case 'RATE_LIMIT_EXCEEDED':

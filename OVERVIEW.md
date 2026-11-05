@@ -35,7 +35,7 @@ Concretely, what you get on top of Nest:
 
 | | |
 | --- | --- |
-| **Sign-in you own** | Email and password with emailed codes, sessions with a refresh cookie, Google sign-in, two-step sign-in, Turnstile, rate limits. No identity server to run |
+| **Sign-in you own** | Email and password with emailed codes, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
 | **An architecture that survives growth** | Hexagonal layers and CQRS, with two worked modules: `users`, and the larger `auth` |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
@@ -60,9 +60,8 @@ rather spend your first month on your product than on plumbing.
   connection pool, an in-process cache and background workers. None of that
   suits a function that starts and stops per request.
 - **You need SAML, LDAP, many social logins, or an admin console for support
-  staff.** Sign-in here is email and password, Google, and two-step sign-in
-  with an authenticator app, written into the app
-  ([docs/auth/](./docs/auth/README.md)). Use the
+  staff.** Sign-in here is email and password and Google, written into the
+  app ([docs/auth/](./docs/auth/README.md)). Use the
   [Keycloak starter](https://github.com/StoriuSs/nest-starter-hexagonal), the
   same stack with an identity server beside it.
 - **It is a weekend project you will not deploy.** Half of what is here is for
@@ -89,7 +88,6 @@ flowchart TB
     subgraph outside["Outside services"]
         SMTP["Email provider, SMTP<br/>codes and notices"]
         Google["Google<br/>sign-in, optional"]
-        CF["Cloudflare Turnstile<br/>CAPTCHA, optional"]
     end
 
     Browser -->|https| Nginx
@@ -99,7 +97,6 @@ flowchart TB
     App --> RD
     App -->|sends mail| SMTP
     App -->|checks the sign-in| Google
-    App -->|checks the token| CF
     Backup --> PG
     Mon -.->|scrapes and reads logs| App
 ```
@@ -118,8 +115,8 @@ MONITORING=grafana-cloud
 ```
 
 Only one outside service is required: **an email provider**, because sign-up
-and password reset email a code. Google and Turnstile are off until you set
-their keys; S3 storage, Sentry and Grafana Cloud are optional too.
+and password reset email a code. Google sign-in is off until you set its
+keys; S3 storage, Sentry and Grafana Cloud are optional too.
 [docs/setup/README.md](./docs/setup/README.md) lists every one, with the steps
 to get its keys.
 
@@ -214,11 +211,11 @@ sequenceDiagram
     A-->>W: new access token + new cookie
 ```
 
-The rest builds on that: Google sign-in ends in the same two tokens, two-step
-sign-in adds a code from an authenticator app before them, and every sign-in
-route has its own rate limits. [docs/auth/flows.md](./docs/auth/flows.md) has
-each flow step by step; [docs/auth/concepts.md](./docs/auth/concepts.md)
-explains the terms if they are new.
+The rest builds on that: Google sign-in ends in the same two tokens, and every
+sign-in route has its own rate limits.
+[docs/auth/flows.md](./docs/auth/flows.md) has each flow step by step;
+[docs/auth/concepts.md](./docs/auth/concepts.md) explains the terms if they
+are new.
 
 ## How the code is arranged
 
@@ -293,20 +290,19 @@ read when your module talks to several outside systems:
 
 ```
 auth/
-├── domain/                     # Errors, repository ports, the password policy, recovery codes
+├── domain/                     # Errors, repository ports, the password policy
 ├── application/
-│   ├── commands/               # register, login, refresh, set-up-two-factor, finish-oauth, ...
-│   ├── queries/                # sign-in methods, two-step status
+│   ├── commands/               # register, login, refresh, delete-own-account, finish-oauth, ...
+│   ├── queries/                # sign-in methods, sign-in options
 │   ├── events/handlers/        # Reacting to the users module's events
 │   ├── services/               # Shared steps: issue a session, check a code, the limits
-│   ├── ports/                  # Hasher, tokens, OIDC, TOTP, secret box, CAPTCHA, ...
+│   ├── ports/                  # Hasher, tokens, OIDC, mailer, rate limits, ...
 │   └── rate-limits.ts          # Every sign-in limit, in one table
 ├── infrastructure/
-│   ├── adapters/               # Argon2, jose (JWT), openid-client, otpauth, AES-GCM,
-│   │                           # Turnstile, Redis, BullMQ, Prometheus
+│   ├── adapters/               # Argon2, jose (JWT), openid-client, Redis, BullMQ, Prometheus
 │   └── persistence/            # The Prisma repositories
 ├── presentation/
-│   ├── http/                   # The /auth routes in five controllers, by topic; DTOs
+│   ├── http/                   # The /auth routes in four controllers, by topic; DTOs
 │   ├── guards/                 # AccessTokenGuard, global
 │   └── consumers/              # Sends the emails, runs the hourly clean-up
 └── auth.module.ts
@@ -331,7 +327,7 @@ own module. You inherit these without writing anything.
 
 | | What it does for you | Where |
 | --- | --- | --- |
-| **Authentication** | Sign-up confirmed by an emailed code, sign-in, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, two-step sign-in with recovery codes, Turnstile, account deletion with proof (`POST /auth/account/delete`). `@Public()`, `@Roles()`, `@CurrentUser()`. CLIs: `pnpm user:promote`, `pnpm auth:rotate-key`, `pnpm auth:two-factor:off` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
+| **Authentication** | Sign-up confirmed by an emailed code, sign-in, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with proof (`POST /auth/account/delete`). `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
 | **Rate limiting** | A per-IP, per-route limit on every route, counted in Redis so the limit is the limit across every instance. On top, the sign-in routes count per address, per IP and per account (`rl:*` keys) | [rate-limit.md](./docs/rate-limit.md) · [auth/rate-limits.md](./docs/auth/rate-limits.md) |
 | **Idempotency** | A retried payment or a double-tapped button does the work once. `@Idempotent('1h')` on the route | [idempotency.md](./docs/idempotency.md) |
 | **Caching** | Two layers, memory in front of Redis, with a clear rule about which state may use which | [cache.md](./docs/cache.md) |
@@ -397,11 +393,10 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── app.module.ts           # Global guards and interceptors, in order
 │   ├── config/                 # One file per area + the Joi schema
 │   ├── health/                 # The three probes
-│   ├── modules/auth/           # Sign-in, sessions, Google, two-step, Turnstile
+│   ├── modules/auth/           # Sign-in, sessions, Google, account deletion
 │   ├── modules/users/          # Profiles, usernames, avatars, deletion
 │   ├── shared/                 # Everything cross-cutting
-│   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles,
-│                               # key rotation, two-step off, cloud sync
+│   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
 ├── prisma/                     # Schema (models/auth.prisma, models/users.prisma) and migrations
 ├── test/                       # e2e and integration suites
 ├── k6/                         # Load-test scripts
@@ -433,7 +428,7 @@ Where to go for a given change:
 | Add an endpoint to an existing module | A DTO, a controller method, a handler: [adding-a-module.md](./docs/adding-a-module.md#adding-one-operation) |
 | Add a whole feature | [adding-a-module.md](./docs/adding-a-module.md) |
 | Add a configuration setting | [environment.md](./docs/environment.md#adding-a-variable): two files, and a test fails if you miss one |
-| Turn on Google sign-in or Turnstile | [setup/google-sign-in.md](./docs/setup/google-sign-in.md), [setup/cloudflare-turnstile.md](./docs/setup/cloudflare-turnstile.md) |
+| Turn on Google sign-in | [setup/google-sign-in.md](./docs/setup/google-sign-in.md) |
 | Make someone an administrator | `pnpm user:promote <email>`: [auth/accounts.md](./docs/auth/accounts.md) |
 | Change the database | [prisma-module.md](./docs/prisma-module.md) |
 | Run something in the background | [BULLMQ-GUIDE.md](./docs/BULLMQ-GUIDE.md) |
@@ -453,7 +448,7 @@ to reverse-engineer.
 starter is the sibling of the Keycloak one, for projects that would rather not
 run a second server with its own database, admin console and upgrade cycle. The
 cost is real: password hashing, reset flows, email verification, Google
-sign-in, two-step sign-in and session management are code in this repository,
+sign-in and session management are code in this repository,
 and the CVEs become yours. It is the right trade when you want one deployable
 and a sign-in page you control, and the wrong one when you need SAML, LDAP or
 an admin console for support staff. See

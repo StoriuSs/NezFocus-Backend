@@ -158,9 +158,9 @@ The `event` label is one of a fixed list ([`auth-events.port.ts`](../src/modules
 
 | Group | `event` values |
 |---|---|
-| Signing in | `login_succeeded`, `login_failed`, `login_rate_limited`, `oauth_login_succeeded`, `oauth_login_failed`, `two_factor_failed` |
+| Signing in | `login_succeeded`, `login_failed`, `login_rate_limited`, `oauth_login_succeeded`, `oauth_login_failed` |
 | Sessions | `refresh_reuse_detected` |
-| Accounts | `registration`, `password_reset`, `password_set`, `oauth_account_linked`, `two_factor_enabled`, `two_factor_disabled`, `recovery_codes_replaced`, `account_deleted` |
+| Accounts | `registration`, `password_reset`, `password_set`, `oauth_account_linked`, `account_deleted` |
 
 Every value starts at 0 when the app starts
 ([`prometheus-auth-events.adapter.ts`](../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts)).

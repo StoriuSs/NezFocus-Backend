@@ -21,11 +21,10 @@ Signing in here involves a handful of programs. The diagrams in
 |---|---|---|
 | **Browser / web app** | The React app the person uses (the companion React starter, on `http://localhost:3001` in development) | Shows the forms, keeps the access token in memory, sends requests to the API |
 | **API** | This NestJS app (`http://localhost:8888/api/v1` in development) | Checks passwords and codes, starts and ends sessions, signs tokens |
-| **Postgres** | The database | Holds the accounts, password hashes, sessions, refresh-token hashes, emailed-code hashes, Google links and two-step secrets ([auth.prisma](../../prisma/models/auth.prisma)) |
-| **Redis** | A fast in-memory store | Caches "is this session still live?", counts rate limits, holds short-lived things (a Google sign-in in progress, a two-step challenge) and the email queue |
+| **Postgres** | The database | Holds the accounts, password hashes, sessions, refresh-token hashes, emailed-code hashes and Google links ([auth.prisma](../../prisma/models/auth.prisma)) |
+| **Redis** | A fast in-memory store | Caches "is this session still live?", counts rate limits, holds short-lived things (a Google sign-in in progress) and the email queue |
 | **Email queue and SMTP** | BullMQ jobs on the `auth` queue, then your mail provider | Sends codes and security notices without making the request wait. In development, Mailpit catches every email at `http://localhost:8025` |
 | **Google** | Optional | "Continue with Google" ([google-sign-in.md](./google-sign-in.md)) |
-| **Cloudflare Turnstile** | Optional | A "prove you are human" check on the forms bots abuse ([turnstile.md](./turnstile.md)) |
 
 All the auth code lives in [src/modules/auth/](../../src/modules/auth/). The
 folder layout is explained in [in-the-code.md](./in-the-code.md).
@@ -78,10 +77,6 @@ with the terms from the glossary in bold.
 - [OAuth and OpenID Connect](#oauth-and-openid-connect)
 - [PKCE](#pkce)
 - [State and nonce](#state-and-nonce)
-- [Two-step verification](#two-step-verification)
-- [TOTP](#totp)
-- [Recovery code](#recovery-code)
-- [CAPTCHA](#captcha)
 - [Rate limit](#rate-limit)
 - [Account enumeration](#account-enumeration)
 - [CSRF](#csrf)
@@ -154,8 +149,8 @@ In this starter:
 - A row in the `Session` table ([auth.prisma](../../prisma/models/auth.prisma)).
   Its id is the `sid` inside every access token issued in it.
 - Started in exactly one place, [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts),
-  and only after [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)
-  has checked whether a second step is needed.
+  always through [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts),
+  the one gate every way of signing in passes.
 - Ended by signing out, signing out everywhere, a password change or reset, a
   replayed refresh token, account deletion, or reaching its end date. Each
   reason is recorded and told to the device that finds out: see
@@ -178,13 +173,12 @@ The rules that matter here:
 | `SameSite` | Whether requests started by other sites carry it ([SameSite](#samesite)) |
 | no `Domain` | Only the exact host that set it gets it back (a "host-only" cookie) |
 
-In this starter, three cookies, all httpOnly and all scoped to auth paths:
+In this starter, two cookies, both httpOnly and all scoped to auth paths:
 
 | Cookie | Holds | Path | Lives |
 |---|---|---|---|
 | `refresh_token` | the refresh token | `/api/v1/auth` | until the session ends |
 | `oauth_state` | the `state` of a Google sign-in in progress | `/api/v1/auth/google/callback` | 10 minutes |
-| `two_factor` | a two-step challenge, after Google | `/api/v1/auth/login/2fa` | 5 minutes |
 
 The paths follow `API_PREFIX` (default `api`). See
 [the cookie](./sessions-and-tokens.md#the-refresh-cookie).
@@ -199,7 +193,7 @@ Why it matters: if an attacker manages to run a script on your page (a
 cross-site-scripting bug), they still cannot read the refresh token and walk
 away with the session.
 
-In this starter all three auth cookies are httpOnly
+In this starter both auth cookies are httpOnly
 ([auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts)).
 
 ### Site and origin
@@ -248,8 +242,8 @@ In this starter:
 - `none` is only for a web app and API on different sites, and it needs
   HTTPS. Some browsers block such cookies anyway. See
   [cross-site setups](./sessions-and-tokens.md#cross-site-setups).
-- The `oauth_state` and `two_factor` cookies use `none` when you chose
-  `none`, and `lax` otherwise (never `strict`: a strict cookie would not
+- The `oauth_state` cookie uses `none` when you chose `none`, and `lax`
+  otherwise (never `strict`: a strict cookie would not
   come back with the return from Google).
 
 ### CORS and credentials
@@ -279,8 +273,7 @@ In this starter:
   Production refuses to start with `false`
   ([validation.ts](../../src/config/validation.ts)).
 - The same `CORS_ORIGINS` list is also the **Origin check** on the routes the
-  cookie authenticates (`refresh`, `logout`, and the second step after
-  Google): a request from an origin not on the list gets
+  cookie authenticates (`refresh` and `logout`): a request from an origin not on the list gets
   `403 AUTH_FORBIDDEN`.
 - CORS also exposes the `Retry-After` header so the web app can say how long
   to wait after a 429 ([configure-app.ts](../../src/bootstrap/configure-app.ts)).
@@ -304,8 +297,6 @@ In this starter:
 | Passwords | Argon2id hash | Only ever checked; must resist guessing even if the database leaks ([Argon2](#argon2)) |
 | Refresh tokens | SHA-256 hash | 32 random bytes cannot be guessed, so a fast hash is enough |
 | Emailed codes | HMAC-SHA256 keyed with `JWT_SECRET` | Six digits are only a million options: a plain hash could be reversed by trying them all ([HMAC](#hmac)) |
-| Recovery codes | HMAC-SHA256 keyed from `AUTH_ENCRYPTION_KEY` | Only ever checked |
-| Two-step secrets | Encrypted with AES-256-GCM, key from `AUTH_ENCRYPTION_KEY` | The server needs the secret back to compute the expected code |
 
 ### Argon2
 
@@ -338,8 +329,6 @@ In this starter:
   ([jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts),
   `hashVerificationCode`). A consequence: changing `JWT_SECRET` makes every
   code already emailed stop working.
-- Recovery codes are stored as HMAC fingerprints keyed from
-  `AUTH_ENCRYPTION_KEY` ([aes-secret-box.adapter.ts](../../src/modules/auth/infrastructure/adapters/aes-secret-box.adapter.ts)).
 
 ### JWT
 
@@ -422,55 +411,6 @@ In this starter both are made per attempt, kept in Redis for 10 minutes
 (`auth:oauth:<state>`), and can be used once
 ([redis-oauth-state.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-oauth-state.adapter.ts)).
 
-### Two-step verification
-
-Also called two-factor authentication (2FA). After the password (or Google),
-the person must also prove they hold something else, here a phone with an
-authenticator app. A stolen password alone is then not enough.
-
-In this starter it is optional and each person turns it on for themselves.
-Every way of signing in passes the same gate
-([sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)):
-with two-step verification on, the first step answers with a *challenge*
-(valid 5 minutes, 5 tries) instead of a session. Full story:
-[two-step-sign-in.md](./two-step-sign-in.md).
-
-### TOTP
-
-"Time-based one-time password": the six-digit code an authenticator app
-(Google Authenticator, 1Password, Authy) shows, changing every 30 seconds.
-The app and the server share a secret once (the QR code), then both compute
-the code from that secret and the current time, without talking to each
-other. Like two people with synchronised watches and the same codebook.
-
-In this starter: SHA-1, 6 digits, 30-second steps, one step either side
-accepted for a phone clock that is a little off
-([otpauth-totp.adapter.ts](../../src/modules/auth/infrastructure/adapters/otpauth-totp.adapter.ts)).
-Each accepted code's step is recorded, so the same code cannot be used twice.
-
-### Recovery code
-
-A one-time backup code for when the phone with the authenticator app is
-lost. Shown once, when two-step verification is turned on; the person keeps
-them somewhere safe.
-
-In this starter: 10 codes like `K7Q2M-X9HDP`, each usable once, stored only
-as HMAC fingerprints ([recovery-codes.ts](../../src/modules/auth/domain/recovery-codes.ts)).
-Using one emails the owner, with how many are left
-([emails.md](./emails.md)).
-
-### CAPTCHA
-
-A test that a human passes easily and a script does not ("are you human?").
-Used on the forms bots abuse: sign-up, forgot password, and repeated failed
-sign-ins.
-
-In this starter: Cloudflare Turnstile, optional, on when both
-`TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are set
-([turnstile-captcha.adapter.ts](../../src/modules/auth/infrastructure/adapters/turnstile-captcha.adapter.ts)).
-If Cloudflare cannot be asked, the request is refused (`503`), never let
-through. Full story: [turnstile.md](./turnstile.md).
-
 ### Rate limit
 
 A cap on how often something may happen in a time window, like a cash
@@ -521,8 +461,8 @@ In this starter three locks stop it:
    in a header, which another site cannot add.
 2. The refresh cookie is `SameSite=Lax` by default, so the browser does not
    send it with requests other sites start.
-3. The routes the cookie does authenticate (`refresh`, `logout`, and the
-   second step after Google) also check the `Origin` header against
+3. The routes the cookie does authenticate (`refresh` and `logout`) also
+   check the `Origin` header against
    `CORS_ORIGINS` and answer `403 AUTH_FORBIDDEN` otherwise
    ([auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts),
    `assertAllowedOrigin`). A request with no `Origin` header at all comes from
@@ -540,10 +480,7 @@ In this starter, everything that should work once does:
 |---|---|
 | Refresh token | Marked used; a second use ends the session ([reuse detection](./sessions-and-tokens.md#reuse-detection)) |
 | Emailed code | Marked consumed in the same database statement that checks it |
-| Authenticator code | Its 30-second step is recorded; that step and earlier ones are refused |
-| Recovery code | Marked used |
 | Google sign-in attempt | Taken from Redis with `GETDEL`, so only one return can finish it |
-| Two-step challenge | Taken from Redis with `GETDEL` |
 
 ## Related
 

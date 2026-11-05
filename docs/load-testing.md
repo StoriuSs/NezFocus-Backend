@@ -124,10 +124,9 @@ pnpm load:accounts        # creates the account, confirmed (not in production)
 k6 run k6/smoke.js
 ```
 
-The account must exist, be confirmed, and **not have two-step sign-in on**.
-`pnpm load:accounts` writes it straight into the database the app's
-`DATABASE_URL` points at, with the same `LOAD_*` settings k6 reads; running it
-again resets the password. It refuses to run with `NODE_ENV=production`.
+The account must exist and be confirmed. `pnpm load:accounts` writes it
+straight into the database the app's `DATABASE_URL` points at, with the same
+`LOAD_*` settings k6 reads; running it again resets the password. It refuses to run with `NODE_ENV=production`.
 Without a token or an account, the scripts skip their signed-in scenarios and
 say so; the unauthenticated checks still run.
 
@@ -347,8 +346,6 @@ the way. Each of these stops k6 with "The API refused the login":
 
 | k6 says | Cause | Fix |
 |---|---|---|
-| "two-step sign-in on" (HTTP 403, `AUTH_TWO_FACTOR_REQUIRED`) | The account has two-step sign-in on. `/auth/login` then answers with a challenge instead of an access token, and k6 cannot type a code from an authenticator app. `pnpm load:accounts` does **not** turn it off on an account that already exists | Use a fresh address, or turn it off: `pnpm auth:two-factor:off loadtest1@example.test` ([two-step-sign-in.md](./auth/two-step-sign-in.md)) |
-| "Turnstile is asking for a check" (`AUTH_CAPTCHA_REQUIRED`) | Turnstile is on (`TURNSTILE_SECRET_KEY` set) and there were 2 or more failed sign-ins for that address, or from your IP, in the last 15 minutes. From then on every sign-in from there needs a solved CAPTCHA, which k6 cannot solve. A successful sign-in clears the address's count, not the IP's | Fix `LOAD_PASSWORD` and wait 15 minutes, or run against an environment with Turnstile off (both `TURNSTILE_*` keys empty) ([turnstile.md](./auth/turnstile.md)) |
 | "not confirmed yet" | The address exists but never confirmed its email | `pnpm load:accounts` confirms it |
 | "Wrong email or password" | `LOAD_PASSWORD` differs from the account's | Run `pnpm load:accounts` again with the same `LOAD_*`: it resets the password |
 | "The sign-in limits refused it" (HTTP 429) | Too many failed sign-ins: 5 per address, or 10 per IP, in 15 minutes | Wait 15 minutes ([auth/rate-limits.md](./auth/rate-limits.md)) |

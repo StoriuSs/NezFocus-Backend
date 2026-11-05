@@ -11,10 +11,7 @@ import {
     AccountExistsJob,
     PasswordAddedJob,
     SignInMethodAddedJob,
-    TwoFactorChangedJob,
     AccountDeletedJob,
-    RecoveryCodesReplacedJob,
-    RecoveryCodeUsedJob,
     EMAIL_JOB_OPTIONS
 } from '../email/auth-email-jobs'
 
@@ -61,23 +58,8 @@ export class BullMqAuthMailer implements AuthMailerPort {
         await this.queue.add(AUTH_JOBS.SIGN_IN_METHOD_ADDED, job, EMAIL_JOB_OPTIONS)
     }
 
-    async sendTwoFactorChanged(to: string, enabled: boolean): Promise<void> {
-        const job: TwoFactorChangedJob = { to, enabled }
-        await this.queue.add(AUTH_JOBS.TWO_FACTOR_CHANGED, job, EMAIL_JOB_OPTIONS)
-    }
-
     async sendAccountDeleted(to: string): Promise<void> {
         const job: AccountDeletedJob = { to }
         await this.queue.add(AUTH_JOBS.ACCOUNT_DELETED, job, EMAIL_JOB_OPTIONS)
-    }
-
-    async sendRecoveryCodesReplaced(to: string): Promise<void> {
-        const job: RecoveryCodesReplacedJob = { to }
-        await this.queue.add(AUTH_JOBS.RECOVERY_CODES_REPLACED, job, EMAIL_JOB_OPTIONS)
-    }
-
-    async sendRecoveryCodeUsed(to: string, remaining: number): Promise<void> {
-        const job: RecoveryCodeUsedJob = { to, remaining }
-        await this.queue.add(AUTH_JOBS.RECOVERY_CODE_USED, job, EMAIL_JOB_OPTIONS)
     }
 }

@@ -12,8 +12,8 @@ import { clientIp, ok } from './route-helpers'
 
 /**
  * Deleting your own account (docs/account-deletion.md). Here rather than in
- * the users module: it takes proof it is you (the password, an emailed code,
- * a two-step code), and ends every session.
+ * the users module: it takes proof it is you (the password or an emailed
+ * code), and ends every session.
  */
 @ApiTags('auth')
 @ApiBearerAuth('bearer')
@@ -38,8 +38,7 @@ export class AccountDeletionController {
 
     /**
      * Delete your own account, with proof it is you: the password (or the
-     * emailed code, for an account without one), and a two-step code when that
-     * is on. Every session ends, this one included; the owner is emailed.
+     * emailed code, for an account without one). Every session ends, this one included; the owner is emailed.
      */
     @Post('delete')
     @HttpCode(HttpStatus.OK)
@@ -51,11 +50,7 @@ export class AccountDeletionController {
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<null>> {
         await this.commandBus.execute(
-            new DeleteOwnAccountCommand(
-                user.id,
-                { password: dto.password, code: dto.code, twoFactorCode: dto.twoFactorCode },
-                clientIp(req)
-            )
+            new DeleteOwnAccountCommand(user.id, { password: dto.password, code: dto.code }, clientIp(req))
         )
         this.cookies.clearRefresh(res)
         return createResponse(MESSAGES.USER.ACCOUNT_DELETED, null)

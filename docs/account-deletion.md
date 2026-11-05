@@ -27,13 +27,11 @@ the deep one.
 ## In short
 
 1. The signed-in person calls `POST /api/v1/auth/account/delete` with proof: their
-   password, or an emailed code if the account has no password, plus a two-step
-   code if that is on.
+   password, or an emailed code if the account has no password.
 2. The account is marked deleted (not removed), and the refresh cookie is
    cleared.
 3. Moments later, in the same process, every session ends and the sign-in data
-   goes: password, Google link, two-step secret, recovery codes. The avatar file
-   is queued for deletion.
+   goes: password, Google link. The avatar file is queued for deletion.
 4. The owner is emailed.
 5. After `DELETED_ACCOUNT_RETENTION_DAYS` (30 by default) the personal fields
    on the row are erased. The row itself stays, empty, so that anything pointing
@@ -48,32 +46,24 @@ otherwise delete the account. What the API asks for depends on the account:
 |---|---|---|
 | has a password | `password` | the current password |
 | has no password (made with Google) | `code` | 6 digits from `POST /api/v1/auth/account/delete-code`, sent to the account's address |
-| has two-step sign-in on | `two_factor_code`, in addition | a code from the authenticator app, or a recovery code |
 
 Examples:
 
 ```json
 { "password": "correct horse battery staple" }
-{ "password": "correct horse battery staple", "two_factor_code": "492039" }
-{ "code": "731905", "two_factor_code": "K7Q2M-X9HDP" }
+{ "code": "731905" }
 ```
 
 If something the account needs is missing, the answer is
 400 `AUTH_CONFIRMATION_REQUIRED` with `data.needs` listing it, for example
-`{ "needs": ["password", "two_factor_code"] }`. A page that does not know the
+`{ "needs": ["password"] }`. A page that does not know the
 account yet can send `{}` and read `needs`; the React starter asks
-`GET /auth/sign-in-methods` and `GET /auth/2fa` instead.
+`GET /auth/sign-in-methods` instead.
 
 **Getting the emailed code.** `POST /api/v1/auth/account/delete-code`, signed in,
 no body. It answers 200 and emails "Your code to delete your {app} account"
 (6 digits, valid 10 minutes, 5 tries, only the newest works). An account that
 has a password gets 409 `AUTH_USE_PASSWORD` instead: the password is the proof.
-
-**The order of checks** is password, then two-step code, then emailed code. The
-password cannot be used up, so it goes first: a wrong password does not spend
-the two-step code or the emailed code. One consequence: a right two-step code
-followed by a wrong emailed code is spent (each app code works once), so the
-next try needs the app's next code.
 
 ## What runs, in order
 
@@ -92,21 +82,21 @@ sequenceDiagram
     participant E as AccountDeletedEvent handlers
     W->>C: POST /auth/account/delete { proof }
     C->>D: DeleteOwnAccountCommand
-    D->>D: check password, two-step code, emailed code
+    D->>D: check the password or the emailed code
     D->>U: DeleteAccountCommand(userId)
     U->>DB: UPDATE User SET deletedAt WHERE id AND deletedAt IS NULL
     U-)E: publish AccountDeletedEvent
     D->>D: reset the password limit, queue the email, count the metric
     C-->>W: 200, refresh cookie cleared
-    E->>DB: end sessions, delete password, Google links, two-step data
+    E->>DB: end sessions, delete password, Google links
     E->>E: queue the avatar file for deletion
 ```
 
 1. **`AccountDeletionController.delete`** passes the proof and the client IP to
    `DeleteOwnAccountCommand`.
 2. **`DeleteOwnAccountHandler`** (auth) refuses a deleted account, works out what
-   proof is needed, and checks it in the order above, counting wrong answers
-   against the [limits](#limits).
+   proof is needed, and checks it, counting wrong answers against the
+   [limits](#limits).
 3. It sends the users module's **`DeleteAccountCommand(userId, userId)`** (the
    second id is who deleted it, stored as `deletedBy`).
 4. **`DeleteAccountHandler`** (users) calls `softDelete`: one conditional
@@ -127,10 +117,9 @@ The event handlers, run by the event bus in the same process right after:
 
 - **`EndSessionsOfDeletedAccountHandler`** (auth): drops the cached copy of the
   user, ends every session with the reason `account-deleted` and drops their
-  cache entries, then deletes the password (`Credential`), the Google links
-  (`OAuthAccount`), and the two-step secret and recovery codes (`TwoFactor`,
-  `RecoveryCode`). They are personal data with no further use: a deleted account
-  can never sign in.
+  cache entries, then deletes the password (`Credential`) and the Google links
+  (`OAuthAccount`). They are personal data with no further use: a deleted
+  account can never sign in.
 - **`CleanupAccountAvatarHandler`** (users): queues the avatar file's removal on
   the `file-cleanup` queue. Without it, a deleted person's photo would stay
   publicly fetchable at a stable URL (local storage is served without auth).
@@ -148,10 +137,10 @@ in the same database.)
 | When | What | By |
 |---|---|---|
 | In the request | `User.deletedAt` and `deletedBy` set; the refresh cookie cleared in this browser | `DeleteAccountHandler`, `AccountDeletionController` |
-| Moments later | Every session ended (reason `account-deleted`), cache entries dropped; password, Google links, two-step secret and recovery codes deleted | `EndSessionsOfDeletedAccountHandler` |
+| Moments later | Every session ended (reason `account-deleted`), cache entries dropped; password and Google links deleted | `EndSessionsOfDeletedAccountHandler` |
 | Moments later | Avatar file queued for deletion | `CleanupAccountAvatarHandler` |
 | Moments later | "Your account was deleted" email queued | `DeleteOwnAccountHandler` |
-| Within the hour, only if the step above failed | The same session, password, link and two-step clean-up, with a warning in the log | hourly auth clean-up |
+| Within the hour, only if the step above failed | The same session, password and link clean-up, with a warning in the log | hourly auth clean-up |
 | A day after they stop working | Emailed codes (`VerificationCode` rows), the used deletion code included | hourly auth clean-up |
 | 7 days after the session ended | `Session` rows and all their refresh tokens | hourly auth clean-up |
 | After `DELETED_ACCOUNT_RETENTION_DAYS` (30), at the next 15-minute sweep | `email`, `username`, `displayName`, `bio`, `avatarUrl` set to null | `SweepDeletedAccountsHandler` |
@@ -170,8 +159,8 @@ The account-deleted email states the retention period, and names
 `SUPPORT_EMAIL` when it is set. There is no "undelete" route. The 30 days exist
 so that support can still answer "that wasn't me" with the account's details at
 hand. Restoring an account would be a manual database change, and the person
-would have to set up their password, Google link and two-step sign-in again,
-because those are deleted at once.
+would have to set up their password and Google link again, because those are
+deleted at once.
 
 ## Why the row is kept
 
@@ -236,11 +225,11 @@ linger.
 
 So the auth module's hourly clean-up (`CleanUpAuthHandler`, the `auth-clean-up`
 schedule on the `maintenance` queue) also looks for leftovers of deleted accounts: it
-ends their open sessions and deletes their passwords, Google links, two-step
-secrets and recovery codes. When it finds any, it logs a warning:
+ends their open sessions and deletes their passwords and Google links. When it
+finds any, it logs a warning:
 
 ```
-Ended 2 session(s), removed 1 password(s), 0 provider link(s) and 0 two-step setup(s) of deleted accounts: an account deletion's event was not handled
+Ended 2 session(s), removed 1 password(s) and 0 provider link(s) of deleted accounts: an account deletion's event was not handled
 ```
 
 That line means a deletion was interrupted; nothing was exposed meanwhile. The
@@ -253,16 +242,14 @@ From `POST /api/v1/auth/account/delete`:
 
 | Status | `meta.type` | Code | When | `data` |
 |---|---|---|---|---|
-| 400 | `AUTH_CONFIRMATION_REQUIRED` | 400108 | Proof missing | `needs`: `password`, `code`, `two_factor_code` |
+| 400 | `AUTH_CONFIRMATION_REQUIRED` | 400108 | Proof missing | `needs`: `password` or `code` |
 | 400 | `AUTH_CURRENT_PASSWORD_INVALID` | 400104 | Wrong password (400, not 401: clients treat any 401 as "signed out") | — |
-| 400 | `AUTH_TWO_FACTOR_CODE_INVALID` | 400105 | Wrong or already used two-step code | `attempts_left` |
 | 400 | `AUTH_CODE_INVALID` | 400102 | Wrong emailed code, or not the newest | — |
 | 400 | `AUTH_CODE_EXPIRED` | 400103 | Emailed code older than 10 minutes, or out of tries: ask for a new one | — |
 | 429 | `RATE_LIMIT_EXCEEDED` | 429001 | A limit below is used up | `reason`, and the `Retry-After` header |
-| 503 | `AUTH_TWO_FACTOR_UNAVAILABLE` | 503003 | The two-step secret cannot be read (encryption key changed or lost) | — |
 | 403 | `AUTH_ACCOUNT_DISABLED` | 403003 | Already deleted | — |
 | 404 | `USER_NOT_FOUND` | 404001 | Lost a race with another deletion of the same account | — |
-| 422 | `VALIDATION_ERROR` | 422000 | `code` not 6 digits, `two_factor_code` not 6–32 characters, an unknown field | per-field list |
+| 422 | `VALIDATION_ERROR` | 422000 | `code` not 6 digits, an unknown field | per-field list |
 
 From `POST /api/v1/auth/account/delete-code`:
 
@@ -283,7 +270,6 @@ deletion form is not a back door for guessing:
 | Proof | Limit | `reason` on 429 |
 |---|---|---|
 | Password | `change-pw-fail`: 5 wrong per 15 minutes, per user (shared with change-password) | `wrong_password` |
-| Two-step code | `2fa-fail`: 5 wrong per 15 minutes, per user (shared with sign-in and settings) | `wrong_codes` |
 | Emailed code | `code-try-ip`: 20 wrong per hour, per IP; and 5 tries per code | `network` |
 | Sending the code | `code-email-min` and `code-email-hour`: 1 a minute, 5 an hour, per address | `emails` |
 
@@ -295,18 +281,16 @@ In the React starter (`React-Starter-No-Keycloak`):
 
 - **`src/features/auth/components/DeleteAccountDialog.tsx`**, shown on the profile
   page (`src/features/users/pages/Profile.tsx`) as the "Delete account" button.
-  When opened it reads `GET /auth/sign-in-methods` and `GET /auth/2fa` to decide
-  which fields to show: the password, or a "Send code" button (with a 60-second
-  wait, or the API's `Retry-After`) and a code field; plus a two-step field that
-  takes an app code or a recovery code. The delete button stays disabled until
+  When opened it reads `GET /auth/sign-in-methods` to decide which fields to
+  show: the password, or a "Send code" button (with a 60-second wait, or the
+  API's `Retry-After`) and a code field. The delete button stays disabled until
   the needed fields are filled.
 - Errors land on the right field: `AUTH_CURRENT_PASSWORD_INVALID` on the
-  password, `AUTH_CODE_INVALID` and `AUTH_CODE_EXPIRED` on the code,
-  `AUTH_TWO_FACTOR_CODE_INVALID` on the two-step code. `AUTH_CONFIRMATION_REQUIRED`
-  or `AUTH_USE_PASSWORD` mean the account changed in another tab (a password
-  was added, two-step sign-in turned on), so it reads the account again.
+  password, `AUTH_CODE_INVALID` and `AUTH_CODE_EXPIRED` on the code.
+  `AUTH_CONFIRMATION_REQUIRED` or `AUTH_USE_PASSWORD` mean the account changed
+  in another tab (a password was added), so it reads the account again.
 - **`src/features/auth/api/auth.api.ts`**: `sendAccountDeletionCode()` and
-  `deleteAccount({ password?, code?, twoFactorCode? })`. The delete request is
+  `deleteAccount({ password?, code? })`. The delete request is
   sent `withCredentials`, so the response's cookie-clearing `Set-Cookie` is
   applied by the browser.
 - On success the dialog signs out locally with the reason `account-deleted`.
@@ -325,9 +309,6 @@ has dropped the cached copy of the user, a few milliseconds after the deletion i
 saved. If that step failed, the cached copy expires within 5 minutes anyway. A
 refresh answers 401 `AUTH_REFRESH_FAILED` with `data.reason: "account_deleted"`.
 See [auth/sessions-and-tokens.md](auth/sessions-and-tokens.md).
-
-**A sign-in halfway through.** A two-step challenge issued before the deletion
-is refused at the second step with 403 `AUTH_ACCOUNT_DISABLED`.
 
 **Signing in with Google afterwards.** The Google link was deleted with the
 account, so the same Google person signing in later gets a new, empty account.

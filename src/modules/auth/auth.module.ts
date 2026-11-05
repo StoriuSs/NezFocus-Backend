@@ -12,18 +12,8 @@ import {
     AUTH_MAILER,
     AUTH_SETTINGS,
     AuthSettings,
-    CAPTCHA,
-    CaptchaCheck,
     ChangePasswordHandler,
-    CompleteTwoFactorSignInHandler,
-    ConfirmTwoFactorHandler,
     DeleteOwnAccountHandler,
-    DisableTwoFactorHandler,
-    GetTwoFactorStatusHandler,
-    ReplaceRecoveryCodesHandler,
-    SECRET_BOX,
-    SecondFactorCheck,
-    SetUpTwoFactorHandler,
     GetAuthOptionsHandler,
     GetSignInMethodsHandler,
     SendAccountDeletionCodeHandler,
@@ -31,10 +21,6 @@ import {
     SetPasswordHandler,
     SignInMethods,
     SignInGate,
-    TOTP,
-    TWO_FACTOR_CHALLENGE,
-    TWO_FACTOR_SETTINGS,
-    TwoFactorSettings,
     CleanUpAuthHandler,
     CodeIssuer,
     EndSessionsOfDeletedAccountHandler,
@@ -66,21 +52,13 @@ import {
     CREDENTIAL_REPOSITORY,
     OAUTH_ACCOUNT_REPOSITORY,
     SESSION_REPOSITORY,
-    TWO_FACTOR_REPOSITORY,
     VERIFICATION_CODE_REPOSITORY
 } from '@/modules/auth/domain'
 
 // Infrastructure
 import {
-    AesSecretBox,
     Argon2PasswordHasher,
     AuthEmails,
-    ENCRYPTION_KEYS,
-    EncryptionKeys,
-    OtpauthTotp,
-    PrismaTwoFactorRepository,
-    RedisTwoFactorChallenge,
-    TurnstileCaptcha,
     BullMqAuthMailer,
     JoseTokenService,
     OpenIdConnectProvider,
@@ -112,18 +90,13 @@ const CommandHandlers = [
     CleanUpAuthHandler,
     StartOAuthHandler,
     FinishOAuthHandler,
-    CompleteTwoFactorSignInHandler,
-    SetUpTwoFactorHandler,
-    ConfirmTwoFactorHandler,
-    DisableTwoFactorHandler,
-    ReplaceRecoveryCodesHandler,
     SendPasswordSetCodeHandler,
     SetPasswordHandler,
     SendAccountDeletionCodeHandler,
     DeleteOwnAccountHandler
 ]
 
-const QueryHandlers = [GetTwoFactorStatusHandler, GetSignInMethodsHandler, GetAuthOptionsHandler]
+const QueryHandlers = [GetSignInMethodsHandler, GetAuthOptionsHandler]
 
 const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHandler]
 
@@ -192,28 +165,6 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
             }
         },
 
-        {
-            provide: ENCRYPTION_KEYS,
-            inject: [ConfigService],
-            useFactory: (config: ConfigService): EncryptionKeys => ({
-                current: config.get<string>('auth.encryptionKey')!,
-                previous: config.get<string>('auth.encryptionKeyPrevious') || undefined
-            })
-        },
-        {
-            // The name authenticator apps list the account under.
-            provide: TWO_FACTOR_SETTINGS,
-            inject: [ConfigService],
-            useFactory: (config: ConfigService): TwoFactorSettings => ({ issuer: config.get<string>('app.name')! })
-        },
-        {
-            // Off (no site key) unless both Turnstile keys are set.
-            provide: CAPTCHA,
-            inject: [ConfigService],
-            useFactory: (config: ConfigService) =>
-                new TurnstileCaptcha(config.get<{ siteKey: string; secretKey: string }>('auth.turnstile')!)
-        },
-
         // Port → Adapter bindings
         { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
         { provide: TOKEN_SERVICE, useClass: JoseTokenService },
@@ -222,10 +173,6 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         { provide: VERIFICATION_CODE_REPOSITORY, useClass: PrismaVerificationCodeRepository },
         { provide: OAUTH_ACCOUNT_REPOSITORY, useClass: PrismaOAuthAccountRepository },
         { provide: OAUTH_STATE, useClass: RedisOAuthState },
-        { provide: TOTP, useClass: OtpauthTotp },
-        { provide: SECRET_BOX, useClass: AesSecretBox },
-        { provide: TWO_FACTOR_REPOSITORY, useClass: PrismaTwoFactorRepository },
-        { provide: TWO_FACTOR_CHALLENGE, useClass: RedisTwoFactorChallenge },
         { provide: AUTH_MAILER, useClass: BullMqAuthMailer },
         { provide: AUTH_EVENTS, useClass: PrometheusAuthEvents },
         // One class answers both: the guard's lookup and the handlers' invalidations.
@@ -239,8 +186,6 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         SessionIssuer,
         CodeIssuer,
         SignInGate,
-        SecondFactorCheck,
-        CaptchaCheck,
         SignInMethods,
 
         // CQRS

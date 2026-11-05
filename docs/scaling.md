@@ -143,7 +143,6 @@ fail open. But losing its **data** loses real things:
   (the person asks for a new one);
 - Google sign-ins in progress (their state lives in Redis for a few
   minutes; the person clicks "Continue with Google" again);
-- two-step sign-ins halfway through (the person signs in again);
 - the auth rate-limit counters, so a password-guessing run starts from zero;
 - scheduled jobs (they are registered again at the next start).
 
@@ -262,11 +261,9 @@ Before the second instance:
 - [ ] `instances × DB_POOL_MAX` still fits in `max_connections`
 - [ ] The load balancer health-checks `/api/v1/health/ready`
 - [ ] Nothing you added caches shared state in the in-process layer
-- [ ] Every instance has the **same** `JWT_SECRET`, `AUTH_ENCRYPTION_KEY` and
-  `AUTH_ENCRYPTION_KEY_PREVIOUS`. A token signed by one instance must verify
-  on the others, and a two-step secret sealed by one must open on the others;
-  otherwise users are signed out, or refused at the second step, depending on
-  which instance answers
+- [ ] Every instance has the **same** `JWT_SECRET`. A token signed by one
+  instance must verify on the others; otherwise users are signed out,
+  depending on which instance answers
 - [ ] Every instance has the same `BASE_URL`: it is the access token's issuer
   and audience, so a different one means "invalid token"
 - [ ] Google's authorized redirect URI is the shared public address

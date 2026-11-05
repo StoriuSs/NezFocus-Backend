@@ -138,8 +138,8 @@ sequenceDiagram
 5. From the ID token the API keeps four things: `sub`, `email`,
    `email_verified` and `name`. It never stores Google's tokens.
 6. It decides the account ([next section](#which-account-a-google-sign-in-lands-in)),
-   then passes through the same sign-in gate as a password: a session, or the
-   second step if the account has [two-step sign-in](two-step-sign-in.md) on.
+   then passes through the same sign-in gate as a password, which starts a
+   session.
 7. It clears `oauth_state` and redirects to the web app's
    `FRONTEND_URL/auth/callback` with the outcome in the query.
 
@@ -194,7 +194,6 @@ Every outcome is a `302` to `FRONTEND_URL/auth/callback` with a query:
 | Outcome | Query |
 |---|---|
 | Signed in | `redirect=<path>`, plus `&notice=password_removed` when that applies. The refresh cookie is set. |
-| Two-step sign-in is on | `two_factor=1&redirect=<path>` (and maybe `&notice=...`). A `two_factor` cookie holds the challenge; the web app shows the code screen and calls `POST /auth/login/2fa` with credentials and no `challenge` ([details](two-step-sign-in.md#after-google)). |
 | Did not work | `error=<reason>`, plus `&redirect=<path>` when the attempt was found, so the page can offer to try again and land in the same place |
 
 `error` values:
@@ -227,7 +226,6 @@ reach Google's discovery document gives 500, as JSON.
 | `redirect` must be a path: start with `/`, not `//`, no `\`, no control characters, at most 2048 characters; otherwise `/` | **Open redirect**: `//evil.example` or `/\evil.example`, which browsers read as another site. The web app checks the value again before following it (`safeRedirect` in its `src/features/auth/paths.ts`). |
 | Only a provider-verified email creates or links an account | Taking over an account with an unverified address |
 | An unconfirmed account's password is removed when Google links it | Pre-registering a victim's address |
-| The two-step challenge after Google travels in a path-scoped cookie, never the URL | Challenges in browser history and logs |
 | `code` and `state` are redacted from the request log, error envelopes and Sentry | One-time values kept in logs for weeks |
 
 ## Accounts made with Google
@@ -335,7 +333,7 @@ the other extension points.
 | File | What it does |
 |---|---|
 | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) | The two routes and the redirects; registered last, as `GET auth/:provider` matches any `GET auth/<word>` ([in-the-code.md](./in-the-code.md#the-controllers)) |
-| [auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts) | The `oauth_state` and `two_factor` cookies |
+| [auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts) | The `oauth_state` and refresh cookies |
 | [start-oauth.handler.ts](../../src/modules/auth/application/commands/start-oauth/start-oauth.handler.ts) | Starting; `safeReturnPath` |
 | [finish-oauth.handler.ts](../../src/modules/auth/application/commands/finish-oauth/finish-oauth.handler.ts) | The return checks and the linking rules |
 | [openid-connect-provider.adapter.ts](../../src/modules/auth/infrastructure/adapters/openid-connect-provider.adapter.ts) | The `openid-client` adapter: PKCE, state, nonce, ID token checks |

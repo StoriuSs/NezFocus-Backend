@@ -7,8 +7,7 @@ const devEnv = {
     DB_NAME: 'db',
     DB_USERNAME: 'u',
     DB_PASSWORD: 'p',
-    JWT_SECRET: 'dev-only-secret-dev-only-secret-00',
-    AUTH_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+    JWT_SECRET: 'dev-only-secret-dev-only-secret-00'
 }
 
 const strong = 'k3Q9-vT7w-pL2x'
@@ -20,7 +19,6 @@ const prodEnv = {
     REDIS_PASSWORD: strong,
     BULL_BOARD_PASSWORD: strong,
     JWT_SECRET: '6f1c0a9e4b27d85f3a90c1e2b7d4f6a8c3e5b1d9f0a2c4e6b8d0f1a3c5e7b9d1',
-    AUTH_ENCRYPTION_KEY: '9d0c5e7a1b3f4d6c8e0a2b4d6f8a1c3e5b7d9f0a2c4e6b8d0f1a3c5e7b9d1f2a',
     CORS_CREDENTIALS: 'true',
     ALERT_WEBHOOK_URL: 'https://discord.com/api/webhooks/123/AbC-token',
     EMAIL_HOST: 'smtp-relay.example.com',
@@ -66,15 +64,5 @@ describe('validationSchema in production', () => {
                 ALERT_WEBHOOK_URL: 'https://discord.com/api/webhooks/your-webhook-id/your-webhook-token'
             })
         ).toContain('placeholder')
-    })
-
-    it('needs a real encryption key: 32 bytes of hex, not the template one, and a previous key that differs', () => {
-        expect(errorFor({ ...prodEnv, AUTH_ENCRYPTION_KEY: 'ab'.repeat(31) })).toContain('at least 32 bytes of hex')
-        expect(errorFor({ ...prodEnv, AUTH_ENCRYPTION_KEY: '0'.repeat(64) })).toContain('development key')
-        expect(errorFor({ ...prodEnv, AUTH_ENCRYPTION_KEY_PREVIOUS: '0'.repeat(64) })).toContain('development key')
-        expect(
-            errorFor({ ...prodEnv, AUTH_ENCRYPTION_KEY_PREVIOUS: prodEnv.AUTH_ENCRYPTION_KEY.toUpperCase() })
-        ).toContain('the new key goes in AUTH_ENCRYPTION_KEY')
-        expect(errorFor({ ...prodEnv, AUTH_ENCRYPTION_KEY_PREVIOUS: 'cd'.repeat(32) })).toBeUndefined()
     })
 })

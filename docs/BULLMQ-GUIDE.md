@@ -56,12 +56,11 @@ Here is the flow for deleting an account:
 1. The user clicks **"Delete Account"**; the app sends
    `POST /api/v1/auth/account/delete`.
 2. `DeleteOwnAccountHandler` (auth module) checks the proof (the password or an
-   emailed code, plus the two-step code when that is on), then runs the users
-   module's `DeleteAccountCommand`.
+   emailed code), then runs the users module's `DeleteAccountCommand`.
 3. `DeleteAccountHandler` (users module) sets `deletedAt = now()` in PostgreSQL
    and publishes an `AccountDeletedEvent`.
 4. Two event handlers react. `EndSessionsOfDeletedAccountHandler` (auth) ends
-   every session and removes the password, Google links and two-step secret.
+   every session and removes the password and Google links.
    `CleanupAccountAvatarHandler` (users) drops a small note, a job, into Redis:
    > *"Delete this stored file. If it fails, keep trying for an hour and a half."*
 5. `DeleteOwnAccountHandler` queues one more job, the "account deleted" email,
@@ -105,9 +104,6 @@ are defined in `src/modules/auth/infrastructure/email/auth-email-jobs.ts`):
 | `password-added` | A password was added to an account that had none |
 | `account-exists` | Someone tried to sign up with an address that already has an account |
 | `sign-in-method-added` | Google was linked to an existing account |
-| `two-factor-changed` | Two-step sign-in was turned on or off |
-| `recovery-code-used` | A recovery code was used to sign in |
-| `recovery-codes-replaced` | New recovery codes were made |
 | `account-deleted` | The account was deleted |
 
 These override the queue's defaults with `EMAIL_JOB_OPTIONS`: **3 attempts,
@@ -147,7 +143,7 @@ Two schedules ship with the starter:
 | Queue | Scheduler | Every | What it does |
 | --- | --- | --- | --- |
 | `maintenance` | `deleted-accounts-sweep` (users) | 15 min | Erases the personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago; deletes accounts unconfirmed for `UNVERIFIED_ACCOUNT_RETENTION_DAYS` |
-| `maintenance` | `auth-clean-up` (auth) | 1 h | Removes sessions that ended a week ago and codes a day old; ends what a lost `AccountDeletedEvent` left behind (sessions, passwords, Google links, two-step secrets and recovery codes of deleted accounts) |
+| `maintenance` | `auth-clean-up` (auth) | 1 h | Removes sessions that ended a week ago and codes a day old; ends what a lost `AccountDeletedEvent` left behind (sessions, passwords and Google links of deleted accounts) |
 
 ## Code map
 
@@ -160,13 +156,12 @@ Two schedules ship with the starter:
 | Consumers | `src/modules/auth/presentation/consumers/auth-jobs.consumer.ts` (the emails), `src/maintenance/maintenance.consumer.ts` (every periodic job), and `src/shared/infrastructure/storage/file-cleanup.consumer.ts` |
 | The periodic jobs, and how often | `src/maintenance/maintenance-tasks.ts` |
 | Queue metrics, and reporting a job that failed for good | `src/shared/infrastructure/queue/` |
-| A job queued from the command line | `src/bootstrap/two-factor-off.ts` queues the "two-step sign-in turned off" email |
 
 The application layer never imports `bullmq`. It calls a port
 (`BackgroundJobsPort` in users, `AuthMailerPort` in auth), and only adapters,
 consumers and the queue infrastructure name the library:
-`bullmq-background-jobs.adapter.ts`, `bullmq-auth-mailer.adapter.ts`, the consumers
-above, and `two-factor-off.ts`. Swapping the queue library means rewriting
+`bullmq-background-jobs.adapter.ts`, `bullmq-auth-mailer.adapter.ts` and the
+consumers above. Swapping the queue library means rewriting
 those, not the handlers.
 
 ## 4. The BullMQ Dashboard (Secured)

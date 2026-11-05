@@ -76,29 +76,3 @@ model OAuthAccount {
   @@unique([provider, providerAccountId])
   @@index([userId])
 }
-
-// Two-step sign-in: the authenticator app's secret, sealed with
-// AUTH_ENCRYPTION_KEY. Unconfirmed (confirmedAt null) between setting it up
-// and entering the first code; only a confirmed one is asked for at sign-in.
-model TwoFactor {
-  userId       String    @id
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  secretSealed String
-  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
-  confirmedAt  DateTime? @db.Timestamptz(6)
-  // The 30-second step of the last code accepted: a code is refused if its
-  // step is not later, so the same code cannot be used twice.
-  lastUsedStep Int?
-}
-
-// Codes for signing in without the authenticator app, each usable once.
-// Stored as keyed fingerprints (AUTH_ENCRYPTION_KEY), never as the codes.
-model RecoveryCode {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fingerprint String
-  usedAt      DateTime? @db.Timestamptz(6)
-
-  @@unique([userId, fingerprint])
-}

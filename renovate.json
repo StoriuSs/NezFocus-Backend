@@ -116,14 +116,13 @@
         "jose",
         "openid-client",
         "@node-rs/argon2",
-        "otpauth",
         "@nestjs-modules/mailer"
       ],
       "matchUpdateTypes": [
         "major"
       ],
       "prBodyNotes": [
-        "⚠️ **Sign-in library, major version.** It can change tokens, password hashes, two-step codes or emails without failing the build or the unit tests. Before merging, run the integration suites that exercise it (the pre-push hook does not): `pnpm test:services:up`, then `pnpm test:integration -- auth oauth two-step email` (docs/renovate.md)."
+        "⚠️ **Sign-in library, major version.** It can change tokens, password hashes or emails without failing the build or the unit tests. Before merging, run the integration suites that exercise it (the pre-push hook does not): `pnpm test:services:up`, then `pnpm test:integration -- auth oauth` (docs/renovate.md)."
       ]
     },
     {

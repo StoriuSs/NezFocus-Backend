@@ -673,16 +673,16 @@ flowchart TD
 
 `src/modules/auth/` is the starter's second module, and it follows the same
 four layers. It signs people in and keeps them signed in: passwords, emailed
-codes, sessions and refresh tokens, Google sign-in, two-step sign-in,
-Turnstile. What it does is described in [auth/README.md](./auth/README.md);
-this section is only about its shape.
+codes, sessions and refresh tokens, Google sign-in, account deletion. What it
+does is described in [auth/README.md](./auth/README.md); this section is only
+about its shape.
 
 | Layer | What is there |
 |---|---|
-| `domain/` | `errors/` (every auth `DomainError`, by topic), the repository ports in `ports/`, the password policy and the common-password list, recovery-code format. No entities: the user is the users module's |
-| `application/` | 22 command handlers (register, verify, login, refresh, logout, reset and change password, Google, two-step...), 2 query handlers, 2 event handlers, small services shared by handlers (`SessionIssuer`, `CodeIssuer`, `SignInGate`, `SecondFactorCheck`, `CaptchaCheck`), the rate-limit rules, and the ports for outside services in `application/ports/` |
+| `domain/` | `errors/` (every auth `DomainError`, by topic), the repository ports in `ports/`, the password policy and the common-password list. No entities: the user is the users module's |
+| `application/` | 17 command handlers (register, verify, login, refresh, logout, reset and change password, Google, account deletion...), 2 query handlers, 2 event handlers, small services shared by handlers (`SessionIssuer`, `CodeIssuer`, `SignInGate`), the rate-limit rules, and the ports for outside services in `application/ports/` |
 | `infrastructure/` | one adapter per port (below): `adapters/` and `persistence/`, as in users; and `email/`, the emails `AuthJobsConsumer` sends (`AuthEmails` and their templates) |
-| `presentation/` | Five controllers for the /auth routes (HTTP), `AccessTokenGuard` (the global guard that checks every request's token), `AuthJobsConsumer` (sends the emails) |
+| `presentation/` | Four controllers for the /auth routes (HTTP), `AccessTokenGuard` (the global guard that checks every request's token), `AuthJobsConsumer` (sends the emails) |
 
 ### Its ports and adapters
 
@@ -693,21 +693,17 @@ the users module:
 |---|---|---|---|
 | `PasswordHasherPort` | hash and check passwords | `Argon2PasswordHasher` | `@node-rs/argon2` |
 | `TokenServicePort` | issue and verify access tokens, make refresh tokens, hash codes | `JoseTokenService` | `jose` (HS256 JWTs) |
-| `CredentialRepositoryPort`, `SessionRepositoryPort`, `VerificationCodeRepositoryPort`, `OAuthAccountRepositoryPort`, `TwoFactorRepositoryPort` | the auth tables | `Prisma*Repository` | Prisma + PostgreSQL |
+| `CredentialRepositoryPort`, `SessionRepositoryPort`, `VerificationCodeRepositoryPort`, `OAuthAccountRepositoryPort` | the auth tables | `Prisma*Repository` | Prisma + PostgreSQL |
 | `PrincipalPort`, `SessionCachePort` | "is this session live, and who is it?" on every request; dropping cached entries | `RedisSessionCache` (one class, both ports) | Redis, with Postgres behind it |
 | `OAuthProviderPort` | sign in with another provider | `OpenIdConnectProvider` | `openid-client` (Google) |
 | `OAuthStatePort` | an in-progress Google sign-in, taken once | `RedisOAuthState` | Redis (`GETDEL`) |
-| `TwoFactorChallengePort` | a two-step sign-in halfway through | `RedisTwoFactorChallenge` | Redis |
-| `TotpPort` | authenticator-app codes | `OtpauthTotp` | `otpauth` |
-| `SecretBoxPort` | encrypt two-step secrets, fingerprint recovery codes | `AesSecretBox` | Node `crypto` (AES-GCM, HKDF, HMAC) |
-| `CaptchaPort` | check a Turnstile token | `TurnstileCaptcha` | Cloudflare's siteverify API |
 | `AuthMailerPort` | queue the auth emails | `BullMqAuthMailer` | BullMQ (`auth` queue) |
 | `AuthEventsPort` | count what happened | `PrometheusAuthEvents` | Prometheus (`auth_events_total`) |
 | `RateLimitPort` | fixed-window limits | the shared `RateLimiter` | Redis |
 
 The auth handler tests replace these with in-memory fakes
 ([`auth-test-world.shared-spec.ts`](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)), which is the payoff of the ports: the
-whole sign-in logic is tested without Postgres, Redis, Google or Cloudflare.
+whole sign-in logic is tested without Postgres, Redis or Google.
 More detail: [auth/in-the-code.md](./auth/in-the-code.md).
 
 ### Where the two modules meet
@@ -746,8 +742,8 @@ flowchart LR
    injects it with `@Inject(USER_DIRECTORY)`. Auth never reads the `User`
    table itself.
 2. **Dispatching users' `DeleteAccountCommand`.** `POST /api/v1/auth/account/delete`
-   is an auth route, because deleting needs proof (the password, an emailed
-   code, a two-step code). Once
+   is an auth route, because deleting needs proof (the password or an emailed
+   code). Once
    [`DeleteOwnAccountHandler`](../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts)
    has checked it, it does not delete the row itself. It sends the users
    module's command through the bus:
@@ -761,8 +757,8 @@ flowchart LR
    ([FAQ 12](#faq)).
 3. **Listening to users' events.** Auth's
    [`events/handlers/`](../src/modules/auth/application/events/handlers/)
-   reacts to `AccountDeletedEvent` (end every session, delete the password,
-   Google links and two-step data) and to `UserProfileUpdatedEvent` (drop the
+   reacts to `AccountDeletedEvent` (end every session, delete the password and
+   Google links) and to `UserProfileUpdatedEvent` (drop the
    cached user). The users module publishes them without knowing auth
    exists.
 
@@ -839,17 +835,17 @@ And the auth module, in short:
 
 ```
 modules/auth/
-├── domain/              # errors/, ports/ (the five repositories), password-policy.ts, recovery-codes.ts, ...
+├── domain/              # errors/, ports/ (the four repositories), password-policy.ts, ...
 ├── application/
-│   ├── commands/        # one folder per use case: register/, login/, set-up-two-factor/, finish-oauth/, ...
-│   ├── queries/         # get-sign-in-methods/, get-two-factor-status/
+│   ├── commands/        # one folder per use case: register/, login/, delete-own-account/, finish-oauth/, ...
+│   ├── queries/         # get-sign-in-methods/, get-auth-options/
 │   ├── events/handlers/ # reacting to the users module's events, one handler per file
-│   ├── ports/           # the outside services: hasher, tokens, mailer, captcha, ... (table above)
-│   ├── services/        # SessionIssuer, CodeIssuer, SignInGate, SecondFactorCheck, CaptchaCheck, ...
+│   ├── ports/           # the outside services: hasher, tokens, mailer, ... (table above)
+│   ├── services/        # SessionIssuer, CodeIssuer, SignInGate, ...
 │   └── rate-limits.ts   # every auth limit, and RateLimitPort
 ├── infrastructure/      # adapters/ (jose-token-service.adapter.ts, ...), persistence/ (prisma-session.repository.ts, ...)
 ├── presentation/
-│   ├── http/            # auth, password, two-factor, account-deletion, oauth .controller.ts; auth-cookies.ts; dto/
+│   ├── http/            # auth, password, account-deletion, oauth .controller.ts; auth-cookies.ts; dto/
 │   ├── guards/          # access-token.guard.ts (registered globally in AppModule)
 │   └── consumers/       # auth-jobs.consumer.ts
 └── auth.module.ts       # 🔗 Wiring
@@ -872,7 +868,7 @@ You absolutely can for simple CRUD modules! Hexagonal Architecture adds boilerpl
 
 **2. Why is the `UserRepositoryPort` in the Domain layer, but `StoragePort` and `BackgroundJobsPort` are in the Application layer?**
 The `UserRepositoryPort` lives in the Domain layer because the concept of "persisting a User" is a fundamental domain concern. The `UserEntity` itself needs to be saved and retrieved; this is core to the business.
-`StoragePort` and `BackgroundJobsPort` live in the Application layer because storage and queued work are *use-case specific* concerns. The domain doesn't care about file uploads or retries — those are orchestration details that the Application layer manages. (The auth module does the same: its five repository ports are in `domain/ports/`, the others in `application/ports/`.)
+`StoragePort` and `BackgroundJobsPort` live in the Application layer because storage and queued work are *use-case specific* concerns. The domain doesn't care about file uploads or retries — those are orchestration details that the Application layer manages. (The auth module does the same: its four repository ports are in `domain/ports/`, the others in `application/ports/`.)
 
 **3. Why is `PrismaUserRepository` in `persistence/` while the other adapters are in `adapters/`?**
 Both folders contain outbound adapters, but they are separated by concern:

@@ -8,11 +8,9 @@
  */
 
 export * from './account-deletion.errors'
-export * from './captcha.errors'
 export * from './codes.errors'
 export * from './oauth.errors'
 export * from './password.errors'
 export * from './rate-limit.errors'
 export * from './session.errors'
 export * from './sign-in.errors'
-export * from './two-factor.errors'

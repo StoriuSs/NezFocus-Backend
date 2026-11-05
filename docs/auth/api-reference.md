@@ -3,7 +3,7 @@
 Every sign-in route the API offers, with exactly what to send, what comes back,
 and every error each one can answer. It is written for whoever builds the web
 or mobile client: keep it open while you wire up the forms. If you want the
-story first (what a refresh token is, why sign-in has two steps), read
+story first (what a refresh token is, why sign-up asks for a code), read
 [concepts.md](./concepts.md) and [flows.md](./flows.md), then come back.
 
 Everything here was taken from the code:
@@ -21,7 +21,6 @@ they disagree with this page, the code wins: please fix the page.
 - [Signing up](#signing-up)
 - [Signing in and staying signed in](#signing-in-and-staying-signed-in)
 - [Passwords](#passwords)
-- [Two-step sign-in settings](#two-step-sign-in-settings)
 - [Deleting the account](#deleting-the-account)
 - [Google and other providers](#google-and-other-providers)
 - [The current user](#the-current-user)
@@ -102,11 +101,11 @@ What to read in an error:
 
 | Field | Use it for |
 |---|---|
-| HTTP status | The broad class: 400 fix the input, 401 signed out, 403 not allowed (or "next step"), 409 wrong state, 422 rules, 429 wait, 503 try later |
+| HTTP status | The broad class: 400 fix the input, 401 signed out, 403 not allowed, 409 wrong state, 422 rules, 429 wait, 503 try later |
 | `meta.type` | **What your code switches on.** Stable names like `AUTH_CODE_EXPIRED` |
 | `meta.code` | The same thing as six digits (`400103`), for logs and support tickets |
 | `meta.message` | A sentence you may show the user as it is. It never reveals whether an address has an account |
-| `data.<extra>` | Machine-readable details: `reason`, `captcha_required`, `attempts_left`, `rules`, `needs`, `challenge` (each listed per route below) |
+| `data.<extra>` | Machine-readable details: `reason`, `rules`, `needs` (each listed per route below) |
 | `data.details` | The message again (domain errors), or the list of failing fields (validation errors) |
 | `meta.request_id` | Quote it when reporting a problem: it finds the request in the logs. Also sent as the `x-request-id` header |
 
@@ -153,17 +152,16 @@ before its own logic runs.
 
 ### Cookies
 
-The API sets three cookies. All are `HttpOnly`: page JavaScript can never read
+The API sets two cookies. Both are `HttpOnly`: page JavaScript can never read
 them, so your code never handles them. It only has to make sure the browser
 sends them, by calling with credentials.
 
 | Cookie | Set by | Path | Lives | SameSite | Holds |
 |---|---|---|---|---|---|
-| `refresh_token` | Every route that signs in ([sign in](#sign-in), [confirm the address](#confirm-the-address), [reset password](#reset-password), [second step](#second-step-of-signing-in), [refresh](#refresh), [provider callback](#provider-callback)) | `/api/v1/auth` | Until the session's absolute end (`AUTH_SESSION_TTL_DAYS`, 30 days) | `AUTH_COOKIE_SAMESITE` (default `lax`) | The refresh token. Replaced on every refresh |
-| `two_factor` | [Provider callback](#provider-callback), when the account has two-step sign-in on | `/api/v1/auth/login/2fa` | 5 minutes | `none` if `AUTH_COOKIE_SAMESITE=none`, else `lax` | The two-step challenge, so it never appears in a URL |
+| `refresh_token` | Every route that signs in ([sign in](#sign-in), [confirm the address](#confirm-the-address), [reset password](#reset-password), [refresh](#refresh), [provider callback](#provider-callback)) | `/api/v1/auth` | Until the session's absolute end (`AUTH_SESSION_TTL_DAYS`, 30 days) | `AUTH_COOKIE_SAMESITE` (default `lax`) | The refresh token. Replaced on every refresh |
 | `oauth_state` | [Start a provider sign-in](#start-a-provider-sign-in) | `/api/v1/auth/<provider>/callback` | 10 minutes | `none` if `AUTH_COOKIE_SAMESITE=none`, else `lax` | Ties Google's return to this browser |
 
-`Secure` is on for all three in production (and whenever SameSite is `none`),
+`Secure` is on for both in production (and whenever SameSite is `none`),
 or as `AUTH_COOKIE_SECURE` says. Cross-site setups are explained in
 [sessions-and-tokens.md](./sessions-and-tokens.md).
 
@@ -218,7 +216,6 @@ than a 401.
 | `POST /auth/verify-email` | Public | 200, signs in | [Confirm the address](#confirm-the-address) |
 | `POST /auth/resend-verification` | Public | 202 | [Send the sign-up email again](#send-the-sign-up-email-again) |
 | `POST /auth/login` | Public | 200, signs in | [Sign in](#sign-in) |
-| `POST /auth/login/2fa` | Public (cookie + Origin after Google) | 200, signs in | [Second step of signing in](#second-step-of-signing-in) |
 | `POST /auth/refresh` | Cookie + Origin | 200 | [Refresh](#refresh) |
 | `POST /auth/logout` | Cookie + Origin | 200 | [Sign out](#sign-out) |
 | `POST /auth/logout-all` | Signed in | 200 | [Sign out everywhere](#sign-out-everywhere) |
@@ -228,11 +225,6 @@ than a 401.
 | `GET /auth/sign-in-methods` | Signed in | 200 | [Sign-in methods](#sign-in-methods) |
 | `POST /auth/password/code` | Signed in | 200 | [Email a code to set a first password](#email-a-code-to-set-a-first-password) |
 | `POST /auth/password` | Signed in | 200 | [Set a first password](#set-a-first-password) |
-| `GET /auth/2fa` | Signed in | 200 | [Two-step status](#two-step-status) |
-| `POST /auth/2fa/setup` | Signed in | 200 | [Set up two-step sign-in](#set-up-two-step-sign-in) |
-| `POST /auth/2fa/confirm` | Signed in | 200 | [Confirm two-step sign-in](#confirm-two-step-sign-in) |
-| `POST /auth/2fa/recovery-codes` | Signed in | 200 | [New recovery codes](#new-recovery-codes) |
-| `POST /auth/2fa/disable` | Signed in | 200 | [Turn two-step sign-in off](#turn-two-step-sign-in-off) |
 | `POST /auth/account/delete-code` | Signed in | 200 | [Email a deletion code](#email-a-deletion-code) |
 | `POST /auth/account/delete` | Signed in | 200 | [Delete the account](#delete-the-account) |
 | `GET /auth/options` | Public | 200 | [Sign-in options](#sign-in-options) |
@@ -269,7 +261,6 @@ the new password and a fresh code.)
 |---|---|---|---|
 | `email` | string | yes | Trimmed, a valid email address, at most 254 characters |
 | `password` | string | yes | 1 to 1024 characters. The password rules come later ([passwords-and-codes.md](./passwords-and-codes.md)) |
-| `turnstile_token` | string | when Turnstile is on | At most 2048 characters. The token from the Turnstile widget |
 
 **Success:** `202`,
 message "Check your email to continue.", `data: null`.
@@ -279,14 +270,8 @@ message "Check your email to continue.", `data: null`.
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password breaks a rule (checked against the address only) | `data.rules`: rule ids such as `["uppercase","special"]` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `register-ip` (5 an hour per IP, 20 with Turnstile on) | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `register-ip` (5 an hour per IP) | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `register-email-min` (1 a minute per address) or `code-email-hour` (5 an hour per address) | `data.reason: "emails"`, `Retry-After` |
-| 400 | `AUTH_CAPTCHA_REQUIRED` | `400106` | Turnstile is on and no `turnstile_token` came | |
-| 400 | `AUTH_CAPTCHA_FAILED` | `400107` | Cloudflare did not accept the token (wrong, expired or already used) | |
-| 503 | `AUTH_CAPTCHA_UNAVAILABLE` | `503002` | Cloudflare could not be asked, or refused the server's secret key | |
-
-The limits are checked before Turnstile (a refusal does not waste the solved
-challenge) and counted only after it passes.
 
 ### Confirm the address
 
@@ -314,7 +299,6 @@ message "Your email address is confirmed. You are signed in.",
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, wrong password, no code pending (already confirmed, or a newer code replaced it), or no such account. One error for all, on purpose. A wrong password does not use up one of the code's tries | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | The code is older than 10 minutes, or this was its 5th wrong try | |
-| 403 | `AUTH_TWO_FACTOR_REQUIRED` | `403005` | The address is now confirmed, but the account has two-step sign-in on. Not a failure: go to the [second step](#second-step-of-signing-in). No cookie is set | `data.challenge` |
 
 Each wrong code counts against `code-try-ip`.
 
@@ -324,7 +308,7 @@ Each wrong code counts against `code-try-ip`.
 
 Sends a new code to an unconfirmed address, "you already have an account" to
 a confirmed one, and nothing to an unknown one. The answer is the same in
-every case. No Turnstile.
+every case.
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
@@ -352,7 +336,6 @@ Every accepted request counts, whether or not the address has an account.
 |---|---|---|---|
 | `email` | string | yes | Trimmed, valid email, at most 254 |
 | `password` | string | yes | 1 to 1024 characters |
-| `turnstile_token` | string | from the 3rd attempt when Turnstile is on | At most 2048 |
 
 **Success:** `200`,
 message "Login successful", `data`: [the token answer](#token-answer).
@@ -361,49 +344,13 @@ message "Login successful", `data`: [the token answer](#token-answer).
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-email`: 5 failed sign-ins for this address in 15 minutes (20 with Turnstile on) | `data.reason: "sign_ins"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-email`: 5 failed sign-ins for this address in 15 minutes | `data.reason: "sign_ins"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-ip`: 10 failed sign-ins from this IP in 15 minutes, any addresses | `data.reason: "network"`, `Retry-After` |
-| 400 | `AUTH_CAPTCHA_REQUIRED` | `400106` | Turnstile is on, this address or this IP already has 2 or more failures, and no token came | |
-| 400 | `AUTH_CAPTCHA_FAILED` | `400107` | A token was sent (or needed) and Cloudflare did not accept it | |
-| 503 | `AUTH_CAPTCHA_UNAVAILABLE` | `503002` | Cloudflare could not be asked | |
-| 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made with Google). One error for all three, on purpose | `data.captcha_required: true` when Turnstile is on and the next attempt will need it |
+| 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made with Google). One error for all three, on purpose | |
 | 403 | `AUTH_EMAIL_NOT_VERIFIED` | `403002` | The password was right but the address is not confirmed yet. Offer to [resend the code](#send-the-sign-up-email-again) | |
-| 403 | `AUTH_TWO_FACTOR_REQUIRED` | `403005` | The password was right and two-step sign-in is on. Not a failure: go to the [second step](#second-step-of-signing-in). No cookie is set | `data.challenge` |
 
 Only failures count against the two limits. A right password clears the
-address's count (not the IP's). When Turnstile is on and a token is sent, it
-is checked even below 2 failures.
-
-### Second step of signing in
-
-`POST /api/v1/auth/login/2fa` · Public · reads `two_factor` when `challenge` is absent · sets `refresh_token`
-
-The code from the authenticator app (or a recovery code) for the challenge the
-first step answered with.
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `code` | string | yes | Trimmed, 6 to 32 characters. Six digits from the app, or a recovery code such as `K7Q2M-X9HDP` (spaces and dashes are ignored) |
-| `challenge` | string | after a password or emailed code | At most 256. The `data.challenge` from the `403 AUTH_TWO_FACTOR_REQUIRED` answer. **Leave it out after Google**: the challenge is then in the `two_factor` cookie, so send this request with credentials |
-
-**Success:** `200`,
-message "Login successful", `data`: [the token answer](#token-answer). The
-`two_factor` cookie, if it was sent, is cleared.
-
-**Errors:**
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 403 | `AUTH_FORBIDDEN` | `403004` | No `challenge` in the body (so the cookie is used) and the request's `Origin` is not in `CORS_ORIGINS` | |
-| 401 | `AUTH_TWO_FACTOR_CHALLENGE_EXPIRED` | `401009` | The challenge is unknown, older than 5 minutes, already used, or out of tries. Start the sign-in over | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `2fa-fail`: 5 wrong two-step codes for this account in 15 minutes, across challenges. Also answered for the wrong code that uses up the last one (the challenge ends with it) | `data.reason: "wrong_codes"`, `Retry-After` |
-| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The account was deleted after the first step | |
-| 503 | `AUTH_TWO_FACTOR_UNAVAILABLE` | `503003` | The account's secret was sealed with an encryption key the server no longer has. Nothing was counted. An operator must act ([operations.md](./operations.md#two-step-sign-in-unavailable)) | |
-| 400 | `AUTH_TWO_FACTOR_CODE_INVALID` | `400105` | Wrong code, a code already used, or a recovery code already used | `data.attempts_left`: the smaller of this challenge's tries left and the account's |
-
-A challenge allows 5 wrong codes and lasts 5 minutes. The challenge, the
-`two_factor` cookie and recovery codes are explained in
-[two-step-sign-in.md](./two-step-sign-in.md).
+address's count (not the IP's).
 
 ### Refresh
 
@@ -469,7 +416,6 @@ whether or not the address has an account.
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
 | `email` | string | yes | Trimmed, valid email, at most 254 |
-| `turnstile_token` | string | when Turnstile is on | At most 2048 |
 
 **Success:** `202`,
 message "If that address has an account, an email is on its way.", `data: null`.
@@ -480,9 +426,6 @@ message "If that address has an account, an email is on its way.", `data: null`.
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 10 an hour from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address | `data.reason: "emails"`, `Retry-After` |
-| 400 | `AUTH_CAPTCHA_REQUIRED` | `400106` | Turnstile is on and no token came | |
-| 400 | `AUTH_CAPTCHA_FAILED` | `400107` | Cloudflare did not accept the token | |
-| 503 | `AUTH_CAPTCHA_UNAVAILABLE` | `503002` | Cloudflare could not be asked | |
 
 ### Reset password
 
@@ -508,7 +451,6 @@ are signed in.", `data`: [the token answer](#token-answer).
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule. Checked against the address before the account is looked up, then against the username. The code is not used up | `data.rules` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code pending, or no such account | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | Older than 10 minutes, or its 5th wrong try | |
-| 403 | `AUTH_TWO_FACTOR_REQUIRED` | `403005` | Two-step sign-in is on. **The password has already been changed** and every session ended; finish with the [second step](#second-step-of-signing-in) | `data.challenge` |
 
 ### Change password
 
@@ -595,118 +537,6 @@ Google link are kept.
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, or none pending | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | Older than 10 minutes, or its 5th wrong try | |
 
-## Two-step sign-in settings
-
-All five need a signed-in user and can answer the guard errors.
-[two-step-sign-in.md](./two-step-sign-in.md) explains the feature.
-
-The `2fa-fail` limit (5 wrong codes per account in 15 minutes) is shared with
-the [second step](#second-step-of-signing-in) and [account deletion](#delete-the-account),
-and reset by any successful use. Where a wrong code is answered with
-`400 AUTH_TWO_FACTOR_CODE_INVALID`, `data.attempts_left` is how many wrong
-codes the account has left; the one that uses up the last is answered
-`429` instead.
-
-### Two-step status
-
-`GET /api/v1/auth/2fa` · Signed in
-
-**Success:** `200`.
-
-| `data` field | Type | Meaning |
-|---|---|---|
-| `enabled` | boolean | On (set up **and** confirmed). A set-up but unconfirmed secret reads `false` |
-| `recovery_codes_left` | integer | Unused recovery codes; 0 when off |
-
-### Set up two-step sign-in
-
-`POST /api/v1/auth/2fa/setup` · Signed in
-
-A new secret for the authenticator app. It is not asked for at sign-in until
-[confirmed](#confirm-two-step-sign-in). Calling it again replaces an
-unconfirmed secret. No body.
-
-**Success:** `200`.
-
-| `data` field | Type | Meaning |
-|---|---|---|
-| `secret` | string | Base32, for typing into the app by hand |
-| `otpauth_uri` | string | `otpauth://totp/...`: render it as a QR code. The label is the account's email, the issuer is `APP_NAME` |
-
-**Errors:**
-
-| Status | `meta.type` | `meta.code` | When |
-|---|---|---|---|
-| 409 | `AUTH_TWO_FACTOR_ALREADY_ON` | `409002` | It is already on: turn it off first |
-| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The account was deleted (normally the guard answers this first) |
-
-### Confirm two-step sign-in
-
-`POST /api/v1/auth/2fa/confirm` · Signed in
-
-Turns it on with a code from the app, and answers with the recovery codes.
-**They are shown this once**: only fingerprints are stored. Sessions are not
-ended.
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `code` | string | yes | Trimmed, 6 to 32 characters. Only a six-digit app code is accepted here |
-
-**Success:** `200`,
-`data: { "recovery_codes": [ten strings like "K7Q2M-X9HDP"] }`.
-
-**Errors:**
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 409 | `AUTH_TWO_FACTOR_NOT_ON` | `409003` | Nothing set up: message "Set up two-step verification first." | |
-| 409 | `AUTH_TWO_FACTOR_ALREADY_ON` | `409002` | Already confirmed (also when two confirms race) | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `2fa-fail` used up | `data.reason: "wrong_codes"`, `Retry-After` |
-| 503 | `AUTH_TWO_FACTOR_UNAVAILABLE` | `503003` | The secret was sealed with a key the server does not have | |
-| 400 | `AUTH_TWO_FACTOR_CODE_INVALID` | `400105` | Wrong code (a recovery code is wrong here too) | `data.attempts_left` |
-
-### New recovery codes
-
-`POST /api/v1/auth/2fa/recovery-codes` · Signed in
-
-Replaces every recovery code. The old ones stop working; the new ones are in
-the answer, this once. The owner is emailed.
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `code` | string | yes | Trimmed, 6 to 32. Only a six-digit app code is accepted |
-
-**Success:** `200`,
-`data: { "recovery_codes": [...] }`.
-
-**Errors:**
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 409 | `AUTH_TWO_FACTOR_NOT_ON` | `409003` | Two-step sign-in is not on | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `2fa-fail` used up | `data.reason: "wrong_codes"`, `Retry-After` |
-| 503 | `AUTH_TWO_FACTOR_UNAVAILABLE` | `503003` | Unreadable secret | |
-| 400 | `AUTH_TWO_FACTOR_CODE_INVALID` | `400105` | Wrong code | `data.attempts_left` |
-
-### Turn two-step sign-in off
-
-`POST /api/v1/auth/2fa/disable` · Signed in
-
-Needs a code, not just the session, so someone at an unlocked computer cannot
-remove it in one click. Removes the secret and the recovery codes. The owner
-is emailed.
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `code` | string | yes | Trimmed, 6 to 32. An app code **or** a recovery code |
-
-**Success:** `200`, `data: null`.
-
-**Errors:** the same four as [new recovery codes](#new-recovery-codes):
-`409 AUTH_TWO_FACTOR_NOT_ON`, `429 RATE_LIMIT_EXCEEDED` (`wrong_codes`),
-`503 AUTH_TWO_FACTOR_UNAVAILABLE`, `400 AUTH_TWO_FACTOR_CODE_INVALID` with
-`data.attempts_left`.
-
 ## Deleting the account
 
 [accounts.md](./accounts.md) explains what deletion removes, and when.
@@ -739,7 +569,6 @@ session ends, this one included. The owner is emailed.
 |---|---|---|---|
 | `password` | string | the account has a password | 1 to 1024 |
 | `code` | string | the account has **no** password (from [email a deletion code](#email-a-deletion-code)) | Trimmed, exactly six digits |
-| `two_factor_code` | string | two-step sign-in is on | Trimmed, 6 to 32. An app code or a recovery code |
 
 **Success:** `200`,
 message "Account deleted successfully", `data: null`. Send it with
@@ -749,20 +578,14 @@ credentials so the cookie is cleared.
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 400 | `AUTH_CONFIRMATION_REQUIRED` | `400108` | Some proof is missing. Ask for exactly what `needs` lists, then send again | `data.needs`: any of `"password"`, `"code"`, `"two_factor_code"` |
+| 400 | `AUTH_CONFIRMATION_REQUIRED` | `400108` | Some proof is missing. Ask for exactly what `needs` lists, then send again | `data.needs`: `["password"]` or `["code"]` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `change-pw-fail`: 5 wrong passwords in 15 minutes | `data.reason: "wrong_password"`, `Retry-After` |
 | 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | Wrong password | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `2fa-fail` used up | `data.reason: "wrong_codes"`, `Retry-After` |
-| 503 | `AUTH_TWO_FACTOR_UNAVAILABLE` | `503003` | Unreadable two-step secret | |
-| 400 | `AUTH_TWO_FACTOR_CODE_INVALID` | `400105` | Wrong two-step code | `data.attempts_left` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong emailed codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong emailed code, or none pending | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | Emailed code older than 10 minutes, or its 5th wrong try | |
 | 404 | `USER_NOT_FOUND` | `404001` | Two deletions of the same account raced and this one lost | |
 | 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Already deleted | |
-
-The password is checked before the two-step code, and the two-step code
-before the emailed one, so what cannot be used up is checked first.
 
 ## Google and other providers
 
@@ -782,7 +605,6 @@ loads.
 | `data` field | Type | Meaning |
 |---|---|---|
 | `providers` | string[] | Configured providers, for example `["google"]`; `[]` when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are empty. Show a "Continue with ..." button per id |
-| `turnstile_site_key` | string or null | Turnstile's public site key when it is on, `null` when off. Render the widget with it ([turnstile.md](./turnstile.md)) |
 
 **Errors:** none of its own.
 
@@ -806,7 +628,7 @@ screen.
 
 ### Provider callback
 
-`GET /api/v1/auth/{provider}/callback` · Browser navigation (Google sends the browser here) · reads and clears `oauth_state`; sets `refresh_token` **or** `two_factor`
+`GET /api/v1/auth/{provider}/callback` · Browser navigation (Google sends the browser here) · reads and clears `oauth_state`; sets `refresh_token`
 
 You never call this yourself: it is the redirect URI registered with Google.
 It always answers `302` to the web app's `FRONTEND_URL/auth/callback`, with
@@ -815,7 +637,6 @@ one of these query strings:
 | Outcome | Query | Cookie set | What the callback page does |
 |---|---|---|---|
 | Signed in | `redirect=<path>` and maybe `notice=password_removed` | `refresh_token` | Call [refresh](#refresh) to get an access token, then go to `redirect` |
-| Two-step sign-in is on | `two_factor=1&redirect=<path>` and maybe `notice=password_removed` | `two_factor` | Ask for the code, then `POST /auth/login/2fa` with only `code`, with credentials |
 | Did not work | `error=<reason>` and, if the attempt was found, `redirect=<path>` | none | Show the message for the reason below |
 
 | `error` | Meaning |
@@ -861,16 +682,15 @@ Auth limits answer `429 RATE_LIMIT_EXCEEDED` with `data.reason` and
 
 | Limit | Allows | Counted per | `data.reason` | Routes | What counts |
 |---|---|---|---|---|---|
-| `login-fail-email` | 5 per 15 min (20 with Turnstile on) | address | `sign_ins` | login | Failed sign-ins; cleared by a right password |
+| `login-fail-email` | 5 per 15 min | address | `sign_ins` | login | Failed sign-ins; cleared by a right password |
 | `login-fail-ip` | 10 per 15 min | IP | `network` | login | Failed sign-ins |
-| `register-ip` | 5 per hour (20 with Turnstile on) | IP | `network` | register | Accepted sign-ups |
+| `register-ip` | 5 per hour | IP | `network` | register | Accepted sign-ups |
 | `register-email-min` | 1 per minute | address | `emails` | register | Accepted sign-ups |
 | `code-email-min` | 1 per minute | address | `emails` | resend-verification, forgot-password, password/code, account/delete-code | Emails sent |
 | `code-email-hour` | 5 per hour | address | `emails` | register and the four above | Emails sent |
 | `code-email-ip` | 10 per hour | IP | `network` | resend-verification, forgot-password | Requests |
 | `code-try-ip` | 20 per hour | IP | `network` | verify-email, reset-password, password, account/delete (emailed code) | Wrong codes only |
 | `change-pw-fail` | 5 per 15 min | account | `wrong_password` | change-password, account/delete | Wrong passwords; cleared on success |
-| `2fa-fail` | 5 per 15 min | account | `wrong_codes` | login/2fa, 2fa/confirm, 2fa/recovery-codes, 2fa/disable, account/delete | Wrong two-step codes; cleared on success |
 
 A refused request counts against nothing. When several limits refuse, the
 answer names the one with the longest wait. The 429 message says the wait in
@@ -885,36 +705,27 @@ kind; `meta.code` and `meta.type` come from
 
 | `meta.type` | Status | `meta.code` | Message (as sent) | `data` extras |
 |---|---|---|---|---|
-| `AUTH_INVALID_CREDENTIALS` | 401 | `401001` | Incorrect email or password. | `captcha_required` (optional, `true`) |
+| `AUTH_INVALID_CREDENTIALS` | 401 | `401001` | Incorrect email or password. | |
 | `AUTH_TOKEN_MISSING` | 401 | `401003` | Sign in to continue. | |
 | `AUTH_TOKEN_EXPIRED` | 401 | `401004` | Your access token has expired. | |
 | `AUTH_TOKEN_INVALID` | 401 | `401005` | Your access token is not valid. | |
 | `AUTH_TOKEN_REVOKED` | 401 | `401006` | This session has ended. Sign in again. | `reason` (optional) |
 | `AUTH_REFRESH_FAILED` | 401 | `401008` | Your session has ended. Sign in again. | `reason` (optional) |
-| `AUTH_TWO_FACTOR_CHALLENGE_EXPIRED` | 401 | `401009` | This sign-in has expired. Sign in again. | |
 | `AUTH_CODE_INVALID` | 400 | `400102` | That code is not right. If you asked for more than one, only the newest works. | |
 | `AUTH_CODE_EXPIRED` | 400 | `400103` | This code no longer works: it expired, or had too many wrong tries. Ask for a new one. | |
 | `AUTH_CURRENT_PASSWORD_INVALID` | 400 | `400104` | Your current password is not right. | |
-| `AUTH_TWO_FACTOR_CODE_INVALID` | 400 | `400105` | That code is not right. Check the app and try again. | `attempts_left` (optional) |
-| `AUTH_CAPTCHA_REQUIRED` | 400 | `400106` | Confirm you are human, then try again. | |
-| `AUTH_CAPTCHA_FAILED` | 400 | `400107` | We could not confirm you are human. Try again. | |
 | `AUTH_CONFIRMATION_REQUIRED` | 400 | `400108` | Confirm it is you first. | `needs` |
 | `AUTH_EMAIL_NOT_VERIFIED` | 403 | `403002` | Confirm your email address before signing in. We can send you a new code. | |
 | `AUTH_ACCOUNT_DISABLED` | 403 | `403003` | This account has been deleted. | |
 | `AUTH_FORBIDDEN` | 403 | `403004` | This request did not come from an allowed site. | |
-| `AUTH_TWO_FACTOR_REQUIRED` | 403 | `403005` | Enter the code from your authenticator app. | `challenge` |
 | `NOT_FOUND_ERROR` | 404 | `404000` | There is no sign-in with that provider here. | |
 | `USER_NOT_FOUND` | 404 | `404001` | (from the users module) | |
-| `AUTH_TWO_FACTOR_ALREADY_ON` | 409 | `409002` | Two-step verification is already on. | |
-| `AUTH_TWO_FACTOR_NOT_ON` | 409 | `409003` | Two-step verification is not on. (or "Set up two-step verification first." on confirm) | |
 | `AUTH_PASSWORD_ALREADY_SET` | 409 | `409004` | This account already has a password. Change it instead. | |
 | `AUTH_USE_PASSWORD` | 409 | `409005` | This account has a password: confirm with it instead. | |
 | `AUTH_PASSWORD_REJECTED` | 422 | `422004` | One sentence per broken rule, joined | `rules` |
 | `VALIDATION_ERROR` | 422 | `422000` | Validation failed | `details[]` |
 | `RATE_LIMIT_EXCEEDED` | 429 | `429001` | "<reason sentence> Try again in N seconds/minutes." | `reason`, `Retry-After` header |
 | `THROTTLE_ERROR` | 429 | `429001` | ThrottlerException: Too Many Requests | `Retry-After` header |
-| `AUTH_CAPTCHA_UNAVAILABLE` | 503 | `503002` | We cannot check requests right now. Try again in a minute. | |
-| `AUTH_TWO_FACTOR_UNAVAILABLE` | 503 | `503003` | Two-step verification can't be checked for this account right now. Contact support. | |
 
 The `RATE_LIMIT_EXCEEDED` sentence per `data.reason`:
 
@@ -923,7 +734,6 @@ The `RATE_LIMIT_EXCEEDED` sentence per `data.reason`:
 | `network` | Too many requests from your network. | IP (everyone behind one office or school connection shares it) |
 | `emails` | We have already sent several emails to this address. | address |
 | `sign_ins` | Too many failed sign-ins for this address. | address |
-| `wrong_codes` | Too many wrong codes. | account |
 | `wrong_password` | Too many wrong passwords. | account |
 
 The wait is in seconds under 90 seconds, in minutes from there.
@@ -949,14 +759,14 @@ for logs; react to the status and `data`.
 | register | 202 | Check your email to continue. |
 | resend-verification, forgot-password | 202 | If that address has an account, an email is on its way. |
 | verify-email | 200 | Your email address is confirmed. You are signed in. |
-| login, login/2fa | 200 | Login successful |
+| login | 200 | Login successful |
 | refresh | 200 | Token refreshed successfully |
 | logout | 200 | Logout successful |
 | logout-all | 200 | Signed out on every device |
 | reset-password | 200 | Your password has been changed. You are signed in. |
 | change-password | 200 | Password has been changed successfully |
 | account/delete | 200 | Account deleted successfully |
-| sign-in-methods, password/code, password, 2fa, 2fa/setup, 2fa/confirm, 2fa/recovery-codes, 2fa/disable, account/delete-code, options | 200 | Operation completed successfully |
+| sign-in-methods, password/code, password, account/delete-code, options | 200 | Operation completed successfully |
 | users/me | 200 | User fetched successfully |
 
 ## How a client should react
@@ -971,28 +781,19 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `401 AUTH_TOKEN_MISSING` | You forgot the header, or nobody is signed in: go to sign-in |
 | `401 AUTH_REFRESH_FAILED` | Signed out (the cookie is already cleared). Go to sign-in; `data.reason` says why. On page load this just means "no session": show the signed-out page quietly |
 | `403 AUTH_ACCOUNT_DISABLED` | The account was deleted. Clear everything, go to the signed-out page |
-| `403 AUTH_FORBIDDEN` on refresh, logout or login/2fa | A configuration problem, not the user's: the page's origin is not in `CORS_ORIGINS`. Log it; the user can only try again later |
-| `403 AUTH_TWO_FACTOR_REQUIRED` | Not an error. Keep `data.challenge` in memory, show the code screen, then `POST /auth/login/2fa` with `{ code, challenge }` |
-| `?two_factor=1` on the callback page | Show the code screen, then `POST /auth/login/2fa` with `{ code }` only, with credentials |
-| `400 AUTH_TWO_FACTOR_CODE_INVALID` | Say the code is wrong; show `data.attempts_left` if present; let them retry |
-| `401 AUTH_TWO_FACTOR_CHALLENGE_EXPIRED` | Back to the first step (password or Google) with "That took too long, sign in again" |
+| `403 AUTH_FORBIDDEN` on refresh or logout | A configuration problem, not the user's: the page's origin is not in `CORS_ORIGINS`. Log it; the user can only try again later |
 | `403 AUTH_EMAIL_NOT_VERIFIED` | Go to the "enter the code" screen with the address filled in, and offer "send a new code" ([resend](#send-the-sign-up-email-again)) |
-| `401 AUTH_INVALID_CREDENTIALS` | "Incorrect email or password", nothing more specific. If `data.captcha_required` is `true`, show the Turnstile widget before the next try |
-| `400 AUTH_CAPTCHA_REQUIRED` | Show the Turnstile widget (site key from [options](#sign-in-options)) and send `turnstile_token` |
-| `400 AUTH_CAPTCHA_FAILED` | Reset the widget (a token works once) and let them solve it again |
-| `503 AUTH_CAPTCHA_UNAVAILABLE` | "We cannot check requests right now, try again in a minute". Do not retry in a loop |
+| `401 AUTH_INVALID_CREDENTIALS` | "Incorrect email or password", nothing more specific |
 | `422 AUTH_PASSWORD_REJECTED` | Mark each rule in `data.rules` under the password field. Keep what they typed in other fields |
 | `422 VALIDATION_ERROR` | A client bug or a malformed field: show the field from `data.details[].property` (camelCase) |
 | `400 AUTH_CODE_INVALID` | "That code is not right" and let them retry. If they asked for several, only the newest works |
 | `400 AUTH_CODE_EXPIRED` | The code is dead: offer to send a new one |
 | `400 AUTH_CURRENT_PASSWORD_INVALID` | Mark the current-password field. Do **not** sign out |
-| `400 AUTH_CONFIRMATION_REQUIRED` | Ask for each item in `data.needs` (password, emailed code, two-step code) and send them all again. For `code`, first call [email a deletion code](#email-a-deletion-code) |
+| `400 AUTH_CONFIRMATION_REQUIRED` | Ask for the item in `data.needs` (the password or an emailed code) and send again. For `code`, first call [email a deletion code](#email-a-deletion-code) |
 | `409 AUTH_USE_PASSWORD` | Ask for the password instead of sending a code |
 | `409 AUTH_PASSWORD_ALREADY_SET` | Show "change password" instead of "set a password" |
-| `409 AUTH_TWO_FACTOR_ALREADY_ON` / `AUTH_TWO_FACTOR_NOT_ON` | The settings page is stale: reload [the status](#two-step-status) |
 | `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`emails`: check spam; `sign_ins`: reset the password) |
 | `429 THROTTLE_ERROR` | Too many requests from this IP to this route: wait `Retry-After` seconds |
-| `503 AUTH_TWO_FACTOR_UNAVAILABLE` | Show `meta.message` ("Contact support"). Retrying will not help until an operator acts |
 | `?error=` on the callback page | Show a message per reason (`cancelled` needs none). Keep `redirect` for the next attempt |
 | `?notice=password_removed` | Tell the person a password set before the address was confirmed was removed; they can set one in settings |
 | `500 GENERIC_ERROR` | "Something went wrong", with `meta.request_id` for support |

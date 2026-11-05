@@ -84,7 +84,7 @@ export class VerifyEmailHandler implements ICommandHandler<VerifyEmailCommand> {
             await this.directory.markEmailVerified(user.id)
             await this.cache.invalidateUser(user.id)
             this.events.record('login_succeeded')
-            return this.gate.passOrChallenge(user.id, command.client, now)
+            return this.gate.pass(user.id, command.client, now)
         })
     }
 }

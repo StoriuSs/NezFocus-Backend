@@ -125,7 +125,7 @@ thing a new developer does. So `.env.example` has to stay complete.
 
 | Check | Catches | Yourself |
 |---|---|---|
-| Integration tests | Code that works alone but not with the real Postgres, Redis, S3 storage or email server. The sign-in suites run against a small fake Google (an OpenID Connect issuer, `test/integration/fake-oidc-issuer.ts`) and a stand-in for Cloudflare's Turnstile check, so they need no outside account | `pnpm test:services:up`, then `pnpm test:integration` |
+| Integration tests | Code that works alone but not with the real Postgres, Redis, S3 storage or email server. The sign-in suites run against a small fake Google (an OpenID Connect issuer, `test/integration/fake-oidc-issuer.ts`), so they need no outside account | `pnpm test:services:up`, then `pnpm test:integration` |
 | Migrations | The database schema (`prisma/`) changed without a migration, so production's database would not match the code | `pnpm prisma:check` ([below](#the-migrations)) |
 
 **Monitoring configuration** (about 30 seconds): the configuration of

@@ -305,7 +305,7 @@ async checkUsernameAvailability(@Param() { username }: CheckUsernameParamsDto) {
 ## Never on routes that set cookies or issue tokens
 
 Do **not** put `@Idempotent` on `POST /auth/login`, `/auth/refresh`,
-`/auth/verify-email`, `/auth/login/2fa`, `/auth/reset-password`, or any route
+`/auth/verify-email`, `/auth/reset-password`, or any route
 that sets a cookie or returns a token. The interceptor stores the response
 **body** and replays it; it does not store or replay headers. For these
 routes that breaks things:

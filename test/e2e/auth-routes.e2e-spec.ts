@@ -4,22 +4,16 @@ import { ConfigService } from '@nestjs/config'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import request from 'supertest'
 import { AUTH_CONTROLLERS, AuthCookies, OAuthController } from '@/modules/auth/presentation'
-import {
-    GetAuthOptionsQuery,
-    GetSignInMethodsQuery,
-    GetTwoFactorStatusQuery,
-    StartOAuthCommand
-} from '@/modules/auth/application'
+import { GetAuthOptionsQuery, GetSignInMethodsQuery, StartOAuthCommand } from '@/modules/auth/application'
 
 /**
- * The /auth routes live in five controllers, and one of them,
+ * The /auth routes live in four controllers, and one of them,
  * OAuthController, has `GET auth/:provider`, which matches any
  * `GET auth/<word>`. Express takes the first route that matches, in the order
  * the controllers are registered, so AUTH_CONTROLLERS keeps OAuthController
  * last. These GET routes are the ones it would otherwise take.
  */
 const STATIC_GETS: [path: string, query: Type][] = [
-    ['/api/v1/auth/2fa', GetTwoFactorStatusQuery],
     ['/api/v1/auth/sign-in-methods', GetSignInMethodsQuery],
     ['/api/v1/auth/options', GetAuthOptionsQuery]
 ]
@@ -76,12 +70,12 @@ describe('The /auth routes across their controllers (e2e)', () => {
         }
     })
 
-    it('would be taken for a provider called "2fa" with OAuthController registered first', async () => {
+    it('would be taken for a provider called "options" with OAuthController registered first', async () => {
         const app = await boot([OAuthController, ...AUTH_CONTROLLERS.filter((c) => c !== OAuthController)])
         try {
-            await request(app.getHttpServer()).get('/api/v1/auth/2fa')
+            await request(app.getHttpServer()).get('/api/v1/auth/options')
             expect(queryBus.execute).not.toHaveBeenCalled()
-            expect(commandBus.execute.mock.calls[0][0]).toEqual(new StartOAuthCommand('2fa', undefined))
+            expect(commandBus.execute.mock.calls[0][0]).toEqual(new StartOAuthCommand('options', undefined))
         } finally {
             await app.close()
         }

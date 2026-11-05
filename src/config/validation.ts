@@ -68,8 +68,8 @@ export const validationSchema = Joi.object({
             }),
             otherwise: Joi.optional()
         }),
-    // Named in the emails where only a person can help (two-step sign-in
-    // turned on by someone else). Optional.
+    // Named in the emails where only a person can help (an account deleted
+    // by someone else). Optional.
     SUPPORT_EMAIL: Joi.string().email().allow('').optional(),
     GRACEFUL_SHUTDOWN_TIMEOUT_MS: Joi.number().default(5000),
     DELETED_ACCOUNT_RETENTION_DAYS: Joi.number().integer().min(0).default(30),
@@ -124,43 +124,6 @@ export const validationSchema = Joi.object({
                 'any.invalid': '{{#label}} cannot be false with AUTH_COOKIE_SAMESITE=none: browsers drop such a cookie'
             })
         }),
-    // Seals two-step sign-in secrets (AES-256-GCM) and keys recovery-code
-    // fingerprints: 32 bytes of hex, `openssl rand -hex 32`. The template's
-    // all-zero key is for development only; production refuses it.
-    AUTH_ENCRYPTION_KEY: Joi.string()
-        .trim()
-        .pattern(/^[0-9a-fA-F]{64,}$/, 'hex')
-        .required()
-        .messages({
-            'any.required': '{{#label}} is required: openssl rand -hex 32',
-            'string.empty': '{{#label}} is required: openssl rand -hex 32',
-            'string.pattern.name': '{{#label}} must be at least 32 bytes of hex: openssl rand -hex 32'
-        })
-        .when('NODE_ENV', {
-            is: 'production',
-            then: Joi.string().invalid('0000000000000000000000000000000000000000000000000000000000000000').messages({
-                'any.invalid': "{{#label}} is the template's development key; generate one: openssl rand -hex 32"
-            })
-        }),
-    // The key AUTH_ENCRYPTION_KEY replaced, while what it sealed is still in
-    // use: read, never used to seal (docs/auth/operations.md, "Changing the
-    // encryption key"). Empty: no change under way.
-    AUTH_ENCRYPTION_KEY_PREVIOUS: Joi.string()
-        .trim()
-        .allow('')
-        .pattern(/^[0-9a-fA-F]{64,}$/, 'hex')
-        .optional()
-        .messages({ 'string.pattern.name': '{{#label}} must be at least 32 bytes of hex, as AUTH_ENCRYPTION_KEY is' })
-        .when('NODE_ENV', {
-            is: 'production',
-            then: Joi.string().invalid('0000000000000000000000000000000000000000000000000000000000000000').messages({
-                'any.invalid': "{{#label}} is the template's development key, which production never used"
-            })
-        }),
-    // Cloudflare Turnstile on sign-up, sign-in and forgot-password: both set
-    // turns it on, both empty leaves it off (checked together below).
-    TURNSTILE_SITE_KEY: Joi.string().trim().allow('').optional(),
-    TURNSTILE_SECRET_KEY: Joi.string().trim().allow('').optional(),
     // Sign-in with Google: both set turns it on, both empty leaves it off
     // (checked together at the end of the schema).
     GOOGLE_CLIENT_ID: Joi.string().trim().allow('').optional(),
@@ -324,23 +287,8 @@ export const validationSchema = Joi.object({
                 custom: `"${missing}" is required when "${present}" is set: ${what} needs both (or neither, to leave it off)`
             })
         }
-        // The same key twice is a key change that did not happen: the new key
-        // was meant to go in AUTH_ENCRYPTION_KEY.
-        const previous = env.AUTH_ENCRYPTION_KEY_PREVIOUS
-        if (
-            typeof previous === 'string' &&
-            previous !== '' &&
-            previous.toLowerCase() === String(env.AUTH_ENCRYPTION_KEY).toLowerCase()
-        ) {
-            return helpers.message({
-                custom: '"AUTH_ENCRYPTION_KEY_PREVIOUS" is the same key as "AUTH_ENCRYPTION_KEY": the new key goes in AUTH_ENCRYPTION_KEY, the old one here'
-            })
-        }
         return env
     })
 
 /** Keys that turn a feature on together. */
-const PAIRED_KEYS: [string, string, string][] = [
-    ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'Google sign-in'],
-    ['TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY', 'Turnstile']
-]
+const PAIRED_KEYS: [string, string, string][] = [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'Google sign-in']]

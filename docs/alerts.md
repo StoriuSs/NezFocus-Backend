@@ -252,7 +252,7 @@ soon, before it becomes critical.
 
 | Alert | Severity | Fires when | Check first |
 |---|---|---|---|
-| `AuthFailedLoginSpike` | warning | Over 50 failed sign-ins in 10 min, for 5 min | Grafana → NestJS Logs, `AUTH_INVALID_CREDENTIALS` and `RATE_LIMIT_EXCEEDED`: one address, or many? Many IPs is a botnet: consider Turnstile |
+| `AuthFailedLoginSpike` | warning | Over 50 failed sign-ins in 10 min, for 5 min | Grafana → NestJS Logs, `AUTH_INVALID_CREDENTIALS` and `RATE_LIMIT_EXCEEDED`: one address, or many? Many IPs is a botnet |
 | `AuthRefreshTokenReuse` | warning | A refresh token came back after being replaced (the session was already ended) | Sentry → the "Refresh token reuse detected" issue: the user id, and whether it repeats |
 
 The limits behind these are in [auth/rate-limits.md](./auth/rate-limits.md),
@@ -266,8 +266,6 @@ counted too: `increase()` cannot see a series' first sample.
 
 | What happens | What the app logs | What users see |
 |---|---|---|
-| `AUTH_ENCRYPTION_KEY` changed without `_PREVIOUS`, or lost | "Two-step sign-in cannot be checked for user ..." | `503 AUTH_TWO_FACTOR_UNAVAILABLE` at the second step |
-| Cloudflare cannot be reached, or refuses `TURNSTILE_SECRET_KEY` | "Turnstile could not be asked" / "Turnstile refused the check itself" | `503 AUTH_CAPTCHA_UNAVAILABLE` on sign-up and forgot-password |
 | The SMTP server refuses or times out | A failed `send-code` (or other email) job, after 3 attempts | No code arrives; the failed job is on `/admin/queues` |
 | Google sign-in breaks (not a user cancelling) | "google sign-in failed" | `?error=failed` on the web app's callback page |
 
@@ -276,13 +274,12 @@ What to do about each: [auth/operations.md](./auth/operations.md).
 `auth_events_total` counts more than the two rules use. Its `event` label also
 takes `login_succeeded`, `login_rate_limited`, `registration`,
 `password_reset`, `password_set`, `oauth_login_succeeded`,
-`oauth_login_failed`, `oauth_account_linked`, `two_factor_enabled`,
-`two_factor_disabled`, `two_factor_failed`, `recovery_codes_replaced` and
-`account_deleted` (`src/modules/auth/application/ports/auth-events.port.ts`).
-The API dashboard's "Sign-in and accounts" row draws them. To alert on one,
-copy `AuthFailedLoginSpike` in `rules/app.yml` with another `event`, for
-example a burst of `two_factor_failed` or `oauth_login_failed`, and add its
-test ([Changing rules](#changing-rules)).
+`oauth_login_failed`, `oauth_account_linked` and `account_deleted`
+(`src/modules/auth/application/ports/auth-events.port.ts`). The API
+dashboard's "Sign-in and accounts" row draws them. To alert on one, copy
+`AuthFailedLoginSpike` in `rules/app.yml` with another `event`, for example a
+burst of `oauth_login_failed`, and add its test
+([Changing rules](#changing-rules)).
 
 ### Server
 

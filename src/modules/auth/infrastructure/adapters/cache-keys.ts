@@ -7,5 +7,3 @@ export const sessionKey = (id: string) => `auth:session:${id}`
 export const userKey = (id: string) => `auth:user:${id}`
 export const replacementKey = (tokenHash: string) => `auth:replaced:${tokenHash}`
 export const oauthAttemptKey = (state: string) => `auth:oauth:${state}`
-export const twoFactorChallengeKey = (id: string) => `auth:2fa:${id}`
-export const twoFactorTriesKey = (id: string) => `auth:2fa:${id}:tries`

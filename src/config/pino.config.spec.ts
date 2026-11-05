@@ -27,7 +27,7 @@ describe('REDACT_PATHS', () => {
         log.info({
             req: {
                 headers: { authorization: 'Bearer x', cookie: 'refresh_token=r', accept: '*/*' },
-                body: { password: 'p', two_factor_code: '123456', refresh_token: 'r', email: 'a@example.test' }
+                body: { password: 'p', code: '123456', refresh_token: 'r', email: 'a@example.test' }
             },
             res: { headers: { 'set-cookie': 's' } }
         })
@@ -35,7 +35,7 @@ describe('REDACT_PATHS', () => {
         expect(logged.req.headers).toEqual({ authorization: '[REDACTED]', cookie: '[REDACTED]', accept: '*/*' })
         expect(logged.req.body).toEqual({
             password: '[REDACTED]',
-            two_factor_code: '[REDACTED]',
+            code: '[REDACTED]',
             refresh_token: '[REDACTED]',
             email: 'a@example.test'
         })

@@ -120,22 +120,6 @@ export class AuthEmails {
         )
     }
 
-    /** Two-step sign-in was turned on or off: the email they need if it was not them. */
-    async sendTwoFactorChanged(to: string, enabled: boolean): Promise<void> {
-        const appName = this.appName
-        await this.email.send(
-            to,
-            `Two-step verification was turned ${enabled ? 'on' : 'off'} for your ${appName} account`,
-            template('two-factor-changed'),
-            {
-                appName,
-                enabled,
-                resetUrl: `${this.frontendUrl}/forgot-password`,
-                supportEmail: this.supportEmail
-            }
-        )
-    }
-
     /** The account was deleted: when its personal details go, and who to contact if it was not them. */
     async sendAccountDeleted(to: string): Promise<void> {
         const appName = this.appName
@@ -143,29 +127,6 @@ export class AuthEmails {
             appName,
             retentionDays: this.config.get<number>('app.deletedAccountRetentionDays') ?? 30,
             supportEmail: this.supportEmail
-        })
-    }
-
-    /** New recovery codes were made; the earlier ones stopped working. */
-    async sendRecoveryCodesReplaced(to: string): Promise<void> {
-        const appName = this.appName
-        await this.email.send(
-            to,
-            `New recovery codes were made for your ${appName} account`,
-            template('recovery-codes-replaced'),
-            { appName, resetUrl: `${this.frontendUrl}/forgot-password` }
-        )
-    }
-
-    /** A recovery code was used to sign in, and how many are left. */
-    async sendRecoveryCodeUsed(to: string, remaining: number): Promise<void> {
-        const appName = this.appName
-        await this.email.send(to, `A recovery code was used to sign in to ${appName}`, template('recovery-code-used'), {
-            appName,
-            remaining,
-            runningLow: remaining <= 3,
-            settingsUrl: `${this.frontendUrl}/settings`,
-            resetUrl: `${this.frontendUrl}/forgot-password`
         })
     }
 

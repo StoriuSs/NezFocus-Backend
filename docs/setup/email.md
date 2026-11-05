@@ -264,7 +264,7 @@ All in the **API's** `.env.production` ([validation.ts](../../src/config/validat
 | `EMAIL_FROM_NAME` | | The name people see, e.g. your app's name |
 | `EMAIL_FROM_ADDRESS` | | An address on the authenticated domain |
 | `FRONTEND_URL` | **Yes, in production** | `https://app.example.com`: the links in the emails point at the web app's pages |
-| `SUPPORT_EMAIL` | | Optional. An address named in the two-step sign-in and account-deleted emails, where only a person can help |
+| `SUPPORT_EMAIL` | | Optional. An address named in the account-deleted email, where only a person can help |
 
 Apply them with the next `./deploy.sh` ([../deploy.md](../deploy.md)). Check
 the file first: `pnpm env:check .env.production` reports every problem without
@@ -282,8 +282,7 @@ curl -s -X POST http://localhost:8888/api/v1/auth/register \
 
 The answer is `202` "Check your email to continue." Open
 <http://localhost:8025>: the message "Verify your YourAppName account" holds
-the six-digit code. (With Turnstile on, use the web app's sign-up page
-instead, or see [cloudflare-turnstile.md](./cloudflare-turnstile.md#check-it-works).)
+the six-digit code.
 
 **In production**, sign up on the web app with an address you can read, or
 use the same `curl` against `https://api.example.com`. Then:

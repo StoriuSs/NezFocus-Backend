@@ -1,10 +1,9 @@
 # Authentication
 
 This page has moved. Authentication (sign-up, sign-in, sessions, passwords,
-Google, two-step sign-in, Turnstile, account deletion) is now documented as a
-set of pages in [docs/auth/](./auth/README.md). **Start at
-[auth/README.md](./auth/README.md)**: it says which page to read for what you
-are doing.
+Google, account deletion) is now documented as a set of pages in
+[docs/auth/](./auth/README.md). **Start at [auth/README.md](./auth/README.md)**:
+it says which page to read for what you are doing.
 
 The headings below are the sections this page used to have. Links and code
 comments still point at them, so each stays here and says where its content
@@ -59,21 +58,6 @@ from Google: [setup/google-sign-in.md](./setup/google-sign-in.md).
 
 In the code: [auth/in-the-code.md](./auth/in-the-code.md#another-openid-connect-provider).
 How providers fit the sign-in rules: [auth/google-sign-in.md](./auth/google-sign-in.md).
-
-## Two-step sign-in
-
-Moved to [auth/two-step-sign-in.md](./auth/two-step-sign-in.md).
-
-## Changing the encryption key
-
-The procedure, and what to do when the key is lost:
-[auth/operations.md](./auth/operations.md#changing-the-encryption-key). How
-sealing works: [auth/two-step-sign-in.md](./auth/two-step-sign-in.md).
-
-## Turnstile
-
-Moved to [auth/turnstile.md](./auth/turnstile.md). Getting the keys:
-[setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md).
 
 ## Roles and the first administrator
 

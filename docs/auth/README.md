@@ -1,8 +1,8 @@
 # Authentication
 
-Accounts, passwords, sessions, Google sign-in and two-step verification are
-part of this API, in its own database: there is no separate identity server
-to run. The code is in [src/modules/auth/](../../src/modules/auth/).
+Accounts, passwords, sessions and Google sign-in are part of this API, in its
+own database: there is no separate identity server to run. The code is in
+[src/modules/auth/](../../src/modules/auth/).
 
 This is the start page of the auth documentation. It says what the module
 does, which pages to read for what you are trying to do, and lets you try it
@@ -26,12 +26,10 @@ in five minutes.
 | Immediate sign-out | Signing out, changing the password or deleting the account takes effect on the next request | [sessions-and-tokens.md](./sessions-and-tokens.md#what-ends-a-session) |
 | Forgot, reset, change password | Reset by emailed code (ends every session); change with the current password (ends the others) | [flows.md](./flows.md#forgot-and-reset-the-password) |
 | Sign in with Google | OpenID Connect with PKCE; optional, on when its two settings are set | [google-sign-in.md](./google-sign-in.md) |
-| Two-step verification | Authenticator-app codes (TOTP) and 10 recovery codes; optional per person | [two-step-sign-in.md](./two-step-sign-in.md) |
-| Bot protection | Cloudflare Turnstile on sign-up, forgot password, and after failed sign-ins; optional | [turnstile.md](./turnstile.md) |
 | Rate limits | Per address, per IP and per user, on every operation an attacker would repeat | [rate-limits.md](./rate-limits.md) |
 | No account enumeration | Sign-up, sign-in and "forgot password" answer the same whether or not an address has an account | [security.md](./security.md) |
-| Security emails | The owner is told when the password, sign-in methods or two-step settings change, and when the account is deleted | [emails.md](./emails.md) |
-| Account deletion | Needs proof (password or emailed code, plus the two-step code); personal details erased after 30 days | [accounts.md](./accounts.md) |
+| Security emails | The owner is told when the password or sign-in methods change, and when the account is deleted | [emails.md](./emails.md) |
+| Account deletion | Needs proof (password or emailed code); personal details erased after 30 days | [accounts.md](./accounts.md) |
 | Roles | `["user"]` by default; `pnpm user:promote` makes an administrator; `@Roles('admin')` on a route | [accounts.md](./accounts.md) |
 | Monitoring | Sign-in events counted (`auth_events_total`), a dashboard row, alerts on failed-login spikes and token reuse | [operations.md](./operations.md) |
 
@@ -48,8 +46,7 @@ Pick the line that fits; each is a reading order.
 1. [../setup/prepare-for-development.md](../setup/prepare-for-development.md):
    from a fresh machine to a running API.
 2. [Try it in five minutes](#try-it-in-five-minutes), below.
-3. Optional extras later: [Google](../setup/google-sign-in.md),
-   [Turnstile](../setup/cloudflare-turnstile.md).
+3. Optional extra later: [Google](../setup/google-sign-in.md).
 
 **"I'm building the frontend"** (or changing the React starter).
 
@@ -61,9 +58,8 @@ Pick the line that fits; each is a reading order.
 4. [api-reference.md](./api-reference.md): every route and error code, and
    how a client should react to each.
 5. [passwords-and-codes.md](./passwords-and-codes.md): showing `data.rules`.
-6. As needed: [turnstile.md](./turnstile.md) (`data.captcha_required`),
-   [two-step-sign-in.md](./two-step-sign-in.md),
-   [google-sign-in.md](./google-sign-in.md) (the `/auth/callback` page).
+6. As needed: [google-sign-in.md](./google-sign-in.md) (the `/auth/callback`
+   page).
 
 **"I need the exact rules."**
 
@@ -142,13 +138,11 @@ The interactive API docs are at `http://localhost:8888/api-docs`
 | Page | Read it for |
 |---|---|
 | [concepts.md](./concepts.md) | Auth in plain words, and a glossary tied to the code. Start here if the words are new |
-| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up, sign in, two-step, refresh, sign out, reset, change, first password, Google, deletion |
+| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up, sign in, refresh, sign out, reset, change, first password, Google, deletion |
 | [sessions-and-tokens.md](./sessions-and-tokens.md) | Access token, refresh cookie, sessions, rotation, what ends a session, the per-request check, Redis down, cross-site setups |
 | [passwords-and-codes.md](./passwords-and-codes.md) | The password rules, Argon2id, the common-password list, the six-digit emailed codes |
 | [emails.md](./emails.md) | Every email, the queue that sends them, Mailpit, editing templates |
 | [google-sign-in.md](./google-sign-in.md) | How "Continue with Google" works, which account it lands in, adding another provider |
-| [two-step-sign-in.md](./two-step-sign-in.md) | Authenticator codes, recovery codes, the encryption key and its rotation |
-| [turnstile.md](./turnstile.md) | The "are you human?" check: when it is asked for, test keys |
 | [rate-limits.md](./rate-limits.md) | Every limit, and how to tune them |
 | [security.md](./security.md) | The threats, how each is handled, what is not covered, production must-dos |
 | [accounts.md](./accounts.md) | Account lifecycle: unconfirmed, confirmed, deleted; roles |
@@ -156,8 +150,8 @@ The interactive API docs are at `http://localhost:8888/api-docs`
 | [in-the-code.md](./in-the-code.md) | Module layout, ports and adapters, jobs, Redis keys, tables, tests, how to extend |
 | [operations.md](./operations.md) | Production checklist, key rotation, command-line tools, monitoring, troubleshooting, FAQ |
 
-Getting the keys from outside services (Google, Cloudflare, an email
-provider) is in [../setup/README.md](../setup/README.md).
+Getting the keys from outside services (Google, an email provider) is in
+[../setup/README.md](../setup/README.md).
 
 ## The settings at a glance
 
@@ -167,7 +161,6 @@ with a comment. Full list: [environment.md](../environment.md).
 | Variable | Needed | What for |
 |---|---|---|
 | `JWT_SECRET` | always | Signs access tokens, keys the emailed-code hashes. `openssl rand -hex 32` |
-| `AUTH_ENCRYPTION_KEY` | always | Seals two-step secrets. `openssl rand -hex 32`. Keep it safe: losing it locks two-step users out |
 | `BASE_URL` | production | The API's public address |
 | `FRONTEND_URL` | production | The web app's address, for email links and the Google return |
 | `CORS_ORIGINS` | production | The web app's exact origin(s) |
@@ -177,5 +170,4 @@ with a comment. Full list: [environment.md](../environment.md).
 | `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_SECURE` | rarely | Only for a web app and API on different sites ([cross-site setups](./sessions-and-tokens.md#cross-site-setups)) |
 | `JWT_ACCESS_TTL_SECONDS`, `AUTH_SESSION_TTL_DAYS` | optional | 900 seconds and 30 days by default |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional | Google sign-in, both or neither |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | optional | Turnstile, both or neither |
 | `UNVERIFIED_ACCOUNT_RETENTION_DAYS`, `DELETED_ACCOUNT_RETENTION_DAYS` | optional | 7 and 30 days by default |

@@ -21,12 +21,4 @@ export class DeleteAccountRequestDto {
     @Transform(trimString)
     @Matches(/^\d{6}$/, { message: 'code must be the six digits from the email' })
     code?: string
-
-    /** With two-step sign-in on: six digits from the app, or a recovery code. */
-    @IsOptional()
-    @Transform(trimString)
-    @IsString()
-    @MinLength(6)
-    @MaxLength(32)
-    twoFactorCode?: string
 }

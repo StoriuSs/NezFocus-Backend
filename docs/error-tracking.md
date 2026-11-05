@@ -107,7 +107,7 @@ detection.
 | Not reported                         | Why                                                                                                                                                                                             |
 | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Any 4xx (validation, 401, 404, 429…) | The client's mistake, not a bug. They are in the logs at `warn`.                                                                                                                                |
-| 503                                  | The app answers it on purpose: a dependency is down (health check), it is at capacity (image processing), Turnstile cannot be asked (`AUTH_CAPTCHA_UNAVAILABLE`), or a two-step secret was sealed with a key this server lacks (`AUTH_TWO_FACTOR_UNAVAILABLE`). See below for how each one still reaches you. |
+| 503                                  | The app answers it on purpose: a dependency is down (health check), or it is at capacity (image processing). See below for how each one still reaches you. |
 | A job attempt that will be retried   | A job retried ten times through an outage would be ten events. It is reported once, when it gives up. Each attempt is in the logs.                                                              |
 | Log lines                            | Sentry's log product is not used: Loki has them.                                                                                                                                                |
 | An error in a `@Cron` handler        | `@nestjs/schedule` logs it and carries on; nothing reports it. The app has no such handlers. If you add one, catch what needs a person and call [`reportError`](#reporting-from-your-own-code). |
@@ -123,11 +123,6 @@ error, so the one sent when a job gives up would never arrive.
 |---|---|
 | Postgres or Redis down (health check) | `PostgresDown`, `RedisDown` |
 | Image processing at capacity (a `warn` line, "Image refused") | `AppHighErrorRate` once 5xx answers pass 5% |
-| Turnstile unreachable, or it refused `TURNSTILE_SECRET_KEY` | an `error` log line ("Turnstile could not be asked" / "Turnstile refused the check itself"), so `AppErrorLogs` |
-| Two-step secret sealed with a key the server lacks | an `error` log line ("Two-step sign-in cannot be checked ... AUTH_ENCRYPTION_KEY"), so `AppErrorLogs` |
-
-The last two are covered in [turnstile.md](./auth/turnstile.md) and
-[two-step-sign-in.md](./auth/two-step-sign-in.md).
 
 **Auth emails give up sooner.** The `auth` queue's emails (sign-up and reset
 codes, security notices) do not use the 10-attempt default. They try 3 times,
@@ -165,10 +160,8 @@ logs have every occurrence. The limits are `ERROR_REPORT_BURST` and
   passwords (`password`, `current_password`, `new_password`...), tokens
   (`token`, `refresh_token`, `access_token`), and the auth fields that can
   sign someone in: `code` (emailed codes, and Google's one-time `code` in
-  the callback URL), `two_factor_code`, `recovery_codes`, `challenge`,
-  `secret`, `otpauth_uri`, `turnstile_token` and `state`. Keys are compared
-  without case, `-` or `_`, so `currentPassword` and `current_password` are
-  both caught. It is the same list the logs redact:
+  the callback URL), `secret` and `state`. Keys are compared without case,
+  `-` or `_`, so `currentPassword` and `current_password` are both caught. It is the same list the logs redact:
   [`sensitive-fields.ts`](../src/shared/constants/sensitive-fields.ts). Add a
   field there and it is removed from both. A JSON body that fails to parse is
   not sent at all. (A side effect of masking `code`: an error's own `code` in

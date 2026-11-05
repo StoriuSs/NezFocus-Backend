@@ -51,9 +51,8 @@ the auth module:
   use it. It says how many, not who
   ([monitoring.md](./monitoring.md#auth-metrics)).
 - **The owner is told.** Every security change emails the account's owner:
-  password changed or added, a sign-in method added, two-step sign-in turned
-  on or off, a recovery code used, recovery codes replaced, account deleted
-  (the `AUTH_JOBS` in
+  password changed or added, a sign-in method added, account deleted (the
+  `AUTH_JOBS` in
   [`auth-email-jobs.ts`](../src/modules/auth/infrastructure/email/auth-email-jobs.ts);
   see [emails.md](./auth/emails.md)). That lets a person notice a change they
   did not make, but nothing keeps the record.
@@ -151,11 +150,9 @@ half of this idea, and often enough on their own:
 | S3 / R2 (uploads) | 5 s to connect, 30 s per request ([`s3-storage.service.ts`](../src/shared/infrastructure/storage/services/s3-storage.service.ts)) | the upload fails; the user retries |
 | SMTP (emails, from the `auth` queue) | 10 s to connect and greet, 30 s idle ([`email.module.ts`](../src/shared/infrastructure/email/email.module.ts)) | the job retries 3 times, then gives up ([error-tracking.md](./error-tracking.md#what-is-reported)) |
 | Google sign-in (OpenID Connect discovery and the code exchange) | 10 s ([`openid-connect-provider.adapter.ts`](../src/modules/auth/infrastructure/adapters/openid-connect-provider.adapter.ts)) | the browser comes back to the web app with `?error=` |
-| Cloudflare Turnstile (checking a CAPTCHA token) | 5 s ([`turnstile-captcha.adapter.ts`](../src/modules/auth/infrastructure/adapters/turnstile-captcha.adapter.ts)) | **fails closed**: the route answers 503 `AUTH_CAPTCHA_UNAVAILABLE` rather than let the request through unchecked ([turnstile.md](./auth/turnstile.md)) |
 
-Google and Turnstile are exactly the "outbound call you do not control" above.
-If either has long outages in practice, those two adapters are where a
-breaker would go.
+Google is exactly the "outbound call you do not control" above. If it has
+long outages in practice, its adapter is where a breaker would go.
 
 ## Transactional outbox
 
@@ -176,8 +173,7 @@ commits the soft delete and *then* publishes `AccountDeletedEvent`. A crash in
 between loses the event. The system is built to tolerate that: the guard and
 refresh read the user on every request and refuse a deleted one, whether or
 not the sessions were ended; the hourly auth clean-up ends any session and
-deletes any password, Google link, two-step secret and recovery codes a
-deleted account still has; and the maintenance
+deletes any password or Google link a deleted account still has; and the maintenance
 sweep erases the personal data on its own schedule, from the row, not the
 event ([account-deletion.md](./account-deletion.md)). **Designing the reads
 so a lost event does no harm is the poor man's outbox**, and for most

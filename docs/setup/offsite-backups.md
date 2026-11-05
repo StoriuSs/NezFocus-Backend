@@ -368,7 +368,7 @@ Run these on the server, in the API's folder. Don't wait for 3 a.m.
 | The lifecycle rule deleted uploaded files | The rule covered the whole prefix, `uploads/` included | Limit expiry rules to the database folders |
 | Backups in the bucket, but at the same provider as the server | One account problem takes both | Move the bucket to another provider |
 | The read key is in `.env.production` | Then the server can read and list everything, which the plan avoids | Remove it; keep it in the password manager |
-| You lost `.env.production` with the server | The dumps are useless without the secrets they go with (`JWT_SECRET`, `AUTH_ENCRYPTION_KEY`) | Keep a copy of `.env.production` in the password manager too |
+| You lost `.env.production` with the server | The restored app needs the secrets the dumps go with (`JWT_SECRET`, the database password) | Keep a copy of `.env.production` in the password manager too |
 
 Related: [../backups.md](../backups.md) (schedule, retention, restoring,
 moving to a new server), [storage-s3-r2.md](./storage-s3-r2.md),

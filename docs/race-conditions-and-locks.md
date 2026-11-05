@@ -59,10 +59,10 @@ pattern closest to your case and copy it:
 |---|---|---|
 | **Pessimistic lock** (`SELECT ... FOR UPDATE` in a transaction) | Refresh-token rotation, `rotate()` in [`prisma-session.repository.ts`](../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Two refreshes with the same token both rotating it (see below) |
 | Pessimistic lock in one statement (`UPDATE ... FROM (SELECT ... FOR UPDATE) ... RETURNING`) | The avatar swap, `replaceAvatar()` in [`prisma-user.repository.ts`](../src/modules/users/infrastructure/persistence/prisma-user.repository.ts) | Two uploads both "replacing" the same old file, so one new file is never cleaned up |
-| **Compare-and-set** (`updateMany` whose `where` holds the condition; `count` says who won) | Emailed codes (`consumedAt: null`), recovery codes (`usedAt: null`), two-step setup and confirm (`confirmedAt: null`), the TOTP replay check (`lastUsedStep < step`), setting a username once (`hasSetUsername: false`), soft delete (`deletedAt: null`) | A code used twice; a two-step code replayed; a confirmed two-step secret replaced; a username set twice; an account deleted twice (and its clean-up run twice) |
+| **Compare-and-set** (`updateMany` whose `where` holds the condition; `count` says who won) | Emailed codes (`consumedAt: null`), setting a username once (`hasSetUsername: false`), soft delete (`deletedAt: null`) | A code used twice; a username set twice; an account deleted twice (and its clean-up run twice) |
 | Atomic counter in SQL (`SET attempts = attempts + 1 ... RETURNING`) | Wrong guesses at an emailed code, [`prisma-verification-code.repository.ts`](../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | Ten guesses sent at once all being checked against "0 tries so far" |
 | **Unique index decides** (`createMany` with `skipDuplicates`) | Linking a Google account, [`prisma-oauth-account.repository.ts`](../src/modules/auth/infrastructure/persistence/prisma-oauth-account.repository.ts) | One Google account linked to two users |
-| **Redis `GETDEL`** (read and delete as one command) | Google sign-in state ([`redis-oauth-state.adapter.ts`](../src/modules/auth/infrastructure/adapters/redis-oauth-state.adapter.ts)), two-step sign-in challenges ([`redis-two-factor-challenge.adapter.ts`](../src/modules/auth/infrastructure/adapters/redis-two-factor-challenge.adapter.ts)) | A Google return, or a two-step challenge, completing a sign-in twice |
+| **Redis `GETDEL`** (read and delete as one command) | Google sign-in state ([`redis-oauth-state.adapter.ts`](../src/modules/auth/infrastructure/adapters/redis-oauth-state.adapter.ts)) | A Google return completing a sign-in twice |
 | **Atomic Redis counter** (`INCR` and the window's expiry in one Lua script) | The auth rate limits, [`rate-limiter.ts`](../src/shared/infrastructure/rate-limit/rate-limiter.ts) | Parallel wrong passwords slipping under a limit |
 | **Distributed lock** (`SET ... NX PX`) | The idempotency processing lock ([idempotency.md](./idempotency.md)) | A double-clicked request running twice |
 
@@ -71,8 +71,8 @@ What is **not** used anywhere: optimistic locking with a version column
 
 Each of these races has a test that fires the requests at once with
 `Promise.all` and checks that exactly one wins: concurrent refreshes, ten
-code guesses at once, five right answers at once, two Google links, a TOTP
-code raced by two sign-ins, a recovery code raced. They are in
+code guesses at once, five right answers at once, two Google links. They are
+in
 [`test/integration/auth.integration-spec.ts`](../test/integration/auth.integration-spec.ts)
 (run with `pnpm test:services:up && pnpm test:integration -- auth`).
 
@@ -435,4 +435,4 @@ hitting the same endpoint simultaneously?
 2. **Pessimistic locking** physically blocks other requests at the database level — strongest but slowest.
 3. **Optimistic locking** detects conflicts at save time via a version column — fast but requires client retries.
 4. **Distributed locks** (Redis) coordinate access before touching the database — fastest but least durable.
-5. **This starter already uses** row locks (refresh rotation, avatar swap), compare-and-set updates (codes, two-step, username, soft delete), atomic Redis operations (rate limits, `GETDEL` for one-time state) and the idempotency lock. See [the table above](#current-status-in-this-starter) for the file to copy. Add locking feature by feature as your application grows.
+5. **This starter already uses** row locks (refresh rotation, avatar swap), compare-and-set updates (codes, username, soft delete), atomic Redis operations (rate limits, `GETDEL` for one-time state) and the idempotency lock. See [the table above](#current-status-in-this-starter) for the file to copy. Add locking feature by feature as your application grows.

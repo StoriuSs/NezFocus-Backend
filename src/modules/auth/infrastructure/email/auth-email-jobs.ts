@@ -4,7 +4,7 @@ import { CodePurpose } from '@/modules/auth/domain'
 /*
  * The auth email jobs on the `auth` queue: their names, what each carries, and
  * how they are retried. One contract for both sides: BullMqAuthMailer adds
- * them, AuthJobsConsumer sends them (and the two-factor-off CLI adds one).
+ * them, AuthJobsConsumer sends them.
  * A job already in Redis was written with an earlier version of these, so a
  * field added later stays optional.
  */
@@ -15,9 +15,6 @@ export const AUTH_JOBS = {
     ACCOUNT_EXISTS: 'account-exists',
     PASSWORD_ADDED: 'password-added',
     SIGN_IN_METHOD_ADDED: 'sign-in-method-added',
-    TWO_FACTOR_CHANGED: 'two-factor-changed',
-    RECOVERY_CODE_USED: 'recovery-code-used',
-    RECOVERY_CODES_REPLACED: 'recovery-codes-replaced',
     ACCOUNT_DELETED: 'account-deleted'
 } as const
 
@@ -52,22 +49,8 @@ export interface SignInMethodAddedJob {
     providerName: string
 }
 
-export interface TwoFactorChangedJob {
-    to: string
-    enabled: boolean
-}
-
 export interface AccountDeletedJob {
     to: string
-}
-
-export interface RecoveryCodesReplacedJob {
-    to: string
-}
-
-export interface RecoveryCodeUsedJob {
-    to: string
-    remaining: number
 }
 
 /**

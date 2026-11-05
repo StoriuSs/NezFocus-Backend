@@ -62,16 +62,8 @@ export class OAuthController {
             const finished: OAuthFinished = await this.commandBus.execute(
                 new FinishOAuthCommand(provider, query, this.cookies.readOAuthState(req), client(req))
             )
-            if ('challenge' in finished) {
-                // Two-step sign-in is on: the code comes next, on the web
-                // app's page. The challenge waits in a cookie only that page's
-                // next request carries, never in the URL.
-                this.cookies.setTwoFactorChallenge(res, finished.challenge)
-                target = this.webApp({ two_factor: '1', redirect: finished.redirect, notice: finished.notice })
-            } else {
-                this.cookies.setRefresh(res, finished.session)
-                target = this.webApp({ redirect: finished.redirect, notice: finished.notice })
-            }
+            this.cookies.setRefresh(res, finished.session)
+            target = this.webApp({ redirect: finished.redirect, notice: finished.notice })
         } catch (error) {
             if (error instanceof OAuthSignInError) {
                 this.logger.warn(`${provider} sign-in did not complete (${error.reason}): ${error.detail}`)

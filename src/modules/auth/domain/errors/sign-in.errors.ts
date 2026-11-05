@@ -1,16 +1,11 @@
 import { DomainError } from '@/shared/domain/domain-error'
 
-/**
- * Wrong password, or no such account. Deliberately one error for both.
- * `captchaRequired`: the next attempt must come with a Turnstile token.
- */
+/** Wrong password, or no such account. Deliberately one error for both. */
 export class InvalidCredentialsError extends DomainError {
     readonly kind = 'unauthenticated'
     readonly errorKey = 'AUTH_INVALID_CREDENTIALS'
-    readonly details?: { captchaRequired: true }
-    constructor(captchaRequired = false) {
+    constructor() {
         super('Incorrect email or password.')
-        if (captchaRequired) this.details = { captchaRequired: true }
     }
 }
 

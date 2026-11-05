@@ -38,17 +38,8 @@ export interface AuthMailerPort {
      */
     sendSignInMethodAdded(to: string, providerName: string): Promise<void>
 
-    /** Two-step sign-in was turned on or off: the email they need if it was not them. */
-    sendTwoFactorChanged(to: string, enabled: boolean): Promise<void>
-
     /** The account was deleted: the one email they need if it was not them. */
     sendAccountDeleted(to: string): Promise<void>
-
-    /** New recovery codes were made; the earlier ones stopped working. */
-    sendRecoveryCodesReplaced(to: string): Promise<void>
-
-    /** A recovery code was used to sign in, and how many are left. */
-    sendRecoveryCodeUsed(to: string, remaining: number): Promise<void>
 }
 
 /** How an account signs in, for an email to its owner. */

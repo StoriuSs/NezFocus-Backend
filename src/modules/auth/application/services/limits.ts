@@ -46,7 +46,7 @@ export interface Guess {
  * guess holds a place in the count while it is checked, so the sixth of a
  * burst is refused. A guess gives its place back unless `wrong()` was called:
  * a right one, one refused by a limit, and one that never got as far as being
- * checked (a missing Turnstile, a password the rules turn down, an error)
+ * checked (a password the rules turn down, an error)
  * count against nothing.
  */
 export async function withGuess<T>(

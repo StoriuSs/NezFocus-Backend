@@ -41,7 +41,7 @@ without working email nobody can finish signing up or reset a password.
 
 ## Every email
 
-All twelve are queued on the BullMQ queue `auth` and rendered from the
+All nine are queued on the BullMQ queue `auth` and rendered from the
 Handlebars templates in
 [src/modules/auth/infrastructure/email/templates/](../../src/modules/auth/infrastructure/email/templates/).
 `{app}` in a subject is `APP_NAME`.
@@ -56,9 +56,6 @@ Handlebars templates in
 | Password changed (`password-changed`) | Change password; reset password on an account that had one | `password-changed.hbs` | Your {app} password was changed |
 | Password added (`password-added`) | A first password set (`POST /auth/password`), or a reset on an account that had none | `password-added.hbs` | A password was added to your {app} account |
 | Sign-in method added (`sign-in-method-added`) | Google linked to an existing, confirmed account | `sign-in-method-added.hbs` | Google sign-in was added to your {app} account |
-| Two-step changed (`two-factor-changed`) | Two-step sign-in turned on, or off (by the person, or by an operator with `pnpm auth:two-factor:off`) | `two-factor-changed.hbs` | Two-step verification was turned on (or off) for your {app} account |
-| Recovery code used (`recovery-code-used`) | A recovery code used to **sign in** (not to turn two-step off or delete the account) | `recovery-code-used.hbs` | A recovery code was used to sign in to {app} |
-| New recovery codes (`recovery-codes-replaced`) | `POST /auth/2fa/recovery-codes` | `recovery-codes-replaced.hbs` | New recovery codes were made for your {app} account |
 | Account deleted (`account-deleted`) | `POST /auth/account/delete` | `account-deleted.hbs` | Your {app} account was deleted |
 
 The code emails are the ones a person waits for. The rest are **security
@@ -155,35 +152,6 @@ the real owner still learns what to do.
 - **Context:** `appName`, `providerName` ("Google"), `resetUrl`.
 - **Not sent** when the account was created by this Google sign-in, or when
   linking removed the password of a never-confirmed account.
-
-### Two-step changed
-
-- **On:** "Two-step verification is now on… Keep your recovery codes
-  somewhere safe." If not them: choose a new password, then contact support
-  to have it turned off, "a new password alone will not get you past it".
-- **Off:** "Two-step verification is now off… Signing in needs only your
-  password (or Google) again." If not them: choose a new password, then turn
-  it back on.
-- **Context:** `appName`, `enabled`, `resetUrl`, `supportEmail`. With
-  `SUPPORT_EMAIL` set, the email names that address as a `mailto:` link;
-  without it, it says "contact {app} support".
-
-### Recovery code used
-
-- **Says:** "A recovery code was just used to sign in… you have N left." With
-  3 or fewer left, it adds "That is not many… choose New recovery codes in
-  Settings". If not them: someone has the password and a recovery code;
-  choose a new password now. Buttons: **Choose a new password**,
-  **Settings**.
-- **Context:** `appName`, `remaining`, `runningLow` (remaining is 3 or
-  fewer), `settingsUrl` (`/settings`), `resetUrl`.
-
-### New recovery codes
-
-- **Says:** "New recovery codes were just made… The earlier ones no longer
-  work." If not them: someone has the password and the authenticator app;
-  choose a new password now.
-- **Context:** `appName`, `resetUrl`.
 
 ### Account deleted
 
@@ -356,7 +324,7 @@ Deploy the worker change before, or with, the code that queues the new job.
 | `EMAIL_FROM_ADDRESS` | `noreply@testapp.com` | The sender's address. Use your authenticated domain |
 | `APP_NAME` | `Test App` | In every subject and email body |
 | `FRONTEND_URL` | `http://localhost:3001` | The web app; the base of every link. **Required in production** |
-| `SUPPORT_EMAIL` | empty | Named in the two-step-changed and account-deleted emails. Empty: they say "contact {app} support" without an address. Set it in production |
+| `SUPPORT_EMAIL` | empty | Named in the account-deleted email. Empty: it says "contact {app} support" without an address. Set it in production |
 | `DELETED_ACCOUNT_RETENTION_DAYS` | `30` | The "erased within N days" in the account-deleted email |
 | `BULL_BOARD_USER`, `BULL_BOARD_PASSWORD` | `admin` / `admin` | The queue dashboard's login. Production refuses the defaults |
 
@@ -390,7 +358,7 @@ More: [operations.md](./operations.md).
 | [bullmq-auth-mailer.adapter.ts](../../src/modules/auth/infrastructure/adapters/bullmq-auth-mailer.adapter.ts) | Adds the jobs: `AuthMailerPort` on BullMQ |
 | [auth-jobs.consumer.ts](../../src/modules/auth/presentation/consumers/auth-jobs.consumer.ts) | The worker: sends each job's email |
 | [auth-emails.ts](../../src/modules/auth/infrastructure/email/auth-emails.ts) | Subjects, templates, context |
-| [templates/](../../src/modules/auth/infrastructure/email/templates/) | The twelve templates |
+| [templates/](../../src/modules/auth/infrastructure/email/templates/) | The nine templates |
 | [email.service.ts](../../src/shared/infrastructure/email/email.service.ts) | Shared: delivers a template, knows nothing of auth |
 | [email.module.ts](../../src/shared/infrastructure/email/email.module.ts) | Shared: SMTP transport, timeouts, Handlebars strict mode |
 | [email.config.ts](../../src/config/email.config.ts) | `EMAIL_*` |

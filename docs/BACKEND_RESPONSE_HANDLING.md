@@ -120,10 +120,8 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | Error | Extra fields in `data` |
 | --- | --- |
 | `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `common`, ...), so a form can mark them one by one |
-| `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `emails`, `sign_ins`, `wrong_codes` or `wrong_password` |
-| `403 AUTH_TWO_FACTOR_REQUIRED` | `challenge`: send it with the code to `POST /auth/login/2fa` |
-| `400 AUTH_TWO_FACTOR_CODE_INVALID` | `attempts_left`, when known |
-| `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password`, `code`, `two_factor_code`) |
+| `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `emails`, `sign_ins` or `wrong_password` |
+| `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password` or `code`) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |
 
 A password the policy refuses:
@@ -160,9 +158,6 @@ were dropped; no `2xxxxx` code is sent any more.
 | `400102` | `AUTH_CODE_INVALID` | The emailed code is wrong (only the newest one works) |
 | `400103` | `AUTH_CODE_EXPIRED` | The code expired or had too many wrong tries: ask for a new one |
 | `400104` | `AUTH_CURRENT_PASSWORD_INVALID` | The current password, given to change it or delete the account, is wrong. Not a 401: the session is fine |
-| `400105` | `AUTH_TWO_FACTOR_CODE_INVALID` | The authenticator or recovery code is wrong |
-| `400106` | `AUTH_CAPTCHA_REQUIRED` | Turnstile is on and no token was sent |
-| `400107` | `AUTH_CAPTCHA_FAILED` | Turnstile did not accept the token |
 | `400108` | `AUTH_CONFIRMATION_REQUIRED` | Deleting the account without the proof it needs (`data.needs`) |
 | `400200` | `USERNAME_ALREADY_SET` | The username can only be chosen once |
 | `401000` | `AUTH_UNAUTHORIZED` | A 401 with no code of its own |
@@ -172,18 +167,14 @@ were dropped; no `2xxxxx` code is sent any more.
 | `401005` | `AUTH_TOKEN_INVALID` | The access token is not one this API issued |
 | `401006` | `AUTH_TOKEN_REVOKED` | The session behind the token has ended (`data.reason`) |
 | `401008` | `AUTH_REFRESH_FAILED` | The refresh cookie is missing, expired or ended: sign in again |
-| `401009` | `AUTH_TWO_FACTOR_CHALLENGE_EXPIRED` | The two-step challenge expired or used up its tries: sign in again |
 | `403002` | `AUTH_EMAIL_NOT_VERIFIED` | Sign-in before the address was confirmed |
 | `403003` | `AUTH_ACCOUNT_DISABLED` | The account was deleted |
 | `403004` | `AUTH_FORBIDDEN` | Not allowed: a missing role, or a cookie route called from an origin not in `CORS_ORIGINS` |
-| `403005` | `AUTH_TWO_FACTOR_REQUIRED` | Not a failure: the second step comes next (`data.challenge`) |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
 | `404001` | `USER_NOT_FOUND` | No such user |
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |
 | `408000` | `REQUEST_TIMEOUT_ERROR` | The request ran past `REQUEST_TIMEOUT_MS` |
 | `409000` | `CONFLICT_ERROR` | A 409 with no code of its own |
-| `409002` | `AUTH_TWO_FACTOR_ALREADY_ON` | Two-step sign-in is already on |
-| `409003` | `AUTH_TWO_FACTOR_NOT_ON` | Two-step sign-in is not on (or not set up yet) |
 | `409004` | `AUTH_PASSWORD_ALREADY_SET` | Setting a first password on an account that has one |
 | `409005` | `AUTH_USE_PASSWORD` | Asking for an emailed deletion code on an account that has a password |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
@@ -201,13 +192,13 @@ were dropped; no `2xxxxx` code is sent any more.
 | `500002` | `UPLOAD_DELETE_FAILED` | Deleting a stored file failed |
 | `500003` | `UPLOAD_FAILED` | Storing a file failed |
 | `503000` | `SERVICE_UNAVAILABLE_ERROR` | A dependency is down, or the image queue is full |
-| `503002` | `AUTH_CAPTCHA_UNAVAILABLE` | Cloudflare could not be asked, or refused the secret key. Turnstile fails closed |
-| `503003` | `AUTH_TWO_FACTOR_UNAVAILABLE` | The account's two-step secret was sealed with an encryption key this server does not have |
 
 The two `429001` rows share a code; tell them apart by `meta.type`.
 Retired, never reused (a code must keep one meaning in logs and tickets):
 `400001`, `400100`, `400101`, `401002`, `401007`, `403001`, `409001`,
-`422002`, `500001`, and `503001` (Keycloak's). A refused CORS origin gets no
+`422002`, `500001`, `503001` (Keycloak's), and two-step sign-in's and
+Turnstile's `400105`, `400106`, `400107`, `401009`, `403005`, `409002`,
+`409003`, `503002`, `503003`. A refused CORS origin gets no
 error code at all: without CORS headers the browser blocks the answer before
 the app could read one.
 
@@ -316,7 +307,7 @@ both ways, so nobody writes either by hand:
 
 - **Incoming requests:** `SnakeToCamelPipe` (using `camelcase-keys`) converts
   every JSON body key to `camelCase` before validation. A client sends
-  `turnstile_token`; the DTO declares `turnstileToken`.
+  `current_password`; the DTO declares `currentPassword`.
 - **Outgoing responses:** `TransformInterceptor` (using `snakecase-keys`)
   converts every key back, recursively. The code returns `accessToken`; the
   client reads `access_token`.

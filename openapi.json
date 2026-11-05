@@ -794,50 +794,6 @@
         ]
       }
     },
-    "/api/v1/auth/login/2fa": {
-      "post": {
-        "operationId": "AuthController_completeTwoFactorSignIn_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TwoFactorSignInRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/TokenResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "summary": "The second step of signing in: a code from the authenticator app (or a\nrecovery code) for the challenge the first step answered with. Sets the\nrefresh cookie.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/refresh": {
       "post": {
         "operationId": "AuthController_refresh_v1",
@@ -983,7 +939,7 @@
             }
           }
         },
-        "summary": "What the sign-in pages need to know: the other providers configured\n(`google`), and Turnstile's site key when it is on.",
+        "summary": "What the sign-in pages need to know: the other providers configured\n(`google`).",
         "tags": [
           "auth"
         ]
@@ -1253,231 +1209,6 @@
         ]
       }
     },
-    "/api/v1/auth/2fa": {
-      "get": {
-        "operationId": "TwoFactorController_status_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/TwoFactorStatusResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Whether two-step sign-in is on, and how many recovery codes are left.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/2fa/setup": {
-      "post": {
-        "operationId": "TwoFactorController_setUp_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/TwoFactorSetUpResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Start turning two-step sign-in on: a new secret, for the authenticator\napp. Not asked for at sign-in until confirmed with a code.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/2fa/confirm": {
-      "post": {
-        "operationId": "TwoFactorController_confirm_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TwoFactorCodeRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/RecoveryCodesResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Turn it on with a code from the app. Answers with the recovery codes, this once.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/2fa/recovery-codes": {
-      "post": {
-        "operationId": "TwoFactorController_replaceRecoveryCodes_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TwoFactorCodeRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/RecoveryCodesResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "New recovery codes, with a code from the app. The earlier ones stop\nworking; the new ones are in the answer, this once.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/2fa/disable": {
-      "post": {
-        "operationId": "TwoFactorController_disable_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TwoFactorCodeRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "type": "null"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Turn it off, with a code from the app or a recovery code.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/account/delete-code": {
       "post": {
         "operationId": "AccountDeletionController_sendCode_v1",
@@ -1560,7 +1291,7 @@
             "bearer": []
           }
         ],
-        "summary": "Delete your own account, with proof it is you: the password (or the\nemailed code, for an account without one), and a two-step code when that\nis on. Every session ends, this one included; the owner is emailed.",
+        "summary": "Delete your own account, with proof it is you: the password (or the\nemailed code, for an account without one). Every session ends, this one included; the owner is emailed.",
         "tags": [
           "auth"
         ]
@@ -1840,11 +1571,6 @@
             "minLength": 1,
             "maxLength": 1024
           },
-          "turnstile_token": {
-            "type": "string",
-            "description": "Required when Turnstile is on.",
-            "maxLength": 2048
-          },
           "email": {
             "type": "string",
             "description": "The sign-in address. Compared case-insensitively.",
@@ -1930,11 +1656,6 @@
             "minLength": 1,
             "maxLength": 1024
           },
-          "turnstile_token": {
-            "type": "string",
-            "description": "Needed from the third failed attempt when Turnstile is on (`data.captcha_required` says so).",
-            "maxLength": 2048
-          },
           "email": {
             "type": "string",
             "description": "The sign-in address. Compared case-insensitively.",
@@ -1947,25 +1668,6 @@
           "email"
         ]
       },
-      "TwoFactorSignInRequestDto": {
-        "type": "object",
-        "properties": {
-          "challenge": {
-            "type": "string",
-            "description": "The challenge from the 403 AUTH_TWO_FACTOR_REQUIRED answer. Omitted after\nsigning in with Google: the challenge is then in a cookie.",
-            "maxLength": 256
-          },
-          "code": {
-            "type": "string",
-            "description": "Six digits from the authenticator app, or (where accepted) a recovery code: `K7Q2M-X9HDP`.",
-            "minLength": 6,
-            "maxLength": 32
-          }
-        },
-        "required": [
-          "code"
-        ]
-      },
       "AuthOptionsResponseDto": {
         "type": "object",
         "properties": {
@@ -1975,26 +1677,15 @@
             "items": {
               "type": "string"
             }
-          },
-          "turnstile_site_key": {
-            "type": "string",
-            "nullable": true,
-            "description": "The Turnstile widget's site key, when Turnstile is on; null when it is\noff. Public: it is meant to be in the page."
           }
         },
         "required": [
-          "providers",
-          "turnstile_site_key"
+          "providers"
         ]
       },
       "ForgotPasswordRequestDto": {
         "type": "object",
         "properties": {
-          "turnstile_token": {
-            "type": "string",
-            "description": "Required when Turnstile is on.",
-            "maxLength": 2048
-          },
           "email": {
             "type": "string",
             "description": "The sign-in address. Compared case-insensitively.",
@@ -2091,68 +1782,6 @@
           "new_password"
         ]
       },
-      "TwoFactorStatusResponseDto": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "recovery_codes_left": {
-            "type": "number",
-            "description": "Unused recovery codes; 0 when two-step sign-in is off."
-          }
-        },
-        "required": [
-          "enabled",
-          "recovery_codes_left"
-        ]
-      },
-      "TwoFactorSetUpResponseDto": {
-        "type": "object",
-        "properties": {
-          "secret": {
-            "type": "string",
-            "description": "For typing into the app by hand, when the QR code cannot be scanned. Base32."
-          },
-          "otpauth_uri": {
-            "type": "string",
-            "description": "The QR code's content: `otpauth://totp/…`."
-          }
-        },
-        "required": [
-          "secret",
-          "otpauth_uri"
-        ]
-      },
-      "RecoveryCodesResponseDto": {
-        "type": "object",
-        "properties": {
-          "recovery_codes": {
-            "description": "Ten codes, each usable once. Shown this once: only their fingerprints are kept.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "recovery_codes"
-        ]
-      },
-      "TwoFactorCodeRequestDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": "Six digits from the authenticator app, or (where accepted) a recovery code: `K7Q2M-X9HDP`.",
-            "minLength": 6,
-            "maxLength": 32
-          }
-        },
-        "required": [
-          "code"
-        ]
-      },
       "DeleteAccountRequestDto": {
         "type": "object",
         "properties": {
@@ -2166,12 +1795,6 @@
             "type": "string",
             "description": "The six digits emailed by POST /auth/account/delete-code; for an account without a password.",
             "pattern": "^\\d{6}$"
-          },
-          "two_factor_code": {
-            "type": "string",
-            "description": "With two-step sign-in on: six digits from the app, or a recovery code.",
-            "minLength": 6,
-            "maxLength": 32
           }
         }
       }

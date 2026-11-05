@@ -43,8 +43,8 @@ Namecheap is fine too ([setup/domain-dns-tls.md](./setup/domain-dns-tls.md)).
 **An email provider.** Sign-up and password reset email a code, so the app
 refuses to start in production without an SMTP server
 ([setup/email.md](./setup/email.md)). Everything else outside the server is
-optional or can come later: Google sign-in, Turnstile, S3 storage, an
-off-server backup bucket, Sentry. [setup/README.md](./setup/README.md) lists
+optional or can come later: Google sign-in, S3 storage, an off-server backup
+bucket, Sentry. [setup/README.md](./setup/README.md) lists
 them all.
 
 **About 20 minutes**, once the server and the email provider exist.
@@ -217,13 +217,6 @@ does not: [auth/operations.md](./auth/operations.md).
 **Secrets:**
 
 - [ ] `JWT_SECRET` — its own `openssl rand -hex 32`, not the development one
-- [ ] `AUTH_ENCRYPTION_KEY` — another `openssl rand -hex 32`. **Back it up**
-      with the database password, somewhere other than the server: losing it
-      locks everyone with two-step sign-in out of the second step, and a
-      restored backup is useless for them without it
-- [ ] `AUTH_ENCRYPTION_KEY_PREVIOUS` is **empty**. It is only for the time
-      between changing the key and `auth:rotate-key` finishing
-      ([auth/two-step-sign-in.md](./auth/two-step-sign-in.md))
 
 **Cookies and origins** (the usual reasons sign-in works and then fails):
 
@@ -241,8 +234,8 @@ does not: [auth/operations.md](./auth/operations.md).
       (SPF and DKIM records), or codes land in spam
       ([setup/email.md](./setup/email.md))
 - [ ] `SUPPORT_EMAIL` — an address people can write to. It is named in the
-      "two-step sign-in was turned on/off" and "account deleted" emails, the
-      ones where only a person can help. Empty, they name none
+      "account deleted" email, the one where only a person can help. Empty, it
+      names none
 - [ ] A real sign-up went through: the code arrived, in the inbox
 
 **Google sign-in**, if you use it ([setup/google-sign-in.md](./setup/google-sign-in.md)):
@@ -254,23 +247,10 @@ does not: [auth/operations.md](./auth/operations.md).
 - [ ] The consent screen **published** ("In production"), or only the test
       users you listed can sign in
 
-**Turnstile**, if you use it ([setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md)):
-
-- [ ] `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` — a widget with your
-      production hostname, not the test keys
-
 **People and tools:**
 
 - [ ] The first administrator: after they sign up, run on the server
       `docker compose --env-file .env.production -f docker-compose.prod.yaml exec app node dist/src/bootstrap/user-roles.js <email>`
-- [ ] The two recovery tools tried once, while it is calm, so the form is
-      familiar on a bad day. Both are safe to run:
-      `docker compose --env-file .env.production -f docker-compose.prod.yaml exec app node dist/src/bootstrap/rotate-encryption-key.js`
-      (seals every two-step secret with the current key, and says what still
-      needs the previous one) and
-      `docker compose --env-file .env.production -f docker-compose.prod.yaml exec app node dist/src/bootstrap/two-factor-off.js --unreadable`
-      (lists the accounts whose secret cannot be read; nothing changes without
-      `--yes`). [auth/operations.md](./auth/operations.md) explains both
 
 The `--env-file .env.production` is not optional: without it compose cannot
 fill in `REDIS_PASSWORD` and the other required values in the compose file,
@@ -318,7 +298,7 @@ These four are the difference between a deployment and a liability:
 - [ ] A load test at the traffic you expect ([load-testing.md](./load-testing.md))
 - [ ] `GRACEFUL_SHUTDOWN_TIMEOUT_MS` below whatever kills your container
 - [ ] `DB_POOL_MAX` × instances still under Postgres' `max_connections`
-- [ ] Someone other than you has the passwords and `AUTH_ENCRYPTION_KEY`
+- [ ] Someone other than you has the passwords and `JWT_SECRET`
 
 ## Later, when it matters
 

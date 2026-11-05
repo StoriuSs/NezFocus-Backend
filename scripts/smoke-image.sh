@@ -55,7 +55,6 @@ docker run -d --name "$NAME-app" --network "$NET" --env-file "$ENV_FILE" \
 	-e REDIS_HOST=redis -e REDIS_PORT=6379 -e REDIS_PASSWORD=smoke-redis-password \
 	-e BULL_BOARD_PASSWORD=smoke-bull-board-password \
 	-e JWT_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" \
-	-e AUTH_ENCRYPTION_KEY="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" \
 	-e ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/0/smoke \
 	"$IMAGE" >/dev/null
 

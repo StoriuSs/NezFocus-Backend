@@ -54,7 +54,7 @@ prisma/
 ├── models/
 │   ├── users.prisma                # User (owned by the users module)
 │   └── auth.prisma                 # Credential, Session, RefreshToken, VerificationCode,
-│                                   # OAuthAccount, TwoFactor, RecoveryCode (owned by the auth module)
+│                                   # OAuthAccount (owned by the auth module)
 ├── seed.ts                         # Two demo users with no password (pnpm prisma:seed)
 └── migrations/                     # Migration history
 
@@ -154,10 +154,6 @@ Add new models by creating new `.prisma` files in `prisma/models/`. Prisma will 
 | `RefreshToken` | refresh token ever issued to a session | stores a SHA-256 hash, never the token; a used one presented again is how theft is noticed |
 | `VerificationCode` | live emailed code per account and purpose | an HMAC of the code (keyed with `JWT_SECRET`), not the code |
 | `OAuthAccount` | link to a Google account | ([google-sign-in.md](./auth/google-sign-in.md)) |
-| `TwoFactor` | account with two-step sign-in | `secretSealed`: the authenticator secret, **encrypted with `AUTH_ENCRYPTION_KEY`** |
-| `RecoveryCode` | recovery code | a keyed fingerprint (also from `AUTH_ENCRYPTION_KEY`), never the code |
-
-Two of these depend on a key outside the database. Rotate `AUTH_ENCRYPTION_KEY` with `pnpm auth:rotate-key` (it re-seals every `TwoFactor` secret with the new key); if the key is lost, two-step accounts cannot sign in until two-step sign-in is turned off for them. See [two-step-sign-in.md](./auth/two-step-sign-in.md) and [operations.md](./auth/operations.md).
 
 ---
 
@@ -305,8 +301,8 @@ pnpm prisma:migrate:prod
 pnpm prisma:studio
 
 # Reset the database (drop + recreate + seed) — development only.
-# Wipes everything, auth included: every account, password, session and
-# two-step setup. Sign up again afterwards.
+# Wipes everything, auth included: every account, password and session.
+# Sign up again afterwards.
 pnpm prisma:reset
 
 # Add the two demo users again (no password: nobody can sign in as them)

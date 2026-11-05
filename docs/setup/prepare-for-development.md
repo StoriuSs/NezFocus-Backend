@@ -7,7 +7,7 @@ on, because every step builds on the one before.
 
 You need no accounts anywhere for the main path. Email, storage and monitoring
 all run in Docker on your machine. The optional extras at the end (Google
-sign-in, Turnstile, Sentry, the web app) each take 5 to 15 minutes.
+sign-in, Sentry, the web app) each take 5 to 15 minutes.
 
 - [Step 1: Install the tools](#step-1-install-the-tools)
 - [Step 2: Get the code](#step-2-get-the-code)
@@ -116,8 +116,6 @@ Leave the rest as it is for now. In particular:
   `FRONTEND_URL`; `CORS_ORIGINS` is the list of web pages allowed to call the
   API from a browser.
 - `EMAIL_*`: in Docker every email goes to Mailpit, whatever these say.
-- `AUTH_ENCRYPTION_KEY=000…000`: the all-zero key is accepted in development
-  only. Production refuses it.
 - `GRAFANA_PORT=3002`: Grafana is on 3002, because 3001 is the web app's.
 
 Two traps when you edit the file:
@@ -325,7 +323,7 @@ recreates the app container with the new values.
 ### The web app
 
 The React starter is a separate repository, `React-Starter-No-Keycloak`:
-sign-up, sign-in, two-step sign-in, Google, the profile page. It needs Node 22
+sign-up, sign-in, Google, the profile page. It needs Node 22
 too, runs on port 3001 and calls this API.
 
 ```bash
@@ -366,36 +364,6 @@ sign in.
 **You are done when** `curl http://localhost:8888/api/v1/auth/options` answers
 `"providers":["google"]`, and the Google button in the web app takes you to
 Google and back, signed in. How it works: [../auth/google-sign-in.md](../auth/google-sign-in.md).
-
-### Cloudflare Turnstile
-
-Turnstile is a check that a person, not a script, is filling in the form. It
-guards sign-up, forgot-password, and sign-in after two failed attempts. For
-development, Cloudflare publishes **test keys** that work on any address,
-`localhost` included, and need no account:
-
-```bash
-TURNSTILE_SITE_KEY=1x00000000000000000000AA
-TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
-```
-
-That pair always passes. With Turnstile on, **register needs a
-`turnstile_token`** in the body, or it answers 400 `AUTH_CAPTCHA_REQUIRED`. The
-web app fills it in by itself. With curl, send the dummy token the test site
-key produces:
-
-```bash
-curl -i -X POST $API/auth/register -H 'Content-Type: application/json' \
-  -d '{"email":"you2@example.com","password":"Harbour-Lantern-42","turnstile_token":"XXXX.DUMMY.TOKEN.XXXX"}'
-```
-
-The API still asks Cloudflare to check the token, so it needs internet access.
-Other test keys (always fail, and so on) and real keys:
-[cloudflare-turnstile.md](./cloudflare-turnstile.md). How the app uses it:
-[../auth/turnstile.md](../auth/turnstile.md).
-
-**You are done when** `/auth/options` shows your `turnstile_site_key`, and the
-web app's sign-up form shows the widget.
 
 ### Sentry
 

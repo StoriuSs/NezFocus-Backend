@@ -1,10 +1,4 @@
-import {
-    CaptchaFailedError,
-    CaptchaRequiredError,
-    CaptchaUnavailableError,
-    CodeExpiredError,
-    CodeInvalidError
-} from '@/modules/auth/domain'
+import { CodeExpiredError, CodeInvalidError } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
 import { RegisterCommand, VerifyEmailCommand } from '..'
 import { CLIENT, IP, NEW_PASSWORD, otherCode, PASSWORD, setup, World } from './auth-test-world.shared-spec'
@@ -80,26 +74,5 @@ describe('Signing up and confirming the address', () => {
         await expect(confirm(w, otherCode(code))).rejects.toThrow(CodeExpiredError)
         await expect(confirm(w, code)).rejects.toThrow(CodeExpiredError)
         expect(user.emailVerified).toBe(false)
-    })
-
-    it('guards sign-up when Turnstile is on: no token, a failed one, or Turnstile unreachable are each refused', async () => {
-        const w = setup()
-        w.captcha.siteKey = 'site-key'
-        await expect(w.register.execute(new RegisterCommand('ada@example.test', PASSWORD, IP))).rejects.toThrow(
-            CaptchaRequiredError
-        )
-        w.captcha.answer = 'failed'
-        await expect(w.register.execute(new RegisterCommand('ada@example.test', PASSWORD, IP, 'bad'))).rejects.toThrow(
-            CaptchaFailedError
-        )
-        w.captcha.answer = 'unavailable'
-        await expect(w.register.execute(new RegisterCommand('ada@example.test', PASSWORD, IP, 'tok'))).rejects.toThrow(
-            CaptchaUnavailableError
-        )
-        expect(w.directory.users.size).toBe(0)
-
-        w.captcha.answer = 'passed'
-        await w.register.execute(new RegisterCommand('ada@example.test', PASSWORD, IP, 'good'))
-        expect(w.directory.users.size).toBe(1)
     })
 })

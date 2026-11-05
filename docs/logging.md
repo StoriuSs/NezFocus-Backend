@@ -351,19 +351,16 @@ was lost, and someone should act:
 
 | Line (starts with) | Level | Means | Do |
 |---|---|---|---|
-| `Two-step sign-in cannot be checked for user <id>: their secret was sealed with an encryption key this server does not have` | `error` | `AUTH_ENCRYPTION_KEY` was changed without keeping the old one; that user gets 503 at the second step | put the old key in `AUTH_ENCRYPTION_KEY_PREVIOUS`, or turn two-step off for them ([two-step-sign-in.md](./auth/two-step-sign-in.md)) |
-| `Turnstile could not be asked: ...` | `error` | Cloudflare's Turnstile API did not answer within 5 s; protected forms answer 503 `AUTH_CAPTCHA_UNAVAILABLE` | check outbound HTTPS from the server ([turnstile.md](./auth/turnstile.md)) |
-| `Turnstile refused the check itself (...): check TURNSTILE_SECRET_KEY` | `error` | the secret key is wrong or revoked; same 503 | copy the secret again ([setup/cloudflare-turnstile.md](./setup/cloudflare-turnstile.md)) |
 | `google sign-in failed: ...` | `error` | an unexpected error at Google's return; the browser lands on the web app with `?error=failed` | read the stack trace in the same line |
 | `google sign-in did not complete (<reason>): ...` | `warn` | Google's return was refused for a known reason (the person cancelled, an unverified Google email, a deleted account...); the browser lands on the web app with `?error=<reason>` | usually nothing; many of them in a row means a misconfigured redirect URI or clock ([google-sign-in.md](./auth/google-sign-in.md)) |
 | `Ended N session(s), removed ... of deleted accounts: an account deletion's event was not handled` | `warn` | the hourly clean-up found leftovers of a deleted account, because the deletion's event was lost (a crash at the wrong moment) | nothing: it has just tidied them; frequent ones mean something keeps crashing |
 | `A refresh token was used twice; session <id> of user <id> has been ended` | `warn` | reuse detection ended a session (also in Sentry and the `AuthRefreshTokenReuse` alert) | see [sessions-and-tokens.md](./auth/sessions-and-tokens.md) |
 
 `error` lines feed the `AppErrorLogs` alert ([alerts.md](./alerts.md)), so the
-first three reach Discord by themselves. A query for all of them:
+first one reaches Discord by itself. A query for all of them:
 
 ```logql
-{service="app"} |~ "Two-step sign-in cannot be checked|Turnstile (could not be asked|refused)|sign-in failed|deletion's event was not handled"
+{service="app"} |~ "sign-in failed|deletion's event was not handled"
 ```
 
 ### Counting
@@ -385,7 +382,7 @@ pino's `redact` config replaces these with `[REDACTED]` before the line is writt
 - Body fields, each in both spellings (`current_password` as the request sends it, `currentPassword` as the app's objects name it):
   - passwords: `password`, `confirmPassword`, `oldPassword`, `newPassword`, `currentPassword`
   - tokens: `token`, `refreshToken`, `accessToken`
-  - the auth fields that can sign someone in or change their account: `code` (emailed codes), `twoFactorCode`, `recoveryCodes`, `challenge` (a two-step sign-in halfway through), `secret` and `otpauthUri` (the authenticator setup), `turnstileToken`, `state`
+  - the auth fields that can sign someone in or change their account: `code` (emailed codes), `secret`, `state`
 
 **URLs are redacted too.** Every request URL the app logs (the request line,
 both exception filters, the error envelope's `data.path`) goes through

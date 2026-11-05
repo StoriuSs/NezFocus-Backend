@@ -50,8 +50,7 @@ Registrar, Namecheap, Porkbun, Gandi, or your hosting provider.
 **DNS** is the internet's phone book: it turns `api.example.com` into your
 server's IP address. Your registrar runs it by default. This guide uses
 Cloudflare's free DNS, because the starter is ready for Cloudflare's proxy
-([later](#optional-cloudflares-proxy-orange-cloud)) and Turnstile lives there
-too. Your registrar's DNS is fine as well: skip to
+([later](#optional-cloudflares-proxy-orange-cloud)). Your registrar's DNS is fine as well: skip to
 [step 3](#3-point-the-names-at-your-server) and add the same records there.
 
 1. Sign up at <https://dash.cloudflare.com>.

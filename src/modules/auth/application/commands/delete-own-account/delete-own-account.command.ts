@@ -3,8 +3,6 @@ export interface DeletionProof {
     password?: string
     /** The code emailed by SendAccountDeletionCodeCommand. */
     code?: string
-    /** With two-step sign-in on: a code from the app, or a recovery code. */
-    twoFactorCode?: string
 }
 
 export class DeleteOwnAccountCommand {

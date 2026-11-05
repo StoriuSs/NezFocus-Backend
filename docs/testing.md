@@ -320,7 +320,7 @@ The `test/` directory holds two kinds of suites, each in its own folder:
 
 **The folder is what selects.** Create a new suite in the folder that matches what it needs and it runs under the right command automatically — there is no exclusion list to keep in sync. The `.e2e-spec.ts` / `.integration-spec.ts` suffixes are kept so a filename reads clearly on its own, but any `*-spec.ts` inside a folder runs with that folder's command.
 
-Integration suites use **stand-ins, not your real providers**: RustFS speaks the S3 API, Mailpit speaks SMTP, a fake OpenID Connect provider (`test/integration/fake-oidc-issuer.ts`) plays Google, and a small stand-in answers Turnstile's checks. So the storage, email and sign-in code runs for real without cost, secrets, or sending actual mail. That holds regardless of what production uses (AWS, R2, Brevo, Postmark, ...).
+Integration suites use **stand-ins, not your real providers**: RustFS speaks the S3 API, Mailpit speaks SMTP, a fake OpenID Connect provider (`test/integration/fake-oidc-issuer.ts`) plays Google. So the storage, email and sign-in code runs for real without cost, secrets, or sending actual mail. That holds regardless of what production uses (AWS, R2, Brevo, Postmark, ...).
 
 If a service is not running, `test:integration` stops immediately and names the missing one, rather than letting each suite time out.
 
@@ -345,8 +345,8 @@ without type-checking (`isolatedModules` in `test/esm-transform.js`):
 
 | Area | Suites (next to the code they test) |
 |---|---|
-| Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `sign-up-and-confirm`, `sessions` (sign-in limits, refresh, sign out everywhere), `passwords`, `google`, `two-step`, `delete-account` |
-| Auth building blocks | `limits.spec.ts` (guesses counted before they are checked), `password-policy.spec.ts`, `recovery-codes.spec.ts`, `aes-secret-box.adapter.spec.ts`, `otpauth-totp.adapter.spec.ts`, `jose-token-service.adapter.spec.ts` (a token for another audience, issuer, or past its lifetime is refused), `rotate-encryption-key.spec.ts` (`pnpm auth:rotate-key` keeps the previous key while anything needs it) |
+| Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `sign-up-and-confirm`, `sessions` (sign-in limits, refresh, sign out everywhere), `passwords`, `google`, `delete-account` |
+| Auth building blocks | `limits.spec.ts` (guesses counted before they are checked), `password-policy.spec.ts`, `jose-token-service.adapter.spec.ts` (a token for another audience, issuer, or past its lifetime is refused) |
 | Users | `upload-avatar` (no orphaned file), `sweep-deleted-accounts` |
 | Shared | the roles guard, 5xx answers that leak nothing, URL redaction in logs, the queue failure reporter (no job data), image-processing limits, S3 errors kept out of answers, stored file extensions, IPv6 /64, the verification code generator, unique error codes |
 | Configuration | env validation (production refusals) and `env:check` (files in step), pino and Sentry redaction, image versions, compose healthchecks, monitoring files |
@@ -387,21 +387,18 @@ share the services.
 
 | Suite | Needs | What it checks |
 |---|---|---|
-| `auth` | Postgres, Redis | what only real services can prove: one refresh rotation wins under concurrency (the row lock), reuse after the replacement was used ends the session, codes guessed at once all count, a revoked session or deleted account is refused at once even when cached; the hourly clean-up removes two-step data of deleted accounts only |
+| `auth` | Postgres, Redis | what only real services can prove: one refresh rotation wins under concurrency (the row lock), reuse after the replacement was used ends the session, codes guessed at once all count, a revoked session or deleted account is refused at once even when cached |
 | `auth-http` | Postgres, Redis, Mailpit | the whole app over HTTP: sign-up, confirming with the sign-up password, sign-in, refresh from the web app only, sign-out; an IPv6 client counted by its /64 |
 | `oauth-http` | Postgres, Redis, Mailpit | Google sign-in against the fake OpenID Connect provider (`fake-oidc-issuer.ts`): a valid ID token signs in; one for another sign-in, another app, or signed with an unknown key is refused |
-| `two-step-http` | Postgres, Redis, Mailpit | a right password answers with a challenge, not a session; the second step signs in once |
-| `encryption-key` | Postgres, Redis, Mailpit | changing `AUTH_ENCRYPTION_KEY`, `pnpm auth:rotate-key` and `pnpm auth:two-factor:off` |
 | `account-lifecycle` | Postgres, Redis | concurrent avatar swaps and deletions; the sweep removes only never-confirmed sign-ups (upgraded users without a password stay) |
 | `rate-limiter` | Redis | exactly `limit` hits pass when many arrive at once |
 | `s3-storage` | RustFS | a private bucket refuses an unsigned URL and serves a signed one |
 
-Shared setup (Mailpit polling, booting the app, TOTP codes) is in
+Shared setup (Mailpit polling, booting the app) is in
 [test/integration/helpers.ts](../test/integration/helpers.ts).
 
-The manual checks that no suite can make (real Google, real Turnstile, real
-SMTP) and how the auth tests are built are in
-[in-the-code.md](./auth/in-the-code.md).
+The manual checks that no suite can make (real Google, real SMTP) and how the
+auth tests are built are in [in-the-code.md](./auth/in-the-code.md).
 
 ## Test Structure
 

@@ -1227,7 +1227,7 @@
       "id": 32,
       "type": "stat",
       "title": "Failed sign-ins",
-      "description": "Wrong passwords, unknown addresses and wrong two-step codes in the selected range (alert: AuthFailedLoginSpike at 50 in 10 minutes).",
+      "description": "Wrong passwords and unknown addresses in the selected range (alert: AuthFailedLoginSpike at 50 in 10 minutes).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1288,7 +1288,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(auth_events_total{job=\"nestjs-app\", event=~\"login_failed|two_factor_failed|oauth_login_failed\"}[$__range]))",
+          "expr": "sum(increase(auth_events_total{job=\"nestjs-app\", event=~\"login_failed|oauth_login_failed\"}[$__range]))",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1489,7 +1489,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (event) (increase(auth_events_total{job=\"nestjs-app\", event=~\"login_succeeded|login_failed|login_rate_limited|oauth_login_succeeded|oauth_login_failed|two_factor_failed|refresh_reuse_detected\"}[$__interval])) > 0",
+          "expr": "sum by (event) (increase(auth_events_total{job=\"nestjs-app\", event=~\"login_succeeded|login_failed|login_rate_limited|oauth_login_succeeded|oauth_login_failed|refresh_reuse_detected\"}[$__interval])) > 0",
           "legendFormat": "{{event}}",
           "refId": "A",
           "interval": "1m"
@@ -1500,7 +1500,7 @@
       "id": 36,
       "type": "timeseries",
       "title": "Account changes",
-      "description": "Registrations, password resets, two-step changes and deletions per minute.",
+      "description": "Registrations, password resets and deletions per minute.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1557,7 +1557,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (event) (increase(auth_events_total{job=\"nestjs-app\", event=~\"registration|password_reset|password_set|oauth_account_linked|two_factor_enabled|two_factor_disabled|recovery_codes_replaced|account_deleted\"}[$__interval])) > 0",
+          "expr": "sum by (event) (increase(auth_events_total{job=\"nestjs-app\", event=~\"registration|password_reset|password_set|oauth_account_linked|account_deleted\"}[$__interval])) > 0",
           "legendFormat": "{{event}}",
           "refId": "A",
           "interval": "1m"

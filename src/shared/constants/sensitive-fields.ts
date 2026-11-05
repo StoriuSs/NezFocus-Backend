@@ -36,17 +36,10 @@ export const SENSITIVE_BODY_FIELDS = [
     'token',
     'refreshToken',
     'accessToken',
-    // Emailed codes, two-step codes and recovery codes: each signs in, or
-    // proves the right to change the account. (A generic name: an error's
+    // Emailed codes: each signs in, or proves the right to change the account. (A generic name: an error's
     // `code` in Sentry's extra data is masked too. Its message still says it.)
     'code',
-    'twoFactorCode',
-    'recoveryCodes',
-    // The halfway point of a two-step sign-in, and the authenticator secret.
-    'challenge',
     'secret',
-    'otpauthUri',
-    'turnstileToken',
     // Google's return: the one-time code is above; the state ties it to a browser.
     'state'
 ] as const

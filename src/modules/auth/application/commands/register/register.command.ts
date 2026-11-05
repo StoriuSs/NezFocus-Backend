@@ -2,8 +2,6 @@ export class RegisterCommand {
     constructor(
         public readonly email: string,
         public readonly password: string,
-        public readonly ip: string,
-        /** From the Turnstile widget; required when Turnstile is on. */
-        public readonly captchaToken?: string
+        public readonly ip: string
     ) {}
 }

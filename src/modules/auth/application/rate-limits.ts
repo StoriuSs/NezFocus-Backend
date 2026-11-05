@@ -31,21 +31,13 @@ export const AUTH_RATE_LIMITS = {
      * Failed sign-ins per address. The trade-off is deliberate: this lets
      * someone lock a person out for a quarter of an hour by failing five times
      * on purpose, and without it a botnet could guess one account's password
-     * from thousands of addresses. Turnstile softens it: see
-     * loginFailuresPerEmailWithCaptcha.
+     * from thousands of addresses.
      */
     loginFailuresPerEmail: { name: 'login-fail-email', limit: 5, windowMs: 15 * MINUTE, reason: 'sign_ins' },
     /** Failed sign-ins per IP, across any addresses: one host spraying passwords. */
     loginFailuresPerIp: { name: 'login-fail-ip', limit: 10, windowMs: 15 * MINUTE, reason: 'network' },
     /** New accounts per IP. */
     registrationsPerIp: { name: 'register-ip', limit: 5, windowMs: HOUR, reason: 'network' },
-    /**
-     * New accounts per IP when Turnstile is on. The same counter, with a
-     * higher ceiling: every sign-up needs a solved challenge, so a script
-     * cannot run it up cheaply, and an office or a school sharing one
-     * connection is not stopped at the sixth person.
-     */
-    registrationsPerIpWithCaptcha: { name: 'register-ip', limit: 20, windowMs: HOUR, reason: 'network' },
     /**
      * Sign-up emails per address, a minute: its own counter, so that "sign up,
      * read the email, ask for a code" is not refused for the minute sign-up
@@ -69,25 +61,5 @@ export const AUTH_RATE_LIMITS = {
         limit: 5,
         windowMs: 15 * MINUTE,
         reason: 'wrong_password'
-    },
-    /**
-     * Failed sign-ins per address when Turnstile is on. The same counter as
-     * loginFailuresPerEmail, with a higher ceiling: from the third failure
-     * every attempt needs a solved challenge, so a script cannot run the
-     * count up, and a person who forgot their password has more room.
-     */
-    loginFailuresPerEmailWithCaptcha: {
-        name: 'login-fail-email',
-        limit: 20,
-        windowMs: 15 * MINUTE,
-        reason: 'sign_ins'
-    },
-    /**
-     * Wrong two-step codes per user, across challenges: six digits are a
-     * million guesses, and a password alone must not buy unlimited tries.
-     */
-    twoFactorFailuresPerUser: { name: '2fa-fail', limit: 5, windowMs: 15 * MINUTE, reason: 'wrong_codes' }
+    }
 } satisfies Record<string, RateLimitRule>
-
-/** Failed sign-ins (per address or per IP) after which the next one needs Turnstile. */
-export const CAPTCHA_AFTER_LOGIN_FAILURES = 2

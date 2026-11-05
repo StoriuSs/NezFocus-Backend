@@ -90,7 +90,7 @@ The Cache module provides a **2-layer caching system** combining in-memory and R
 > **What does *not* use it — and why.** The L1 layer is private to each app instance. A delete or overwrite on one instance clears that instance's L1 and Redis, but every other instance that holds the key in its own L1 keeps returning the old value until the L1 entry expires. So anything that must be correct everywhere at once is written with the shared `REDIS_CLIENT` (node-redis) instead:
 >
 > - **The session check** (`auth:session:*`, `auth:user:*`) — a signed-out session or a deleted account must stop working on every instance at the next request.
-> - **The auth module's short-lived state** — refresh-token replacements, Google sign-ins in progress, two-step challenges.
+> - **The auth module's short-lived state** — refresh-token replacements, Google sign-ins in progress.
 > - **Idempotency locks** — need an atomic `SET NX`; two instances must never both hold the lock.
 > - **Rate-limit counters** (the global throttler and the sign-in limits) — need an atomic `INCR`; per-instance copies would multiply the limit.
 > - **Health checks** — an L1 hit would answer before Redis is ever consulted.
@@ -315,8 +315,6 @@ auth module's short-lived state. Names in `src/modules/auth/infrastructure/adapt
 | `auth:session:*:v`, `auth:user:*:v` | Version counters, bumped on every invalidation | 24 h |
 | `auth:replaced:<token hash>` | The new refresh token that replaced an old one, for the grace window (two tabs refreshing at once) | 10 s |
 | `auth:oauth:<state>` | A Google sign-in in progress: PKCE verifier, nonce, return path | 10 min, read once |
-| `auth:2fa:<challenge>` | A two-step challenge between the password and the code | 5 min |
-| `auth:2fa:<challenge>:tries` | Wrong codes against that challenge (5 allowed) | 5 min |
 
 **Storage**: Raw `REDIS_CLIENT`. The session and user entries are **versioned**
 (`src/shared/infrastructure/cache/versioned-cache.ts`): invalidation bumps the
@@ -325,7 +323,7 @@ counter has not moved. Otherwise a request that read the database just before
 a sign-out could write the live session back for five minutes.
 
 **Redis down**: the session check reads Postgres instead (logged once a
-minute). Google sign-in and two-step sign-in need their keys and fail until Redis is back. See
+minute). Google sign-in needs its keys and fails until Redis is back. See
 [auth/sessions-and-tokens.md](./auth/sessions-and-tokens.md).
 
 ---
@@ -367,7 +365,7 @@ send ([BULLMQ-GUIDE.md](./BULLMQ-GUIDE.md)). Production Redis runs with
 | `throttle:block:{name}:{sha256}` | `throttle:block:relaxed:3a7bd3…` | Rate limit block (raw Redis) |
 | `rl:{rule}:{sha256}` | `rl:code-email-hour:5d41…` | Sign-in rate limit counter (raw Redis) |
 | `auth:session:{id}`, `auth:user:{id}` (+ `:v`) | `auth:user:3f9c…` | Session check cache, versioned (raw Redis) |
-| `auth:replaced:{hash}`, `auth:oauth:{state}`, `auth:2fa:{id}` | `auth:2fa:b1c2…` | Auth module state (raw Redis) |
+| `auth:replaced:{hash}`, `auth:oauth:{state}` | `auth:oauth:b1c2…` | Auth module state (raw Redis) |
 | `bull:{queue}:…` | `bull:auth:42` | BullMQ (managed by BullMQ) |
 
 ### Best Practices

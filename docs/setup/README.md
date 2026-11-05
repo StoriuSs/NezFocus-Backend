@@ -35,7 +35,6 @@ rely on a number.
 | Uptime check and heartbeat | Tell you from outside when the site, or the alerting itself, is down | No | **Required** uptime check, recommended heartbeat | UptimeRobot and Healthchecks.io are free at this size | [uptime-check.md](./uptime-check.md) |
 | Off-site backup bucket | Keeps a copy of the nightly database dumps at another provider | No | Strongly recommended | A few cents a month (Backblaze B2, Cloudflare R2) | [offsite-backups.md](./offsite-backups.md) |
 | Google sign-in | The "Continue with Google" button | Optional, a dev client | Optional | Free | [google-sign-in.md](./google-sign-in.md) |
-| Cloudflare Turnstile | A bot check on sign-up, forgot-password and repeated failed sign-ins | Optional, test keys | Recommended | Free, unlimited | [cloudflare-turnstile.md](./cloudflare-turnstile.md) |
 | Object storage (S3 or R2) | Stores profile pictures in a bucket instead of the server's disk | No: local disk, or RustFS in Docker | Optional (`STORAGE_TYPE=local` is fine on one server) | R2 has a monthly free allowance; S3 bills per use | [storage-s3-r2.md](./storage-s3-r2.md) |
 | Sentry | Groups unexpected errors (500s, crashes) into issues and emails you about new ones | Optional | Optional, recommended | Developer plan: 5,000 errors a month, 1 user | [sentry.md](./sentry.md) |
 | Grafana Cloud | Hosts the dashboards and alerts instead of running them on the server | Optional | Optional (`MONITORING=grafana-cloud`) | 10,000 metric series, 50 GB of logs, 14 days | [grafana-cloud.md](./grafana-cloud.md) |

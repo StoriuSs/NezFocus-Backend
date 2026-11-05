@@ -69,30 +69,26 @@ All in one file, [rate-limits.ts](../../src/modules/auth/application/rate-limits
 
 | Name | Limit | Keyed on | Reason | Used by | What counts | Cleared |
 |---|---|---|---|---|---|---|
-| `login-fail-email` | 5 per 15 min (**20** with [Turnstile](turnstile.md) on) | the email address | `sign_ins` | `login` | failed sign-ins only | when the right password is given for that address |
+| `login-fail-email` | 5 per 15 min | the email address | `sign_ins` | `login` | failed sign-ins only | when the right password is given for that address |
 | `login-fail-ip` | 10 per 15 min | IP | `network` | `login` | failed sign-ins only, any address | never early: the window runs out |
-| `register-ip` | 5 per hour (**20** with Turnstile on) | IP | `network` | `register` | every accepted sign-up | — |
+| `register-ip` | 5 per hour | IP | `network` | `register` | every accepted sign-up | — |
 | `register-email-min` | 1 per minute | the email address | `emails` | `register` | every accepted sign-up | — |
 | `code-email-min` | 1 per minute | the email address | `emails` | `resend-verification`, `forgot-password`, `password/code`, `account/delete-code` | every accepted request | — |
 | `code-email-hour` | 5 per hour | the email address | `emails` | `register`, `resend-verification`, `forgot-password`, `password/code`, `account/delete-code` | every accepted request | — |
 | `code-email-ip` | 10 per hour | IP | `network` | `resend-verification`, `forgot-password` | every accepted request, any address | — |
 | `code-try-ip` | 20 per hour | IP | `network` | `verify-email`, `reset-password`, `password`, `account/delete` (with a code) | **wrong** emailed codes only, any address | — |
 | `change-pw-fail` | 5 per 15 min | the user | `wrong_password` | `change-password`, `account/delete` (with a password) | wrong current passwords only | on a successful change or deletion |
-| `2fa-fail` | 5 per 15 min | the user | `wrong_codes` | `login/2fa`, `2fa/confirm`, `2fa/recovery-codes`, `2fa/disable`, `account/delete` (two-step code) | wrong two-step codes only | on any successful two-step operation |
 
 All routes are under `/api/v1/auth/`. Why each exists:
 
 - **Per address** limits stop a botnet guessing one account's password from
   thousands of IPs, and stop mail-bombing one inbox. The trade-off is
   deliberate: anyone can lock a person out of password sign-in for 15 minutes by
-  failing 5 times on purpose. Turnstile softens it (from the third failure every
-  attempt needs a solved challenge, so a script cannot run the count up, and
-  the ceiling rises to 20).
+  failing 5 times on purpose.
 - **Per IP** limits stop one machine spraying many addresses: trying one common
   password on 10 000 accounts, or emailing codes to 10 000 strangers.
 - **Per user** limits protect actions that need a session but also a second
-  proof (the current password, a two-step code), so a stolen session or a
-  stolen password cannot guess the rest.
+  proof (the current password), so a stolen session cannot guess the rest.
 - **Sign-up's own one-a-minute counter** (`register-email-min`) exists so that
   "sign up, then press *resend code* straight away" is not refused for the
   minute sign-up used. The five an hour are shared with every code email.
@@ -171,11 +167,7 @@ Retry-After: 712
 | `sign_ins` | "Too many failed sign-ins for this address." | Wait, or reset the password |
 | `network` | "Too many requests from your network." | Wait. Everyone on this connection (an office, a school) shares this one. |
 | `emails` | "We have already sent several emails to this address." | Check the inbox (and spam) for the last email; wait before asking again |
-| `wrong_codes` | "Too many wrong codes." | Wait; check the phone's clock; use a recovery code |
 | `wrong_password` | "Too many wrong passwords." | Wait, or reset the password |
-
-Two-step routes compute the wait from the hit that used the limit up, so the
-very answer that refuses also says how long.
 
 Compare with the [global throttler](#the-global-throttler)'s 429: its
 `meta.type` is `THROTTLE_ERROR` and it has no `data.reason`.
@@ -193,10 +185,8 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 | `POST /auth/change-password` | `change-pw-fail` |
 | `POST /auth/password/code` | `code-email-min`, `code-email-hour` (the account's address) |
 | `POST /auth/password` | `code-try-ip` |
-| `POST /auth/login/2fa` | `2fa-fail` |
-| `POST /auth/2fa/confirm`, `2fa/recovery-codes`, `2fa/disable` | `2fa-fail` |
 | `POST /auth/account/delete-code` | `code-email-min`, `code-email-hour` |
-| `POST /auth/account/delete` | `change-pw-fail` (password), `2fa-fail` (two-step code), `code-try-ip` (emailed code) |
+| `POST /auth/account/delete` | `change-pw-fail` (password), `code-try-ip` (emailed code) |
 | `POST /auth/refresh`, `logout`, `logout-all`, `GET` routes, Google | none beyond the global throttler |
 
 [api-reference.md](api-reference.md) has every route's full error list.
@@ -207,9 +197,6 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 |---|---|---|
 | Tries per emailed code | 5, then the code is dead (`AUTH_CODE_EXPIRED`); a new code replaces the old | [passwords-and-codes.md](passwords-and-codes.md) |
 | Emailed code lifetime | 10 minutes | [passwords-and-codes.md](passwords-and-codes.md) |
-| Tries per two-step challenge | 5, then sign in again (`AUTH_TWO_FACTOR_CHALLENGE_EXPIRED`) | [two-step-sign-in.md](two-step-sign-in.md) |
-| Two-step challenge lifetime | 5 minutes | [two-step-sign-in.md](two-step-sign-in.md) |
-| Turnstile on sign-in | required from the third attempt | [turnstile.md](turnstile.md) |
 
 ## When Redis is down
 
@@ -221,8 +208,8 @@ unavailable, allowing requests" for the throttler).
 That is a choice. A Redis outage already degrades the app; refusing every
 sign-in on top would make it a total outage. The cost is real: while Redis is
 down, the brute-force protection is off. The `RedisDown` alert fires, and the
-outage should be short. Turnstile, by contrast, fails closed; see
-[security.md](security.md) for both trade-offs side by side.
+outage should be short. See [security.md](security.md) for how each outside
+service fails.
 
 ## Unlocking someone early
 
@@ -239,7 +226,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yaml \
   exec redis redis-cli DEL rl:login-fail-email:<that hash>
 ```
 
-For per-user limits (`change-pw-fail`, `2fa-fail`) the subject is the user's id.
+For the per-user limit (`change-pw-fail`) the subject is the user's id.
 
 ## Changing the numbers
 
@@ -247,11 +234,6 @@ The auth limits are code, not environment variables: each number is a decision
 with a reason next to it, and changing one should be reviewed. Edit
 [rate-limits.ts](../../src/modules/auth/application/rate-limits.ts). Every rule
 has a `name` (part of the Redis key), a `limit`, a `windowMs` and a `reason`.
-Two rules with the same `name` share a counter: that is how Turnstile raises
-`login-fail-email` from 5 to 20 without starting a new count.
-
-`CAPTCHA_AFTER_LOGIN_FAILURES` (2), in the same file, sets when sign-in starts
-asking for Turnstile.
 
 The global throttler is set with `THROTTLE_TTL` and `THROTTLE_LIMIT` in the env
 file ([../environment.md](../environment.md)).

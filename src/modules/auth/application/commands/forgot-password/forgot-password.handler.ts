@@ -5,9 +5,8 @@ import { normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/use
 import { CREDENTIAL_REPOSITORY, CredentialRepositoryPort } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS, RateLimitRule } from '../../rate-limits'
 import { RATE_LIMIT, RateLimitPort } from '../../ports'
-import { CaptchaCheck } from '../../services/captcha-check'
 import { CodeIssuer } from '../../services/code-issuer'
-import { enforce, refuseIfLimited } from '../../services/limits'
+import { enforce } from '../../services/limits'
 
 /**
  * Email a code for choosing a new password. Answers the same whether or not
@@ -20,8 +19,7 @@ export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordComm
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort,
-        private readonly codeIssuer: CodeIssuer,
-        private readonly captcha: CaptchaCheck
+        private readonly codeIssuer: CodeIssuer
     ) {}
 
     async execute(command: ForgotPasswordCommand): Promise<void> {
@@ -31,11 +29,6 @@ export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordComm
             [AUTH_RATE_LIMITS.codeEmailsPerEmailMinute, email],
             [AUTH_RATE_LIMITS.codeEmailsPerEmailHour, email]
         ]
-        // Checked before Turnstile, so a refusal does not spend the person's
-        // solved challenge; counted only after it passes, so a script that
-        // cannot solve one cannot use up an address's emails.
-        await refuseIfLimited(this.limiter, limits)
-        await this.captcha.require(command.captchaToken, command.ip)
         await enforce(this.limiter, limits)
 
         const user = await this.directory.findByEmail(email)

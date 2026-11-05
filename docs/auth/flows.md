@@ -13,7 +13,6 @@ response shapes are in [api-reference.md](./api-reference.md).
 - [How to read this page](#how-to-read-this-page)
 - [Sign up and confirm the address](#sign-up-and-confirm-the-address)
 - [Sign in](#sign-in)
-- [Sign in with two-step verification](#sign-in-with-two-step-verification)
 - [Refresh](#refresh)
 - [Sign out](#sign-out)
 - [Forgot and reset the password](#forgot-and-reset-the-password)
@@ -26,7 +25,7 @@ response shapes are in [api-reference.md](./api-reference.md).
 
 - **Routes** are written without the prefix. `POST /auth/login` means
   `POST /api/v1/auth/login` (`API_PREFIX` is `api` by default).
-- **Bodies are snake_case** on the wire (`new_password`, `turnstile_token`).
+- **Bodies are snake_case** on the wire (`new_password`, `current_password`).
   An unknown field, or a field that fails validation, is
   `422 VALIDATION_ERROR` (code `422000`) on every route.
 - **Errors** are written as `status TYPE`, for example
@@ -43,8 +42,6 @@ response shapes are in [api-reference.md](./api-reference.md).
 - **Emails** are queued, not sent during the request
   ([emails.md](./emails.md)). In development they land in Mailpit,
   `http://localhost:8025`.
-- **Turnstile** steps apply only when Turnstile is on
-  ([turnstile.md](./turnstile.md)).
 
 ## Sign up and confirm the address
 
@@ -58,13 +55,9 @@ sequenceDiagram
     participant R as Redis
     participant P as Postgres
     participant Q as Email queue
-    W->>A: POST /auth/register with email, password, turnstile_token
+    W->>A: POST /auth/register with email, password
     A->>A: password rules, with the address
-    A->>R: limits used up? (check only)
-    opt Turnstile on
-        A->>A: ask Cloudflare about the token
-    end
-    A->>R: count the limits
+    A->>R: limits used up? if not, count them
     A->>A: hash the password (Argon2id)
     A->>P: find the address
     alt address already confirmed
@@ -80,33 +73,27 @@ sequenceDiagram
     A->>R: count this try against the IP (refused if used up)
     A->>P: find the user, check the password, then check and use up the code
     A->>P: mark the address confirmed
-    A->>P: two-step on? (no) then create session and refresh token
+    A->>P: create session and refresh token
     A-->>W: 200 access token, Set-Cookie refresh_token
 ```
 
-**1. `POST /auth/register`** (public). Body: `email`, `password`,
-`turnstile_token` (only when Turnstile is on).
+**1. `POST /auth/register`** (public). Body: `email`, `password`.
 [register.handler.ts](../../src/modules/auth/application/commands/register/register.handler.ts)
 
 1. The address is trimmed and lower-cased.
 2. The password is checked against the
    [rules](./passwords-and-codes.md#the-password-rules), with the address only.
    Broken: `422 AUTH_PASSWORD_REJECTED`, `data.rules` lists the rule ids.
-   This comes first so a password the form must change does not cost the
-   person a Turnstile challenge.
-3. The limits are checked without counting: new accounts per IP (5 an hour,
-   20 with Turnstile on), sign-up emails per address (1 a minute), code
-   emails per address (5 an hour). Used up:
+   This comes first so a password the form must change does not use up one
+   of the address's emails.
+3. The limits: new accounts per IP (5 an hour), sign-up emails per address
+   (1 a minute), code emails per address (5 an hour). Used up:
    `429 RATE_LIMIT_EXCEEDED` with `data.reason` `network` or `emails` and a
-   `Retry-After` header.
-4. Turnstile, when on: no token `400 AUTH_CAPTCHA_REQUIRED`, a bad token
-   `400 AUTH_CAPTCHA_FAILED`, Cloudflare unreachable
-   `503 AUTH_CAPTCHA_UNAVAILABLE`.
-5. The limits are counted (checked once more: two requests racing past the
-   first check are still caught).
-6. The password is hashed, every time, so the answer takes as long whether or
+   `Retry-After` header. Otherwise each is counted (two requests racing past
+   the check are still caught by the count).
+4. The password is hashed, every time, so the answer takes as long whether or
    not the address is taken.
-7. Then, depending on the address:
+5. Then, depending on the address:
    - **already confirmed**: no account is made; its owner is emailed "You
      already have an account" (`account-exists`), with links to sign in and
      to reset the password;
@@ -115,7 +102,7 @@ sequenceDiagram
      owner;
    - **new**: an unconfirmed user is created, the hash stored, and a code
      emailed (`send-code`, purpose `email-verify`).
-8. Answer: `202`, `data: null`. The same answer
+6. Answer: `202`, `data: null`. The same answer
    in every case, so sign-up cannot be used to find out who has an account.
 
 **2. `POST /auth/verify-email`** (public). Body: `email`, `code` (exactly six
@@ -151,7 +138,7 @@ digits, else `422`), `password` (the one from the last sign-up, else `422`).
 
 1. Limits, checked and counted: code emails per IP (10 an hour), per address
    (1 a minute, 5 an hour). Used up: `429` with `data.reason` `network` or
-   `emails`. No Turnstile on this route.
+   `emails`.
 2. No account: nothing is sent. Unconfirmed: a new code, which makes the
    earlier one stop working. Confirmed: the `account-exists` email.
 3. Answer: `202` "If that address has an account, an email is on its way."
@@ -181,9 +168,6 @@ sequenceDiagram
     participant P as Postgres
     W->>A: POST /auth/login with email, password
     A->>R: failed sign-ins for this address and this IP used up?
-    opt Turnstile on and 2 or more failures, or a token sent
-        A->>A: ask Cloudflare about the token
-    end
     A->>P: find the user and the password hash
     A->>A: Argon2 verify (a dummy hash if there is no account)
     alt wrong password, unknown address, or no password
@@ -193,9 +177,6 @@ sequenceDiagram
         A->>R: clear the address's failure count
         alt address not confirmed
             A-->>W: 403 AUTH_EMAIL_NOT_VERIFIED
-        else two-step sign-in on
-            A->>R: store a challenge for 5 min
-            A-->>W: 403 AUTH_TWO_FACTOR_REQUIRED with data.challenge
         else
             A->>P: create session and refresh token
             A-->>W: 200 access token, Set-Cookie refresh_token
@@ -203,111 +184,31 @@ sequenceDiagram
     end
 ```
 
-**`POST /auth/login`** (public). Body: `email`, `password`, `turnstile_token`
-(when asked for). Send it with credentials so the browser stores the cookie.
+**`POST /auth/login`** (public). Body: `email`, `password`. Send it with
+credentials so the browser stores the cookie.
 [login.handler.ts](../../src/modules/auth/application/commands/login/login.handler.ts)
 
 1. The limits are checked without counting: failed sign-ins per address
-   (5 per 15 minutes, 20 with Turnstile on) and per IP (10 per 15 minutes).
+   (5 per 15 minutes) and per IP (10 per 15 minutes).
    Used up: `429 RATE_LIMIT_EXCEEDED`, `data.reason` `sign_ins` (the address)
    or `network` (the IP). The 6th attempt after 5 failures is the first
    refused.
-2. Turnstile, when on, is required once the address or the IP has 2 or more
-   failures (so from the 3rd attempt), and whenever a token is sent anyway:
-   `400 AUTH_CAPTCHA_REQUIRED`, `400 AUTH_CAPTCHA_FAILED` or
-   `503 AUTH_CAPTCHA_UNAVAILABLE`.
-3. The password is checked. A wrong password, an unknown address and an
+2. The password is checked. A wrong password, an unknown address and an
    account with no password (made with Google) are the same answer,
    `401 AUTH_INVALID_CREDENTIALS` "Incorrect email or password.", and take
    the same time (an unknown address is checked against a dummy hash). A
-   failure counts one against the address and one against the IP. With
-   Turnstile on, once either count reaches 2 the error also carries
-   `data.captcha_required: true`, so the page shows the widget before the
-   next try.
-4. Right password: the address's failure count is cleared (the IP's is not).
-5. Address not confirmed: `403 AUTH_EMAIL_NOT_VERIFIED`. Said only now,
+   failure counts one against the address and one against the IP.
+3. Right password: the address's failure count is cleared (the IP's is not).
+4. Address not confirmed: `403 AUTH_EMAIL_NOT_VERIFIED`. Said only now,
    after the right password, so it gives nothing away; the web app offers
    `resend-verification`.
-6. The hash is upgraded if it was made with older Argon2 settings.
-7. The sign-in gate: with two-step sign-in on,
-   `403 AUTH_TWO_FACTOR_REQUIRED` with `data.challenge`, which is the next
-   step, not a failure ([below](#sign-in-with-two-step-verification)).
-   Otherwise a session starts: `200`,
+5. The hash is upgraded if it was made with older Argon2 settings.
+6. The sign-in gate starts a session: `200`,
    `{ access_token, token_type, expires_in }`, and the refresh cookie.
 
 The forms around it: a "Forgot password?" link
 ([below](#forgot-and-reset-the-password)), and "Continue with Google" when
 `GET /auth/options` lists `google` ([below](#sign-in-with-google)).
-`GET /auth/options` also gives the Turnstile site key, or `null` when
-Turnstile is off.
-
-## Sign in with two-step verification
-
-For an account with two-step sign-in on, every first step (password,
-confirming the address, resetting the password, Google) ends with a
-challenge instead of a session. Turning it on and off is in
-[two-step-sign-in.md](./two-step-sign-in.md).
-
-```mermaid
-sequenceDiagram
-    participant W as Web app
-    participant A as API
-    participant R as Redis
-    participant P as Postgres
-    W->>A: POST /auth/login with email, password
-    A->>R: store challenge (hashed), 5 min
-    A-->>W: 403 AUTH_TWO_FACTOR_REQUIRED, data.challenge
-    Note over W: show the code form
-    W->>A: POST /auth/login/2fa with code, challenge
-    A->>R: challenge still there?
-    A->>R: wrong two-step codes for this user used up?
-    A->>P: open the sealed secret, check the code
-    alt wrong code
-        A->>R: count one for the user and one for the challenge
-        A-->>W: 400 AUTH_TWO_FACTOR_CODE_INVALID, data.attempts_left
-    else right code
-        A->>P: record the code's time step (no reuse)
-        A->>R: take the challenge (GETDEL, once)
-        A->>P: create session and refresh token
-        A-->>W: 200 access token, Set-Cookie refresh_token
-    end
-```
-
-**`POST /auth/login/2fa`** (public). Body: `code` (six digits from the app,
-or a recovery code like `K7Q2M-X9HDP`), `challenge`. Send with credentials.
-[complete-two-factor-sign-in.handler.ts](../../src/modules/auth/application/commands/complete-two-factor-sign-in/complete-two-factor-sign-in.handler.ts)
-
-1. The challenge comes from the body, or, when the body has none, from the
-   `two_factor` cookie (after Google, [below](#after-google-with-two-step-sign-in-on)).
-   In the cookie case the `Origin` must be in `CORS_ORIGINS`, else
-   `403 AUTH_FORBIDDEN`.
-2. Unknown, already used, or older than 5 minutes:
-   `401 AUTH_TWO_FACTOR_CHALLENGE_EXPIRED`. The person starts the sign-in
-   over.
-3. Wrong two-step codes for this user: 5 per 15 minutes, across challenges.
-   Used up: `429 RATE_LIMIT_EXCEEDED`, `data.reason: "wrong_codes"`.
-4. The account was deleted meanwhile: the challenge is taken,
-   `403 AUTH_ACCOUNT_DISABLED`.
-5. The secret is opened. If it was sealed with an encryption key the server
-   no longer has: `503 AUTH_TWO_FACTOR_UNAVAILABLE` (an operator problem:
-   [two-step-sign-in.md](./two-step-sign-in.md)).
-6. A six-digit code is checked against the app's secret (one 30-second step
-   either side is accepted), and must be newer than the last one accepted.
-   Anything else is tried as a recovery code. Using a recovery code emails
-   the owner (`recovery-code-used`).
-7. Wrong code: counted against the user and against the challenge's 5 tries.
-   - the user's 5 are used up: the challenge is taken,
-     `429 RATE_LIMIT_EXCEEDED`, `data.reason: "wrong_codes"`;
-   - the challenge's 5 are used up: `401 AUTH_TWO_FACTOR_CHALLENGE_EXPIRED`;
-   - otherwise `400 AUTH_TWO_FACTOR_CODE_INVALID` with `data.attempts_left`
-     (whichever runs out first).
-8. Right code: the challenge is taken with `GETDEL` (two requests racing with
-   the same right code cannot both get a session), the user's wrong-code
-   count is cleared, a session starts, and the `two_factor` cookie is
-   cleared if it was used. `200`, token and cookie.
-
-A password reset changes the password first and then stops at this same
-challenge: resetting cannot get around the second step.
 
 ## Refresh
 
@@ -424,12 +325,8 @@ sequenceDiagram
     participant R as Redis
     participant P as Postgres
     participant Q as Email queue
-    W->>A: POST /auth/forgot-password with email, turnstile_token
-    A->>R: limits used up? (check only)
-    opt Turnstile on
-        A->>A: ask Cloudflare about the token
-    end
-    A->>R: count the limits
+    W->>A: POST /auth/forgot-password with email
+    A->>R: limits used up? if not, count them
     A->>P: find the address
     opt account exists
         A->>P: store a password-reset code, 10 min
@@ -442,25 +339,20 @@ sequenceDiagram
     A->>P: store the new hash, mark the address confirmed
     A->>P: end every session (password-reset)
     A->>Q: password-changed email (or password-added)
-    A->>P: two-step on? (no) then create session
+    A->>P: create session
     A-->>W: 200 access token, Set-Cookie refresh_token
 ```
 
-**1. `POST /auth/forgot-password`** (public). Body: `email`,
-`turnstile_token` (when Turnstile is on).
+**1. `POST /auth/forgot-password`** (public). Body: `email`.
 [forgot-password.handler.ts](../../src/modules/auth/application/commands/forgot-password/forgot-password.handler.ts)
 
-1. Limits checked without counting: code emails per IP (10 an hour), per
+1. Limits checked and counted: code emails per IP (10 an hour), per
    address (1 a minute, 5 an hour). Used up: `429`, `data.reason` `network`
    or `emails`. Counted for every address, account or not.
-2. Turnstile, when on, always: `400 AUTH_CAPTCHA_REQUIRED`,
-   `400 AUTH_CAPTCHA_FAILED`, `503 AUTH_CAPTCHA_UNAVAILABLE`. Checked after
-   the limits, so a refusal does not spend the person's solved challenge.
-3. The limits are counted.
-4. No account: nothing is sent. Otherwise a `password-reset` code is emailed.
+2. No account: nothing is sent. Otherwise a `password-reset` code is emailed.
    For an account with no password yet (made with Google), the email is
    worded "Choose a password" instead of "Reset".
-5. Always `202` with the same message.
+3. Always `202` with the same message.
 
 **2. `POST /auth/reset-password`** (public). Body: `email`, `code`,
 `password` (the new one). Send with credentials: it signs in.
@@ -484,9 +376,7 @@ sequenceDiagram
 8. The owner is emailed `password-changed`, or `password-added` if the
    account had no password before.
 9. The sign-in gate: one new session for this device, `200`,
-   token and cookie; or
-   `403 AUTH_TWO_FACTOR_REQUIRED` with a challenge. The password is already
-   changed at that point.
+   token and cookie.
 
 ## Change the password
 
@@ -637,8 +527,7 @@ error, and the `oauth_state` cookie is cleared.
    `?error=email_unverified`. Linked to a deleted account:
    `?error=account_deleted`.
 5. The sign-in gate: a session and the refresh cookie, then
-   `?redirect=/path`; or, with two-step sign-in on, the `two_factor` cookie
-   and `?two_factor=1&redirect=/path`.
+   `?redirect=/path`.
 6. When a never-confirmed account's password was removed while linking,
    `&notice=password_removed` is added, so the web app can tell the person.
 7. Unexpected errors (database, Redis): `?error=failed`, logged at error
@@ -683,27 +572,6 @@ read the inbox, and Google just did. Otherwise someone could register a
 victim's address first, wait for the victim to use Google, then sign in with
 the password they chose.
 
-### After Google, with two-step sign-in on
-
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant A as API
-    B->>A: GET /auth/google/callback
-    A-->>B: 302 to /auth/callback?two_factor=1&redirect=/path, Set-Cookie two_factor (5 min)
-    Note over B: the web app shows the code form
-    B->>A: POST /auth/login/2fa with code only, cookie two_factor (with credentials)
-    A->>A: Origin in CORS_ORIGINS?
-    A-->>B: 200 access token, Set-Cookie refresh_token, two_factor cleared
-```
-
-The challenge travels in the `two_factor` cookie (httpOnly, path
-`/api/v1/auth/login/2fa`), never in the URL, where it would end up in
-browser history and logs. The web app posts the code with no `challenge` in
-the body, so the API reads the cookie. Errors are those of
-[sign in with two-step verification](#sign-in-with-two-step-verification),
-plus `403 AUTH_FORBIDDEN` for an `Origin` not in `CORS_ORIGINS`.
-
 ## Delete the account
 
 Deleting needs proof it is the owner, not only a signed-in session (or anyone
@@ -720,10 +588,10 @@ sequenceDiagram
         A->>Q: send-code email (account-delete)
         A-->>W: 200
     end
-    W->>A: POST /auth/account/delete with password or code, two_factor_code (Bearer, credentials)
-    A->>A: proof complete? check password, then two-step code, then emailed code
+    W->>A: POST /auth/account/delete with password or code (Bearer, credentials)
+    A->>A: proof complete? check the password, or the emailed code
     A->>P: mark the account deleted
-    Note over A,P: an event ends every session and removes the password, Google links and two-step data
+    Note over A,P: an event ends every session and removes the password and Google links
     A->>Q: account-deleted email
     A-->>W: 200, cookie cleared
 ```
@@ -738,33 +606,26 @@ account with no password.
 - An `account-delete` code is emailed. `200`, `data: null`.
 
 **2. `POST /auth/account/delete`** (signed in). Body: `password` (accounts
-with one), or `code` (accounts without), plus `two_factor_code` when
-two-step sign-in is on. Send with credentials so the cookie is cleared.
+with one), or `code` (accounts without). Send with credentials so the
+cookie is cleared.
 
-1. Proof missing: `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs`, a list
-   of `password`, `code` and `two_factor_code`. A web app can send an empty
-   body first to learn what this account needs.
+1. Proof missing: `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs`,
+   `["password"]` or `["code"]`. A web app can send an empty body first to
+   learn what this account needs.
 2. The password, if the account has one. Wrong current passwords per user:
    5 per 15 minutes (`429`, `wrong_password`). Wrong:
    `400 AUTH_CURRENT_PASSWORD_INVALID`.
-3. The two-step code, if it is on (an app code or a recovery code; no
-   "recovery code used" email here, the account-deleted one follows). Wrong
-   two-step codes per user: 5 per 15 minutes. Wrong:
-   `400 AUTH_TWO_FACTOR_CODE_INVALID` with `data.attempts_left`, or `429`
-   `wrong_codes` when none are left. Unreadable secret:
-   `503 AUTH_TWO_FACTOR_UNAVAILABLE`.
-4. The emailed code, for an account without a password. Wrong codes per IP:
+3. The emailed code, for an account without a password. Wrong codes per IP:
    20 an hour (`429`, `network`). Wrong or expired: `400 AUTH_CODE_INVALID`
    or `400 AUTH_CODE_EXPIRED`.
-5. The users module marks the account deleted. A second deletion racing this
+4. The users module marks the account deleted. A second deletion racing this
    one: `404 USER_NOT_FOUND`.
-6. Straight after, an event handler ends every session (reason
-   `account-deleted`) and removes the password, the Google links, the
-   two-step secret and the recovery codes. Until it has run, the guard
-   already refuses the account.
-7. The owner is emailed `account-deleted`, which says when their personal
+5. Straight after, an event handler ends every session (reason
+   `account-deleted`) and removes the password and the Google links. Until
+   it has run, the guard already refuses the account.
+6. The owner is emailed `account-deleted`, which says when their personal
    details are erased (`DELETED_ACCOUNT_RETENTION_DAYS`, default 30).
-8. `200`, and the cookie is cleared. Every
+7. `200`, and the cookie is cleared. Every
    other device gets `403 AUTH_ACCOUNT_DISABLED` on its next request.
 
 What is kept and erased, and when: [accounts.md](./accounts.md).

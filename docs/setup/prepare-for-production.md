@@ -29,21 +29,20 @@ API, `app.example.com` for the web app, and `you@example.com` for your email.
 - [Step 4: Generate the secrets](#step-4-generate-the-secrets)
 - [Step 5: Email](#step-5-email)
 - [Step 6: Google sign-in (optional)](#step-6-google-sign-in-optional)
-- [Step 7: Turnstile (recommended)](#step-7-turnstile-recommended)
-- [Step 8: Storage for profile pictures (optional)](#step-8-storage-for-profile-pictures-optional)
-- [Step 9: A bucket for off-site backups](#step-9-a-bucket-for-off-site-backups)
-- [Step 10: Sentry (recommended)](#step-10-sentry-recommended)
-- [Step 11: Discord for alerts](#step-11-discord-for-alerts)
-- [Step 12: Grafana Cloud (optional)](#step-12-grafana-cloud-optional)
-- [Step 13: A heartbeat](#step-13-a-heartbeat)
-- [Step 14: GitHub](#step-14-github)
-- [Step 15: Put the code on the server](#step-15-put-the-code-on-the-server)
-- [Step 16: Write .env.production](#step-16-write-envproduction)
-- [Step 17: HTTPS](#step-17-https)
-- [Step 18: Deploy](#step-18-deploy)
-- [Step 19: The first administrator](#step-19-the-first-administrator)
-- [Step 20: The uptime check](#step-20-the-uptime-check)
-- [Step 21: The checks after the first deploy](#step-21-the-checks-after-the-first-deploy)
+- [Step 7: Storage for profile pictures (optional)](#step-7-storage-for-profile-pictures-optional)
+- [Step 8: A bucket for off-site backups](#step-8-a-bucket-for-off-site-backups)
+- [Step 9: Sentry (recommended)](#step-9-sentry-recommended)
+- [Step 10: Discord for alerts](#step-10-discord-for-alerts)
+- [Step 11: Grafana Cloud (optional)](#step-11-grafana-cloud-optional)
+- [Step 12: A heartbeat](#step-12-a-heartbeat)
+- [Step 13: GitHub](#step-13-github)
+- [Step 14: Put the code on the server](#step-14-put-the-code-on-the-server)
+- [Step 15: Write .env.production](#step-15-write-envproduction)
+- [Step 16: HTTPS](#step-16-https)
+- [Step 17: Deploy](#step-17-deploy)
+- [Step 18: The first administrator](#step-18-the-first-administrator)
+- [Step 19: The uptime check](#step-19-the-uptime-check)
+- [Step 20: The checks after the first deploy](#step-20-the-checks-after-the-first-deploy)
 - [The web app](#the-web-app)
 
 ---
@@ -78,7 +77,7 @@ A VPS (a virtual server that stays on) with **Ubuntu LTS**. Size:
 |---|---|
 | Everything, monitoring included (`MONITORING=local`) | 2 GB of memory, 2 CPUs; 4 GB is comfortable |
 | Monitoring in Grafana Cloud (`MONITORING=grafana-cloud`) | 1 GB, 1 CPU |
-| The server also builds the image (`DEPLOY_IMAGE_SOURCE=build`, the default) | Add room for the build, or let CI build it (step 14) |
+| The server also builds the image (`DEPLOY_IMAGE_SOURCE=build`, the default) | Add room for the build, or let CI build it (step 13) |
 
 Hetzner, DigitalOcean, Linode, AWS Lightsail and the like all work. Add your
 SSH key when you create it, so you never log in with a password.
@@ -132,7 +131,6 @@ under its variable name:
 | Variable | Command | What production requires (`src/config/validation.ts`) | What it protects |
 |---|---|---|---|
 | `JWT_SECRET` | `openssl rand -hex 32` | At least 32 characters; not the template's placeholder, not a known default | Signs every access token, and keys the stored hashes of emailed codes. Changing it later signs everyone's access token out (sessions refresh and carry on) and voids codes in flight |
-| `AUTH_ENCRYPTION_KEY` | `openssl rand -hex 32` (a second, different one) | Hex, at least 64 characters (32 bytes); not the template's all-zero key | Seals the two-step sign-in secrets. **Losing it locks everyone with two-step sign-in out of the second step**: back it up like the database password |
 | `DB_PASSWORD` | `openssl rand -hex 24` | At least 12 characters; only letters, digits and `. _ ~ -`; not a placeholder starting `your_` | The database |
 | `REDIS_PASSWORD` | `openssl rand -hex 24` | Required; at least 12 characters, not a known default | Redis, which holds the queues, sign-in limits and session cache |
 | `BULL_BOARD_PASSWORD` | `openssl rand -hex 24` | At least 12 characters; not `admin` | The job dashboard `/admin/queues`, and `/api-docs` in production |
@@ -159,7 +157,7 @@ You come back with: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_SECURE`, `EMAIL_USER`,
 
 **You are done when** the provider shows your domain as verified, and you have
 the SMTP login and password in the password manager. (You send a real email in
-step 21.)
+step 20.)
 
 ## Step 6: Google sign-in (optional)
 
@@ -180,24 +178,11 @@ You come back with: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 **You are done when** the client exists with that redirect URI, and the app's
 audience is "In production" (or your test users are listed).
 
-## Step 7: Turnstile (recommended)
-
-Turnstile is Cloudflare's check that a person, not a script, is filling in the
-sign-up, forgot-password or repeated sign-in form. Free. Create a widget for
-the **web app's** hostname (`app.example.com`):
-[cloudflare-turnstile.md](./cloudflare-turnstile.md).
-
-You come back with: `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`. The web app
-needs nothing: it reads the site key from the API (`GET /api/v1/auth/options`).
-
-**You are done when** the widget lists your web app's hostname and you have
-both keys.
-
-## Step 8: Storage for profile pictures (optional)
+## Step 7: Storage for profile pictures (optional)
 
 With `STORAGE_TYPE=local` (the default), uploaded profile pictures stay on the
 server's disk, in a Docker volume, and the nightly backup copies them off-site
-(step 9). That is fine for one server. Choose a bucket instead if you plan to
+(step 8). That is fine for one server. Choose a bucket instead if you plan to
 run more than one server, or would rather not keep files on it: AWS S3 or
 Cloudflare R2, private, with a key limited to that bucket:
 [storage-s3-r2.md](./storage-s3-r2.md).
@@ -208,7 +193,7 @@ You come back with (only for S3/R2): `STORAGE_TYPE=s3`, `AWS_REGION`,
 
 **You are done when** you have decided, and for a bucket, hold its name and key.
 
-## Step 9: A bucket for off-site backups
+## Step 8: A bucket for off-site backups
 
 Every night the `backup` service dumps the database to the server's disk.
 A disk dies with its server, so copy the dumps to a bucket at **another
@@ -223,7 +208,7 @@ second, read-only key that **stays in the password manager**, for restores.
 
 **You are done when** the bucket exists, private, and you hold both keys.
 
-## Step 10: Sentry (recommended)
+## Step 9: Sentry (recommended)
 
 Sentry groups unexpected errors (500s, crashes, background jobs that gave up)
 into issues, shows which release introduced each, and emails you about new
@@ -235,7 +220,7 @@ the web app's own env file.
 
 **You are done when** you have the API project's DSN.
 
-## Step 11: Discord for alerts
+## Step 10: Discord for alerts
 
 The server watches itself (the app down, the disk filling, a backup that did
 not run) and posts an alert when something is wrong. It needs somewhere to
@@ -248,7 +233,7 @@ You come back with: `ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/...`.
 in the channel (the page shows the command), and notifications for that channel
 are on, on your phone too.
 
-## Step 12: Grafana Cloud (optional)
+## Step 11: Grafana Cloud (optional)
 
 Dashboards, logs and alert rules run on the server by default
 (`MONITORING=local`, about 600 MB of memory), and you look at them through an
@@ -262,9 +247,9 @@ values.
 
 **You are done when** you have decided, and for Grafana Cloud, hold the seven values.
 
-## Step 13: A heartbeat
+## Step 12: A heartbeat
 
-The alerts in step 11 come from the server. If the server or its alerting
+The alerts in step 10 come from the server. If the server or its alerting
 stops, nothing posts, and a silent channel looks like a healthy one. A
 **heartbeat** closes that gap: the server calls an outside service every
 minute, and the service tells you when the calls stop. Create a free check at
@@ -276,12 +261,12 @@ uncomment three lines in `monitoring/alertmanager/alertmanager.yml` (the page
 shows which), commit, and push.
 
 The other half, the **uptime check** (an outside service that opens your site
-every few minutes), needs the site to be live: step 20.
+every few minutes), needs the site to be live: step 19.
 
 **You are done when** the check exists (it shows "new" until the first call)
 and the `alertmanager.yml` change is pushed.
 
-## Step 14: GitHub
+## Step 13: GitHub
 
 What you set up depends on how you want to deploy. All of it is in
 [github.md](./github.md):
@@ -297,11 +282,11 @@ For `registry` mode, check that CI has published an image of the commit you
 will deploy: the repository's **Actions** tab shows a green run on `main`, and
 your profile's **Packages** tab lists the image.
 
-**You are done when** the server can `git clone` the repository (step 15 does
+**You are done when** the server can `git clone` the repository (step 14 does
 it), and, for `registry` mode, `docker login ghcr.io` on the server said
 "Login Succeeded".
 
-## Step 15: Put the code on the server
+## Step 14: Put the code on the server
 
 On the server, as the user that will run deploys (the one in the `docker`
 group):
@@ -318,7 +303,7 @@ The folder (here `/home/ubuntu/nest`) is what the Deploy button calls
 
 **You are done when** `ls ~/nest` shows `deploy.sh` and `docker-compose.prod.yaml`.
 
-## Step 16: Write .env.production
+## Step 15: Write .env.production
 
 The production settings live in one file **on the server**, created by hand
 from the template and never committed or copied from your laptop:
@@ -349,10 +334,10 @@ UNVERIFIED_ACCOUNT_RETENTION_DAYS=7
 ```
 
 **`PORT` matters here.** The production compose file publishes the API on
-`127.0.0.1:${PORT}`, and nginx (step 17) forwards to `127.0.0.1:3000` unless
+`127.0.0.1:${PORT}`, and nginx (step 16) forwards to `127.0.0.1:3000` unless
 you give `bootstrap-nginx.sh` another port with `--api-port`. Left at the
 template's `8888`, every request answers **502 Bad Gateway**. So: `PORT=3000`,
-or keep your own port and pass the same number as `--api-port` in step 17.
+or keep your own port and pass the same number as `--api-port` in step 16.
 Inside the container the app always listens on 3000; `PORT` only chooses the
 port on the server.
 
@@ -381,17 +366,13 @@ CORS_CREDENTIALS=true            # production refuses false
 
 ```bash
 JWT_SECRET=<openssl rand -hex 32>
-AUTH_ENCRYPTION_KEY=<another openssl rand -hex 32>
-AUTH_ENCRYPTION_KEY_PREVIOUS=     # empty: only used while changing the key
 ```
 
-**Google and Turnstile** (steps 6 and 7). Leave both pairs empty to keep them off.
+**Google** (step 6). Leave both empty to keep it off.
 
 ```bash
 GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=...
-TURNSTILE_SITE_KEY=0x...
-TURNSTILE_SECRET_KEY=0x...
 ```
 
 **Rate limit.** Requests per IP address per route, per `THROTTLE_TTL` seconds.
@@ -415,7 +396,7 @@ EMAIL_FROM_NAME=MyApp
 EMAIL_FROM_ADDRESS=noreply@example.com
 ```
 
-**Storage** (step 8). Either keep `STORAGE_TYPE=local`, or:
+**Storage** (step 7). Either keep `STORAGE_TYPE=local`, or:
 
 ```bash
 STORAGE_TYPE=s3
@@ -428,17 +409,17 @@ AWS_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com   # R2 only; leave
 
 **Logging.** `LOG_LEVEL=info`.
 
-**Monitoring and alerts** (steps 11 to 13):
+**Monitoring and alerts** (steps 10 to 12):
 
 ```bash
-MONITORING=local                 # or grafana-cloud, with the GRAFANA_CLOUD_* lines from step 12
+MONITORING=local                 # or grafana-cloud, with the GRAFANA_CLOUD_* lines from step 11
 GRAFANA_PORT=3002
 GRAFANA_ADMIN_PASSWORD=<openssl rand -hex 24>
 ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/<id>/<token>   # required
 ALERT_HEARTBEAT_URL=https://hc-ping.com/<uuid>
 ```
 
-**Error tracking** (step 10). Don't set `SENTRY_RELEASE`: the compose file sets
+**Error tracking** (step 9). Don't set `SENTRY_RELEASE`: the compose file sets
 it to the commit being deployed.
 
 ```bash
@@ -453,7 +434,7 @@ BULL_BOARD_USER=ops
 BULL_BOARD_PASSWORD=<openssl rand -hex 24>
 ```
 
-**Backups** (step 9). Uncomment and fill in:
+**Backups** (step 8). Uncomment and fill in:
 
 ```bash
 BACKUP_S3_BUCKET=myapp-backups
@@ -465,7 +446,7 @@ BACKUP_S3_PREFIX=myapp/
 BACKUP_S3_KEEP_DAYS=0            # with a write-only key; the bucket's lifecycle rule expires old dumps
 ```
 
-**Deploy** (step 14). Leave these commented out to build on the server; for
+**Deploy** (step 13). Leave these commented out to build on the server; for
 `registry` mode:
 
 ```bash
@@ -482,7 +463,7 @@ it: the next steps run the app's own check, inside the image, before anything
 changes. (With the repository and Node on another machine,
 `pnpm env:check .env.production` does the same; but keep the file on the server.)
 
-## Step 17: HTTPS
+## Step 16: HTTPS
 
 nginx on the server receives every request on port 443, handles HTTPS, and
 forwards to the app on `127.0.0.1:3000`. One script installs it and gets a free
@@ -493,7 +474,7 @@ cd ~/nest
 sudo ./nginx/bootstrap-nginx.sh --api-domain api.example.com --email you@example.com
 ```
 
-It forwards to port 3000. If you set another `PORT` in step 16, add
+It forwards to port 3000. If you set another `PORT` in step 15, add
 `--api-port <that port>`.
 
 Details, the Cloudflare proxy, and what to do when the certificate step fails:
@@ -504,7 +485,7 @@ Details, the Cloudflare proxy, and what to do when the certificate step fails:
 `curl -I https://api.example.com` answers with a valid certificate (a 502 is
 expected: the app isn't running yet).
 
-## Step 18: Deploy
+## Step 17: Deploy
 
 ```bash
 cd ~/nest
@@ -523,18 +504,18 @@ The most common first-deploy stops:
 
 | Message | Fix |
 |---|---|
-| `"JWT_SECRET" still holds the template placeholder` (or another `your_` value) | Step 16: a value was not replaced |
+| `"JWT_SECRET" still holds the template placeholder` (or another `your_` value) | Step 15: a value was not replaced |
 | `DB_PASSWORD may only contain letters, digits and . _ ~ -` | Use `openssl rand -hex 24` |
-| `set ALERT_WEBHOOK_URL in .env.production` | Step 11 |
+| `set ALERT_WEBHOOK_URL in .env.production` | Step 10 |
 | `set GRAFANA_ADMIN_PASSWORD in .env.production` | Step 4 |
-| `Could not pull ghcr.io/...` | `registry` mode: CI has not published that commit yet, or the server is not logged in (step 14) |
+| `Could not pull ghcr.io/...` | `registry` mode: CI has not published that commit yet, or the server is not logged in (step 13) |
 | The app never becomes healthy | Read the app log the script prints. Usually the database password changed after Postgres was first created |
 
 **You are done when** the script ends with `✓ Release <tag> is live`
 (`./deploy.sh --list` marks it with `*`), and
 `curl https://api.example.com/api/v1/health/ready` answers 200.
 
-## Step 19: The first administrator
+## Step 18: The first administrator
 
 Sign up through the web app (or with `curl`, as in
 [prepare-for-development.md](./prepare-for-development.md#step-7-sign-up-for-real)
@@ -553,7 +534,7 @@ Roles: [../auth/accounts.md](../auth/accounts.md).
 and the command prints a `✓` line ending in the account's new roles, `admin`
 among them.
 
-## Step 20: The uptime check
+## Step 19: The uptime check
 
 Now that the site answers, add the outside monitors: one for the API, one for
 the web app, posting to your Discord channel. UptimeRobot's free plan is
@@ -562,15 +543,15 @@ enough: [uptime-check.md](./uptime-check.md#part-1-the-uptime-check).
 **You are done when** the monitors show "up", and the temporary 404 monitor the
 page has you create alerted in Discord.
 
-## Step 21: The checks after the first deploy
+## Step 20: The checks after the first deploy
 
 Tick each one. The ones at the bottom are the ones people skip and regret.
 
 **The API**
 
 - [ ] `curl https://api.example.com/api/v1/health` lists every check as `up`
-- [ ] `curl https://api.example.com/api/v1/auth/options` shows `providers` and
-      `turnstile_site_key` as you configured them
+- [ ] `curl https://api.example.com/api/v1/auth/options` shows `providers` as
+      you configured them
 - [ ] `curl -I https://api.example.com/metrics` and
       `curl -I https://api.example.com/admin/queues` answer **403** from outside
       (nginx blocks them; reach them through an SSH tunnel)
@@ -585,7 +566,6 @@ Tick each one. The ones at the bottom are the ones people skip and regret.
       the cookie is not reaching the API: [../auth/operations.md](../auth/operations.md))
 - [ ] Forgot password: the code arrives, the reset works
 - [ ] "Continue with Google" works, if you set it up
-- [ ] The Turnstile widget shows on the sign-up form, if you set it up
 - [ ] A profile picture uploads and shows, after a reload too
 
 **Monitoring and alerts**
@@ -627,4 +607,4 @@ links the two:
 And on the server, its own nginx site: `sudo ./nginx/bootstrap-nginx.sh
 --frontend-domain app.example.com --email you@example.com`, run from the web
 app's folder. On the API side, `CORS_ORIGINS` and `FRONTEND_URL` must be the web
-app's address (step 16), and the uptime check watches it too (step 20).
+app's address (step 15), and the uptime check watches it too (step 19).

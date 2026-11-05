@@ -19,10 +19,9 @@ import {
     RateLimitPort
 } from '../../ports'
 import { AUTH_RATE_LIMITS, RateLimitRule } from '../../rate-limits'
-import { CaptchaCheck } from '../../services/captcha-check'
 import { CodeIssuer } from '../../services/code-issuer'
 import { SignInMethods } from '../../services/sign-in-methods'
-import { enforce, refuseIfLimited } from '../../services/limits'
+import { enforce } from '../../services/limits'
 
 /**
  * Create an account and email a code to confirm the address.
@@ -51,7 +50,6 @@ export class RegisterHandler implements ICommandHandler<RegisterCommand> {
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
         private readonly codeIssuer: CodeIssuer,
-        private readonly captcha: CaptchaCheck,
         private readonly methods: SignInMethods
     ) {}
 
@@ -61,22 +59,12 @@ export class RegisterHandler implements ICommandHandler<RegisterCommand> {
         const broken = checkPassword(command.password, { email })
         if (broken.length > 0) throw new PasswordRejectedError(broken)
         const limits: [RateLimitRule, string][] = [
-            [
-                this.captcha.enabled
-                    ? AUTH_RATE_LIMITS.registrationsPerIpWithCaptcha
-                    : AUTH_RATE_LIMITS.registrationsPerIp,
-                command.ip
-            ],
+            [AUTH_RATE_LIMITS.registrationsPerIp, command.ip],
             [AUTH_RATE_LIMITS.registrationsPerEmailMinute, email],
             [AUTH_RATE_LIMITS.codeEmailsPerEmailHour, email]
         ]
-        // Checked before Turnstile, so a refusal does not spend the person's
-        // solved challenge; counted after it, so a script that cannot solve
-        // one cannot use up an address's emails.
-        await refuseIfLimited(this.limiter, limits)
-        // After the password rules too: a Turnstile token is single-use, and a
-        // password the form must change should not cost the person a new one.
-        await this.captcha.require(command.captchaToken, command.ip)
+        // After the password rules: a password the form must change should not
+        // use up one of the address's emails.
         await enforce(this.limiter, limits)
 
         const hash = await this.hasher.hash(command.password)

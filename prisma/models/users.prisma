@@ -35,8 +35,6 @@ model User {
   sessions          Session[]
   verificationCodes VerificationCode[]
   oauthAccounts     OAuthAccount[]
-  twoFactor         TwoFactor?
-  recoveryCodes     RecoveryCode[]
 
   @@index([username])
   @@index([deletedAt])

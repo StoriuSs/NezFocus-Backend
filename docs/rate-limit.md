@@ -211,7 +211,7 @@ the **global throttler applies to them as to every route**: each one allows
 `THROTTLE_LIMIT` requests per window per IP. On top of that, the auth module
 counts what matters for security with `RateLimiter`: failed sign-ins per
 address and per IP, sign-ups per IP, code emails per address, wrong codes,
-wrong current passwords, wrong two-step codes. Those limits, their numbers,
+wrong current passwords. Those limits, their numbers,
 what counts and how each one resets are in
 [auth/rate-limits.md](./auth/rate-limits.md). They are not repeated here, so
 that there is one table to keep correct.
@@ -221,7 +221,7 @@ What the two layers mean in practice:
 - A request can be refused by either. Both answer `meta.code` `429001` and
   send `Retry-After`. The throttler's has `meta.type` `THROTTLE_ERROR`. An
   auth limit's has `meta.type` `RATE_LIMIT_EXCEEDED` and a `data.reason`
-  (`sign_ins`, `network`, `emails`, `wrong_password`, `wrong_codes`) that
+  (`sign_ins`, `network`, `emails`, `wrong_password`) that
   says which kind of limit it was, so the web app can show the right message.
 - **Many people behind one IP** (an office, a school) share the throttler's
   bucket for each route. With the default 100 a minute, `/auth/refresh` and
