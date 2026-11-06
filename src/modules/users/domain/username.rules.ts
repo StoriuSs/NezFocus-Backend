@@ -1,5 +1,6 @@
 /**
- * Username rules.
+ * Username rules (SRS REQ-AUTH-01): lower case, 2-32 characters of
+ * `a-z 0-9 _ .`.
  *
  * A username is permanent (set once), publicly displayed and used to address
  * an account, so the character set is deliberately narrow: anything that can
@@ -7,9 +8,11 @@
  * rules out whitespace, path separators, bidirectional overrides and
  * homoglyph-rich scripts.
  */
-export const USERNAME_PATTERN = /^[a-z0-9_]{3,25}$/
+export const USERNAME_MIN_LENGTH = 2
 
-export const USERNAME_MAX_LENGTH = 25
+export const USERNAME_MAX_LENGTH = 32
+
+export const USERNAME_PATTERN = /^[a-z0-9_.]{2,32}$/
 
 /**
  * Canonical form used for both storage and lookup.

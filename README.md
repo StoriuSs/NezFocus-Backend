@@ -150,7 +150,7 @@ The `auth` module (`src/modules/auth/`) is a complete, self-hosted sign-in
 system. No identity server runs beside the app.
 
 - **Email and password.** Passwords hashed with Argon2id, checked against a
-  policy and a list of common passwords. Sign-up is confirmed with a 6-digit
+  password policy. Sign-up is confirmed with a 6-digit
   emailed code; forgot-password works the same way.
 - **Sessions.** A short access token (15 minutes, sent as
   `Authorization: Bearer`) and a refresh token in an `httpOnly` cookie that

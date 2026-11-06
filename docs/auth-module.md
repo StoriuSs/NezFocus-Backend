@@ -36,7 +36,7 @@ out (another service verifying them without the secret):
 
 ## Passwords
 
-The rules, the common-password list and hashing:
+The rules and hashing:
 [auth/passwords-and-codes.md](./auth/passwords-and-codes.md).
 
 ## Emailed codes

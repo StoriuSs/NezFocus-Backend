@@ -11,7 +11,7 @@ export class CheckUsernameParamsDto {
     @Transform(({ value }) => (typeof value === 'string' ? normaliseUsername(value) : value))
     @IsString()
     @Matches(USERNAME_PATTERN, {
-        message: 'username must be 3-25 lowercase letters, numbers or underscores'
+        message: 'username must be 2-32 lowercase letters, numbers, underscores or dots'
     })
     username: string
 }

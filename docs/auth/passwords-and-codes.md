@@ -10,7 +10,6 @@ wondering why a code was refused. New to hashing and HMAC? See
 
 - [The password rules](#the-password-rules)
 - [How passwords are stored](#how-passwords-are-stored)
-- [The common-password list](#the-common-password-list)
 - [Emailed codes](#emailed-codes)
 - [How codes are stored](#how-codes-are-stored)
 - [How a code is checked](#how-a-code-is-checked)
@@ -34,7 +33,6 @@ it.
 | `special` | No character that is neither a letter nor a digit (a space, `_` and `-` count) | Include a character that is not a letter or a digit. |
 | `matches_email` | The password **is** the address, or the part before `@` ([below](#not-the-address-or-the-username)) | Do not use your email address as your password. |
 | `matches_username` | The password **is** the username | Do not use your username as your password. |
-| `common` | The word the password is built around is a common one ([below](#the-common-password-check)) | This password is too common. Choose one that is harder to guess. |
 
 Characters are counted as Unicode code points, not bytes: `é` is one
 character, whatever its size in UTF-8.
@@ -49,12 +47,12 @@ mark each rule:
   "meta": {
     "code": "422004",
     "type": "AUTH_PASSWORD_REJECTED",
-    "message": "Include a digit. This password is too common. Choose one that is harder to guess.",
+    "message": "Include an upper-case letter. Include a digit.",
     "...": "..."
   },
   "data": {
-    "rules": ["digit", "common"],
-    "details": "Include a digit. This password is too common. Choose one that is harder to guess.",
+    "rules": ["uppercase", "digit"],
+    "details": "Include an upper-case letter. Include a digit.",
     "path": "/api/v1/auth/register",
     "method": "POST"
   }
@@ -66,9 +64,9 @@ mark each rule:
 | Password | Context | Result |
 |---|---|---|
 | `Harbour-Lantern-42` | | accepted |
-| `Dragon-Kettle-Moss-7` | | accepted: containing a common word is fine |
-| `Password1!` | | `common` |
-| `P@ssw0rd!`, `Summer2026!`, `Dragon#99`, `!!Monkey123` | | `common` |
+| `Password1!`, `P@ssw0rd!` | | accepted: there is no common-password list (D-29) |
+| `Đàlạt 2026` | | accepted: Vietnamese letters are letters, a space is a special character |
+| `ontap2026` | | `uppercase`, `special` |
 | `Jane.doe7!`, `JaneDoe2026!` | address `Jane.Doe@example.test` | `matches_email` |
 | `Uiia2024!` | username `uiia` | `matches_username` |
 | `UiiaUiia1~`, `Harbour-Uiia-42` | username `uiia` | accepted: it contains the username, but is not it |
@@ -93,23 +91,18 @@ more to it.
 
 The address is compared both whole and by the part before `@`.
 
-### The common-password check
+### No common-password list
 
-`Password1!` and `Summer2026!` pass every composition rule: they are exactly
-what composition rules make people type, and the first thing an attacker
-tries. So each password is reduced to the word it is built around, and that
-word is looked up in a list.
+The base this project started from also refused passwords built around one of
+the ~8,500 most common words (`Password1!`, `P@ssw0rd`). NezFocus dropped
+that rule (D-29): the app and the web share one set of rules, and the person
+sees every rule ticked off while typing. The cost is written in D-29: current
+guidance (NIST SP 800-63B) prefers a common-password check to composition
+rules, and `Password1!` passes.
 
-The reduction (`baseWord`):
-
-1. lower case;
-2. digits and symbols trimmed from both ends (`!!Monkey123` gives `monkey`);
-3. common swaps undone: `@` and `4` to `a`, `3` to `e`, `1` and `!` to `i`,
-   `0` to `o`, `$` and `5` to `s`, `7` to `t` (`P@ssw0rd` gives `password`).
-
-If what is left is 4 or more letters and nothing else, and it is in the list,
-the rule `common` is broken. `Harbour-Lantern-42` reduces to
-`harbour-lantern`, which is not a single word, so it passes.
+The reduction the old check used (`baseWord`: lower case, digits and symbols
+trimmed from both ends, swaps such as `@` for `a` and `0` for `o` undone)
+is still how "being the address or the username" is compared, above.
 
 ### Which routes check what
 
@@ -127,11 +120,11 @@ before the emailed code, so a refused password does not use the code up.
 
 ### Mirroring the rules in the frontend
 
-The React starter copies the rules (its `src/features/auth/lib/password-rules.ts`)
-to tick them off while the person types. It checks every rule except
-`common` (the list is too big to ship to every visitor) and
-`matches_username` (a new account has no username yet). The API stays the
-judge: a form shows `data.rules` from the refusal the same way.
+The frontend copies the rules (NezFocus-Frontend
+`src/features/auth/lib/password-rules.ts`) to tick them off while the person
+types. It checks every rule; `matches_username` only where the form knows the
+username. The API stays the judge: a form shows `data.rules` from the
+refusal the same way.
 
 ### What is deliberately not a rule
 
@@ -169,25 +162,6 @@ Three details:
 Argon2 is slow on purpose: each sign-in costs a noticeable slice of a CPU.
 That matters for load tests ([load-testing.md](../load-testing.md)) and is the
 point against an attacker with a stolen database.
-
-## The common-password list
-
-[common-passwords.ts](../../src/modules/auth/domain/common-passwords.ts) holds
-8,472 words: SecLists' "10k most common" passwords (MIT licence), each
-reduced with the same `baseWord` as the check, keeping only results of 4 or
-more letters. It is generated, committed, and never downloaded at run time.
-
-To rebuild it:
-
-```bash
-pnpm passwords:generate              # downloads the list from SecLists
-pnpm passwords:generate ./mylist.txt # or uses a file you have, one password per line
-```
-
-The script ([generate-common-passwords.ts](../../src/bootstrap/generate-common-passwords.ts))
-uses the policy's own `baseWord`, so the list and the check can never reduce a
-word differently. Do not edit the file by hand. After regenerating, run the
-policy's tests: `pnpm exec jest src/modules/auth/domain/password-policy.spec.ts`.
 
 ## Emailed codes
 
@@ -288,7 +262,6 @@ On the 5th attempt a right code still works; only a 5th wrong one ends it.
 |---|---|---|
 | Minimum or maximum length | `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_LENGTH` in [password-policy.ts](../../src/modules/auth/domain/password-policy.ts) | Update the frontend copy and [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts). The message updates itself |
 | Add or drop a rule | `checkPassword` and `PASSWORD_RULE_MESSAGES` in the same file | Add the id to the frontend's list and its translations; existing passwords keep signing in |
-| The common list | `pnpm passwords:generate [file]` | Run the policy tests |
 | Argon2 cost | `ARGON2_PARAMETERS` in [argon2-password-hasher.adapter.ts](../../src/modules/auth/infrastructure/adapters/argon2-password-hasher.adapter.ts) | Existing hashes are upgraded at each person's next sign-in. Re-run a load test: the cost per sign-in changes |
 | Code lifetime or attempts | `codeTtlMinutes`, `codeMaxAttempts` in [auth.module.ts](../../src/modules/auth/auth.module.ts) | The emails show the new lifetime by themselves |
 | Code limits | [rate-limits.ts](../../src/modules/auth/application/rate-limits.ts) | See [rate-limits.md](./rate-limits.md) |
@@ -298,8 +271,6 @@ On the 5th attempt a right code still works; only a 5th wrong one ends it.
 | File | What |
 |---|---|
 | [password-policy.ts](../../src/modules/auth/domain/password-policy.ts) | The rules, `baseWord`, `checkPassword` |
-| [common-passwords.ts](../../src/modules/auth/domain/common-passwords.ts) | The generated list |
-| [generate-common-passwords.ts](../../src/bootstrap/generate-common-passwords.ts) | `pnpm passwords:generate` |
 | [argon2-password-hasher.adapter.ts](../../src/modules/auth/infrastructure/adapters/argon2-password-hasher.adapter.ts) | Hashing, the dummy hash, rehash |
 | [code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts) | Makes a code, stores its HMAC, queues the email; checks a code |
 | [code-generator.util.ts](../../src/shared/utils/code-generator.util.ts) | The six random digits |

@@ -19,7 +19,7 @@ in five minutes.
 | Feature | In short | Read |
 |---|---|---|
 | Sign up with email and password | The address is confirmed with a six-digit emailed code; confirming signs you in | [flows.md](./flows.md#sign-up-and-confirm-the-address) |
-| Password rules | At least 8 characters, upper and lower case, a digit and a symbol; not the address or username; not built on a common password. Each rule has an id the frontend can show | [passwords-and-codes.md](./passwords-and-codes.md#the-password-rules) |
+| Password rules | At least 8 characters, upper and lower case, a digit and a symbol; not the address or username (no common-password list, D-29). Each rule has an id the frontend can show | [passwords-and-codes.md](./passwords-and-codes.md#the-password-rules) |
 | Password storage | Argon2id, upgraded automatically when the settings are raised | [passwords-and-codes.md](./passwords-and-codes.md#how-passwords-are-stored) |
 | Sessions | A 15-minute access token (JWT) in memory, plus a refresh token in an httpOnly cookie; a session lasts 30 days | [sessions-and-tokens.md](./sessions-and-tokens.md) |
 | Stolen-cookie detection | Refresh tokens work once; a replayed one ends the session and raises an alert | [sessions-and-tokens.md](./sessions-and-tokens.md#reuse-detection) |
@@ -140,7 +140,7 @@ The interactive API docs are at `http://localhost:8888/api-docs`
 | [concepts.md](./concepts.md) | Auth in plain words, and a glossary tied to the code. Start here if the words are new |
 | [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up, sign in, refresh, sign out, reset, change, first password, Google, deletion |
 | [sessions-and-tokens.md](./sessions-and-tokens.md) | Access token, refresh cookie, sessions, rotation, what ends a session, the per-request check, Redis down, cross-site setups |
-| [passwords-and-codes.md](./passwords-and-codes.md) | The password rules, Argon2id, the common-password list, the six-digit emailed codes |
+| [passwords-and-codes.md](./passwords-and-codes.md) | The password rules, Argon2id, the six-digit emailed codes |
 | [emails.md](./emails.md) | Every email, the queue that sends them, Mailpit, editing templates |
 | [google-sign-in.md](./google-sign-in.md) | How "Continue with Google" works, which account it lands in, adding another provider |
 | [rate-limits.md](./rate-limits.md) | Every limit, and how to tune them |

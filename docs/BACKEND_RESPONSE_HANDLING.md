@@ -119,7 +119,7 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 
 | Error | Extra fields in `data` |
 | --- | --- |
-| `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `common`, ...), so a form can mark them one by one |
+| `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `matches_email`, ...), so a form can mark them one by one |
 | `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `emails`, `sign_ins` or `wrong_password` |
 | `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password` or `code`) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |

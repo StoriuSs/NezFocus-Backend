@@ -1415,7 +1415,7 @@
           },
           "username": {
             "type": "string",
-            "maxLength": 25
+            "maxLength": 32
           },
           "display_name": {
             "type": "string",
@@ -1470,9 +1470,9 @@
         "properties": {
           "username": {
             "type": "string",
-            "description": "3-25 lowercase letters, digits or underscores. Normalised to lower case\nfirst, so `Alice` and `alice` are the same name. Permanent once set.",
-            "minLength": 3,
-            "maxLength": 25
+            "description": "2-32 lowercase letters, digits, underscores or dots. Normalised to lower\ncase first, so `Alice` and `alice` are the same name. Permanent once set.",
+            "minLength": 2,
+            "maxLength": 32
           }
         },
         "required": [
@@ -1496,7 +1496,7 @@
           "username": {
             "type": "string",
             "nullable": true,
-            "maxLength": 25
+            "maxLength": 32
           },
           "display_name": {
             "type": "string",

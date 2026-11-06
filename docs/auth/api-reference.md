@@ -740,7 +740,7 @@ The wait is in seconds under 90 seconds, in minutes from there.
 
 `data.rules` values for `AUTH_PASSWORD_REJECTED`: `min_length`, `max_length`,
 `lowercase`, `uppercase`, `digit`, `special`, `matches_email`,
-`matches_username`, `common` (their messages and exact meaning:
+`matches_username` (their messages and exact meaning:
 [passwords-and-codes.md](./passwords-and-codes.md)). The policy is plain
 TypeScript in [password-policy.ts](../../src/modules/auth/domain/password-policy.ts),
 so a client can copy it to check as the user types.

@@ -1,18 +1,19 @@
-import { COMMON_PASSWORD_WORDS } from './common-passwords'
-
 /**
- * The password rules, in one place.
+ * The password rules, in one place (SRS REQ-AUTH-01, D-29, D-66).
  *
- * The same policy the Keycloak starter documents — at least 8 characters, an
- * upper-case letter, a lower-case letter, a digit and a special character, and
- * not the email or username (being one, not containing one) — so the two
- * starters behave alike. Plus one rule
- * composition rules need: `Password1!` and `P@ssw0rd` satisfy every other one,
- * and they are exactly the passwords composition rules produce. So the word a
- * password is built around is checked against the ~8,500 most common.
+ * 8-128 characters with an upper-case letter, a lower-case letter, a digit
+ * and a special character (any character that is not a letter or a digit;
+ * Vietnamese letters count as letters), and not the email, the part of the
+ * email before @, or the username. Only *being* one counts, not containing
+ * one.
  *
- * Pure, and free of framework imports, so the frontend can mirror it exactly.
- * Each rule has a stable id; the message beside it is what a person reads.
+ * There is no list of common passwords (D-29): the app uses the same rules,
+ * and the person sees every rule while typing. The trade-off is written in
+ * D-29: `Password1!` passes.
+ *
+ * Pure, and free of framework imports, so the frontend can mirror it exactly
+ * (NezFocus-Frontend src/features/auth/lib/password-rules.ts). Each rule has a
+ * stable id; the message beside it is what a person reads.
  */
 export const PASSWORD_MIN_LENGTH = 8
 /** A bound on argon2's work per attempt, not a security rule. */
@@ -27,7 +28,6 @@ export type PasswordRule =
     | 'special'
     | 'matches_email'
     | 'matches_username'
-    | 'common'
 
 export const PASSWORD_RULE_MESSAGES: Record<PasswordRule, string> = {
     min_length: `Use at least ${PASSWORD_MIN_LENGTH} characters.`,
@@ -37,8 +37,7 @@ export const PASSWORD_RULE_MESSAGES: Record<PasswordRule, string> = {
     digit: 'Include a digit.',
     special: 'Include a character that is not a letter or a digit.',
     matches_email: 'Do not use your email address as your password.',
-    matches_username: 'Do not use your username as your password.',
-    common: 'This password is too common. Choose one that is harder to guess.'
+    matches_username: 'Do not use your username as your password.'
 }
 
 const LEET: Record<string, string> = {
@@ -54,10 +53,9 @@ const LEET: Record<string, string> = {
 }
 
 /**
- * The word a password is built around: lower case, digits and symbols trimmed
+ * The word something is built around: lower case, digits and symbols trimmed
  * from both ends, and common substitutions undone. `Password1!` and `P@ssw0rd`
- * both come out as `password`. The common-password list was normalised the
- * same way (scripts: see common-passwords.ts).
+ * both come out as `password`.
  */
 export function baseWord(password: string): string {
     const trimmed = password.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, '')
@@ -82,9 +80,9 @@ const MIN_IDENTITY_LETTERS = 3
 
 /**
  * Whether the password is the identity: the same text, or the same letters
- * once digits, symbols and common swaps are set aside. Only *being* it counts,
- * as with Keycloak's notUsername and notEmail: `Uiia2024!` is refused for the
- * username `uiia`, `UiiaUiia1~` and `Harbour-Uiia-42` are not.
+ * once digits, symbols and common swaps are set aside. Only *being* it counts
+ * (D-66): `Uiia2024!` is refused for the username `uiia`, `UiiaUiia1~` and
+ * `Harbour-Uiia-42` are not.
  */
 function isIdentity(password: string, identity: string): boolean {
     if (password.toLowerCase() === identity) return true
@@ -113,9 +111,6 @@ export function checkPassword(password: string, context: PasswordContext = {}): 
     }
     const username = context.username?.trim().toLowerCase()
     if (username && isIdentity(password, username)) broken.push('matches_username')
-
-    const word = baseWord(password)
-    if (/^[a-z]{4,}$/.test(word) && COMMON_PASSWORD_WORDS.has(word)) broken.push('common')
 
     return broken
 }

@@ -112,7 +112,7 @@ instead:
  * Why the pattern is strict — this stays in the code.
  */
 export class SetUsernameRequestDto {
-    /** 3-25 lowercase letters, digits or underscores. — this is published. */
+    /** 2-32 lowercase letters, digits, underscores or dots. — this is published. */
     @Matches(USERNAME_PATTERN)
     username: string
 }

@@ -163,7 +163,6 @@ the running app container with `node dist/src/bootstrap/<file>.js`.
 |---|---|---|
 | Give a role (default `admin`) | `pnpm user:promote you@example.com [--role editor]` | `docker compose --env-file .env.production -f docker-compose.prod.yaml exec app node dist/src/bootstrap/user-roles.js you@example.com [--role editor]` |
 | Take a role away | `pnpm user:promote you@example.com --remove [--role editor]` | `docker compose --env-file .env.production -f docker-compose.prod.yaml exec app node dist/src/bootstrap/user-roles.js you@example.com --remove` |
-| Rebuild the common-password list | `pnpm passwords:generate [file]` | (development only: commit the generated file) |
 
 **`user:promote`** adds `admin` (or `--role <name>`: lower case, letters,
 digits, `_` and `-`) to the account's `roles`; `--remove` takes it away; the

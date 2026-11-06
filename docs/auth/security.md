@@ -25,7 +25,7 @@ there for a reason given below. Words like "hashing", "HMAC", "CSRF" and
 | Threat | Defence | More |
 |---|---|---|
 | **Password guessing** on one account | 5 failed sign-ins per address per 15 minutes, then 429. Argon2id makes each guess cost about 19 MiB of memory and real CPU time, so offline guessing of a stolen hash is slow too. | [rate-limits.md](rate-limits.md), [passwords-and-codes.md](passwords-and-codes.md) |
-| **Credential stuffing and password spraying**: leaked passwords from other sites, or one common password tried on many accounts | 10 failed sign-ins per IP per 15 minutes across all addresses; new passwords must pass the policy and are checked against 8 472 common base words (with leetspeak undone); the `AuthFailedLoginSpike` alert (more than 50 failures in 10 minutes). | [rate-limits.md](rate-limits.md) |
+| **Credential stuffing and password spraying**: leaked passwords from other sites, or one common password tried on many accounts | 10 failed sign-ins per IP per 15 minutes across all addresses; new passwords must pass the policy (no common-password list, D-29); the `AuthFailedLoginSpike` alert (more than 50 failures in 10 minutes). | [rate-limits.md](rate-limits.md) |
 | **Account enumeration**: finding out which addresses have accounts | One error, `AUTH_INVALID_CREDENTIALS`, for a wrong password, an unknown address and an account without a password, in the same time (an unknown address still runs a dummy Argon2 check). "Not confirmed yet" is said only after the right password. Sign-up, resend and forgot password answer the same 202 for every address; the owner of an existing account gets an email instead. Limits keyed on an address count whether or not it exists. | [flows.md](flows.md) |
 | **Guessing an emailed code** | 6 random digits, valid 10 minutes, 5 tries per code (counted atomically, so parallel guesses each count), only the newest code works, and 20 wrong codes per IP per hour across all addresses. Codes are compared in constant time. | [passwords-and-codes.md](passwords-and-codes.md) |
 | **Mail bombing**: making the API email someone over and over | 1 code email per address per minute and 5 per hour; 10 per IP per hour. | [rate-limits.md](rate-limits.md) |
@@ -139,7 +139,7 @@ Know these before you promise anything to your users:
 - **No second sign-in step**: no authenticator-app codes, no passkeys or
   security keys (WebAuthn), no SMS codes. A password (or Google) is enough.
 - **No breached-password check** against an online list such as Have I Been
-  Pwned: only the local list of common passwords.
+  Pwned, and no local common-password list either (D-29).
 - **No idle timeout.** A session lasts `AUTH_SESSION_TTL_DAYS` from sign-in,
   used or not; the 15-minute access token is the only short clock.
 - **No route to change the email address**, and none to unlink Google.

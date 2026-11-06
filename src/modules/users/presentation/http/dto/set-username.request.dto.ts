@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, MinLength, MaxLength, Matches } from 'class-validator'
 import { Transform } from 'class-transformer'
-import { USERNAME_MAX_LENGTH, USERNAME_PATTERN, normaliseUsername } from '@/modules/users/domain'
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN, normaliseUsername } from '@/modules/users/domain'
 
 /**
  * HTTP Request DTO for setting username (one-time action).
@@ -12,16 +12,16 @@ import { USERNAME_MAX_LENGTH, USERNAME_PATTERN, normaliseUsername } from '@/modu
  */
 export class SetUsernameRequestDto {
     /**
-     * 3-25 lowercase letters, digits or underscores. Normalised to lower case
-     * first, so `Alice` and `alice` are the same name. Permanent once set.
+     * 2-32 lowercase letters, digits, underscores or dots. Normalised to lower
+     * case first, so `Alice` and `alice` are the same name. Permanent once set.
      */
     @Transform(({ value }) => (typeof value === 'string' ? normaliseUsername(value) : value))
     @IsString()
     @IsNotEmpty()
-    @MinLength(3)
+    @MinLength(USERNAME_MIN_LENGTH)
     @MaxLength(USERNAME_MAX_LENGTH)
     @Matches(USERNAME_PATTERN, {
-        message: 'username must contain only lowercase letters, numbers and underscores'
+        message: 'username must contain only lowercase letters, numbers, underscores and dots'
     })
     username: string
 }

@@ -33,7 +33,6 @@ src/modules/auth/
 │   ├── errors/                   every error the module throws, as DomainError subclasses, by topic
 │   ├── ports/                    the four repository ports (credential, session, codes, Google links)
 │   ├── password-policy.ts        the password rules (a client may copy this file)
-│   └── common-passwords.ts       ~8 500 base words, generated: do not edit by hand
 ├── application/
 │   ├── commands/<name>/          one folder per operation: <name>.command.ts and <name>.handler.ts
 │   ├── queries/<name>/           the same for the two queries
@@ -64,7 +63,7 @@ Outside the folder, auth also owns:
 | [prisma/models/auth.prisma](../../prisma/models/auth.prisma) | Its five tables ([below](#prisma-tables)) |
 | [src/config/auth.config.ts](../../src/config/auth.config.ts) | Reads the `JWT_*`, `AUTH_*` and `GOOGLE_*` variables |
 | [src/config/validation.ts](../../src/config/validation.ts) | Refuses bad values at start-up (key lengths, pairs, production rules) |
-| [src/bootstrap/user-roles.ts](../../src/bootstrap/user-roles.ts), [generate-common-passwords.ts](../../src/bootstrap/generate-common-passwords.ts) | The CLIs (`pnpm user:promote`, `pnpm passwords:generate`) |
+| [src/bootstrap/user-roles.ts](../../src/bootstrap/user-roles.ts) | The CLI `pnpm user:promote` |
 | [src/shared/infrastructure/rate-limit/rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) | The shared Redis counter the auth limits use |
 | [src/shared/infrastructure/cache/versioned-cache.ts](../../src/shared/infrastructure/cache/versioned-cache.ts) | The cache that cannot be put back stale, used by the session check |
 | [src/shared/infrastructure/email/](../../src/shared/infrastructure/email/) | `EmailService`, which delivers auth's emails over SMTP ([emails.md](./emails.md)) |
@@ -439,7 +438,7 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 |---|---|
 | The command specs in [commands/](../../src/modules/auth/application/commands/): `sign-up-and-confirm`, `sessions`, `passwords`, `google`, `delete-account` | Every handler against in-memory fakes of every port ([auth-test-world.shared-spec.ts](../../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)): sign-up answers the same for every address; the sign-up race; one error for wrong password and unknown address; the sign-in limits, bursts included; refresh rotation and reuse; reset and change password; Google's browser check, squatter password, unverified address and deleted account; deletion's proof |
 | [limits.spec.ts](../../src/modules/auth/application/services/limits.spec.ts) | A wrong guess stays counted, a right one is given back; a burst gets no more than the limit |
-| [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts) | Length, a common password, the address or username dressed up; the common-password list in the form the check reads |
+| [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts) | Each rule broken on its own, the length bounds, Vietnamese letters, no common-password rule (D-29), the address or username dressed up |
 | [jose-token-service.adapter.spec.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.spec.ts) | An access token for another audience, from another issuer, or past its lifetime is refused |
 | [validation.spec.ts](../../src/config/validation.spec.ts) | The production refusals, auth's included (a missing, weak or template-placeholder secret) |
 

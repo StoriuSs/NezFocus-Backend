@@ -679,7 +679,7 @@ about its shape.
 
 | Layer | What is there |
 |---|---|
-| `domain/` | `errors/` (every auth `DomainError`, by topic), the repository ports in `ports/`, the password policy and the common-password list. No entities: the user is the users module's |
+| `domain/` | `errors/` (every auth `DomainError`, by topic), the repository ports in `ports/`, the password policy. No entities: the user is the users module's |
 | `application/` | 17 command handlers (register, verify, login, refresh, logout, reset and change password, Google, account deletion...), 2 query handlers, 2 event handlers, small services shared by handlers (`SessionIssuer`, `CodeIssuer`, `SignInGate`), the rate-limit rules, and the ports for outside services in `application/ports/` |
 | `infrastructure/` | one adapter per port (below): `adapters/` and `persistence/`, as in users; and `email/`, the emails `AuthJobsConsumer` sends (`AuthEmails` and their templates) |
 | `presentation/` | Four controllers for the /auth routes (HTTP), `AccessTokenGuard` (the global guard that checks every request's token), `AuthJobsConsumer` (sends the emails) |
