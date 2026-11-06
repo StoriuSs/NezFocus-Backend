@@ -7,7 +7,7 @@ import { AUTH_RATE_LIMITS } from '@/modules/auth/application/rate-limits'
 import { OAUTH_PROVIDERS } from '@/modules/auth/application/ports'
 import { OpenIdConnectProvider } from '@/modules/auth/infrastructure/adapters/openid-connect-provider.adapter'
 import { FakeOidcIssuer, FakeIdentity } from './fake-oidc-issuer'
-import { bootApp, closeApp, cookieOf, FRONTEND, pair, setFirstPassword, signInWithCode } from './helpers'
+import { bootApp, closeApp, completeAccount, cookieOf, FRONTEND, pair, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
 /**
@@ -81,9 +81,11 @@ describe('Signing up again after deleting the account (integration)', () => {
         const email = `itest-reuse-${randomUUID()}@example.test`
         const first = await signInWithCode(post, email)
         const oldId = (await me(first.accessToken)).body.data.id
-        const accessToken = await setFirstPassword(post, email, 'Harbour-Lantern-42', () => nextMinute(email))
+        await completeAccount(post, first.accessToken, 'Harbour-Lantern-42')
 
-        expect((await post('auth/account/delete', { password: 'Harbour-Lantern-42' }, accessToken)).status).toBe(200)
+        expect((await post('auth/account/delete', { password: 'Harbour-Lantern-42' }, first.accessToken)).status).toBe(
+            200
+        )
 
         // As for an address with no account: the old password was deleted with it.
         const oldLogin = await post('auth/login', { email, password: 'Harbour-Lantern-42' })
@@ -116,11 +118,12 @@ describe('Signing up again after deleting the account (integration)', () => {
         const first = await signInWithGoogle(identity)
         const oldId = (await me(first)).body.data.id
 
-        // No password on an account made with Google: it chooses one first, then deletes with it.
+        // Made with Google, so not completed: nothing but the welcome page until
+        // it is, and completing it chooses the password that deletes it.
         const asked = await post('auth/account/delete', {}, first)
-        expect([asked.status, asked.body.data.needs]).toEqual([400, ['password']])
-        const accessToken = await setFirstPassword(post, email, 'Harbour-Lantern-42', () => nextMinute(email))
-        expect((await post('auth/account/delete', { password: 'Harbour-Lantern-42' }, accessToken)).status).toBe(200)
+        expect([asked.status, asked.body.meta.type]).toEqual([403, 'ACCOUNT_INCOMPLETE'])
+        await completeAccount(post, first, 'Harbour-Lantern-42')
+        expect((await post('auth/account/delete', { password: 'Harbour-Lantern-42' }, first)).status).toBe(200)
 
         // The provider link goes with the account, in the handler of its deletion
         // event, which runs after the response: wait for it, as a person would.

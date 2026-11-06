@@ -81,7 +81,10 @@ Every email is written in Vietnamese (`vi`) or English (`en`), D-132.
   field, not a header, so it follows the language switch on the page and not
   only the browser's setting.
 - **An email nobody asked for from a page** (Google sign-in added) is in
-  English, until accounts store a language.
+  the account's language: `UserSettings.language`, chosen when the account
+  was completed (`accountEmailLanguage` in auth-mailer.port.ts). An account
+  with no settings row (not completed yet, or completed before settings
+  existed) gets English.
 - Each queued job carries its `language`. A job without one, queued before
   emails had a language, is sent in English.
 
@@ -143,13 +146,14 @@ the same for every address (D-59, D-60).
 
 - **Says:** a password was just set on the account, which can now sign in
   with it or with an OTP code. If not them: **Reset your password**.
+- **Not sent** when the password is chosen in "complete your account".
 
 ### Sign-in method added
 
 - **Says:** "The {app} account with this email can now sign in with Google."
   If not them: **Reset your password**.
 - **Not sent** when the account was created by this Google sign-in.
-- In English until accounts store a language (D-132).
+- In the account's language, English if it has none yet (D-132).
 
 ### Account deleted
 

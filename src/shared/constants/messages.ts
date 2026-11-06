@@ -6,6 +6,7 @@ export const MESSAGES = {
 
     // Auth messages
     AUTH: {
+        ACCOUNT_COMPLETED: 'Account completed',
         LOGIN_SUCCESS: 'Login successful',
         // The same whether or not the address has an account.
         CODE_SENT: 'Check your email for the code.',
@@ -34,7 +35,6 @@ export const MESSAGES = {
         FETCHED: 'User fetched successfully',
         ACCOUNT_DELETED: 'Account deleted successfully',
         PROFILE_UPDATED: 'Profile updated successfully',
-        USERNAME_SET_SUCCESS: 'Username set successfully',
         USERNAME_AVAILABLE: 'Username is available',
         USERNAME_TAKEN: 'Username is taken'
     },

@@ -139,7 +139,7 @@ describe('OpenAPI contract: users routes (e2e)', () => {
         displayName: null,
         avatarUrl: null,
         bio: null,
-        hasSetUsername: false
+        completed: false
     }
     const fullUser: AuthenticatedUser = {
         id: 'user-1',
@@ -150,7 +150,7 @@ describe('OpenAPI contract: users routes (e2e)', () => {
         displayName: 'Jane',
         avatarUrl: 'avatars/1.webp',
         bio: 'Hi',
-        hasSetUsername: true
+        completed: true
     }
     const key = '6f9619ff-8b86-4d11-b42d-00c04fc964ff'
 
@@ -175,8 +175,7 @@ describe('OpenAPI contract: users routes (e2e)', () => {
                 username: 'jane',
                 displayName: 'Jane',
                 avatarUrl: 'avatars/1.webp',
-                bio: 'Hi',
-                hasSetUsername: true
+                bio: 'Hi'
             })
         ]) {
             commandBus.execute.mockResolvedValueOnce(entity)
@@ -189,16 +188,6 @@ describe('OpenAPI contract: users routes (e2e)', () => {
         }
 
         currentUser = newUser
-        commandBus.execute.mockResolvedValueOnce(
-            new UserEntity({ id: 'user-1', username: 'jane', hasSetUsername: true })
-        )
-        const username = await request(server)
-            .post('/api/v1/users/me/username')
-            .set('Idempotency-Key', key)
-            .send({ username: 'jane' })
-            .expect(200)
-        check(username, 'post', '/api/v1/users/me/username')
-
         queryBus.execute.mockResolvedValueOnce(false)
         const available = await request(server).get('/api/v1/users/username-available/jane').expect(200)
         check(available, 'get', '/api/v1/users/username-available/{username}')

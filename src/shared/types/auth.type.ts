@@ -17,5 +17,6 @@ export interface AuthenticatedUser {
     /** The stored key, not a URL: the users module turns it into one. */
     avatarUrl: string | null
     bio: string | null
-    hasSetUsername: boolean
+    /** Whether the "complete your account" step is done (D-61). */
+    completed: boolean
 }

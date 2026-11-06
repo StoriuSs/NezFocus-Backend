@@ -117,8 +117,12 @@ stores the cookie.
    `account: { created, completed }`, and the refresh cookie set.
 
 `completed: false` tells the web app to open the "complete your account"
-step (D-61). That step (`POST /auth/complete-account`) and the gate that
-refuses an account that has not done it are planned for a later slice.
+step (D-61): `POST /auth/complete-account` with a display name, username,
+password, time zone, language and the Terms ticked. Until it is done, every
+signed-in route except that one, `GET /users/me` and the username check
+answers `403 ACCOUNT_INCOMPLETE`. Once done, the same access token passes
+everywhere ([accounts.md](./accounts.md#completing-the-account),
+[api-reference.md](./api-reference.md#complete-your-account)).
 
 **What can go wrong for the person**
 
@@ -493,7 +497,7 @@ flowchart TD
 |---|---|---|
 | **Returning**: already linked | Signed in to that account | none |
 | **First time, no account** | A new account: display name from Google, no password, not completed | none |
-| **Linking an existing account** (made with a code earlier) | Linked; its password, if it has one, keeps working too | `sign-in-method-added` ("Google sign-in was added…"), the one they need if it was not them. In English until accounts store a language (D-132) |
+| **Linking an existing account** (made with a code earlier) | Linked; its password, if it has one, keeps working too | `sign-in-method-added` ("Google sign-in was added…"), the one they need if it was not them. In the account's language, English if it has none yet (D-132) |
 
 Every account's address is confirmed: by a right code, or by Google (D-133).
 So linking never has to undo anything someone else set up on the address.

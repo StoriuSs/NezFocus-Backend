@@ -451,22 +451,20 @@ This is the core pattern for every handler test. Instead of mocking Prisma or Re
 ```typescript
 // 1. Create mock objects matching the port interface
 const mockUserRepo = {
-    findById: jest.fn(),
-    setUsernameIfUnset: jest.fn(),
+    update: jest.fn(),
 }
 
 // 2. Provide them using the port injection token
 const module = await Test.createTestingModule({
     providers: [
-        SetUsernameHandler,
+        UpdateProfileHandler,
         { provide: USER_REPOSITORY, useValue: mockUserRepo },   // ← Port mock
         { provide: EventBus, useValue: { publish: jest.fn() } },     // ← CQRS mock
     ],
 }).compile()
 
 // 3. Control behavior per test
-mockUserRepo.findById.mockResolvedValue(someUserEntity)
-mockUserRepo.setUsernameIfUnset.mockResolvedValue(updatedUserEntity)
+mockUserRepo.update.mockResolvedValue(updatedUserEntity)
 ```
 
 **Why this works:** The handler only knows about `UserRepositoryPort` — it never imports Prisma, Redis, or any framework. Swapping the real adapter for a mock is seamless.
@@ -541,52 +539,66 @@ describe('example.util', () => {
 
 ### Command Handler Test Example (with port mocking)
 
-The pattern, for a handler whose bug would matter (here: two concurrent
-claims of a username must not both win):
+The pattern, for a handler whose bug would matter (here: of two "complete
+your account" submissions at once, only one may win; the conditional write in
+the repository decides, and the handler must turn "nothing was updated" into
+`ACCOUNT_ALREADY_COMPLETE`):
 
 ```typescript
 import { Test, TestingModule } from '@nestjs/testing'
-import { EventBus } from '@nestjs/cqrs'
-import { SetUsernameHandler } from './set-username.handler'
-import { SetUsernameCommand } from './set-username.command'
-import { USER_REPOSITORY, UserEntity } from '@/modules/users/domain'
-import { UserProfileUpdatedEvent } from '../../events/user-profile-updated.event'
+import { CompleteAccountHandler } from './complete-account.handler'
+import { CompleteAccountCommand } from './complete-account.command'
+import { USER_DIRECTORY } from '@/modules/users'
+import { AccountAlreadyCompleteError, CREDENTIAL_REPOSITORY } from '@/modules/auth/domain'
+import { PASSWORD_HASHER, SESSION_CACHE } from '../../ports'
 
-describe('SetUsernameHandler', () => {
-    let handler: SetUsernameHandler
-    let mockUserRepo: { findById: jest.Mock; setUsernameIfUnset: jest.Mock }
-    let mockEventBus: { publish: jest.Mock }
+describe('CompleteAccountHandler', () => {
+    let handler: CompleteAccountHandler
+    let directory: { findById: jest.Mock; complete: jest.Mock }
+    let cache: { invalidateUser: jest.Mock }
+    const form = {
+        displayName: 'Ada',
+        username: 'ada',
+        password: 'Harbour-Lantern-42',
+        timezone: 'Asia/Ho_Chi_Minh',
+        language: 'en' as const
+    }
 
     beforeEach(async () => {
-        mockUserRepo = { findById: jest.fn(), setUsernameIfUnset: jest.fn() }
-        mockEventBus = { publish: jest.fn() }
+        directory = { findById: jest.fn(), complete: jest.fn() }
+        cache = { invalidateUser: jest.fn() }
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                SetUsernameHandler,
-                { provide: USER_REPOSITORY, useValue: mockUserRepo },
-                { provide: EventBus, useValue: mockEventBus }
+                CompleteAccountHandler,
+                { provide: USER_DIRECTORY, useValue: directory },
+                { provide: CREDENTIAL_REPOSITORY, useValue: { setHash: jest.fn() } },
+                { provide: PASSWORD_HASHER, useValue: { hash: jest.fn().mockResolvedValue('hash') } },
+                { provide: SESSION_CACHE, useValue: cache }
             ]
         }).compile()
 
-        handler = module.get(SetUsernameHandler)
+        handler = module.get(CompleteAccountHandler)
     })
 
-    it('sets the username and publishes an event', async () => {
-        const existing = new UserEntity({ id: 'user-123', hasSetUsername: false })
-        const updated = new UserEntity({ id: 'user-123', username: 'johndoe', hasSetUsername: true })
-        mockUserRepo.findById.mockResolvedValue(existing)
-        mockUserRepo.setUsernameIfUnset.mockResolvedValue(updated)
+    it('answers ACCOUNT_ALREADY_COMPLETE when another submission completed it first', async () => {
+        // Read as not completed, but the conditional UPDATE found nothing to update.
+        directory.findById.mockResolvedValue({ id: 'user-123', email: 'ada@example.com', completedAt: null, deletedAt: null })
+        directory.complete.mockResolvedValue(null)
 
-        const result = await handler.execute(new SetUsernameCommand('user-123', 'johndoe'))
-
-        // One conditional write, not read-then-write: two concurrent claims cannot both win.
-        expect(mockUserRepo.setUsernameIfUnset).toHaveBeenCalledWith('user-123', 'johndoe')
-        expect(mockEventBus.publish).toHaveBeenCalledWith(new UserProfileUpdatedEvent('user-123'))
-        expect(result).toEqual(updated)
+        await expect(handler.execute(new CompleteAccountCommand('user-123', form))).rejects.toBeInstanceOf(
+            AccountAlreadyCompleteError
+        )
+        expect(cache.invalidateUser).not.toHaveBeenCalled()
     })
 })
 ```
+
+The real tests of this handler use the auth module's in-memory fakes instead
+of `jest.fn()` mocks
+([`complete-account.spec.ts`](../src/modules/auth/application/commands/complete-account.spec.ts)),
+and the race itself, two `complete()` calls at once against Postgres, is in
+[`account-lifecycle.integration-spec.ts`](../test/integration/account-lifecycle.integration-spec.ts).
 
 ### E2E Test Example
 

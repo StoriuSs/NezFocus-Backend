@@ -1,6 +1,7 @@
 // Who may call a route
 export { CurrentUser } from './current-user.decorator'
 export { Public, IS_PUBLIC_KEY } from './public.decorator'
+export { AllowIncomplete, ALLOW_INCOMPLETE_KEY } from './allow-incomplete.decorator'
 export { Roles, ROLES_KEY } from './roles.decorator'
 
 // Other decorators

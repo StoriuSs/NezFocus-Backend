@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
+    AccountCompletion,
     normaliseEmail,
     UserEntity,
     UsernameTakenError,
@@ -59,34 +60,44 @@ export class PrismaUserRepository implements UserRepositoryPort {
     }
 
     /**
-     * Claim a username, but only if the account has not already claimed one.
-     *
-     * The `hasSetUsername: false` guard is part of the WHERE clause so the
-     * check and the write are a single atomic statement. Reading the flag and
-     * then writing is a race two concurrent requests can both win — and the
-     * @Idempotent decorator does not help, because it is keyed on a
-     * client-supplied header that an attacker simply varies.
-     *
-     * @returns the updated user, or null if a username was already set
+     * The `completedAt: null` guard is in the UPDATE's WHERE clause, so the
+     * check and the write are one statement: of two submissions at once, one
+     * completes the account and the other finds nothing to update. The
+     * settings row is written in the same transaction, so a completed account
+     * always has one.
      */
-    async setUsernameIfUnset(id: string, username: string): Promise<UserEntity | null> {
+    async complete(id: string, completion: AccountCompletion): Promise<UserEntity | null> {
+        const { displayName, username, timezone, language, completedAt } = completion
         try {
-            const result = await this.prisma.user.updateMany({
-                where: { id, deletedAt: null, hasSetUsername: false },
-                data: { username, hasSetUsername: true }
+            return await this.prisma.$transaction(async (tx) => {
+                const result = await tx.user.updateMany({
+                    where: { id, deletedAt: null, completedAt: null },
+                    data: { displayName, username, completedAt, termsAcceptedAt: completedAt }
+                })
+                if (result.count === 0) return null
+
+                // An upsert, so a username clash is the only unique violation here.
+                await tx.userSettings.upsert({
+                    where: { userId: id },
+                    create: { userId: id, timezone, language },
+                    update: { timezone, language }
+                })
+                const user = await tx.user.findUniqueOrThrow({ where: { id } })
+                return UserMapper.toDomain(user)
             })
-
-            if (result.count === 0) return null
-
-            const user = await this.prisma.user.findUnique({ where: { id } })
-            return user ? UserMapper.toDomain(user) : null
         } catch (error: unknown) {
-            if (prismaCode(error) === 'P2002') {
-                const field = (error as { meta?: { target?: string[] } }).meta?.target?.[0] || 'username'
-                throw new UsernameTakenError(field)
-            }
+            // The partial, case-insensitive index on usernames of live accounts.
+            if (prismaCode(error) === 'P2002') throw new UsernameTakenError(username)
             throw error
         }
+    }
+
+    async findLanguage(id: string): Promise<string | null> {
+        const settings = await this.prisma.userSettings.findUnique({
+            where: { userId: id },
+            select: { language: true }
+        })
+        return settings?.language ?? null
     }
 
     async replaceAvatar(

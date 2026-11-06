@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { Test, TestingModuleBuilder } from '@nestjs/testing'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { register } from 'prom-client'
@@ -123,4 +124,29 @@ export async function setFirstPassword(post: Post, email: string, password: stri
     const reset = await post('auth/reset-password', { email, code, password })
     expect(reset.status).toBe(200)
     return reset.body.data.access_token as string
+}
+
+/** A username no other run uses: `itest_` and eight hex digits. */
+export const freshUsername = () => `itest_${randomUUID().slice(0, 8)}`
+
+/**
+ * The "complete your account" step (D-61), as the welcome page sends it.
+ * Until it is done, every signed-in route but that page's answers
+ * ACCOUNT_INCOMPLETE; afterwards the same access token works everywhere.
+ */
+export async function completeAccount(post: Post, accessToken: string, password: string, username = freshUsername()) {
+    const done = await post(
+        'auth/complete-account',
+        {
+            display_name: 'Ada',
+            username,
+            password,
+            timezone: 'Asia/Ho_Chi_Minh',
+            language: 'en',
+            terms_accepted: true
+        },
+        accessToken
+    )
+    expect([done.status, done.body.meta?.type]).toEqual([200, undefined])
+    return username
 }

@@ -22,11 +22,9 @@ import { CommandBus, QueryBus } from '@nestjs/cqrs'
 // Presentation DTOs
 import {
     UpdateProfileRequestDto,
-    SetUsernameRequestDto,
     CheckUsernameParamsDto,
     UserProfileResponseDto,
     UpdateProfileResponseDto,
-    SetUsernameResponseDto,
     UploadAvatarResponseDto,
     UsernameAvailabilityResponseDto
 } from './dto'
@@ -35,7 +33,6 @@ import {
 import {
     CheckUsernameQuery,
     ResolveAvatarUrlQuery,
-    SetUsernameCommand,
     UpdateProfileCommand,
     UploadAvatarCommand,
     UploadAvatarResult
@@ -43,7 +40,7 @@ import {
 import { UserEntity } from '@/modules/users/domain'
 
 // Shared
-import { ApiEnvelopeResponse, CurrentUser, Idempotent } from '@/shared/presentation/decorators'
+import { AllowIncomplete, ApiEnvelopeResponse, CurrentUser, Idempotent } from '@/shared/presentation/decorators'
 import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/types'
 import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
@@ -67,7 +64,9 @@ export class UsersController {
         return this.queryBus.execute(new ResolveAvatarUrlQuery(key))
     }
 
+    /** Also before the account is completed: the client reads `completed` to know where to go. */
     @Get('me')
+    @AllowIncomplete()
     @HttpCode(HttpStatus.OK)
     @ApiEnvelopeResponse(UserProfileResponseDto)
     async getProfile(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<UserProfileResponseDto>> {
@@ -79,28 +78,15 @@ export class UsersController {
             avatarUrl: await this.toAvatarUrl(user.avatarUrl),
             roles: user.roles,
             bio: user.bio ?? undefined,
-            hasSetUsername: user.hasSetUsername
+            completed: user.completed
         })
 
         return createResponse(MESSAGES.USER.FETCHED, profile)
     }
 
-    @Post('me/username')
-    @HttpCode(HttpStatus.OK)
-    @ApiEnvelopeResponse(SetUsernameResponseDto)
-    @Idempotent('1h') // Protect against double-submissions when setting username
-    async setUsername(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetUsernameRequestDto) {
-        const result: UserEntity = await this.commandBus.execute(new SetUsernameCommand(user.id, dto.username))
-
-        const responseData = validateAndTransform(SetUsernameResponseDto, {
-            username: result.username,
-            hasSetUsername: result.hasSetUsername
-        })
-
-        return createResponse(MESSAGES.USER.USERNAME_SET_SUCCESS, responseData)
-    }
-
+    /** For the "complete your account" page, where a username is chosen (D-61). */
     @Get('username-available/:username')
+    @AllowIncomplete()
     @HttpCode(HttpStatus.OK)
     @ApiEnvelopeResponse(UsernameAvailabilityResponseDto)
     async checkUsernameAvailability(
@@ -128,8 +114,7 @@ export class UsersController {
             username: result.username,
             displayName: result.displayName,
             avatarUrl: await this.toAvatarUrl(result.avatarUrl),
-            bio: result.bio,
-            hasSetUsername: result.hasSetUsername
+            bio: result.bio
         })
 
         return createResponse(MESSAGES.USER.PROFILE_UPDATED, responseData)

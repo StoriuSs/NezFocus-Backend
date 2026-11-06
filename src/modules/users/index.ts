@@ -5,7 +5,15 @@
  */
 
 // The port other modules read user records through.
-export { DirectoryUser, UserDirectoryPort, USER_DIRECTORY } from './application/ports/user-directory.port'
+export {
+    AccountCompletionInput,
+    DirectoryUser,
+    UserDirectoryPort,
+    USER_DIRECTORY
+} from './application/ports/user-directory.port'
+
+// What UserDirectoryPort.complete throws when the username is taken.
+export { UsernameTakenError } from './domain/errors/username.errors'
 
 // Events other modules may react to.
 export { AccountDeletedEvent } from './application/events/account-deleted.event'
@@ -18,3 +26,6 @@ export { SweepDeletedAccountsCommand } from './application/commands/sweep-delete
 
 // How addresses are compared, for anything that looks an account up by one.
 export { normaliseEmail } from './domain/email.rules'
+// What a username and a time zone may be, for the "complete your account" step.
+export { USERNAME_PATTERN, normaliseUsername } from './domain/username.rules'
+export { canonicalTimeZone } from './domain/timezone.rules'

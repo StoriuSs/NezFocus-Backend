@@ -7,6 +7,7 @@
  * code does not say whether the address has an account.
  */
 
+export * from './account-completion.errors'
 export * from './account-deletion.errors'
 export * from './codes.errors'
 export * from './oauth.errors'

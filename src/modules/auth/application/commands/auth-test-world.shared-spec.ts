@@ -1,5 +1,11 @@
 import { CommandBus } from '@nestjs/cqrs'
-import { DeleteAccountCommand, DirectoryUser, UserDirectoryPort } from '@/modules/users'
+import {
+    AccountCompletionInput,
+    DeleteAccountCommand,
+    DirectoryUser,
+    UserDirectoryPort,
+    UsernameTakenError
+} from '@/modules/users'
 import { AuthSettings } from '../auth-settings'
 import { OAuthSettings } from '../oauth-settings'
 import {
@@ -38,6 +44,7 @@ import { SessionIssuer } from '../services/session-issuer'
 import { SignInGate } from '../services/sign-in-gate'
 import {
     ChangePasswordHandler,
+    CompleteAccountHandler,
     DeleteOwnAccountHandler,
     FinishOAuthHandler,
     ForgotPasswordHandler,
@@ -73,6 +80,8 @@ export const otherCode = (code: string) => (code === '000000' ? '111111' : '0000
 
 class FakeDirectory implements UserDirectoryPort {
     users = new Map<string, DirectoryUser>()
+    /** What each completed account chose. */
+    settings = new Map<string, { timezone: string; language: string }>()
     private next = 1
 
     add(overrides: Partial<DirectoryUser> = {}): DirectoryUser {
@@ -84,7 +93,6 @@ class FakeDirectory implements UserDirectoryPort {
             displayName: null,
             avatarUrl: null,
             bio: null,
-            hasSetUsername: false,
             completedAt: null,
             deletedAt: null,
             ...overrides
@@ -102,6 +110,22 @@ class FakeDirectory implements UserDirectoryPort {
     async create(email: string, displayName: string | null) {
         if (await this.findByEmail(email)) return null
         return this.add({ email, displayName })
+    }
+    async complete(id: string, input: AccountCompletionInput) {
+        const user = this.users.get(id)
+        if (!user || user.deletedAt || user.completedAt) return null
+        const holder = [...this.users.values()].find((u) => u.username === input.username && !u.deletedAt)
+        if (holder) throw new UsernameTakenError(input.username)
+        Object.assign(user, {
+            displayName: input.displayName,
+            username: input.username,
+            completedAt: input.completedAt
+        })
+        this.settings.set(id, { timezone: input.timezone, language: input.language })
+        return user
+    }
+    async languageOf(id: string) {
+        return this.settings.get(id)?.language ?? null
     }
 }
 
@@ -291,11 +315,15 @@ class FakeCodes implements VerificationCodeRepositoryPort {
 
 class FakeCache implements SessionCachePort {
     endedSessions: string[] = []
+    /** Users whose cached record was dropped. */
+    changedUsers: string[] = []
     replacements = new Map<string, string>()
     async invalidateSessions(ids: string[]) {
         this.endedSessions.push(...ids)
     }
-    async invalidateUser() {}
+    async invalidateUser(id: string) {
+        this.changedUsers.push(id)
+    }
     async rememberReplacement(oldHash: string, token: string) {
         this.replacements.set(oldHash, token)
     }
@@ -466,6 +494,7 @@ export function setup() {
             gate
         ),
         change: new ChangePasswordHandler(directory, credentials, sessions, hasher, cache, mailer, limiter),
+        complete: new CompleteAccountHandler(directory, credentials, hasher, cache, mailer),
 
         /** An account with a password. */
         account(overrides: Partial<DirectoryUser> = {}, password = PASSWORD) {

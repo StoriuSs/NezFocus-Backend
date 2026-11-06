@@ -74,6 +74,64 @@ describe('Auth over HTTP (integration)', () => {
         expect([reused.status, reused.body.meta.type]).toEqual([400, 'AUTH_CODE_INVALID'])
     })
 
+    it('keeps an account made by a code out of the app until it is completed, then lets the same token in', async () => {
+        const email = `itest-http-${randomUUID()}@example.test`
+        const { accessToken } = await signInWithCode(post, email)
+        const signedIn = (req: request.Test) =>
+            req.set('Authorization', `Bearer ${accessToken}`).set('X-Forwarded-For', CLIENT_IP).set('Origin', FRONTEND)
+        const rename = () =>
+            signedIn(api().patch('/api/v1/users/me')).set('Idempotency-Key', randomUUID()).send({ display_name: 'Ada' })
+        const complete = (body: object) =>
+            signedIn(api().post('/api/v1/auth/complete-account')).send({
+                display_name: 'Ada',
+                timezone: 'Asia/Ho_Chi_Minh',
+                language: 'vi',
+                terms_accepted: true,
+                ...body
+            })
+        const typeOf = (res: request.Response) => [res.status, res.body.meta.type]
+
+        // The app is closed; the welcome page's own routes answer.
+        expect(typeOf(await rename())).toEqual([403, 'ACCOUNT_INCOMPLETE'])
+        expect((await me(accessToken)).body.data).toMatchObject({ email, completed: false })
+        expect((await signedIn(api().get('/api/v1/users/username-available/someone_free'))).status).toBe(200)
+
+        // A username taken since the page checked it: decided on submit.
+        const holder = `itest_${randomUUID().slice(0, 8)}`
+        const prisma = app.get(PrismaService)
+        await prisma.user.create({
+            data: { email: `itest-http-${randomUUID()}@example.test`, username: holder, completedAt: new Date() }
+        })
+        expect(typeOf(await complete({ username: holder, password: PASSWORD }))).toEqual([409, 'USERNAME_CONFLICT'])
+
+        // The password may not be the username being chosen (D-66); the Terms must be ticked.
+        const username = `itest_${randomUUID().slice(0, 8)}`
+        const same = await complete({ username, password: `${username.replace('itest_', 'Itest_')}1!` })
+        expect(typeOf(same)).toEqual([422, 'AUTH_PASSWORD_REJECTED'])
+        expect(same.body.data.rules).toContain('matches_username')
+        for (const terms of [false, 'false', 'yes', 1]) {
+            const unticked = await complete({ username, password: PASSWORD, terms_accepted: terms })
+            expect(unticked.body.meta.type).toBe('VALIDATION_ERROR')
+        }
+        const offset = await complete({ username, password: PASSWORD, timezone: '+07:00' })
+        expect(offset.body.meta.type).toBe('VALIDATION_ERROR')
+
+        expect((await complete({ username: username.toUpperCase(), password: PASSWORD })).status).toBe(200)
+
+        // The same token, now everywhere.
+        expect((await rename()).status).toBe(200)
+        expect((await me(accessToken)).body.data).toMatchObject({ completed: true, username })
+        const row = await prisma.user.findFirstOrThrow({ where: { email }, include: { settings: true } })
+        expect(row.termsAcceptedAt).toBeInstanceOf(Date)
+        expect(row.settings).toMatchObject({ timezone: 'Asia/Ho_Chi_Minh', language: 'vi', timezoneChangedAt: null })
+        // Signs in with the password chosen there.
+        expect((await post('auth/login', { email, password: PASSWORD })).status).toBe(200)
+        expect(typeOf(await complete({ username: 'someone_else', password: PASSWORD }))).toEqual([
+            409,
+            'ACCOUNT_ALREADY_COMPLETE'
+        ])
+    })
+
     it('gives the account a password, signs in with it, refreshes from the web app only, and signs out', async () => {
         await signInWithCode(post, EMAIL)
         await setFirstPassword(post, EMAIL, PASSWORD, () => nextMinute(EMAIL))

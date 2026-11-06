@@ -1,5 +1,5 @@
 import { Expose } from 'class-transformer'
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
 import { USERNAME_MAX_LENGTH } from '@/modules/users/domain'
 
 /**
@@ -29,8 +29,4 @@ export class UpdateProfileResponseDto {
     @IsString()
     @MaxLength(500)
     bio: string | null
-
-    @Expose()
-    @IsBoolean()
-    hasSetUsername: boolean
 }

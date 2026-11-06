@@ -246,9 +246,9 @@ The answer looks like this (shortened):
 }
 ```
 
-`completed: false` means the account has no username or password yet. The
-"complete your account" step that sets them is planned; until then the
-account works as it is.
+`completed: false` means the account has no username or password yet. Until
+it does the "complete your account" step (step 6 below), every signed-in
+route except `GET /users/me` answers `403 ACCOUNT_INCOMPLETE`.
 
 The **access token** is a short-lived pass (15 minutes) that you send with
 every request. The **refresh token** is a long-lived secret in a cookie that
@@ -263,13 +263,11 @@ curl $API/users/me -H "Authorization: Bearer $TOKEN"
 # 5. Get a new access token with the refresh cookie, as the web app does.
 curl -b cookies.txt -c cookies.txt -X POST $API/auth/refresh
 
-# 6. To sign in with a password too, choose one with "forgot password":
-#    ask for a code (wait a minute after the last one), then send it with the
-#    new password. Read the code in Mailpit, "Choose a password for ...".
-curl -i -X POST $API/auth/forgot-password -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com"}'
-curl -i -c cookies.txt -X POST $API/auth/reset-password -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","code":"654321","password":"Harbour-Lantern-42"}'
+# 6. Complete the account: display name, username (permanent), password,
+#    time zone, language, and the Terms. The same token then works everywhere.
+curl -i -X POST $API/auth/complete-account -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"display_name":"You","username":"you","password":"Harbour-Lantern-42","timezone":"Asia/Ho_Chi_Minh","language":"en","terms_accepted":true}'
 
 # 7. Next time, sign in with a new code (steps 1 to 3) or with the password.
 curl -i -c cookies.txt -X POST $API/auth/login -H 'Content-Type: application/json' \
@@ -293,7 +291,8 @@ match. Or run it inside the app container, which has the right address already:
 
 Delete `cookies.txt` when you are done: it holds a live sign-in.
 
-**You are done when** `/users/me` answers 200 with your email address.
+**You are done when** `/users/me` answers 200 with your email address and
+`"completed": true`.
 
 Every route, body and error: [../auth/api-reference.md](../auth/api-reference.md).
 Every flow drawn out: [../auth/flows.md](../auth/flows.md).

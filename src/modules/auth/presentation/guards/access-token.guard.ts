@@ -1,8 +1,8 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
-import { IS_PUBLIC_KEY } from '@/shared/presentation/decorators'
+import { ALLOW_INCOMPLETE_KEY, IS_PUBLIC_KEY } from '@/shared/presentation/decorators'
 import { AuthenticatedUser } from '@/shared/types'
-import { TokenMissingError } from '@/modules/auth/domain'
+import { AccountIncompleteError, TokenMissingError } from '@/modules/auth/domain'
 import { PRINCIPAL, Principal, PrincipalPort, TOKEN_SERVICE, TokenServicePort } from '@/modules/auth/application/ports'
 
 /**
@@ -15,6 +15,12 @@ import { PRINCIPAL, Principal, PrincipalPort, TOKEN_SERVICE, TokenServicePort } 
  * a password change or an account deletion take effect on the very next
  * request rather than when the access token expires. It costs one Redis round
  * trip, falling back to Postgres.
+ *
+ * The account read there also says whether it is completed (D-61): until it
+ * is, only routes marked `@AllowIncomplete()` answer, and the rest say
+ * ACCOUNT_INCOMPLETE. Read from the account, not from a claim in the token
+ * (D-128, as changed in L7): the read happens anyway, and nothing has to keep
+ * a claim right at each of the places tokens are issued.
  *
  * Registered after the throttler in AppModule, so anonymous traffic is rate
  * limited before it reaches this.
@@ -39,8 +45,19 @@ export class AccessTokenGuard implements CanActivate {
         if (!token) throw new TokenMissingError()
 
         const claims = await this.tokens.verifyAccessToken(token)
-        request.user = toAuthenticatedUser(await this.principals.resolve(claims))
+        const user = toAuthenticatedUser(await this.principals.resolve(claims))
+        if (!user.completed && !this.allowsIncomplete(context)) throw new AccountIncompleteError()
+        request.user = user
         return true
+    }
+
+    private allowsIncomplete(context: ExecutionContext): boolean {
+        return (
+            this.reflector.getAllAndOverride<boolean>(ALLOW_INCOMPLETE_KEY, [
+                context.getHandler(),
+                context.getClass()
+            ]) === true
+        )
     }
 }
 
@@ -59,6 +76,6 @@ function toAuthenticatedUser({ user, sessionId }: Principal): AuthenticatedUser 
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         bio: user.bio,
-        hasSetUsername: user.hasSetUsername
+        completed: user.completedAt !== null
     }
 }

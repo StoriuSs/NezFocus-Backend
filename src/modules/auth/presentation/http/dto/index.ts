@@ -6,6 +6,7 @@
 
 // Requests
 export { ChangePasswordRequestDto } from './change-password.request.dto'
+export { CompleteAccountRequestDto } from './complete-account.request.dto'
 export { DeleteAccountRequestDto } from './delete-account.request.dto'
 export { EmailCodeRequestDto } from './email-code.request.dto'
 export { ForgotPasswordRequestDto } from './forgot-password.request.dto'

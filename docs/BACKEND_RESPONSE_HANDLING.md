@@ -159,7 +159,6 @@ were dropped; no `2xxxxx` code is sent any more.
 | `400103` | `AUTH_CODE_EXPIRED` | The code expired or had too many wrong tries: ask for a new one |
 | `400104` | `AUTH_CURRENT_PASSWORD_INVALID` | The current password, given to change it or delete the account, is wrong. Not a 401: the session is fine |
 | `400108` | `AUTH_CONFIRMATION_REQUIRED` | Deleting the account without the proof it needs (`data.needs`) |
-| `400200` | `USERNAME_ALREADY_SET` | The username can only be chosen once |
 | `401000` | `AUTH_UNAUTHORIZED` | A 401 with no code of its own |
 | `401001` | `AUTH_INVALID_CREDENTIALS` | Wrong email or password (the same answer for an unknown address) |
 | `401003` | `AUTH_TOKEN_MISSING` | No `Authorization: Bearer` header on a protected route |
@@ -169,11 +168,13 @@ were dropped; no `2xxxxx` code is sent any more.
 | `401008` | `AUTH_REFRESH_FAILED` | The refresh cookie is missing, expired or ended: sign in again |
 | `403003` | `AUTH_ACCOUNT_DISABLED` | The account was deleted |
 | `403004` | `AUTH_FORBIDDEN` | Not allowed: a missing role, or a cookie route called from an origin not in `CORS_ORIGINS` |
+| `403100` | `ACCOUNT_INCOMPLETE` | The account has not done "complete your account"; only routes marked `@AllowIncomplete()` answer. Not a 401: do not sign out |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
 | `404001` | `USER_NOT_FOUND` | No such user |
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |
 | `408000` | `REQUEST_TIMEOUT_ERROR` | The request ran past `REQUEST_TIMEOUT_MS` |
 | `409000` | `CONFLICT_ERROR` | A 409 with no code of its own |
+| `409100` | `ACCOUNT_ALREADY_COMPLETE` | "Complete your account" sent for an account already completed |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | The body is too large |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over `MAX_FILE_SIZE` |
@@ -195,7 +196,8 @@ Retired, never reused (a code must keep one meaning in logs and tickets):
 `400001`, `400100`, `400101`, `401002`, `401007`, `403001`, `409001`,
 `422002`, `500001`, `503001` (Keycloak's), and two-step sign-in's and
 Turnstile's `400105`, `400106`, `400107`, `401009`, `403005`, `409002`,
-`409003`, `503002`, `503003`. A refused CORS origin gets no
+`409003`, `503002`, `503003`, and `400200` (`USERNAME_ALREADY_SET`, the old
+"set a username once" route). A refused CORS origin gets no
 error code at all: without CORS headers the browser blocks the answer before
 the app could read one.
 

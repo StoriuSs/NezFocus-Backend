@@ -124,8 +124,8 @@ export class UserEntity {
     displayName: string | null
     avatarUrl: string | null      // a storage key, e.g. avatars/avatar-<id>-<time>-<random>.webp
     bio: string | null
-    hasSetUsername: boolean
     completedAt: Date | null      // when "complete your account" was done; null until then
+    termsAcceptedAt: Date | null  // when the Terms were agreed to, in that step
 
     readonly createdAt: Date
     updatedAt: Date
@@ -319,7 +319,7 @@ In a traditional hexagonal architecture without CQRS, you would define an explic
 // Traditional inbound port (we do NOT do this)
 export interface UserUseCases {
     updateProfile(id: string, data: UpdateProfileDto): Promise<UserEntity>
-    setUsername(id: string, username: string): Promise<UserEntity>
+    checkUsername(username: string): Promise<boolean>
     uploadAvatar(id: string, file: Buffer): Promise<UserEntity>
 }
 ```
@@ -734,8 +734,9 @@ flowchart LR
 
 1. **`UserDirectoryPort`** ([`user-directory.port.ts`](../src/modules/users/application/ports/user-directory.port.ts)).
    The users module publishes the few operations auth needs: find a user by
-   email or id, create an unverified or a verified account, mark an email
-   verified. It speaks in a small `DirectoryUser` record, not the
+   email or id, create an account, complete it ("complete your account":
+   name, username, Terms and first settings in one write), and read the
+   account's language for emails nobody asked for. It speaks in a small `DirectoryUser` record, not the
    `UserEntity`, so auth never depends on the entity's shape. `UsersModule`
    binds it to `UserDirectory` and exports only that token
    (`exports: [USER_DIRECTORY]`); `AuthModule` imports `UsersModule` and
@@ -784,13 +785,14 @@ modules/users/
 │   │   └── username.errors.ts
 │   ├── ports/
 │   │   └── user.repository.port.ts  # Outbound port for persistence
+│   ├── email.rules.ts
+│   ├── timezone.rules.ts            # IANA zone names (used by "complete your account")
 │   ├── username.rules.ts
 │   └── index.ts                     # Barrel export
 │
 ├── application/                     # 🟡 The Brain (orchestration + use cases)
 │   ├── commands/
 │   │   ├── update-profile/
-│   │   ├── set-username/
 │   │   ├── upload-avatar/
 │   │   ├── delete-account/          # dispatched by the auth module after proof
 │   │   └── sweep-deleted-accounts/  # the scheduled erase / unverified clean-up

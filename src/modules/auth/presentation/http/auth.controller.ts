@@ -2,12 +2,13 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@ne
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import { ApiBearerAuth, ApiCookieAuth, ApiTags } from '@nestjs/swagger'
 import { Request, Response } from 'express'
-import { ApiEnvelopeResponse, CurrentUser, Public } from '@/shared/presentation/decorators'
+import { AllowIncomplete, ApiEnvelopeResponse, CurrentUser, Public } from '@/shared/presentation/decorators'
 import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/types'
 import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
 import {
     AuthOptions,
+    CompleteAccountCommand,
     DEFAULT_EMAIL_LANGUAGE,
     EmailCodeSignIn,
     GetAuthOptionsQuery,
@@ -21,6 +22,7 @@ import {
 } from '@/modules/auth/application'
 import {
     AuthOptionsResponseDto,
+    CompleteAccountRequestDto,
     EmailCodeRequestDto,
     EmailCodeSignInResponseDto,
     LoginRequestDto,
@@ -141,6 +143,27 @@ export class AuthController {
         await this.commandBus.execute(new LogoutCommand(this.cookies.readRefresh(req)))
         this.cookies.clearRefresh(res)
         return createResponse(MESSAGES.AUTH.LOGOUT_SUCCESS, null)
+    }
+
+    /**
+     * The "complete your account" step (D-61): the only way an account made
+     * by a code or by Google gets past ACCOUNT_INCOMPLETE. The access token in
+     * use keeps working; read `GET /users/me` again for the profile.
+     */
+    @Post('complete-account')
+    @AllowIncomplete()
+    @HttpCode(HttpStatus.OK)
+    @ApiBearerAuth('bearer')
+    @ApiEnvelopeResponse(null)
+    async completeAccount(
+        @CurrentUser() user: AuthenticatedUser,
+        @Body() dto: CompleteAccountRequestDto
+    ): Promise<ServiceResponse<null>> {
+        const { displayName, username, password, timezone, language } = dto
+        await this.commandBus.execute(
+            new CompleteAccountCommand(user.id, { displayName, username, password, timezone, language })
+        )
+        return createResponse(MESSAGES.AUTH.ACCOUNT_COMPLETED, null)
     }
 
     /** End every session of the signed-in user, this one included. */

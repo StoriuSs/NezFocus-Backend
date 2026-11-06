@@ -4,7 +4,7 @@ import { USERNAME_PATTERN, normaliseUsername } from '@/modules/users/domain'
 
 /**
  * Route params for the username availability check. Validated with the same
- * rule as SetUsernameRequestDto: `a` or `a b` used to be reported "available"
+ * rule as the "complete your account" step (CompleteAccountRequestDto): `a` or `a b` used to be reported "available"
  * and then rejected on submit.
  */
 export class CheckUsernameParamsDto {

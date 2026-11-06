@@ -206,7 +206,10 @@ sequenceDiagram
     W->>A: POST /auth/email-code/verify {email, code}
     A-->>W: access token + refresh cookie (the account is made if the address had none)
     W->>A: GET /users/me, Bearer access token
-    A-->>W: the profile
+    A-->>W: the profile, with completed
+    Note over W,A: completed is false, so other signed-in routes answer ACCOUNT_INCOMPLETE
+    W->>A: POST /auth/complete-account {display_name, username, password, timezone, language, terms_accepted}
+    A-->>W: 200 (the same access token now works everywhere)
     Note over W,A: 15 minutes later
     W->>A: POST /auth/refresh (the cookie)
     A-->>W: new access token + new cookie
@@ -248,8 +251,8 @@ Instead of a `UsersService` that grows to a thousand lines, each operation is
 its own small handler:
 
 ```
-application/commands/set-username/set-username.handler.ts
 application/commands/update-profile/update-profile.handler.ts
+application/commands/upload-avatar/upload-avatar.handler.ts
 application/queries/check-username/check-username.handler.ts
 ```
 
@@ -293,7 +296,7 @@ read when your module talks to several outside systems:
 auth/
 ├── domain/                     # Errors, repository ports, the password policy
 ├── application/
-│   ├── commands/               # register, login, refresh, delete-own-account, finish-oauth, ...
+│   ├── commands/               # send-email-code, verify-email-code, complete-account, login, refresh, delete-own-account, finish-oauth, ...
 │   ├── queries/                # sign-in methods, sign-in options
 │   ├── events/handlers/        # Reacting to the users module's events
 │   ├── services/               # Shared steps: issue a session, check a code, the limits
@@ -328,7 +331,7 @@ own module. You inherit these without writing anything.
 
 | | What it does for you | Where |
 | --- | --- | --- |
-| **Authentication** | Sign-up and sign-in by an emailed code (one flow), sign-in with a password, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with the password (`POST /auth/account/delete`). Emails in Vietnamese or English. `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
+| **Authentication** | Sign-up and sign-in by an emailed code (one flow), a "complete your account" step (username, password, time zone, language, Terms) that gates every other signed-in route (`ACCOUNT_INCOMPLETE`, `@AllowIncomplete()`), sign-in with a password, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with the password (`POST /auth/account/delete`). Emails in Vietnamese or English. `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
 | **Rate limiting** | A per-IP, per-route limit on every route, counted in Redis so the limit is the limit across every instance. On top, the sign-in routes count per address, per IP and per account (`rl:*` keys) | [rate-limit.md](./docs/rate-limit.md) · [auth/rate-limits.md](./docs/auth/rate-limits.md) |
 | **Idempotency** | A retried payment or a double-tapped button does the work once. `@Idempotent('1h')` on the route | [idempotency.md](./docs/idempotency.md) |
 | **Caching** | Two layers, memory in front of Redis, with a clear rule about which state may use which | [cache.md](./docs/cache.md) |

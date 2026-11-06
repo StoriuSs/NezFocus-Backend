@@ -342,9 +342,15 @@ drops the old `emailVerified` column, and deletes only old sign-ups that never
 confirmed their address **and** have a password here, which these users do
 not. It adds `completedAt`, set from `createdAt` for every account that had
 already chosen a username; any other account is "not completed" and will go
-through "complete your account" (a planned step) at its next sign-in. It also drops every live emailed code (they
+through "complete your account" at its next sign-in. It also drops every live emailed code (they
 last ten minutes) and re-keys the `VerificationCode` table by address and
 purpose.
+
+Migration `20261106100000_complete_account` drops `User.hasSetUsername` (a
+username is now chosen only in "complete your account"), adds
+`User.termsAcceptedAt` (empty for accounts completed before it), and creates
+the `UserSettings` table, one row per completed account. Accounts completed
+before it have no row; their settings read as the defaults.
 
 ---
 

@@ -12,7 +12,6 @@ import {
     BACKGROUND_JOBS,
     USER_DIRECTORY,
     UpdateProfileHandler,
-    SetUsernameHandler,
     UploadAvatarHandler,
     DeleteAccountHandler,
     SweepDeletedAccountsHandler,
@@ -28,13 +27,7 @@ import { BullMqBackgroundJobs, PrismaUserRepository, UploadStorage, UserDirector
 // Presentation (Inbound Adapters)
 import { UsersController } from './presentation'
 
-const CommandHandlers = [
-    UpdateProfileHandler,
-    SetUsernameHandler,
-    UploadAvatarHandler,
-    DeleteAccountHandler,
-    SweepDeletedAccountsHandler
-]
+const CommandHandlers = [UpdateProfileHandler, UploadAvatarHandler, DeleteAccountHandler, SweepDeletedAccountsHandler]
 
 const QueryHandlers = [CheckUsernameHandler, ResolveAvatarUrlHandler]
 

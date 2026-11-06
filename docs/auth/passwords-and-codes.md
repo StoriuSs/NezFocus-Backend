@@ -107,6 +107,7 @@ is still how "being the address or the username" is compared, above.
 
 | Route | Checked against |
 |---|---|
+| `POST /auth/complete-account` | the address and the username chosen in the same form |
 | `POST /auth/reset-password` | the rules that need only the address, before the code; then, only once the code is known right, "not the username" |
 | `POST /auth/change-password` | the address and the username |
 | `POST /auth/login` | nothing: an old password that predates a rule still signs in |

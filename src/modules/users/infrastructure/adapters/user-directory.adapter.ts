@@ -1,9 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { UserEntity, UserRepositoryPort, USER_REPOSITORY } from '@/modules/users/domain'
-import { DirectoryUser, UserDirectoryPort } from '@/modules/users/application/ports/user-directory.port'
+import {
+    AccountCompletionInput,
+    DirectoryUser,
+    UserDirectoryPort
+} from '@/modules/users/application/ports/user-directory.port'
 
-/** The profile form's limit (update-profile.request.dto.ts). */
-const DISPLAY_NAME_MAX_LENGTH = 100
+/** A display name's limit (REQ-AUTH-06); a Google name is cut to it (REQ-AUTH-10). */
+const DISPLAY_NAME_MAX_LENGTH = 32
 
 const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
     id: user.id,
@@ -13,7 +17,6 @@ const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
     bio: user.bio,
-    hasSetUsername: user.hasSetUsername,
     completedAt: user.completedAt,
     deletedAt: user.deletedAt
 })
@@ -42,5 +45,14 @@ export class UserDirectory implements UserDirectoryPort {
         const name = displayName?.trim().slice(0, DISPLAY_NAME_MAX_LENGTH) || null
         const user = await this.users.createWithEmail(email, { displayName: name })
         return user ? toDirectoryUser(user) : null
+    }
+
+    async complete(id: string, input: AccountCompletionInput): Promise<DirectoryUser | null> {
+        const user = await this.users.complete(id, input)
+        return user ? toDirectoryUser(user) : null
+    }
+
+    languageOf(id: string): Promise<string | null> {
+        return this.users.findLanguage(id)
     }
 }

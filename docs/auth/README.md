@@ -19,7 +19,8 @@ in five minutes.
 | Feature | In short | Read |
 |---|---|---|
 | Sign up or sign in with a code | One flow (D-59, D-60): a six-digit code emailed to any address; the right code signs in to the address's account, or creates one, not completed yet | [flows.md](./flows.md#sign-up-or-sign-in-with-a-code) |
-| Sign in with a password | For an account that has one (set with "forgot password" for now; the "complete your account" step is planned) | [flows.md](./flows.md#sign-in) |
+| Complete your account | A new account chooses a display name, username, password, time zone and language and accepts the Terms; until then signed-in routes answer `403 ACCOUNT_INCOMPLETE` (D-61) | [accounts.md](./accounts.md#completing-the-account) |
+| Sign in with a password | For an account that has one (set when completing the account, or with "forgot password") | [flows.md](./flows.md#sign-in) |
 | Password rules | At least 8 characters, upper and lower case, a digit and a symbol; not the address or username (no common-password list, D-29). Each rule has an id the frontend can show | [passwords-and-codes.md](./passwords-and-codes.md#the-password-rules) |
 | Password storage | Argon2id, upgraded automatically when the settings are raised | [passwords-and-codes.md](./passwords-and-codes.md#how-passwords-are-stored) |
 | Sessions | A 15-minute access token (JWT) in memory, plus a refresh token in an httpOnly cookie; a session lasts 30 days | [sessions-and-tokens.md](./sessions-and-tokens.md) |

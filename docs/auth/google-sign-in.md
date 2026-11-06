@@ -156,7 +156,7 @@ The rules, in order ([finish-oauth.handler.ts](../../src/modules/auth/applicatio
 | This Google person (`sub`) is already linked to an account | Sign in to that account | none |
 | ...but that account is deleted | Refused: `?error=account_deleted` | none |
 | Not linked, and Google did not say the email is verified (or sent none) | Refused: `?error=email_unverified` | none |
-| Not linked, no live account has the address | A new account: **no password**, not completed, display name from Google (trimmed, at most 100 characters). Linked. It goes through "complete your account" like any other (D-61, D-130) | none |
+| Not linked, no live account has the address | A new account: **no password**, not completed, display name from Google (trimmed, cut to 32 characters). Linked. It goes through "complete your account" like any other (D-61, D-130) | none |
 | Not linked, an account has the address | Linked to it, then signed in. Its password, if it has one, keeps working | "Google sign-in was added to your {app} account" |
 
 Notes on the table:
@@ -173,7 +173,8 @@ Notes on the table:
   waiting on an account Google links.
 - **Linking an existing account emails its owner.** If it was not them, that
   email is how they find out. It links to `/forgot-password`. Nobody asked for
-  it from a page, so it is in English until accounts store a language (D-132).
+  it from a page, so it is in the account's language (`UserSettings.language`,
+  chosen when it was completed), English if it has none yet (D-132).
 - **Deleted accounts.** Deleting an account removes its Google link, so the same
   Google person signing in again later starts afresh with a new account (the
   deleted account's address is no longer live). `account_deleted` appears only
@@ -225,17 +226,18 @@ reach Google's discovery document gives 500, as JSON.
 
 ## Accounts made with Google
 
-An account created by Google has no password and is not completed. It works
-like any other account, with three differences:
+An account created by Google has no password and is not completed. Like an
+account made by a code, it must do "complete your account", which sets a
+password, before the other signed-in routes answer (they say
+`403 ACCOUNT_INCOMPLETE`; [accounts.md](accounts.md#completing-the-account)).
+Until then it differs from other accounts in three ways:
 
-- **Adding a password.** "Forgot password" (`POST /api/v1/auth/forgot-password`)
-  emails a code with the wording "Choose a password", and
-  `POST /api/v1/auth/reset-password` sets the first one; the owner is emailed
-  "A password was added". After that, the person can sign in both ways. See
-  [passwords-and-codes.md](passwords-and-codes.md). Completing the account
-  (planned) will also set one.
-- **Deleting it** needs the password, so an account without one chooses one
-  with "Forgot password" first. See
+- **Adding a password.** Besides completing the account, "Forgot password"
+  (`POST /api/v1/auth/forgot-password`) emails a code with the wording
+  "Choose a password", and `POST /api/v1/auth/reset-password` sets the first
+  one; the owner is emailed "A password was added". After that, the person can
+  sign in both ways. See [passwords-and-codes.md](passwords-and-codes.md).
+- **Deleting it** needs the password and a completed account. See
   [../account-deletion.md](../account-deletion.md).
 - **Signing in with a password fails** with the ordinary 401
   `AUTH_INVALID_CREDENTIALS` until a password is set: the API does not reveal

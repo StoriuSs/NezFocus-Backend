@@ -123,8 +123,14 @@ anonymous floods are limited before any token work.
 4. `PRINCIPAL.resolve()` (`RedisSessionCache`): one Redis round trip for the
    session and the user, Postgres on a miss. Ended session: 401; deleted
    account: 403.
-5. Put the user on `request.user`: what `@CurrentUser()` returns and what
-   `@Roles()` checks.
+5. The account's `completedAt` is empty and the route has no
+   `@AllowIncomplete()`
+   ([allow-incomplete.decorator.ts](../../src/shared/presentation/decorators/allow-incomplete.decorator.ts)):
+   `403 ACCOUNT_INCOMPLETE` (D-61). Read from the account step 4 loaded, not
+   from a token claim (D-128). Marked: `POST /auth/complete-account`,
+   `GET /users/me`, `GET /users/username-available/:username`.
+6. Put the user on `request.user` (with `completed`): what `@CurrentUser()`
+   returns and what `@Roles()` checks.
 
 [sessions-and-tokens.md](./sessions-and-tokens.md) explains why step 4 makes
 sign-out immediate.
@@ -138,7 +144,7 @@ answer.
 
 | Controller | Routes under `/api/v1/auth` |
 |---|---|
-| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `logout-all`, `options` |
+| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `complete-account`, `logout-all`, `options` |
 | [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password`, `sign-in-methods` |
 | [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete` |
 | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) | `:provider`, `:provider/callback` (Google) |
@@ -185,7 +191,7 @@ others in [application/ports/](../../src/modules/auth/application/ports/).
 | `AUTH_EVENTS` | Count an event | [prometheus-auth-events.adapter.ts](../../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts) | prom-client |
 | `PRINCIPAL` and `SESSION_CACHE` | The per-request session check; invalidation; the refresh grace replacement | [redis-session-cache.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-session-cache.adapter.ts) (one instance answers both) | Redis, Postgres fallback |
 | `RATE_LIMIT` | `hit`, `check`, `reset` a fixed-window counter | the shared [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) | Redis (Lua) |
-| `USER_DIRECTORY` | The user row, owned by the users module | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
+| `USER_DIRECTORY` | The user row, owned by the users module: find, create, `complete` (the "complete your account" write), `languageOf` (for emails nobody asked for) | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
 
 Settings, also provided by `auth.module.ts` from config:
 
@@ -205,6 +211,7 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 |---|---|---|
 | `POST /auth/email-code` | `SendEmailCodeCommand` | [send-email-code/](../../src/modules/auth/application/commands/send-email-code/) |
 | `POST /auth/email-code/verify` | `VerifyEmailCodeCommand` | [verify-email-code/](../../src/modules/auth/application/commands/verify-email-code/) |
+| `POST /auth/complete-account` | `CompleteAccountCommand` | [complete-account/](../../src/modules/auth/application/commands/complete-account/) |
 | `POST /auth/login` | `LoginCommand` | [login/](../../src/modules/auth/application/commands/login/) |
 | `POST /auth/refresh` | `RefreshCommand` | [refresh/](../../src/modules/auth/application/commands/refresh/) |
 | `POST /auth/logout` | `LogoutCommand` | [logout/](../../src/modules/auth/application/commands/logout/) |
@@ -222,7 +229,7 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 Each handler's doc comment says what it promises and why (for example, why
 `forgot-password` stores a code nobody is sent for an address with no
 account). Read it next to its tests in the scenario specs in `commands/`
-(`email-code.spec.ts`, `sessions.spec.ts`,
+(`email-code.spec.ts`, `complete-account.spec.ts`, `sessions.spec.ts`,
 `passwords.spec.ts`, `google.spec.ts`, `delete-account.spec.ts`).
 
 `DeleteOwnAccountHandler` proves who is asking, then dispatches the **users**

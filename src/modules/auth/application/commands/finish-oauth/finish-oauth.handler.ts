@@ -13,7 +13,7 @@ import {
     AUTH_MAILER,
     AuthEventsPort,
     AuthMailerPort,
-    DEFAULT_EMAIL_LANGUAGE,
+    accountEmailLanguage,
     OAUTH_PROVIDERS,
     OAUTH_STATE,
     OAuthChecks,
@@ -170,9 +170,10 @@ export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
         if (!isNew) {
             this.events.record('oauth_account_linked')
             // Nobody asked for this email from a page: in the account's
-            // language once accounts store one (D-132).
+            // language (D-132).
             if (user.email) {
-                await this.mailer.sendSignInMethodAdded(user.email, provider.displayName, DEFAULT_EMAIL_LANGUAGE)
+                const language = accountEmailLanguage(await this.directory.languageOf(user.id))
+                await this.mailer.sendSignInMethodAdded(user.email, provider.displayName, language)
             }
         }
         return user

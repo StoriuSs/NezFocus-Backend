@@ -19,6 +19,7 @@ they disagree with this page, the code wins: please fix the page.
 - [Before you start](#before-you-start)
 - [Routes at a glance](#routes-at-a-glance)
 - [Signing up or in with a code](#signing-up-or-in-with-a-code)
+- [Completing the account](#completing-the-account)
 - [Signing in and staying signed in](#signing-in-and-staying-signed-in)
 - [Passwords](#passwords)
 - [Deleting the account](#deleting-the-account)
@@ -148,7 +149,9 @@ Sending `full_name` to `/auth/email-code`:
 | **Browser navigation** | Not an API call. Point the browser at it (`window.location.href = ...`); it answers with a redirect |
 
 Every signed-in route can answer the [guard errors](#errors-any-route-can-return)
-before its own logic runs.
+before its own logic runs. Among them is `403 ACCOUNT_INCOMPLETE` for an
+account that has not done [complete your account](#complete-your-account);
+only three signed-in routes answer such an account ([the gate](#the-gate)).
 
 ### Cookies
 
@@ -182,6 +185,7 @@ repeated in every route below.
 | The token is not one this API signed, has the wrong issuer or audience (for example after `BASE_URL` or `JWT_SECRET` changed), or names another user's session | 401 | `AUTH_TOKEN_INVALID` | `401005` | |
 | The token is genuine but its session has ended | 401 | `AUTH_TOKEN_REVOKED` | `401006` | `data.reason` (see [session end reasons](#session-end-reasons)) |
 | The account was deleted | 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | |
+| The account has not done "complete your account", and the route is not one of the [three that allow it](#the-gate) | 403 | `ACCOUNT_INCOMPLETE` | `403100` | |
 | A body field fails its check, or an unknown field is sent | 422 | `VALIDATION_ERROR` | `422000` | `data.details[]` |
 | Malformed JSON | 400 | `BAD_REQUEST_ERROR` | `400000` | |
 | The global per-IP throttler: more than `THROTTLE_LIMIT` (default 100) requests to **this route** from one IP in `THROTTLE_TTL` (60) seconds | 429 | `THROTTLE_ERROR` | `429001` | `Retry-After` header (seconds). No `data.reason` |
@@ -214,6 +218,7 @@ than a 401.
 |---|---|---|---|
 | `POST /auth/email-code` | Public | 202 | [Email a sign-in code](#email-a-sign-in-code) |
 | `POST /auth/email-code/verify` | Public | 200, signs in | [Sign in with the code](#sign-in-with-the-code) |
+| `POST /auth/complete-account` | Signed in, not completed | 200 | [Complete your account](#complete-your-account) |
 | `POST /auth/login` | Public | 200, signs in | [Sign in](#sign-in) |
 | `POST /auth/refresh` | Cookie + Origin | 200 | [Refresh](#refresh) |
 | `POST /auth/logout` | Cookie + Origin | 200 | [Sign out](#sign-out) |
@@ -301,10 +306,9 @@ now: no password, no username, not completed yet.
 | `created` | boolean | This sign-in made the account: the address had none |
 | `completed` | boolean | The account has done the "complete your account" step. `false` for every new account |
 
-The "complete your account" step (`POST /auth/complete-account`, choosing a
-username and a password) is planned for a later slice, together with the gate
-that refuses an account that is not completed. For now an account with
-`completed: false` can use the API like any other.
+An account with `completed: false` must do
+[complete your account](#complete-your-account) next: until then most
+signed-in routes answer `403 ACCOUNT_INCOMPLETE` ([the gate](#the-gate)).
 
 **Errors:**
 
@@ -317,6 +321,57 @@ that refuses an account that is not completed. For now an account with
 
 Each wrong code counts against `code-try-ip` and `code-fail-email`. A right
 code is used up before the account is touched, so one code makes one session.
+
+## Completing the account
+
+Every new account, made by a code or by Google, starts not completed (D-61).
+[accounts.md](./accounts.md#completing-the-account) explains what the step
+stores and why in that order.
+
+### The gate
+
+Until the account is completed, every signed-in route answers
+`403 ACCOUNT_INCOMPLETE` (`403100`), except the three the "complete your
+account" page needs (they carry `@AllowIncomplete()`):
+
+| Route | Why it answers |
+|---|---|
+| `POST /auth/complete-account` | The step itself |
+| `GET /users/me` | Its `completed` field says where the client should go |
+| `GET /users/username-available/:username` | The username check while typing |
+
+Public routes (sign-in, `refresh`, `logout`, `forgot-password`, `reset-password`)
+are not gated. Not a 401: the session is fine, so a client must not sign out
+on it.
+
+### Complete your account
+
+`POST /api/v1/auth/complete-account` · Signed in, not completed yet · no cookies
+
+| Field | Type | Required | Checked by the DTO |
+|---|---|---|---|
+| `display_name` | string | yes | Trimmed, 1 to 32 characters |
+| `username` | string | yes | Trimmed and lower-cased, then 2 to 32 of `a-z 0-9 _ .` ("username must be 2-32 lowercase letters, numbers, underscores or dots"). Permanent |
+| `password` | string | yes | 1 to 1024. The rules are checked by the handler |
+| `timezone` | string | yes | An IANA zone name such as `Asia/Ho_Chi_Minh`, stored in its canonical spelling. An offset (`+07:00`) is refused |
+| `language` | string | yes | `vi` or `en`: the account's language, also used for emails nobody asked for |
+| `terms_accepted` | boolean | yes | Must be `true` ("terms_accepted must be true") |
+
+**Success:** `200`, message "Account completed", `data: null`. The access
+token in use keeps working and now passes the gate; read
+[`GET /users/me`](#the-current-user) again for the profile. No email is sent.
+
+**Errors**, in the order they are checked, besides the guard errors:
+
+| Status | `meta.type` | `meta.code` | When | Extras |
+|---|---|---|---|---|
+| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The account was deleted a moment ago | |
+| 409 | `ACCOUNT_ALREADY_COMPLETE` | `409100` | The account is already completed, including by another submission at the same moment | |
+| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password breaks a rule, or is the email, the part before `@`, or this username (D-66) | `data.rules` |
+| 409 | `USERNAME_CONFLICT` | `409200` | A live account has the username. Decided as it is written: [username-available](#the-gate) is only a hint | |
+
+If the username is taken, nothing else is completed: send again with another
+one (the password is simply replaced).
 
 ## Signing in and staying signed in
 
@@ -587,19 +642,20 @@ one of these query strings:
 | `account_deleted` | The Google account is linked to a deleted account |
 | `failed` | Anything else: the return does not match this browser's cookie, the attempt expired (10 minutes) or was used, Google refused the code or ID token, or the database or Redis failed. The API log says which |
 
-A new address gets a new account, not completed and with no password; an
-existing account is linked, and its owner is emailed that a sign-in method was
-added. The web app must check `redirect` again before
+A new address gets a new account, not completed, with no password and the
+display name from Google cut to 32 characters; an existing account is linked,
+and its owner is emailed that a sign-in method was added, in the account's
+language (English if it has none yet). The web app must check `redirect` again before
 following it. The only JSON this route answers is `404 NOT_FOUND_ERROR` for an
 unknown provider.
 
 ## The current user
 
-`GET /api/v1/users/me` · Signed in
+`GET /api/v1/users/me` · Signed in, completed or not
 
 Not an auth route, but where a client learns who is signed in. It is read
 through the same per-request session check, so it reflects the account as it
-is now.
+is now. It answers before the account is completed too ([the gate](#the-gate)).
 
 **Success:** `200`,
 message "User fetched successfully".
@@ -609,7 +665,8 @@ message "User fetched successfully".
 | `id` | string | The user id (the access token's `sub`) |
 | `email` | string | The sign-in address, lower-case |
 | `roles` | string[] | `["user"]` by default; `admin` and others are given with `pnpm user:promote` ([accounts.md](./accounts.md)). Not in the token: read them here |
-| `username`, `display_name`, `avatar_url`, `bio`, `has_set_username` | | The profile, owned by the users module |
+| `completed` | boolean | The account has done [complete your account](#complete-your-account). While `false`, open that step: other signed-in routes answer `403 ACCOUNT_INCOMPLETE` |
+| `username`, `display_name`, `avatar_url`, `bio` | | The profile, owned by the users module. `username` is absent until the account is completed |
 
 **Errors:** the guard errors.
 
@@ -656,8 +713,11 @@ kind; `meta.code` and `meta.type` come from
 | `AUTH_CONFIRMATION_REQUIRED` | 400 | `400108` | Confirm it is you first. | `needs` |
 | `AUTH_ACCOUNT_DISABLED` | 403 | `403003` | This account has been deleted. | |
 | `AUTH_FORBIDDEN` | 403 | `403004` | This request did not come from an allowed site. | |
+| `ACCOUNT_INCOMPLETE` | 403 | `403100` | Complete your account first. | |
 | `NOT_FOUND_ERROR` | 404 | `404000` | There is no sign-in with that provider here. | |
 | `USER_NOT_FOUND` | 404 | `404001` | (from the users module) | |
+| `ACCOUNT_ALREADY_COMPLETE` | 409 | `409100` | This account is already complete. | |
+| `USERNAME_CONFLICT` | 409 | `409200` | Username already taken: {username} (from the users module) | |
 | `AUTH_PASSWORD_REJECTED` | 422 | `422004` | One sentence per broken rule, joined | `rules` |
 | `VALIDATION_ERROR` | 422 | `422000` | Validation failed | `details[]` |
 | `RATE_LIMIT_EXCEEDED` | 429 | `429001` | "<reason sentence> Try again in N seconds/minutes." | `reason`, `Retry-After` header |
@@ -686,7 +746,8 @@ so a client can copy it to check as the user types.
 outside the auth module. `401002`, `401007`, `409001` and `503001` (Keycloak's)
 are retired, never reused: sign-up never says an address is taken. `403002`,
 `409004` and `409005` belonged to the old sign-up and first-password routes
-and are retired too.
+and are retired too. `400200` (`USERNAME_ALREADY_SET`, the old
+"set a username once" route) is retired.
 
 ## Success messages
 
@@ -698,6 +759,7 @@ for logs; react to the status and `data`.
 | email-code | 202 | Check your email for the code. |
 | forgot-password | 202 | If that address has an account, an email is on its way. |
 | email-code/verify | 200 | You are signed in. |
+| complete-account | 200 | Account completed |
 | login | 200 | Login successful |
 | refresh | 200 | Token refreshed successfully |
 | logout | 200 | Logout successful |
@@ -728,7 +790,10 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `400 AUTH_CODE_EXPIRED` | The code is dead: offer to send a new one |
 | `400 AUTH_CURRENT_PASSWORD_INVALID` | Mark the current-password field. Do **not** sign out |
 | `400 AUTH_CONFIRMATION_REQUIRED` | Ask for the password and send again. An account with no password ([sign-in methods](#sign-in-methods) says `password: false`) chooses one with [forgot password](#forgot-password) first |
-| `200` from `email-code/verify` with `account.completed: false` | Open the "complete your account" step (planned: `POST /auth/complete-account`) |
+| `200` from `email-code/verify` with `account.completed: false`, or `completed: false` from `GET /users/me` | Open the "complete your account" step ([`POST /auth/complete-account`](#complete-your-account)) |
+| `403 ACCOUNT_INCOMPLETE` | Not signed out: go to the "complete your account" step. Keep the session |
+| `409 ACCOUNT_ALREADY_COMPLETE` | Already done (another tab, a double click): read `GET /users/me` and go into the app |
+| `409 USERNAME_CONFLICT` on complete-account | Mark the username field "taken" and let them pick another; keep the other fields |
 | `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later) |
 | `429 THROTTLE_ERROR` | Too many requests from this IP to this route: wait `Retry-After` seconds |
 | `?error=` on the callback page | Show a message per reason (`cancelled` needs none). Keep `redirect` for the next attempt |

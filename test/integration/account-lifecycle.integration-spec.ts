@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { PrismaUserRepository } from '@/modules/users/infrastructure/persistence/prisma-user.repository'
+import { UsernameTakenError } from '@/modules/users'
 import { databaseTarget } from './targets'
 
 /**
@@ -61,6 +62,61 @@ describe('Account lifecycle (integration)', () => {
             const winners = results.filter(Boolean)
             expect(winners).toHaveLength(1)
             expect(winners[0]!.avatarUrl).toBe('avatars/a.webp')
+        })
+    })
+
+    describe('complete', () => {
+        const completion = (username: string) => ({
+            displayName: 'Ada',
+            username,
+            timezone: 'Asia/Ho_Chi_Minh',
+            language: 'vi',
+            completedAt: new Date()
+        })
+        const freshName = () => `itest_${randomUUID().slice(0, 8)}`
+
+        it('completes an account once when it is sent twice at once, with its settings row', async () => {
+            const user = await newUser()
+            const name = freshName()
+
+            const results = await Promise.all([
+                users.complete(user.id, completion(name)),
+                users.complete(user.id, completion(name))
+            ])
+
+            expect(results.filter((result) => result !== null)).toHaveLength(1)
+            const row = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, include: { settings: true } })
+            expect(row).toMatchObject({
+                username: name,
+                completedAt: expect.any(Date),
+                termsAcceptedAt: expect.any(Date)
+            })
+            expect(row.settings).toMatchObject({ timezone: 'Asia/Ho_Chi_Minh', language: 'vi', theme: 'system' })
+            expect(await users.findLanguage(user.id)).toBe('vi')
+        })
+
+        it('gives a username to one of two accounts asking for it at once', async () => {
+            const [a, b] = [await newUser(), await newUser()]
+            const name = freshName()
+
+            const outcomes = await Promise.allSettled([
+                users.complete(a.id, completion(name)),
+                users.complete(b.id, completion(name))
+            ])
+
+            expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['fulfilled', 'rejected'])
+            const refused = outcomes.find((outcome) => outcome.status === 'rejected') as PromiseRejectedResult
+            expect(refused.reason).toBeInstanceOf(UsernameTakenError)
+            // The loser is untouched: still incomplete, no settings.
+            const loser = outcomes[0].status === 'rejected' ? a : b
+            expect(
+                await prisma.user.findUniqueOrThrow({ where: { id: loser.id }, include: { settings: true } })
+            ).toMatchObject({ completedAt: null, username: null, settings: null })
+        })
+
+        it('leaves a deleted account alone', async () => {
+            const user = await newUser({ deletedAt: new Date() })
+            expect(await users.complete(user.id, completion(freshName()))).toBeNull()
         })
     })
 

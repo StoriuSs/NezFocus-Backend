@@ -20,8 +20,8 @@ export class UserMapper {
             displayName: prismaUser.displayName,
             avatarUrl: prismaUser.avatarUrl,
             bio: prismaUser.bio,
-            hasSetUsername: prismaUser.hasSetUsername,
             completedAt: prismaUser.completedAt,
+            termsAcceptedAt: prismaUser.termsAcceptedAt,
             createdAt: prismaUser.createdAt,
             updatedAt: prismaUser.updatedAt,
             deletedAt: prismaUser.deletedAt,
@@ -41,7 +41,6 @@ export class UserMapper {
         if (entity.displayName !== undefined) data.displayName = entity.displayName
         if (entity.avatarUrl !== undefined) data.avatarUrl = entity.avatarUrl
         if (entity.bio !== undefined) data.bio = entity.bio
-        if (entity.hasSetUsername !== undefined) data.hasSetUsername = entity.hasSetUsername
         if (entity.deletedAt !== undefined) data.deletedAt = entity.deletedAt
         if (entity.deletedBy !== undefined) data.deletedBy = entity.deletedBy
 

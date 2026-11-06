@@ -385,6 +385,7 @@
             "bearer": []
           }
         ],
+        "summary": "Also before the account is completed: the client reads `completed` to know where to go.",
         "tags": [
           "users"
         ]
@@ -446,64 +447,6 @@
         ]
       }
     },
-    "/api/v1/users/me/username": {
-      "post": {
-        "operationId": "UsersController_setUsername_v1",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "UUID identifying one user intent",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetUsernameRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/SetUsernameResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "users"
-        ]
-      }
-    },
     "/api/v1/users/username-available/{username}": {
       "get": {
         "operationId": "UsersController_checkUsernameAvailability_v1",
@@ -546,6 +489,7 @@
             "bearer": []
           }
         ],
+        "summary": "For the \"complete your account\" page, where a username is chosen (D-61).",
         "tags": [
           "users"
         ]
@@ -823,6 +767,55 @@
           }
         ],
         "summary": "End this session. Always succeeds, and clears the cookie.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/complete-account": {
+      "post": {
+        "operationId": "AuthController_completeAccount_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteAccountRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The \"complete your account\" step (D-61): the only way an account made\nby a code or by Google gets past ACCOUNT_INCOMPLETE. The access token in\nuse keeps working; read `GET /users/me` again for the profile.",
         "tags": [
           "auth"
         ]
@@ -1264,44 +1257,16 @@
             "type": "string",
             "maxLength": 500
           },
-          "has_set_username": {
-            "type": "boolean"
+          "completed": {
+            "type": "boolean",
+            "description": "Whether the \"complete your account\" step is done (D-61). While it is\nnot, every other signed-in route answers ACCOUNT_INCOMPLETE: the client\nopens /welcome."
           }
         },
         "required": [
           "id",
           "avatar_url",
           "roles",
-          "has_set_username"
-        ]
-      },
-      "SetUsernameResponseDto": {
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string"
-          },
-          "has_set_username": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "username",
-          "has_set_username"
-        ]
-      },
-      "SetUsernameRequestDto": {
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string",
-            "description": "2-32 lowercase letters, digits, underscores or dots. Normalised to lower\ncase first, so `Alice` and `alice` are the same name. Permanent once set.",
-            "minLength": 2,
-            "maxLength": 32
-          }
-        },
-        "required": [
-          "username"
+          "completed"
         ]
       },
       "UsernameAvailabilityResponseDto": {
@@ -1336,17 +1301,13 @@
             "type": "string",
             "nullable": true,
             "maxLength": 500
-          },
-          "has_set_username": {
-            "type": "boolean"
           }
         },
         "required": [
           "username",
           "display_name",
           "avatar_url",
-          "bio",
-          "has_set_username"
+          "bio"
         ]
       },
       "UpdateProfileRequestDto": {
@@ -1517,6 +1478,51 @@
         "required": [
           "password",
           "email"
+        ]
+      },
+      "CompleteAccountRequestDto": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "description": "The account's language: the switch at the foot of the page (D-64).",
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Shown in chat and study rooms: 1-32 characters (REQ-AUTH-06, D-69).",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "username": {
+            "type": "string",
+            "description": "2-32 characters of `a-z 0-9 _ .`; upper case is lowered. Permanent.\nWhether it is free is decided now: taken → USERNAME_CONFLICT."
+          },
+          "password": {
+            "type": "string",
+            "description": "The password, under the rules of REQ-AUTH-01; it may not be the email,\nthe part before @, or this username (D-66). Refused →\nAUTH_PASSWORD_REJECTED naming the rules broken.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "timezone": {
+            "type": "string",
+            "description": "An IANA time zone name, e.g. `Asia/Ho_Chi_Minh`. Does not count as the day's change (D-61)."
+          },
+          "terms_accepted": {
+            "type": "boolean",
+            "description": "\"I agree to the Terms of Service and the Privacy Policy\": must be true.\nThe value as sent: the global pipe's implicit conversion would make\nthe string \"false\" true, recording consent nobody gave."
+          }
+        },
+        "required": [
+          "language",
+          "display_name",
+          "username",
+          "password",
+          "timezone",
+          "terms_accepted"
         ]
       },
       "AuthOptionsResponseDto": {

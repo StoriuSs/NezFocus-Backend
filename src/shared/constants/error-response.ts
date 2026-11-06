@@ -26,10 +26,13 @@ export const ERROR_TYPES = {
     // Deleting an account without the proof it needs; asking for an emailed
     // code when the account's password is the proof.
     AUTH_CONFIRMATION_REQUIRED: 'AUTH_CONFIRMATION_REQUIRED',
+    // A signed-in route used before the "complete your account" step (D-61);
+    // that step sent again once it is done. Named as in SRS section 8.
+    ACCOUNT_INCOMPLETE: 'ACCOUNT_INCOMPLETE',
+    ACCOUNT_ALREADY_COMPLETE: 'ACCOUNT_ALREADY_COMPLETE',
 
     // User errors
     USER_NOT_FOUND: 'USER_NOT_FOUND',
-    USERNAME_ALREADY_SET: 'USERNAME_ALREADY_SET',
     USERNAME_CONFLICT: 'USERNAME_CONFLICT',
 
     // Upload errors
@@ -67,12 +70,14 @@ export const ERROR_TYPES = {
  * AUTH_CAPTCHA_FAILED, 401009 AUTH_TWO_FACTOR_CHALLENGE_EXPIRED, 403005
  * AUTH_TWO_FACTOR_REQUIRED, 409002 AUTH_TWO_FACTOR_ALREADY_ON, 409003
  * AUTH_TWO_FACTOR_NOT_ON, 503002 AUTH_CAPTCHA_UNAVAILABLE, 503003
- * AUTH_TWO_FACTOR_UNAVAILABLE.
+ * AUTH_TWO_FACTOR_UNAVAILABLE. Sign-up before codes by email, and a first
+ * password by code (M0 L6): 403002 AUTH_EMAIL_NOT_VERIFIED, 409004
+ * AUTH_PASSWORD_ALREADY_SET, 409005 AUTH_USE_PASSWORD. A username set on its
+ * own, once (M0 L7): 400200 USERNAME_ALREADY_SET.
  */
 export const ERROR_CODES = {
     // Validation error codes (400, 422)
     BAD_REQUEST: '400000',
-    USERNAME_ALREADY_SET: '400200',
     VALIDATION_ERROR: '422000',
     IDEMPOTENCY_KEY_MISMATCH: '422003',
 
@@ -95,11 +100,13 @@ export const ERROR_CODES = {
     // Forbidden error codes (403)
     AUTH_ACCOUNT_DISABLED: '403003',
     AUTH_FORBIDDEN: '403004',
+    ACCOUNT_INCOMPLETE: '403100',
 
     // Not found error codes (404)
     USER_NOT_FOUND: '404001',
 
     // Conflict error codes (409)
+    ACCOUNT_ALREADY_COMPLETE: '409100',
     USERNAME_CONFLICT: '409200',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)

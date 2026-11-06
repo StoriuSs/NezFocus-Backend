@@ -290,7 +290,7 @@ export class UpdateProfileResponseDto {
     @MaxLength(100)        // ← Runtime check: max 100 chars
     displayName: string | null
 
-    // ... avatarUrl, bio, hasSetUsername (see update-profile.response.dto.ts)
+    // ... avatarUrl, bio (see update-profile.response.dto.ts)
 }
 ```
 
@@ -398,7 +398,7 @@ export const userPreferencesSelect = {
     displayName: true,
     avatarUrl: true,
     bio: true,
-    hasSetUsername: true
+    completedAt: true
 } satisfies Prisma.UserSelect
 //   ^^^^^^^^^ TypeScript validates this is a valid User selection
 
@@ -414,7 +414,7 @@ export type UserPreferences = Prisma.UserGetPayload<{
 //     displayName: string | null
 //     avatarUrl: string | null
 //     bio: string | null
-//     hasSetUsername: boolean
+//     completedAt: Date | null
 // }
 ```
 

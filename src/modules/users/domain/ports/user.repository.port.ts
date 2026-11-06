@@ -1,5 +1,17 @@
 import { UserEntity } from '../entities/user.entity'
 
+/** What the "complete your account" step writes (D-61). Already checked. */
+export interface AccountCompletion {
+    displayName: string
+    /** Normalised: lower case, trimmed. */
+    username: string
+    /** An IANA zone name (canonicalTimeZone). */
+    timezone: string
+    language: string
+    /** When the owner ticked the Terms box: now. */
+    completedAt: Date
+}
+
 /**
  * User Repository Port (Outbound)
  *
@@ -26,11 +38,19 @@ export interface UserRepositoryPort {
     update(id: string, data: Partial<Pick<UserEntity, 'displayName' | 'bio'>>): Promise<UserEntity>
 
     /**
-     * Atomically claim a username, only if one has not already been set.
+     * Finish a live, not yet completed account: its name, username, the time
+     * the Terms were agreed to, and its first settings, together. Conditional
+     * on the account still being incomplete, in the same statement, so two
+     * submissions at once complete it once.
      *
-     * @returns the updated user, or null if the account already had a username
+     * @throws UsernameTakenError when a live account holds the username — the
+     *   unique index decides, at the moment of writing (REQ-AUTH-01)
+     * @returns null if the account is gone or already completed
      */
-    setUsernameIfUnset(id: string, username: string): Promise<UserEntity | null>
+    complete(id: string, completion: AccountCompletion): Promise<UserEntity | null>
+
+    /** The language chosen in the settings, or null before there are any. */
+    findLanguage(id: string): Promise<string | null>
 
     /**
      * Point a live user at a new avatar, returning the key it replaced.

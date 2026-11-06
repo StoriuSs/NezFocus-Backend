@@ -56,13 +56,17 @@ nothing else:
 If the password is missing, or the account has none, the answer is
 400 `AUTH_CONFIRMATION_REQUIRED` with `{ "needs": ["password"] }`.
 
-**An account without a password** (not completed yet, or made with Google)
-has no proof to give. It chooses a password first with "forgot password"
+**An account that is not completed** cannot delete itself: like every
+signed-in route but three, this one answers 403 `ACCOUNT_INCOMPLETE` until
+"complete your account" is done ([auth/accounts.md](./auth/accounts.md#completing-the-account)).
+Every account sets a password when it is completed (D-61, D-130).
+
+**A completed account without a password** (only one marked completed by
+migration `20261106000000_codes_by_email`, before the step existed) has no
+proof to give. It chooses a password first with "forgot password"
 (`POST /auth/forgot-password`, then `POST /auth/reset-password`), then
 deletes with it. `GET /auth/sign-in-methods` tells the page which case it is
-(`password: false`). Every account sets a password when it is completed
-(D-61, D-130; the "complete your account" step is planned), so this only
-concerns accounts that have not done it.
+(`password: false`).
 
 ## What runs, in order
 

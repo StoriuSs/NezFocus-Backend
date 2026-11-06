@@ -47,9 +47,8 @@
     - [1. Choose Appropriate TTLs](#1-choose-appropriate-ttls)
     - [2. Monitor Cache Size](#2-monitor-cache-size)
   - [Real-World Examples](#real-world-examples)
-    - [Example 1: Setting a Username](#example-1-setting-a-username)
-    - [Example 2: Avatar Upload](#example-2-avatar-upload)
-    - [Example 3: Updating the Profile](#example-3-updating-the-profile)
+    - [Example 1: Avatar Upload](#example-1-avatar-upload)
+    - [Example 2: Updating the Profile](#example-2-updating-the-profile)
     - [Trying It: the Race Script](#trying-it-the-race-script)
   - [Troubleshooting](#troubleshooting)
     - [Cache Not Working](#cache-not-working)
@@ -101,12 +100,11 @@ again, without running anything. The answers are kept in Redis.
 
 ## Where the starter uses it
 
-Three routes, all on the users module
+Two routes, both on the users module
 ([`users.controller.ts`](../src/modules/users/presentation/http/users.controller.ts)):
 
 | Route | `@Idempotent` | What a duplicate would otherwise do |
 |---|---|---|
-| `POST /api/v1/users/me/username` | `'1h'` | try to set the username a second time, and answer 400 "already set" for something that worked |
 | `PATCH /api/v1/users/me` | `'10m'` | apply the profile change twice |
 | `POST /api/v1/users/me/avatar` | `'10m'` | process and store a second copy of the image, and replace the first |
 
@@ -248,13 +246,6 @@ import { CurrentUser, Idempotent } from '@/shared/presentation/decorators'
 
 @Controller({ path: 'users', version: '1' })
 export class UsersController {
-    @Post('me/username')
-    @HttpCode(HttpStatus.OK)
-    @Idempotent('1h')
-    async setUsername(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetUsernameRequestDto) {
-        // ...
-    }
-
     @Patch('me')
     @HttpCode(HttpStatus.OK)
     @Idempotent('10m')
@@ -377,8 +368,8 @@ If the handler throws an error, the answer is not stored and the claim is
 released:
 
 ```
-POST /api/v1/users/me/username with key "550e8400-…"  → 409 "Username already taken: ada"
-POST /api/v1/users/me/username with key "550e8400-…"  → runs again (not cached)
+PATCH /api/v1/users/me with key "550e8400-…"  → 500 (the database was unreachable)
+PATCH /api/v1/users/me with key "550e8400-…"  → runs again (not cached)
 ```
 
 This allows clients to retry failed requests and get a fresh attempt.
@@ -531,10 +522,12 @@ Keys are scoped per user and route on the server, so another user sending your k
 The key protects against **the same client** sending **the same request**
 twice. It does nothing against two different requests racing, because an
 attacker (or a second tab) simply sends another key. Whatever must not happen
-twice must also be enforced where the data is written. The starter's
-username route shows both: `@Idempotent` for the double-click, and a
-conditional `UPDATE ... WHERE hasSetUsername = false` in the repository, so
-two different keys still cannot both set it. See
+twice must also be enforced where the data is written. "Complete your
+account" (`POST /api/v1/auth/complete-account`) relies on that alone: it has no
+`@Idempotent`, and the users repository's `complete` is a conditional
+`UPDATE ... WHERE completedAt IS NULL`, so two submissions, whatever their
+keys, complete the account once; the second answers
+`409 ACCOUNT_ALREADY_COMPLETE`. See
 [race-conditions-and-locks.md](./race-conditions-and-locks.md).
 
 ## Best Practices
@@ -545,10 +538,6 @@ two different keys still cannot both set it. See
 // The answer contains a short-lived link (a presigned URL): stay well inside its life
 @Idempotent('10m')
 async updateProfile() {}
-
-// A one-off change the user won't repeat soon
-@Idempotent('1h')
-async setUsername() {}
 
 // Side effects with consequences, and nothing in the answer that expires: very long TTL
 @Idempotent('24h')
@@ -568,25 +557,7 @@ Don't delete them by hand (see above). The Redis dashboard shows memory use
 
 ## Real-World Examples
 
-### Example 1: Setting a Username
-
-```typescript
-@Post('me/username')
-@Idempotent('1h')
-async setUsername(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetUsernameRequestDto) {
-    // First attempt:
-    // - Username set (one conditional UPDATE)
-    // - UserProfileUpdatedEvent published (the auth module drops its cached user)
-    // - Answer stored for 1 hour
-
-    // Duplicate attempt (same key, same body):
-    // - The stored answer: 200 with the username
-    // - Without idempotency it would get 400 "Username has already been set",
-    //   and the web app would show an error for something that worked
-}
-```
-
-### Example 2: Avatar Upload
+### Example 1: Avatar Upload
 
 ```typescript
 @Post('me/avatar')
@@ -605,7 +576,7 @@ async uploadAvatar(/* multipart file "avatar" */) {
 }
 ```
 
-### Example 3: Updating the Profile
+### Example 2: Updating the Profile
 
 ```typescript
 @Patch('me')
@@ -613,7 +584,8 @@ async uploadAvatar(/* multipart file "avatar" */) {
 async updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateProfileRequestDto) {
     // First attempt:
     // - Display name and bio saved
-    // - Answer stored
+    // - UserProfileUpdatedEvent published (the auth module drops its cached user)
+    // - Answer stored for 10 minutes
 
     // Duplicate attempt, same body: the stored answer
     // Same key, edited body: 422 IDEMPOTENCY_KEY_MISMATCH
@@ -726,7 +698,7 @@ works.
 
 Idempotency prevents duplicate side effects in APIs:
 
-1. Apply `@Idempotent('TTL')` to routes with side effects; the starter does on `POST /users/me/username`, `PATCH /users/me` and `POST /users/me/avatar`
+1. Apply `@Idempotent('TTL')` to routes with side effects; the starter does on `PATCH /users/me` and `POST /users/me/avatar`
 2. Clients send a UUID `Idempotency-Key` per user action, and the same one on retries
 3. Duplicate requests get the stored answer; concurrent ones get `409`
 4. The same key with a different JSON body gets `422 IDEMPOTENCY_KEY_MISMATCH`

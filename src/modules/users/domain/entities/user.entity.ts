@@ -14,9 +14,10 @@ export class UserEntity {
     displayName: string | null
     avatarUrl: string | null
     bio: string | null
-    hasSetUsername: boolean
     /** When the "complete your account" step was done; null until then (D-61). */
     completedAt: Date | null
+    /** When the owner agreed to the Terms, in that step (REQ-AUTH-01). */
+    termsAcceptedAt: Date | null
 
     readonly createdAt: Date
     updatedAt: Date
@@ -31,8 +32,8 @@ export class UserEntity {
         displayName?: string | null
         avatarUrl?: string | null
         bio?: string | null
-        hasSetUsername?: boolean
         completedAt?: Date | null
+        termsAcceptedAt?: Date | null
         createdAt?: Date
         updatedAt?: Date
         deletedAt?: Date | null
@@ -45,8 +46,8 @@ export class UserEntity {
         this.displayName = props.displayName ?? null
         this.avatarUrl = props.avatarUrl ?? null
         this.bio = props.bio ?? null
-        this.hasSetUsername = props.hasSetUsername ?? false
         this.completedAt = props.completedAt ?? null
+        this.termsAcceptedAt = props.termsAcceptedAt ?? null
         this.createdAt = props.createdAt ?? new Date()
         this.updatedAt = props.updatedAt ?? new Date()
         this.deletedAt = props.deletedAt ?? null

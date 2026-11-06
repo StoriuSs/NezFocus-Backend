@@ -45,7 +45,12 @@ export class UserProfileResponseDto {
     @MaxLength(500)
     bio?: string
 
+    /**
+     * Whether the "complete your account" step is done (D-61). While it is
+     * not, every other signed-in route answers ACCOUNT_INCOMPLETE: the client
+     * opens /welcome.
+     */
     @Expose()
     @IsBoolean()
-    hasSetUsername: boolean
+    completed: boolean
 }

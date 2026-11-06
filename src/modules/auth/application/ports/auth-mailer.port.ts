@@ -5,11 +5,16 @@ export const EMAIL_LANGUAGES = ['vi', 'en'] as const
 export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
 
 /**
- * For a request that does not say, and for emails nobody asked for until
- * accounts store a language: English, as for any browser not set to
- * Vietnamese (D-64).
+ * For a request that does not say, and for an email nobody asked for sent to
+ * an account not completed yet (no language chosen): English, as for any
+ * browser not set to Vietnamese (D-64).
  */
 export const DEFAULT_EMAIL_LANGUAGE: EmailLanguage = 'en'
+
+/** An account's chosen language as the language of its emails (D-132). */
+export function accountEmailLanguage(language: string | null): EmailLanguage {
+    return EMAIL_LANGUAGES.find((known) => known === language) ?? DEFAULT_EMAIL_LANGUAGE
+}
 
 /** How a code email is worded, beyond its purpose. */
 export interface CodeEmail {

@@ -23,8 +23,7 @@ between them, to give someone admin rights, or to protect a route by role.
 stateDiagram-v2
     [*] --> NotCompleted: right emailed code for a new address
     [*] --> NotCompleted: first Continue with Google
-    NotCompleted --> Completed: complete your account (planned)
-    NotCompleted --> Deleted: POST /auth/account/delete with the password
+    NotCompleted --> Completed: POST /auth/complete-account
     Completed --> Deleted: POST /auth/account/delete with the password
     Deleted --> Erased: after 30 days, personal data erased
     Erased --> [*]
@@ -32,8 +31,8 @@ stateDiagram-v2
 
 | State | Can sign in? | Stored | Ends when |
 |---|---|---|---|
-| **Not completed** | Yes, with a code or Google (and a password, if one was added by reset) | `User` row with `completedAt` empty; no username; usually no password | the owner completes it, or deletes it |
-| **Completed** | Yes | `User` row with `completedAt` set, plus a password and/or a Google link, sessions | the owner deletes it |
+| **Not completed** | Yes, with a code or Google (and a password, if one was added by reset). Every signed-in route but three answers 403 `ACCOUNT_INCOMPLETE` | `User` row with `completedAt` empty; no username; usually no password; no `UserSettings` row | the owner completes it |
+| **Completed** | Yes | `User` row with `completedAt` and `termsAcceptedAt` set, a username, a password (and maybe a Google link), a `UserSettings` row, sessions. Accounts marked completed by the migration below may have no password, `termsAcceptedAt` or settings row | the owner deletes it |
 | **Deleted** | No: 403 `AUTH_ACCOUNT_DISABLED` | `User` row with `deletedAt` set; sign-in data already removed | after `DELETED_ACCOUNT_RETENTION_DAYS` (30) its personal data is erased |
 | **Erased** | No | the `User` row without personal data: id, roles, flags and dates | never: the row stays so that other data pointing to it keeps working |
 
@@ -61,8 +60,8 @@ There are two ways in:
   an account. The answer to the second says
   `account: { created, completed }`.
 - **"Continue with Google"** for an address with no account: the account is
-  created with no password, not completed, and the display name from Google
-  (D-130). See [google-sign-in.md](google-sign-in.md).
+  created with no password, not completed, and the display name from Google,
+  cut to 32 characters (D-130). See [google-sign-in.md](google-sign-in.md).
 
 - The code is 6 digits, valid 10 minutes, 5 tries; only the newest one works.
 - Asking again is the same call (at most one a minute and five an hour per
@@ -79,14 +78,56 @@ Every step, with diagrams: [flows.md](flows.md). Codes and their rules:
 (D-61). A new account, by code or by Google, starts with it empty, and the
 sign-in answer says `completed: false` so the web app opens the step.
 
-The step itself (`POST /auth/complete-account`: a username and a password)
-and the gate that refuses an account that has not done it come in a later
-slice. Until then an account that is not completed can use the API like any
-other.
+**The step.** `POST /api/v1/auth/complete-account` with `display_name`,
+`username`, `password`, `timezone`, `language` and `terms_accepted: true`
+(every field and error: [api-reference.md](api-reference.md#complete-your-account)).
+The [handler](../../src/modules/auth/application/commands/complete-account/complete-account.handler.ts):
+
+1. Checks the password against the policy, also against the email, the part
+   before `@` and the chosen username (D-66).
+2. Stores the password.
+3. In one transaction (the users repository's `complete`): sets the display
+   name, the username, `completedAt` and `termsAcceptedAt`, and creates the
+   `UserSettings` row (time zone, language, every other setting at its
+   default). The `UPDATE` has `completedAt: null` in its `WHERE`, so two
+   submissions at once complete the account once; the loser gets 409
+   `ACCOUNT_ALREADY_COMPLETE`. Whether the username is free is decided by the
+   unique index at that moment (409 `USERNAME_CONFLICT`); the availability
+   check the page makes while typing is only a hint.
+4. Drops the cached copy of the user, so the access token already in use
+   passes the gate on the very next request. No new token is issued.
+
+The password is stored before the account is completed, so a completed account
+always has one (D-130). If step 3 fails (the username was taken a moment
+ago), the account is still not completed and the next try replaces the
+password.
+
+The username is permanent: there is no route to change it.
+
+**The gate.** The global `AccessTokenGuard` already loads the account on every
+signed-in request (from the Redis session cache, falling back to Postgres). If
+its `completedAt` is empty, it answers 403 `ACCOUNT_INCOMPLETE` (403100),
+unless the route is marked `@AllowIncomplete()`
+([allow-incomplete.decorator.ts](../../src/shared/presentation/decorators/allow-incomplete.decorator.ts)).
+Only what the "complete your account" page needs is marked:
+
+| Route | Why |
+|---|---|
+| `POST /auth/complete-account` | The step itself |
+| `GET /users/me` | The client reads `completed` to know where to go |
+| `GET /users/username-available/:username` | The page checks the username as it is typed |
+
+Public routes (sign-in, `refresh`, `logout`, `forgot-password`...) are not
+affected: they have no signed-in user. The gate reads the account, not a claim
+in the token (D-128), so nothing has to keep a claim right wherever tokens are
+issued. The cost: if dropping the cached user fails (Redis down at that
+moment), the account stays refused for up to five minutes, until the cached
+copy expires.
 
 Accounts that existed before migration `20261106000000_codes_by_email` and
-had already chosen a username (`hasSetUsername`) were marked completed, with
-`completedAt` set to their `createdAt`.
+had already chosen a username were marked completed, with `completedAt` set to
+their `createdAt`. Their `termsAcceptedAt` is empty and they have no
+`UserSettings` row: every setting reads as its default.
 
 ## Ways to sign in: code, password, Google
 
@@ -100,14 +141,16 @@ has: `{ "password": true, "providers": ["google"] }`.
 | To | How | Sessions |
 |---|---|---|
 | Add Google to an account | Sign in with Google once. An account with the same address is linked, and its owner emailed "Google sign-in was added". | kept |
-| Add a password to an account without one | "Forgot password": `POST /auth/forgot-password` (the email offers to *choose* a password), then `POST /auth/reset-password`. The owner is emailed "A password was added". (Completing the account, planned, will also set one.) | **all** sessions end; this one starts fresh |
+| Add a password to an account without one | "Forgot password": `POST /auth/forgot-password` (the email offers to *choose* a password), then `POST /auth/reset-password`. The owner is emailed "A password was added". (Completing the account sets one too.) | **all** sessions end; this one starts fresh |
 | Change the password | `POST /auth/change-password` with `{ current_password, new_password }` | every **other** session ends |
 | Reset a forgotten password | `POST /auth/forgot-password`, then `POST /auth/reset-password` with `{ email, code, password }` | **all** sessions end; this one starts fresh |
 | Remove Google, or change the address | Not supported: there are no routes for these | — |
 
-Adding a first password needs an emailed code, not just a session: someone at
-a borrowed computer where the owner is signed in could otherwise add a
-password they know and keep access.
+Adding a first password to a completed account needs an emailed code, not just
+a session: someone at a borrowed computer where the owner is signed in could
+otherwise add a password they know and keep access. The one exception is
+"complete your account", which sets the password with only the session: an
+account that is not completed can do nothing else until it has done so.
 
 Details: [passwords-and-codes.md](passwords-and-codes.md),
 [sessions-and-tokens.md](sessions-and-tokens.md).
@@ -115,7 +158,10 @@ Details: [passwords-and-codes.md](passwords-and-codes.md),
 ## What the profile says about the account
 
 `GET /api/v1/users/me` returns the signed-in user's profile, including
-`roles`, for example `["user"]` or `["user", "admin"]` ([below](#roles)).
+`roles`, for example `["user"]` or `["user", "admin"]` ([below](#roles)), and
+`completed`: whether the "complete your account" step is done. It answers
+before the account is completed too, so a client calls it after any sign-in
+(or a refresh on page load) and opens the step when `completed` is `false`.
 
 It comes from the per-request session check, so a change (a new role, a
 deletion) shows on the next request.
@@ -127,9 +173,11 @@ alone is not enough: the API wants proof it is the owner, so that someone at an
 unlocked computer cannot do it.
 
 `POST /api/v1/auth/account/delete` with `password` (and an optional
-`language` for the email). The password is the only proof. An account without
-one (not completed, or made with Google) chooses one with "Forgot password"
-first.
+`language` for the email). The password is the only proof. A completed account
+without one (possible only for one marked completed by the migration above)
+chooses one with
+"Forgot password" first. An account that is not completed cannot delete
+itself: the route answers 403 `ACCOUNT_INCOMPLETE` until the step is done.
 
 If the password is missing, or the account has none, the answer is 400
 `AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. Wrong passwords

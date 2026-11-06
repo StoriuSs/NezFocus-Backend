@@ -42,7 +42,8 @@ with the terms from the glossary in bold.
 2. **Send it back.** Ada types the code. The API compares it with what it
    stored. Her address had no account, so the right code creates one now:
    her address is confirmed by the code itself, and the account has no
-   password or username yet ("not completed"). Then the API starts a
+   password or username yet ("not completed": before anything else in the
+   app she must choose them in "complete your account"). Then the API starts a
    **session**: a row in Postgres that says "Ada is signed in on this browser
    until 30 days from now". (A password, if she sets one later, is stored
    only as a **hash** made with **Argon2**.)

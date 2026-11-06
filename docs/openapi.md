@@ -95,7 +95,7 @@ really sends:
 | `bio: string \| null` | required, nullable | always sent, possibly `null` |
 | `bio?: string \| null` | optional, nullable | may be left out or `null` |
 
-A mismatch is a real bug for clients: if the DTO says `hasSetUsername?:
+A mismatch is a real bug for clients: if the DTO says `completed?:
 boolean` but the API always sends it, every frontend has to handle a
 `undefined` that never happens — or worse, the other way round.
 
@@ -109,12 +109,13 @@ instead:
 
 ```ts
 /**
- * Why the pattern is strict — this stays in the code.
+ * The "complete your account" page (S-ONB-01, REQ-AUTH-01, D-61). — this stays in the code.
  */
-export class SetUsernameRequestDto {
-    /** 2-32 lowercase letters, digits, underscores or dots. — this is published. */
+export class CompleteAccountRequestDto {
+    /** 2-32 characters of `a-z 0-9 _ .`; upper case is lowered. Permanent. — this is published. */
     @Matches(USERNAME_PATTERN)
     username: string
+    // ...
 }
 ```
 

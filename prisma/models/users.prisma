@@ -19,15 +19,17 @@ model User {
   // Checked by @Roles(). Changed with `pnpm user:promote`, not by users.
   roles String[] @default(["user"])
 
-  displayName    String?
-  avatarUrl      String?
-  bio            String?
-  hasSetUsername Boolean @default(false)
+  displayName String?
+  avatarUrl   String?
+  bio         String?
 
   // When the owner finished the "complete your account" step (D-61, D-128).
   // Empty: the account was just made (by a code or by Google) and cannot use
   // the app yet.
-  completedAt DateTime? @db.Timestamptz(6)
+  completedAt     DateTime? @db.Timestamptz(6)
+  // When the owner ticked "I agree to the Terms and the Privacy Policy" in
+  // that step (REQ-AUTH-01). Empty for accounts completed before L7.
+  termsAcceptedAt DateTime? @db.Timestamptz(6)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -41,6 +43,48 @@ model User {
   sessions      Session[]
   oauthAccounts OAuthAccount[]
 
+  // Made when the account is completed; until then every setting reads as
+  // its default (SRS 7.1, D-131).
+  settings UserSettings?
+
   @@index([username])
   @@index([deletedAt])
+}
+
+/// What a person chose for themselves, the same in every browser (SRS 7.1,
+/// D-131). Some switches only take effect in later milestones; they are
+/// stored now so the settings pages are whole from the start.
+model UserSettings {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// An IANA zone name as the browser sent it, e.g. Asia/Ho_Chi_Minh
+  /// (timezone.rules.ts).
+  timezone          String
+  /// When the zone was last changed in the settings: one change a day
+  /// (REQ-AUTH-08). The choice made when completing the account does not count.
+  timezoneChangedAt DateTime? @db.Timestamptz(6)
+  /// vi | en. Also the language of emails nobody asked for (D-132).
+  language          String
+  /// light | dark | system (D-37).
+  theme             String    @default("system")
+  /// The sound when a study phase ends (REQ-STUDY-06).
+  phaseSound        Boolean   @default(true)
+
+  /// Browser notifications: the main switch, then one per kind (REQ-NOTIF-04).
+  browserNotifications        Boolean @default(false)
+  notifyMentions              Boolean @default(true)
+  notifyDirectMessages        Boolean @default(true)
+  notifyIncomingCalls         Boolean @default(true)
+  notifyPhaseChanges          Boolean @default(true)
+  /// "Not now" on the prompt to turn them on: it is not shown again (D-100).
+  notificationPromptDismissed Boolean @default(false)
+
+  /// Direct messages from people who share a server (REQ-SOCIAL-04).
+  allowServerMemberMessages Boolean @default(true)
+  /// "Show study activity" (D-79).
+  showStudyActivity         Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 }

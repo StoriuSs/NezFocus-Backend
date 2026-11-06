@@ -9,11 +9,9 @@
 
 // Requests
 export { CheckUsernameParamsDto } from './check-username.params.dto'
-export { SetUsernameRequestDto } from './set-username.request.dto'
 export { UpdateProfileRequestDto } from './update-profile.request.dto'
 
 // Responses
-export { SetUsernameResponseDto } from './set-username.response.dto'
 export { UpdateProfileResponseDto } from './update-profile.response.dto'
 export { UploadAvatarResponseDto } from './upload-avatar.response.dto'
 export { UsernameAvailabilityResponseDto } from './username-availability.response.dto'

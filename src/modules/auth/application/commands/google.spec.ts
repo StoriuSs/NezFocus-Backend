@@ -58,6 +58,16 @@ describe('Signing in with Google', () => {
         expect(w.mailer.notices).toEqual([{ to: 'ada@example.test', kind: 'sign-in-method-added', language: 'en' }])
     })
 
+    it('tells the owner in the language the account chose, as nobody asked from a page (D-132)', async () => {
+        const w = setup()
+        const owner = w.account({ completedAt: new Date() })
+        w.directory.settings.set(owner.id, { timezone: 'Asia/Ho_Chi_Minh', language: 'vi' })
+
+        await viaGoogle(w)
+
+        expect(w.mailer.notices).toEqual([{ to: 'ada@example.test', kind: 'sign-in-method-added', language: 'vi' }])
+    })
+
     it('refuses a linked account that has been deleted', async () => {
         // Deleting an account must not be undone by signing in with Google.
         const w = setup()

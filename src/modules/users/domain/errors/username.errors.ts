@@ -12,13 +12,3 @@ export class UsernameTakenError extends DomainError {
         super(`Username already taken: ${username}`)
     }
 }
-
-/** Thrown when a user tries to set their username a second time (it is set once). */
-export class UsernameAlreadySetError extends DomainError {
-    readonly kind = 'invalid'
-    readonly errorKey = 'USERNAME_ALREADY_SET'
-
-    constructor() {
-        super('Username has already been set and cannot be changed')
-    }
-}
