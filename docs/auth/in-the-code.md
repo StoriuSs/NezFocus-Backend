@@ -45,7 +45,8 @@ src/modules/auth/
 ├── infrastructure/
 │   ├── adapters/                 *.adapter.ts: argon2, jose, openid-client, Redis, BullMQ,
 │   │                             Prometheus
-│   ├── email/                    auth-emails.ts (each email's subject and context) and templates/
+│   ├── email/                    auth-emails.ts (sends each email), email-copy.ts (the words, per
+│   │                             language) and templates/email.hbs (the one layout)
 │   └── persistence/              prisma-*.repository.ts, one per repository port
 ├── presentation/
 │   ├── http/                     the /auth routes in four *.controller.ts, by topic (below); auth-cookies.ts;
@@ -72,14 +73,11 @@ Outside the folder, auth also owns:
 | [src/shared/constants/sensitive-fields.ts](../../src/shared/constants/sensitive-fields.ts) | Fields and query parameters redacted from logs and Sentry |
 
 **The users module does not know auth exists.** The user row (address,
-`emailVerified`, roles, profile) belongs to users. Auth imports only what
+`completedAt`, roles, profile) belongs to users. Auth imports only what
 users publishes in [src/modules/users/index.ts](../../src/modules/users/index.ts)
 (an ESLint rule refuses anything deeper): the `USER_DIRECTORY` port
 ([user-directory.port.ts](../../src/modules/users/application/ports/user-directory.port.ts)),
-the events it reacts to, `DeleteAccountCommand`, and `normaliseEmail`. One
-read crosses the line the other way: users' sweep of never-confirmed sign-ups
-asks whether such an account has a password, in auth's `Credential` table
-(`deleteUnverifiedCreatedBefore` in the users repository).
+the events it reacts to, `DeleteAccountCommand`, and `normaliseEmail`.
 
 ## How a request travels
 
@@ -140,9 +138,9 @@ answer.
 
 | Controller | Routes under `/api/v1/auth` |
 |---|---|
-| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `register`, `verify-email`, `resend-verification`, `login`, `refresh`, `logout`, `logout-all`, `options` |
-| [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password`, `sign-in-methods`, `password/code`, `password` |
-| [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete-code`, `account/delete` |
+| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `logout-all`, `options` |
+| [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password`, `sign-in-methods` |
+| [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete` |
 | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) | `:provider`, `:provider/callback` (Google) |
 
 What they share is beside them: [auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts)
@@ -179,7 +177,7 @@ others in [application/ports/](../../src/modules/auth/application/ports/).
 | `TOKEN_SERVICE` | Issue and verify access tokens; make refresh tokens; hash refresh tokens and emailed codes | [jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts) | `jose` |
 | `CREDENTIAL_REPOSITORY` | The password hash | [prisma-credential.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-credential.repository.ts) | Prisma |
 | `SESSION_REPOSITORY` | Sessions and refresh tokens: create, rotate (row lock), revoke, find, clean up | [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Prisma |
-| `VERIFICATION_CODE_REPOSITORY` | The live emailed code per purpose; atomic attempt counting | [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | Prisma |
+| `VERIFICATION_CODE_REPOSITORY` | The live emailed code per address and purpose: `replace`, `check` (counts the try in one `UPDATE … RETURNING`), `use` (only if the hash still matches and it is unused, so an older code cannot use up a newer one), `deleteStale` | [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | Prisma |
 | `OAUTH_ACCOUNT_REPOSITORY` | Provider links (`provider`, `sub` → user) | [prisma-oauth-account.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-oauth-account.repository.ts) | Prisma |
 | `OAUTH_STATE` | An OAuth attempt while the browser is at Google, taken once | [redis-oauth-state.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-oauth-state.adapter.ts) | Redis |
 | `OAUTH_PROVIDERS` | The configured providers (an array): `start()` and `finish()` | [openid-connect-provider.adapter.ts](../../src/modules/auth/infrastructure/adapters/openid-connect-provider.adapter.ts), one instance per provider, built from config in `auth.module.ts` | `openid-client` |
@@ -205,9 +203,8 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 
 | Route | Command or query | Folder |
 |---|---|---|
-| `POST /auth/register` | `RegisterCommand` | [register/](../../src/modules/auth/application/commands/register/) |
-| `POST /auth/verify-email` | `VerifyEmailCommand` | [verify-email/](../../src/modules/auth/application/commands/verify-email/) |
-| `POST /auth/resend-verification` | `ResendVerificationCommand` | [resend-verification/](../../src/modules/auth/application/commands/resend-verification/) |
+| `POST /auth/email-code` | `SendEmailCodeCommand` | [send-email-code/](../../src/modules/auth/application/commands/send-email-code/) |
+| `POST /auth/email-code/verify` | `VerifyEmailCodeCommand` | [verify-email-code/](../../src/modules/auth/application/commands/verify-email-code/) |
 | `POST /auth/login` | `LoginCommand` | [login/](../../src/modules/auth/application/commands/login/) |
 | `POST /auth/refresh` | `RefreshCommand` | [refresh/](../../src/modules/auth/application/commands/refresh/) |
 | `POST /auth/logout` | `LogoutCommand` | [logout/](../../src/modules/auth/application/commands/logout/) |
@@ -216,9 +213,6 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 | `POST /auth/reset-password` | `ResetPasswordCommand` | [reset-password/](../../src/modules/auth/application/commands/reset-password/) |
 | `POST /auth/change-password` | `ChangePasswordCommand` | [change-password/](../../src/modules/auth/application/commands/change-password/) |
 | `GET /auth/sign-in-methods` | `GetSignInMethodsQuery` | [get-sign-in-methods/](../../src/modules/auth/application/queries/get-sign-in-methods/) |
-| `POST /auth/password/code` | `SendPasswordSetCodeCommand` | [send-password-set-code/](../../src/modules/auth/application/commands/send-password-set-code/) |
-| `POST /auth/password` | `SetPasswordCommand` | [set-password/](../../src/modules/auth/application/commands/set-password/) |
-| `POST /auth/account/delete-code` | `SendAccountDeletionCodeCommand` | [send-account-deletion-code/](../../src/modules/auth/application/commands/send-account-deletion-code/) |
 | `POST /auth/account/delete` | `DeleteOwnAccountCommand` | [delete-own-account/](../../src/modules/auth/application/commands/delete-own-account/) |
 | `GET /auth/{provider}` | `StartOAuthCommand` | [start-oauth/](../../src/modules/auth/application/commands/start-oauth/) |
 | `GET /auth/{provider}/callback` | `FinishOAuthCommand` | [finish-oauth/](../../src/modules/auth/application/commands/finish-oauth/) |
@@ -226,8 +220,9 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 | (the `maintenance` queue, hourly) | `CleanUpAuthCommand` | [clean-up-auth/](../../src/modules/auth/application/commands/clean-up-auth/) |
 
 Each handler's doc comment says what it promises and why (for example, why
-`register` hashes the password even for a taken address). Read it next to its
-tests in the scenario specs in `commands/` (`sign-up-and-confirm.spec.ts`, `sessions.spec.ts`,
+`forgot-password` stores a code nobody is sent for an address with no
+account). Read it next to its tests in the scenario specs in `commands/`
+(`email-code.spec.ts`, `sessions.spec.ts`,
 `passwords.spec.ts`, `google.spec.ts`, `delete-account.spec.ts`).
 
 `DeleteOwnAccountHandler` proves who is asking, then dispatches the **users**
@@ -242,10 +237,10 @@ by several handlers:
 
 | Service | What it does | Used by |
 |---|---|---|
-| `SignInGate` ([sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)) | **The only way into a session** after a first step: `pass` starts it through `SessionIssuer`, so a rule every sign-in path must follow has one place to live | login, verify-email, reset-password, finish-oauth |
+| `SignInGate` ([sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)) | **The only way into a session** after a first step: `pass` starts it through `SessionIssuer`, so a rule every sign-in path must follow has one place to live | login, email-code/verify, reset-password, finish-oauth |
 | `SessionIssuer` ([session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts)) | Creates the `Session` row and its first refresh token, and signs the access token | `SignInGate` |
-| `CodeIssuer` ([code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts)) | Makes a six-digit code, stores its HMAC (replacing any earlier one), queues the email; checks a code | register, resend, forgot, reset, verify, set-password, account deletion |
-| `SignInMethods` ([sign-in-methods.ts](../../src/modules/auth/application/services/sign-in-methods.ts)) | "Has a password? Which providers?", and a provider's display name | sign-in-methods, set-password, register, resend |
+| `CodeIssuer` ([code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts)) | Codes by address (D-129). `issue(address, purpose, now, email)` makes a six-digit code, stores its HMAC (replacing any earlier one for the address and purpose) and queues the email, or sends nothing when `email` is null; `check` counts a guess as one of the code's tries; `use` uses a right code up | email-code, email-code/verify, forgot-password, reset-password |
+| `SignInMethods` ([sign-in-methods.ts](../../src/modules/auth/application/services/sign-in-methods.ts)) | "Has a password? Which providers?", and a provider's display name | sign-in-methods |
 | `limits.ts` ([limits.ts](../../src/modules/auth/application/services/limits.ts)) | `refuseIfLimited` (check, count nothing), `enforce` (check, then count), `withGuess` (count a guess while it is checked) | every limited handler |
 
 One rule both a handler and an adapter need is in the domain instead,
@@ -264,8 +259,8 @@ in [events/handlers/](../../src/modules/auth/application/events/handlers/):
 | `UserProfileUpdatedEvent` | `RefreshCachedUserHandler` | Drops the cached user, so the next request sees the new profile and roles |
 
 In the other direction, auth calls into users through `USER_DIRECTORY`
-(`findByEmail`, `findById`, `createUnverified`, `createVerified`,
-`markEmailVerified`) and the `DeleteAccountCommand`, both from the users index. The users module also
+(`findByEmail`, `findById`, `create(email, displayName)`) and the
+`DeleteAccountCommand`, both from the users index. The users module also
 deletes the avatar on `AccountDeletedEvent` (its own
 `CleanupAccountAvatarHandler`). The full deletion chain is in
 [accounts.md](./accounts.md) and [account-deletion.md](../account-deletion.md).
@@ -281,8 +276,11 @@ runs them.
 
 | Job name | What it does |
 |---|---|
-| `send-code` | An emailed code: `email-verify`, `password-reset`, `password-set` or `account-delete` |
-| `password-changed`, `password-added`, `account-exists`, `sign-in-method-added`, `account-deleted` | One notice email each ([emails.md](./emails.md)) |
+| `send-code` | An emailed code: `sign-in` or `password-reset`. A job with a retired purpose (queued before an upgrade) is dropped with a warning |
+| `password-changed`, `password-added`, `sign-in-method-added`, `account-deleted` | One notice email each ([emails.md](./emails.md)) |
+
+Every job carries `language` (`vi` or `en`); a job without it, queued before
+emails had a language, is sent in English.
 
 Only emails: the clean-up runs on the `maintenance` queue (below), so a
 backlog of emails never delays it.
@@ -302,7 +300,7 @@ one job however many app instances run.
 | Queue / scheduler id | Every | Handler | What |
 |---|---|---|---|
 | `maintenance` / `auth-clean-up` | 1 hour | [clean-up-auth.handler.ts](../../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts) | 1. Revokes open sessions of deleted accounts and deletes their passwords and provider links (only left behind if an `AccountDeletedEvent` was lost; logs a warning when it finds any). 2. Deletes sessions ended or expired more than **7 days** ago, with their refresh tokens: a stolen token presented that week is still recognised as reuse. 3. Deletes codes expired or used more than **1 day** ago |
-| `maintenance` / `deleted-accounts-sweep` (users module) | 15 minutes | users' `SweepDeletedAccountsHandler` | Erases personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago, and hard-deletes accounts never confirmed after `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (their auth rows cascade) |
+| `maintenance` / `deleted-accounts-sweep` (users module) | 15 minutes | users' `SweepDeletedAccountsHandler` | Erases personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago. There is no sweep of unconfirmed accounts: an account is only made once its address is confirmed (D-133) |
 
 ## Redis keys
 
@@ -332,25 +330,26 @@ docker exec redis-nezfocus-web sh -c "redis-cli --scan --pattern 'rl:*' | xargs 
 ## Prisma tables
 
 All in [prisma/models/auth.prisma](../../prisma/models/auth.prisma). Every one
-cascades when its user row is deleted. Migrations:
-`20260923000000_self_hosted_auth`, `20260925000000_oauth_accounts`.
+but `VerificationCode` (keyed by address, not by user) cascades when its user
+row is deleted. Migrations: `20260923000000_self_hosted_auth`,
+`20260925000000_oauth_accounts`, `20261106000000_codes_by_email`.
 
 | Table | One row per | Key columns | Notes |
 |---|---|---|---|
 | `Credential` | user with a password | `userId` (primary key), `passwordHash` (argon2id, parameters in the string), `passwordUpdatedAt` | No row = no password (an account made with Google) |
 | `Session` | sign-in | `id` (the access token's `sid`), `userId`, `createdAt`, `lastUsedAt`, `expiresAt` (absolute), `revokedAt`, `revokedReason`, `userAgent` (≤ 512), `ip` | `revokedReason`: `logout`, `logout-all`, `password-changed`, `password-reset`, `reuse-detected`, `account-deleted`. Indexes `(userId, revokedAt)`, `(expiresAt)` |
 | `RefreshToken` | refresh token ever issued | `tokenHash` (SHA-256, unique), `sessionId`, `expiresAt`, `usedAt`, `replacedById` | Used tokens are kept with their session: presenting one again is how theft is noticed |
-| `VerificationCode` | user and purpose | `purpose` (`email-verify`, `password-reset`, `password-set`, `account-delete`), `codeHash` (HMAC keyed with `JWT_SECRET`), `expiresAt`, `attempts`, `consumedAt` | Unique `(userId, purpose)`: a new code replaces the old |
+| `VerificationCode` | address and purpose | `email` (normalised: trimmed, lower case), `purpose` (`sign-in`, `password-reset`), `codeHash` (HMAC of `purpose:email:code`, keyed with `JWT_SECRET`), `expiresAt`, `attempts`, `consumedAt` | Unique `(email, purpose)`: a new code replaces the old. Keyed by address, not by account (D-129): a sign-in code goes to an address that may have no account, and an address without one still gets a reset row (D-121) |
 | `OAuthAccount` | provider link | `provider` (`google`), `providerAccountId` (the provider's `sub`), `userId` | Unique `(provider, providerAccountId)`. Stores the `sub`, never the address |
 
 The user columns auth relies on (`email`, unique among live accounts
-case-insensitively; `emailVerified`; `roles`; `deletedAt`) are in
+case-insensitively; `completedAt`; `roles`; `deletedAt`) are in
 [users.prisma](../../prisma/models/users.prisma), owned by the users module.
 
 ## Metrics, alerts and logs
 
 **`auth_events_total{event}`**, a Prometheus counter, counted through
-`AUTH_EVENTS`. All 11 label values start at 0 when the app starts
+`AUTH_EVENTS`. All 10 label values start at 0 when the app starts
 ([prometheus-auth-events.adapter.ts](../../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts)),
 so the very first occurrence after a restart still shows as an increase and
 can alert. The list is `AUTH_EVENT_NAMES` in
@@ -358,12 +357,12 @@ can alert. The list is `AUTH_EVENT_NAMES` in
 
 | Event | Recorded when |
 |---|---|
-| `login_succeeded` | A right password, a confirmed address |
+| `login_succeeded` | A right password, or a right sign-in code |
 | `login_failed` | A wrong password or unknown address |
 | `login_rate_limited` | Sign-in refused by its limits |
 | `refresh_reuse_detected` | A used refresh token came back: its session was ended |
-| `registration` | A new account was created (not a repeat sign-up) |
-| `password_reset`, `password_set` | Reset with a code; a first password set |
+| `registration` | A right sign-in code made a new account (an address that had none) |
+| `password_reset` | A password reset with a code (or a first one added that way) |
 | `oauth_login_succeeded`, `oauth_login_failed` | A Google return finished, or failed with an `?error=` reason |
 | `oauth_account_linked` | Google linked to an existing account |
 | `account_deleted` | `POST /auth/account/delete` succeeded |
@@ -436,7 +435,7 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 
 | Suites | What they prove |
 |---|---|
-| The command specs in [commands/](../../src/modules/auth/application/commands/): `sign-up-and-confirm`, `sessions`, `passwords`, `google`, `delete-account` | Every handler against in-memory fakes of every port ([auth-test-world.shared-spec.ts](../../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)): sign-up answers the same for every address; the sign-up race; one error for wrong password and unknown address; the sign-in limits, bursts included; refresh rotation and reuse; reset and change password; Google's browser check, squatter password, unverified address and deleted account; deletion's proof |
+| The command specs in [commands/](../../src/modules/auth/application/commands/): `email-code`, `sessions`, `passwords`, `google`, `delete-account` | Every handler against in-memory fakes of every port ([auth-test-world.shared-spec.ts](../../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)): a code request answers the same for every address; the right code makes the account or signs in to it; only the newest code, each once; the code-email and wrong-code limits (D-134); a reset code for an address with no account wears out like a real one (D-121); one error for wrong password and unknown address; the sign-in limits, bursts included; refresh rotation and reuse; reset and change password, emails in the page's language; Google's browser check, new and linked accounts, unverified address and deleted account; deletion takes only the password |
 | [limits.spec.ts](../../src/modules/auth/application/services/limits.spec.ts) | A wrong guess stays counted, a right one is given back; a burst gets no more than the limit |
 | [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts) | Each rule broken on its own, the length bounds, Vietnamese letters, no common-password rule (D-29), the address or username dressed up |
 | [jose-token-service.adapter.spec.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.spec.ts) | An access token for another audience, from another issuer, or past its lifetime is refused |
@@ -452,11 +451,11 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 
 | Suite | What it proves |
 |---|---|
-| [auth.integration-spec.ts](../../test/integration/auth.integration-spec.ts) | The adapters under concurrency: the row lock decides one rotation; reuse after the replacement was used ends the session; ten simultaneous wrong codes all count, and one of five right ones wins; a revoked session or deleted account is refused at once even when cached, and a session revoked mid-read is not cached |
-| [auth-http.integration-spec.ts](../../test/integration/auth-http.integration-spec.ts) | The whole app over HTTP: sign-up, confirming with the sign-up password, sign-in, refresh from the web app only, sign-out; an IPv6 client counted by its /64, by the sign-in limit and the global throttler |
+| [auth.integration-spec.ts](../../test/integration/auth.integration-spec.ts) | The adapters under concurrency: the row lock decides one rotation; reuse after the replacement was used ends the session; ten simultaneous wrong codes all count, and one of five right ones wins; an older code cannot use up the newer one that replaced it; a sign-in code and a reset code for one address stay apart; a revoked session or deleted account is refused at once even when cached, and a session revoked mid-read is not cached |
+| [auth-http.integration-spec.ts](../../test/integration/auth-http.integration-spec.ts) | The whole app over HTTP: an account made with an emailed code and signed in to with the next one, in the page's language; a first password through forgot-password, sign-in with it, refresh from the web app only, sign-out; an IPv6 client counted by its /64, by the sign-in limit and the global throttler |
 | [oauth-http.integration-spec.ts](../../test/integration/oauth-http.integration-spec.ts) | Google sign-in against the fake issuer: a valid ID token signs in; one for another sign-in, another app, or signed with an unpublished key is refused |
-| [account-reuse.integration-spec.ts](../../test/integration/account-reuse.integration-spec.ts) | A deleted account's address signs up again, by password or by Google: a new account with a new id, both rows kept until the sweep; the old password refused; a second sign-up email within the minute refused |
-| [account-lifecycle.integration-spec.ts](../../test/integration/account-lifecycle.integration-spec.ts) | (users) concurrent avatar swaps and deletions; the sweep removes only never-confirmed sign-ups |
+| [account-reuse.integration-spec.ts](../../test/integration/account-reuse.integration-spec.ts) | A deleted account's address signs up again, by code or by Google: a new account with a new id, both rows kept until the sweep; the old password refused |
+| [account-lifecycle.integration-spec.ts](../../test/integration/account-lifecycle.integration-spec.ts) | (users) concurrent avatar swaps and deletions; two accounts made for one address at once become one; a deleted account's address gets a new account |
 | [rate-limiter.integration-spec.ts](../../test/integration/rate-limiter.integration-spec.ts) | Exactly `limit` hits pass when many arrive at once |
 
 **The fake OIDC issuer.**
@@ -602,13 +601,16 @@ export class GitHubProvider implements OAuthProviderPort {
 
 ### A new email
 
-1. **Template**: a `.hbs` file in
-   [src/modules/auth/infrastructure/email/templates/](../../src/modules/auth/infrastructure/email/templates/).
-   Handlebars runs in strict mode: every variable the template uses must be in
-   the context.
+1. **The words**: a method on `EmailCopy` in
+   [email-copy.ts](../../src/modules/auth/infrastructure/email/email-copy.ts),
+   written once per language (`vi` and `en`). The type makes every language
+   have every email (D-132). All emails share one layout,
+   [templates/email.hbs](../../src/modules/auth/infrastructure/email/templates/email.hbs);
+   a new email needs no template of its own.
 2. **Sending**: a method on `AuthEmails`
    ([auth-emails.ts](../../src/modules/auth/infrastructure/email/auth-emails.ts))
-   with the subject and context, like `sendPasswordAdded`.
+   that takes a `language` and puts the words in the layout, like
+   `sendPasswordAdded`.
 3. **The port**: a method on `AuthMailerPort`
    ([auth-mailer.port.ts](../../src/modules/auth/application/ports/auth-mailer.port.ts)).
 4. **The queue**: a job name in `AUTH_JOBS` and a job-data interface in

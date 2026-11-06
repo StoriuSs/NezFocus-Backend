@@ -345,7 +345,7 @@ without type-checking (`isolatedModules` in `test/esm-transform.js`):
 
 | Area | Suites (next to the code they test) |
 |---|---|
-| Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `sign-up-and-confirm`, `sessions` (sign-in limits, refresh, sign out everywhere), `passwords`, `google`, `delete-account` |
+| Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `email-code` (sign-up and sign-in by code), `sessions` (sign-in limits, refresh, sign out everywhere), `passwords`, `google`, `delete-account` |
 | Auth building blocks | `limits.spec.ts` (guesses counted before they are checked), `password-policy.spec.ts`, `jose-token-service.adapter.spec.ts` (a token for another audience, issuer, or past its lifetime is refused) |
 | Users | `upload-avatar` (no orphaned file), `sweep-deleted-accounts` |
 | Shared | the roles guard, 5xx answers that leak nothing, URL redaction in logs, the queue failure reporter (no job data), image-processing limits, S3 errors kept out of answers, stored file extensions, IPv6 /64, the verification code generator, unique error codes |
@@ -387,10 +387,10 @@ share the services.
 
 | Suite | Needs | What it checks |
 |---|---|---|
-| `auth` | Postgres, Redis | what only real services can prove: one refresh rotation wins under concurrency (the row lock), reuse after the replacement was used ends the session, codes guessed at once all count, a revoked session or deleted account is refused at once even when cached |
-| `auth-http` | Postgres, Redis, Mailpit | the whole app over HTTP: sign-up, confirming with the sign-up password, sign-in, refresh from the web app only, sign-out; an IPv6 client counted by its /64 |
+| `auth` | Postgres, Redis | what only real services can prove: one refresh rotation wins under concurrency (the row lock), reuse after the replacement was used ends the session, codes guessed at once all count, an older code cannot use up a newer one, a revoked session or deleted account is refused at once even when cached |
+| `auth-http` | Postgres, Redis, Mailpit | the whole app over HTTP: an account made with an emailed code and signed in to with the next one, a first password through forgot-password, sign-in, refresh from the web app only, sign-out; an IPv6 client counted by its /64 |
 | `oauth-http` | Postgres, Redis, Mailpit | Google sign-in against the fake OpenID Connect provider (`fake-oidc-issuer.ts`): a valid ID token signs in; one for another sign-in, another app, or signed with an unknown key is refused |
-| `account-lifecycle` | Postgres, Redis | concurrent avatar swaps and deletions; the sweep removes only never-confirmed sign-ups (upgraded users without a password stay) |
+| `account-lifecycle` | Postgres, Redis | concurrent avatar swaps and deletions; two accounts made for one address at once become one |
 | `rate-limiter` | Redis | exactly `limit` hits pass when many arrive at once |
 | `s3-storage` | RustFS | a private bucket refuses an unsigned URL and serves a signed one |
 

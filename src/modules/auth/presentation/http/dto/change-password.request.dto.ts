@@ -1,5 +1,6 @@
 import { IsString, MaxLength, MinLength } from 'class-validator'
-import { PASSWORD_INPUT_MAX } from './shared/fields.dto'
+import type { EmailLanguage } from '@/modules/auth/application/ports'
+import { IsEmailLanguage, PASSWORD_INPUT_MAX } from './shared/fields.dto'
 
 export class ChangePasswordRequestDto {
     @IsString()
@@ -11,4 +12,7 @@ export class ChangePasswordRequestDto {
     @MinLength(1)
     @MaxLength(PASSWORD_INPUT_MAX)
     newPassword: string
+
+    @IsEmailLanguage()
+    language?: EmailLanguage
 }

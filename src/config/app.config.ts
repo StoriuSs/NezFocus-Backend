@@ -24,6 +24,5 @@ export default registerAs('app', () => ({
     bullBoardPassword: process.env.BULL_BOARD_PASSWORD || 'admin',
     // Days a deleted account keeps its personal data before the maintenance
     // sweep erases it.
-    deletedAccountRetentionDays: parseIntSafe(process.env.DELETED_ACCOUNT_RETENTION_DAYS, 30),
-    unverifiedAccountRetentionDays: parseIntSafe(process.env.UNVERIFIED_ACCOUNT_RETENTION_DAYS, 7)
+    deletedAccountRetentionDays: parseIntSafe(process.env.DELETED_ACCOUNT_RETENTION_DAYS, 30)
 }))

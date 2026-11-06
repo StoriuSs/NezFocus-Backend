@@ -4,8 +4,6 @@ import { DeleteOwnAccountCommand } from './delete-own-account.command'
 import { DeleteAccountCommand, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
     AccountDisabledError,
-    CodeExpiredError,
-    CodeInvalidError,
     ConfirmationRequiredError,
     CREDENTIAL_REPOSITORY,
     CredentialRepositoryPort,
@@ -21,17 +19,19 @@ import {
     RATE_LIMIT,
     RateLimitPort
 } from '../../ports'
-import { AUTH_RATE_LIMITS, RateLimitRule } from '../../rate-limits'
-import { CodeIssuer } from '../../services/code-issuer'
+import { AUTH_RATE_LIMITS } from '../../rate-limits'
 import { withGuess } from '../../services/limits'
 
 /**
- * Delete your own account, proving it is you first: a signed-in session alone
- * is not enough, or anyone at an unlocked computer could do it.
+ * Delete your own account, proving it is you first with the password: a
+ * signed-in session alone is not enough, or anyone at an unlocked computer
+ * could do it (REQ-AUTH-09).
  *
- * The password, for an account that has one; otherwise a code emailed to it.
- * Each wrong answer counts against the limits it would at sign-in. Then the users module deletes the account (and its sessions, by
- * its event), and the owner is emailed.
+ * Only the password: every account sets one when it is completed (D-61,
+ * D-130). An account without one (made with Google before that rule) chooses
+ * one with "forgot password" first. Wrong passwords count as when changing it.
+ * Then the users module deletes the account (and its sessions, by its event),
+ * and the owner is emailed.
  */
 @CommandHandler(DeleteOwnAccountCommand)
 export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccountCommand> {
@@ -42,28 +42,20 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
-        private readonly codeIssuer: CodeIssuer,
         private readonly commandBus: CommandBus
     ) {}
 
-    async execute({ userId, proof, ip }: DeleteOwnAccountCommand): Promise<void> {
+    async execute({ userId, proof, language }: DeleteOwnAccountCommand): Promise<void> {
         const user = await this.directory.findById(userId)
         if (!user || user.deletedAt) throw new AccountDisabledError()
 
         const hash = await this.credentials.findHash(userId)
-        const missing = [
-            ...(hash !== null && !proof.password ? ['password' as const] : []),
-            ...(hash === null && !proof.code ? ['code' as const] : [])
-        ]
-        if (missing.length > 0) throw new ConfirmationRequiredError(missing)
-
-        if (hash !== null) await this.checkPassword(userId, hash, proof.password!)
-
-        if (hash === null) await this.checkCode(userId, proof.code!, ip)
+        if (hash === null || !proof.password) throw new ConfirmationRequiredError(['password'])
+        await this.checkPassword(userId, hash, proof.password)
 
         await this.commandBus.execute(new DeleteAccountCommand(userId, userId))
         await this.limiter.reset(AUTH_RATE_LIMITS.currentPasswordFailuresPerUser, userId)
-        if (user.email) await this.mailer.sendAccountDeleted(user.email)
+        if (user.email) await this.mailer.sendAccountDeleted(user.email, language)
         this.events.record('account_deleted')
     }
 
@@ -73,18 +65,6 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
             if (!(await this.hasher.verify(hash, password))) {
                 guess.wrong()
                 throw new CurrentPasswordInvalidError()
-            }
-        })
-    }
-
-    /** As every emailed code: wrong ones count against the IP, and the code dies after five. */
-    private async checkCode(userId: string, code: string, ip: string): Promise<void> {
-        const guesses: [RateLimitRule, string][] = [[AUTH_RATE_LIMITS.codeAttemptsPerIp, ip]]
-        await withGuess(this.limiter, guesses, async (guess) => {
-            const result = await this.codeIssuer.check(userId, code, 'account-delete', new Date())
-            if (result !== 'ok') {
-                guess.wrong()
-                throw result === 'expired' ? new CodeExpiredError() : new CodeInvalidError()
             }
         })
     }

@@ -26,8 +26,8 @@ there for a reason given below. Words like "hashing", "HMAC", "CSRF" and
 |---|---|---|
 | **Password guessing** on one account | 5 failed sign-ins per address per 15 minutes, then 429. Argon2id makes each guess cost about 19 MiB of memory and real CPU time, so offline guessing of a stolen hash is slow too. | [rate-limits.md](rate-limits.md), [passwords-and-codes.md](passwords-and-codes.md) |
 | **Credential stuffing and password spraying**: leaked passwords from other sites, or one common password tried on many accounts | 10 failed sign-ins per IP per 15 minutes across all addresses; new passwords must pass the policy (no common-password list, D-29); the `AuthFailedLoginSpike` alert (more than 50 failures in 10 minutes). | [rate-limits.md](rate-limits.md) |
-| **Account enumeration**: finding out which addresses have accounts | One error, `AUTH_INVALID_CREDENTIALS`, for a wrong password, an unknown address and an account without a password, in the same time (an unknown address still runs a dummy Argon2 check). "Not confirmed yet" is said only after the right password. Sign-up, resend and forgot password answer the same 202 for every address; the owner of an existing account gets an email instead. Limits keyed on an address count whether or not it exists. | [flows.md](flows.md) |
-| **Guessing an emailed code** | 6 random digits, valid 10 minutes, 5 tries per code (counted atomically, so parallel guesses each count), only the newest code works, and 20 wrong codes per IP per hour across all addresses. Codes are compared in constant time. | [passwords-and-codes.md](passwords-and-codes.md) |
+| **Account enumeration**: finding out which addresses have accounts | One error, `AUTH_INVALID_CREDENTIALS`, for a wrong password, an unknown address and an account without a password, in the same time (an unknown address still runs a dummy Argon2 check). Asking for a code and forgot password answer the same 202 for every address, and do the same work: every address gets a code (a reset code for an address with no account is stored and sent to nobody, so it wears out like a real one, D-121); only the email's wording differs. At reset, "the password is your username" is said only after the right code (D-66). Limits keyed on an address count whether or not it exists. | [flows.md](flows.md) |
+| **Guessing an emailed code** | 6 random digits, valid 10 minutes, 5 tries per code (counted atomically, so parallel guesses each count), only the newest code works, 20 wrong codes per IP per hour across all addresses, and 10 wrong codes per address per hour across its codes (D-134). Codes are compared in constant time. | [passwords-and-codes.md](passwords-and-codes.md) |
 | **Mail bombing**: making the API email someone over and over | 1 code email per address per minute and 5 per hour; 10 per IP per hour. | [rate-limits.md](rate-limits.md) |
 | **Floods** of requests | The global throttler: `THROTTLE_LIMIT` requests per IP per route per `THROTTLE_TTL`, before authentication runs. Bounded inputs (passwords at most 1024 characters, new ones at most 128) keep one request cheap. | [rate-limits.md](rate-limits.md#the-global-throttler) |
 
@@ -47,10 +47,10 @@ there for a reason given below. Words like "hashing", "HMAC", "CSRF" and
 
 | Threat | Defence | More |
 |---|---|---|
-| **Pre-registering a victim's address**, then waiting for them to sign in with Google | When Google links an account whose address was never confirmed, that account's password is deleted first (and the person is told). Unconfirmed accounts cannot sign in and are deleted after `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (7). | [google-sign-in.md](google-sign-in.md#which-account-a-google-sign-in-lands-in), [accounts.md](accounts.md) |
+| **Pre-registering a victim's address**, then waiting for them to sign in with Google | There is nothing to pre-register: an account is only made once its address is confirmed, by a right emailed code or by a provider that verified it (D-133). No account waits on an address with a password its owner did not set. | [google-sign-in.md](google-sign-in.md#which-account-a-google-sign-in-lands-in), [accounts.md](accounts.md) |
 | **Unverified provider email** | Google (or any provider) can create or link an account only for an address it says it verified; links are keyed on Google's stable `sub`, not the email. | [google-sign-in.md](google-sign-in.md) |
 | **A phished or reused password** | The owner is emailed when the password changes, a password is added, Google sign-in is added, and when the account is deleted. Changing the password ends every other session; resetting it ends all of them. | [emails.md](emails.md) |
-| **Someone at an unlocked computer** | A session alone is not enough for the dangerous actions: changing the password needs the current one; setting a first password needs an emailed code; deleting the account needs the password (or an emailed code). | [accounts.md](accounts.md) |
+| **Someone at an unlocked computer** | A session alone is not enough for the dangerous actions: changing the password needs the current one; adding a first password needs an emailed code ("forgot password"); deleting the account needs the password. | [accounts.md](accounts.md) |
 | **Deleted account still signed in** | Deletion ends every session at once, and the per-request check refuses a deleted user even if that failed. | [../account-deletion.md](../account-deletion.md) |
 | **Reading codes from the queue dashboard** | Emails are queued, and a waiting or failed code email holds the code. `/admin/queues` is always behind basic auth, and production refuses to start with the default `BULL_BOARD_PASSWORD`. | [emails.md](emails.md) |
 
@@ -70,7 +70,7 @@ What a copy of the database holds, and why it is not enough:
 |---|---|---|
 | Password | Argon2id hash (19 MiB, 2 passes), parameters in the string | Guessing, slowly, one account at a time |
 | Refresh token | SHA-256 of 32 random bytes | Nothing to guess: 256 random bits |
-| Emailed code | HMAC-SHA256 keyed with `JWT_SECRET`, over purpose, user and code | `JWT_SECRET`, and 10 minutes |
+| Emailed code | HMAC-SHA256 keyed with `JWT_SECRET`, over purpose, address and code | `JWT_SECRET`, and 10 minutes |
 | Google link | Google's `sub` only, never a Google token | — |
 | Rate-limit counters (Redis) | `rl:<name>:<SHA-256 of the address or IP>` | — |
 
@@ -137,7 +137,7 @@ Know these before you promise anything to your users:
 - **No "new sign-in" email** for a new device or location, and no email about
   failed sign-in attempts.
 - **No second sign-in step**: no authenticator-app codes, no passkeys or
-  security keys (WebAuthn), no SMS codes. A password (or Google) is enough.
+  security keys (WebAuthn), no SMS codes. One emailed code, a password, or Google is enough.
 - **No breached-password check** against an online list such as Have I Been
   Pwned, and no local common-password list either (D-29).
 - **No idle timeout.** A session lasts `AUTH_SESSION_TTL_DAYS` from sign-in,

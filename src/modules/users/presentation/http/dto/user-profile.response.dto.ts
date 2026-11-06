@@ -35,10 +35,6 @@ export class UserProfileResponseDto {
     avatarUrl: string | null
 
     @Expose()
-    @IsBoolean()
-    emailVerified: boolean
-
-    @Expose()
     @IsArray()
     @IsString({ each: true })
     roles: string[]

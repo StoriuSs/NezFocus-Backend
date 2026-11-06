@@ -2,13 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { QUEUES } from '@/shared/infrastructure/queue/queues'
-import { AccountSignInMethods, AuthMailerPort } from '@/modules/auth/application/ports'
-import { CodeEmailWording, CodePurpose } from '@/modules/auth/domain'
+import { AuthMailerPort, CodeEmail, EmailLanguage } from '@/modules/auth/application/ports'
+import { CodePurpose } from '@/modules/auth/domain'
 import {
     AUTH_JOBS,
     SendCodeJob,
     PasswordChangedJob,
-    AccountExistsJob,
     PasswordAddedJob,
     SignInMethodAddedJob,
     AccountDeletedJob,
@@ -25,41 +24,38 @@ export class BullMqAuthMailer implements AuthMailerPort {
         code: string,
         purpose: CodePurpose,
         expiresInMinutes: number,
-        wording: CodeEmailWording = {}
+        email: CodeEmail
     ): Promise<void> {
         const job: SendCodeJob = {
             to,
             code,
             purpose,
             expiresInMinutes,
-            firstPassword: wording.firstPassword,
-            name: wording.name
+            language: email.language,
+            accountExists: email.accountExists,
+            firstPassword: email.firstPassword,
+            name: email.name
         }
         await this.queue.add(AUTH_JOBS.SEND_CODE, job, EMAIL_JOB_OPTIONS)
     }
 
-    async sendPasswordChanged(to: string): Promise<void> {
-        const job: PasswordChangedJob = { to }
+    async sendPasswordChanged(to: string, language: EmailLanguage): Promise<void> {
+        const job: PasswordChangedJob = { to, language }
         await this.queue.add(AUTH_JOBS.PASSWORD_CHANGED, job, EMAIL_JOB_OPTIONS)
     }
 
-    async sendAccountExists(to: string, methods: AccountSignInMethods): Promise<void> {
-        const job: AccountExistsJob = { to, password: methods.password, providers: methods.providers }
-        await this.queue.add(AUTH_JOBS.ACCOUNT_EXISTS, job, EMAIL_JOB_OPTIONS)
-    }
-
-    async sendPasswordAdded(to: string): Promise<void> {
-        const job: PasswordAddedJob = { to }
+    async sendPasswordAdded(to: string, language: EmailLanguage): Promise<void> {
+        const job: PasswordAddedJob = { to, language }
         await this.queue.add(AUTH_JOBS.PASSWORD_ADDED, job, EMAIL_JOB_OPTIONS)
     }
 
-    async sendSignInMethodAdded(to: string, providerName: string): Promise<void> {
-        const job: SignInMethodAddedJob = { to, providerName }
+    async sendSignInMethodAdded(to: string, providerName: string, language: EmailLanguage): Promise<void> {
+        const job: SignInMethodAddedJob = { to, providerName, language }
         await this.queue.add(AUTH_JOBS.SIGN_IN_METHOD_ADDED, job, EMAIL_JOB_OPTIONS)
     }
 
-    async sendAccountDeleted(to: string): Promise<void> {
-        const job: AccountDeletedJob = { to }
+    async sendAccountDeleted(to: string, language: EmailLanguage): Promise<void> {
+        const job: AccountDeletedJob = { to, language }
         await this.queue.add(AUTH_JOBS.ACCOUNT_DELETED, job, EMAIL_JOB_OPTIONS)
     }
 }

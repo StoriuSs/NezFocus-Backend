@@ -3,8 +3,6 @@ import { Inject } from '@nestjs/common'
 import { FinishOAuthCommand } from './finish-oauth.command'
 import { DirectoryUser, normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
-    CREDENTIAL_REPOSITORY,
-    CredentialRepositoryPort,
     OAUTH_ACCOUNT_REPOSITORY,
     OAuthAccountRepositoryPort,
     OAuthProviderUnknownError,
@@ -15,36 +13,23 @@ import {
     AUTH_MAILER,
     AuthEventsPort,
     AuthMailerPort,
+    DEFAULT_EMAIL_LANGUAGE,
     OAUTH_PROVIDERS,
     OAUTH_STATE,
     OAuthChecks,
     OAuthIdentity,
     OAuthProviderPort,
-    OAuthStatePort,
-    SESSION_CACHE,
-    SessionCachePort
+    OAuthStatePort
 } from '../../ports'
 import { OAUTH_SETTINGS, OAuthSettings, oauthRedirectUri } from '../../oauth-settings'
 import { IssuedSession } from '../../services/session-issuer'
 import { SignInGate } from '../../services/sign-in-gate'
-
-/** The account a provider sign-in lands in, and whether linking removed a password. */
-interface Linked {
-    user: DirectoryUser
-    passwordRemoved: boolean
-}
 
 /** A session, and the web app page to return to afterwards. */
 export interface OAuthFinished {
     session: IssuedSession
     /** A path, checked when the attempt began. */
     redirect: string
-    /**
-     * Something the person should be told: `password_removed` — the account
-     * had been signed up with a password but never confirmed, so that
-     * password (perhaps someone else's) was removed on linking.
-     */
-    notice?: 'password_removed'
 }
 
 /**
@@ -55,13 +40,12 @@ export interface OAuthFinished {
  * 1. The one already linked to the provider's person, if any. A deleted one
  *    is refused.
  * 2. Otherwise, by address — only one the provider says it verified:
- *    - no account: a new one, confirmed, with no password;
- *    - a confirmed account: linked, and its owner emailed that a way to sign
- *      in was added (the email they need if it was not them);
- *    - an account never confirmed: its password is deleted before linking.
- *      Whoever set it never proved they read the inbox; the provider just
- *      did. Otherwise someone could register a victim's address first, wait
- *      for them to sign in with Google, then sign in with the password.
+ *    - no account: a new one, with no password and not completed: it goes
+ *      through "complete your account" like any other (D-61, D-130);
+ *    - an account: linked, and its owner emailed that a way to sign in was
+ *      added (the email they need if it was not them). Every account's
+ *      address is confirmed (D-133), so no password set by someone else can
+ *      be waiting on it.
  *
  * Every failure is an OAuthSignInError, which the controller turns into a
  * redirect to the web app naming the reason.
@@ -74,8 +58,6 @@ export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
         @Inject(OAUTH_SETTINGS) private readonly settings: OAuthSettings,
         @Inject(OAUTH_ACCOUNT_REPOSITORY) private readonly links: OAuthAccountRepositoryPort,
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
-        @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
-        @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
         private readonly gate: SignInGate
@@ -145,18 +127,14 @@ export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
             throw new OAuthSignInError('failed', `the code could not be redeemed: ${(error as Error).message}`)
         }
 
-        const { user, passwordRemoved } = await this.accountFor(provider, identity)
+        const user = await this.accountFor(provider, identity)
         const session = await this.gate.pass(user.id, command.client, new Date())
-        return {
-            session,
-            redirect,
-            ...(passwordRemoved ? { notice: 'password_removed' as const } : {})
-        }
+        return { session, redirect }
     }
 
-    private async accountFor(provider: OAuthProviderPort, identity: OAuthIdentity): Promise<Linked> {
+    private async accountFor(provider: OAuthProviderPort, identity: OAuthIdentity): Promise<DirectoryUser> {
         const linked = await this.linkedUser(provider.id, identity.subject)
-        if (linked) return { user: linked, passwordRemoved: false }
+        if (linked) return linked
 
         if (!identity.email || !identity.emailVerified) {
             throw new OAuthSignInError('email_unverified', 'the provider has not verified the address')
@@ -164,47 +142,40 @@ export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
         const email = normaliseEmail(identity.email)
 
         const existing = await this.directory.findByEmail(email)
-        const user = existing ?? (await this.directory.createVerified(email, identity.name))
+        const user = existing ?? (await this.directory.create(email, identity.name))
         if (!user) {
             // A concurrent sign-up took the address between the two calls.
             // The person is the same: carry on with that account.
             const winner = await this.directory.findByEmail(email)
             if (!winner) throw new OAuthSignInError('failed', 'the account could not be created')
-            return this.link(provider, identity, winner, { wasConfirmed: winner.emailVerified, isNew: false })
+            return this.link(provider, identity, winner, false)
         }
-        return this.link(provider, identity, user, {
-            wasConfirmed: existing?.emailVerified ?? true,
-            isNew: !existing
-        })
+        return this.link(provider, identity, user, !existing)
     }
 
     private async link(
         provider: OAuthProviderPort,
         identity: OAuthIdentity,
         user: DirectoryUser,
-        { wasConfirmed, isNew }: { wasConfirmed: boolean; isNew: boolean }
-    ): Promise<Linked> {
-        let passwordRemoved = false
-        if (!wasConfirmed) {
-            passwordRemoved = (await this.credentials.findHash(user.id)) !== null
-            await this.credentials.delete(user.id)
-            await this.directory.markEmailVerified(user.id)
-            await this.cache.invalidateUser(user.id)
-        }
-
+        isNew: boolean
+    ): Promise<DirectoryUser> {
         if (!(await this.links.link(user.id, provider.id, identity.subject))) {
             // Two returns for the same person at once, and the other linked
             // first — perhaps to another account. Sign in to whichever it is.
             const winner = await this.linkedUser(provider.id, identity.subject)
             if (!winner) throw new OAuthSignInError('failed', 'the account could not be linked')
-            return { user: winner, passwordRemoved: false }
+            return winner
         }
 
         if (!isNew) {
             this.events.record('oauth_account_linked')
-            if (wasConfirmed && user.email) await this.mailer.sendSignInMethodAdded(user.email, provider.displayName)
+            // Nobody asked for this email from a page: in the account's
+            // language once accounts store one (D-132).
+            if (user.email) {
+                await this.mailer.sendSignInMethodAdded(user.email, provider.displayName, DEFAULT_EMAIL_LANGUAGE)
+            }
         }
-        return { user, passwordRemoved }
+        return user
     }
 
     private async linkedUser(provider: string, subject: string): Promise<DirectoryUser | null> {

@@ -63,7 +63,7 @@ export class OAuthController {
                 new FinishOAuthCommand(provider, query, this.cookies.readOAuthState(req), client(req))
             )
             this.cookies.setRefresh(res, finished.session)
-            target = this.webApp({ redirect: finished.redirect, notice: finished.notice })
+            target = this.webApp({ redirect: finished.redirect })
         } catch (error) {
             if (error instanceof OAuthSignInError) {
                 this.logger.warn(`${provider} sign-in did not complete (${error.reason}): ${error.detail}`)

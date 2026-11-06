@@ -175,7 +175,6 @@ Set up: the domain and its addresses, [setup/domain-dns-tls.md](./setup/domain-d
 | `SUPPORT_EMAIL` | | empty | An address people can write to. Named in the "account deleted" email; empty, it says "contact support" without one | app | |
 | `GRACEFUL_SHUTDOWN_TIMEOUT_MS` | | `5000` | How long cache clean-up may take during shutdown before it carries on ([graceful-shutdown.md](./graceful-shutdown.md)) | app | |
 | `DELETED_ACCOUNT_RETENTION_DAYS` | | `30` | Days a deleted account keeps its personal data before the sweep erases it. Also stated in the "account deleted" email ([account-deletion.md](./account-deletion.md)) | app | |
-| `UNVERIFIED_ACCOUNT_RETENTION_DAYS` | | `7` | Days an account may stay unconfirmed before it is deleted, freeing its address. At least 1 ([auth/accounts.md](./auth/accounts.md)) | app | |
 
 ### Browsers and CORS
 
@@ -474,8 +473,8 @@ not the app, refuses, and its error names the missing one. The other two
 data volume. Changing it later does nothing until that volume is deleted. The
 same is true of `DB_PASSWORD` and Postgres.
 
-**Mail that never arrives stops every sign-up.** An account cannot sign in until
-its address is confirmed with an emailed code. Send one real sign-up through
+**Mail that never arrives stops every sign-up.** An account is only made with
+an emailed code, and signing in by code needs one too. Ask for one real code through
 your SMTP settings before launch.
 
 ## Production is stricter

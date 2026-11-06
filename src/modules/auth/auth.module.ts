@@ -16,9 +16,7 @@ import {
     DeleteOwnAccountHandler,
     GetAuthOptionsHandler,
     GetSignInMethodsHandler,
-    SendAccountDeletionCodeHandler,
-    SendPasswordSetCodeHandler,
-    SetPasswordHandler,
+    SendEmailCodeHandler,
     SignInMethods,
     SignInGate,
     CleanUpAuthHandler,
@@ -39,14 +37,12 @@ import {
     RATE_LIMIT,
     RefreshCachedUserHandler,
     RefreshHandler,
-    RegisterHandler,
-    ResendVerificationHandler,
     ResetPasswordHandler,
     SESSION_CACHE,
     SessionIssuer,
     StartOAuthHandler,
     TOKEN_SERVICE,
-    VerifyEmailHandler
+    VerifyEmailCodeHandler
 } from './application'
 import {
     CREDENTIAL_REPOSITORY,
@@ -77,9 +73,8 @@ import {
 import { AccessTokenGuard, AUTH_CONTROLLERS, AuthCookies, AuthJobsConsumer } from './presentation'
 
 const CommandHandlers = [
-    RegisterHandler,
-    VerifyEmailHandler,
-    ResendVerificationHandler,
+    SendEmailCodeHandler,
+    VerifyEmailCodeHandler,
     LoginHandler,
     RefreshHandler,
     LogoutHandler,
@@ -90,9 +85,6 @@ const CommandHandlers = [
     CleanUpAuthHandler,
     StartOAuthHandler,
     FinishOAuthHandler,
-    SendPasswordSetCodeHandler,
-    SetPasswordHandler,
-    SendAccountDeletionCodeHandler,
     DeleteOwnAccountHandler
 ]
 

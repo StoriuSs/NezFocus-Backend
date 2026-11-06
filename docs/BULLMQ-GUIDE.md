@@ -99,12 +99,14 @@ are defined in `src/modules/auth/infrastructure/email/auth-email-jobs.ts`):
 
 | Job | Sent when |
 | --- | --- |
-| `send-code` | A 6-digit code: confirm a sign-up, reset a password, set a first password, delete an account |
+| `send-code` | A 6-digit code: sign in (or create the account), or reset a password |
 | `password-changed` | The password was changed or reset |
 | `password-added` | A password was added to an account that had none |
-| `account-exists` | Someone tried to sign up with an address that already has an account |
 | `sign-in-method-added` | Google was linked to an existing account |
 | `account-deleted` | The account was deleted |
+
+Each job carries the email's `language` (`vi` or `en`); a job queued before
+emails had one is sent in English.
 
 These override the queue's defaults with `EMAIL_JOB_OPTIONS`: **3 attempts,
 exponential backoff from 5 seconds**, removed **at once** when sent, and kept a
@@ -142,7 +144,7 @@ Two schedules ship with the starter:
 
 | Queue | Scheduler | Every | What it does |
 | --- | --- | --- | --- |
-| `maintenance` | `deleted-accounts-sweep` (users) | 15 min | Erases the personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago; deletes accounts unconfirmed for `UNVERIFIED_ACCOUNT_RETENTION_DAYS` |
+| `maintenance` | `deleted-accounts-sweep` (users) | 15 min | Erases the personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago |
 | `maintenance` | `auth-clean-up` (auth) | 1 h | Removes sessions that ended a week ago and codes a day old; ends what a lost `AccountDeletedEvent` left behind (sessions, passwords and Google links of deleted accounts) |
 
 ## Code map

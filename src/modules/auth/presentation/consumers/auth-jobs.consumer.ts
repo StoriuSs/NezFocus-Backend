@@ -4,7 +4,6 @@ import { Job, Queue } from 'bullmq'
 import { QUEUES } from '@/shared/infrastructure/queue/queues'
 import { AuthEmails } from '@/modules/auth/infrastructure/email/auth-emails'
 import {
-    AccountExistsJob,
     PasswordAddedJob,
     AUTH_JOBS,
     PasswordChangedJob,
@@ -12,6 +11,11 @@ import {
     SendCodeJob,
     SignInMethodAddedJob
 } from '@/modules/auth/infrastructure/email/auth-email-jobs'
+import { DEFAULT_EMAIL_LANGUAGE, EmailLanguage } from '@/modules/auth/application/ports'
+
+/** A job queued before emails had a language is in English. */
+const languageOf = (job: Job): EmailLanguage =>
+    (job.data as { language?: EmailLanguage }).language ?? DEFAULT_EMAIL_LANGUAGE
 
 /**
  * Where the hourly clean-up was scheduled before it moved to the maintenance
@@ -44,35 +48,37 @@ export class AuthJobsConsumer extends WorkerHost implements OnApplicationBootstr
     async process(job: Job): Promise<void> {
         switch (job.name) {
             case AUTH_JOBS.SEND_CODE: {
-                const { to, code, purpose, expiresInMinutes, firstPassword, name } = job.data as SendCodeJob
-                await this.emails.sendCode(to, code, purpose, name || undefined, expiresInMinutes, {
-                    firstPassword: firstPassword === true
+                const { to, code, purpose, expiresInMinutes, accountExists, firstPassword, name } =
+                    job.data as SendCodeJob
+                // A code of a flow that no longer exists (queued before an
+                // upgrade): it could not be used anyway.
+                if (purpose !== 'sign-in' && purpose !== 'password-reset') {
+                    this.logger.warn(`Code email for the retired purpose "${String(purpose)}" (${job.id}), dropped`)
+                    return
+                }
+                await this.emails.sendCode(to, code, purpose, expiresInMinutes, {
+                    language: languageOf(job),
+                    accountExists: accountExists === true,
+                    firstPassword: firstPassword === true,
+                    name: name || undefined
                 })
                 return
             }
             case AUTH_JOBS.PASSWORD_CHANGED: {
-                await this.emails.sendPasswordChanged((job.data as PasswordChangedJob).to)
-                return
-            }
-            case AUTH_JOBS.ACCOUNT_EXISTS: {
-                const { to, password, providers } = job.data as AccountExistsJob
-                await this.emails.sendAccountExists(
-                    to,
-                    password === undefined ? undefined : { password, providers: providers ?? [] }
-                )
+                await this.emails.sendPasswordChanged((job.data as PasswordChangedJob).to, languageOf(job))
                 return
             }
             case AUTH_JOBS.PASSWORD_ADDED: {
-                await this.emails.sendPasswordAdded((job.data as PasswordAddedJob).to)
+                await this.emails.sendPasswordAdded((job.data as PasswordAddedJob).to, languageOf(job))
                 return
             }
             case AUTH_JOBS.SIGN_IN_METHOD_ADDED: {
                 const { to, providerName } = job.data as SignInMethodAddedJob
-                await this.emails.sendSignInMethodAdded(to, providerName)
+                await this.emails.sendSignInMethodAdded(to, providerName, languageOf(job))
                 return
             }
             case AUTH_JOBS.ACCOUNT_DELETED: {
-                await this.emails.sendAccountDeleted((job.data as AccountDeletedJob).to)
+                await this.emails.sendAccountDeleted((job.data as AccountDeletedJob).to, languageOf(job))
                 return
             }
             default:

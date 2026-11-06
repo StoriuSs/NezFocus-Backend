@@ -8,20 +8,26 @@ model User {
   // so @unique is deliberately absent here.
   username String?
 
-  // The sign-in address. Registration always sets it, stored lower-case; it
-  // is nullable only because the retention sweep erases it from long-deleted
-  // accounts. Unique among live accounts, case-insensitively — a hand-written
-  // partial index again (migration 20260923000000_self_hosted_auth), so a
-  // deleted account's address can register afresh.
-  email         String?
-  emailVerified Boolean  @default(false)
+  // The sign-in address, always confirmed: an account is only made once its
+  // owner entered the code sent to it, or by a provider that verified it
+  // (D-59, D-133). Stored lower-case; nullable only because the retention
+  // sweep erases it from long-deleted accounts. Unique among live accounts,
+  // case-insensitively — a hand-written partial index again (migration
+  // 20260923000000_self_hosted_auth), so a deleted account's address can be
+  // used afresh.
+  email String?
   // Checked by @Roles(). Changed with `pnpm user:promote`, not by users.
-  roles         String[] @default(["user"])
+  roles String[] @default(["user"])
 
   displayName    String?
   avatarUrl      String?
   bio            String?
   hasSetUsername Boolean @default(false)
+
+  // When the owner finished the "complete your account" step (D-61, D-128).
+  // Empty: the account was just made (by a code or by Google) and cannot use
+  // the app yet.
+  completedAt DateTime? @db.Timestamptz(6)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -31,13 +37,10 @@ model User {
   // Owned by the auth module (prisma/models/auth.prisma). Declared here only
   // because Prisma needs both sides of a relation; the users module never
   // reads or writes them.
-  credential        Credential?
-  sessions          Session[]
-  verificationCodes VerificationCode[]
-  oauthAccounts     OAuthAccount[]
+  credential    Credential?
+  sessions      Session[]
+  oauthAccounts OAuthAccount[]
 
   @@index([username])
   @@index([deletedAt])
-  // The sweep that deletes accounts never verified.
-  @@index([emailVerified, createdAt])
 }

@@ -1,8 +1,7 @@
 # Passwords and emailed codes
 
 The rules a password must follow, how it is stored, and how the six-digit
-codes that confirm an address, reset a password, set a first password or
-delete an account work.
+codes that sign in (or create an account) and reset a password work.
 
 Read this if you are building a sign-up or settings form, changing a rule, or
 wondering why a code was refused. New to hashing and HMAC? See
@@ -53,7 +52,7 @@ mark each rule:
   "data": {
     "rules": ["uppercase", "digit"],
     "details": "Include an upper-case letter. Include a digit.",
-    "path": "/api/v1/auth/register",
+    "path": "/api/v1/auth/reset-password",
     "method": "POST"
   }
 }
@@ -108,15 +107,18 @@ is still how "being the address or the username" is compared, above.
 
 | Route | Checked against |
 |---|---|
-| `POST /auth/register` | the address only (a new account has no username) |
-| `POST /auth/reset-password` | the address first, before looking the account up; then the address and the username |
+| `POST /auth/reset-password` | the rules that need only the address, before the code; then, only once the code is known right, "not the username" |
 | `POST /auth/change-password` | the address and the username |
-| `POST /auth/password` (first password) | the address and the username |
 | `POST /auth/login` | nothing: an old password that predates a rule still signs in |
 
-Reset checks with the address first so that whether the password is refused
-cannot depend on whether the account exists. Every route checks the rules
-before the emailed code, so a refused password does not use the code up.
+Reset checks in this order (D-66): the rules that need only the address,
+then the code, then the account and "the password is not the username", then
+the code is used up. Whether the password is refused by the address rules
+cannot depend on whether the account exists, and a refused password does not
+use a try. The username rule waits for the right code: checked before it, the
+answer would tell anyone guessing that an account with this username has this
+address. A password refused by it keeps the code, so the person can try
+another.
 
 ### Mirroring the rules in the frontend
 
@@ -155,7 +157,7 @@ Three details:
   which addresses exist.
 - **A damaged stored hash** counts as a wrong password, not a server error.
 - **Raising the parameters upgrades accounts as they sign in.** After a
-  successful sign-in (and the confirmed-address check), a hash that is not
+  successful sign-in, a hash that is not
   Argon2id, or uses less memory, fewer passes or a different number of lanes
   than the current settings, is replaced with a fresh one.
 
@@ -166,25 +168,30 @@ point against an attacker with a stolen database.
 ## Emailed codes
 
 A six-digit code sent to the address proves the person can read that inbox.
-Four things use one:
+Two things use one (D-129):
 
-| Purpose | Sent by | Checked by | Email |
+| Purpose | Sent by | Checked by | Email (English) |
 |---|---|---|---|
-| `email-verify` | `POST /auth/register`, `POST /auth/resend-verification` (unconfirmed address) | `POST /auth/verify-email` | "Verify your {app} account" |
+| `sign-in` | `POST /auth/email-code` | `POST /auth/email-code/verify` | "Your {app} sign-in code" when the address has an account, "Your code to create a {app} account" when it has none (D-59, D-60) |
 | `password-reset` | `POST /auth/forgot-password` | `POST /auth/reset-password` | "Reset your {app} password", or "Choose a password for your {app} account" when the account has none |
-| `password-set` | `POST /auth/password/code` | `POST /auth/password` | "Your code to set a {app} password" |
-| `account-delete` | `POST /auth/account/delete-code` | `POST /auth/account/delete` | "Your code to delete your {app} account" |
 
-`{app}` is `APP_NAME`. The emails are described in [emails.md](./emails.md).
+`{app}` is `APP_NAME`. Each email is in the request's `language` (`vi` or
+`en`, D-132). The emails are described in [emails.md](./emails.md).
+
+Codes are keyed by address, not by account: a sign-in code goes to an address
+that may have no account yet. And `forgot-password` for an address with no
+account still stores a reset code, one nobody is sent. Guesses at it are
+counted and wear it out after five exactly as for a real one, so "the fifth
+guess says expired" cannot tell which addresses have accounts (D-121).
 
 | Rule | Value | Why |
 |---|---|---|
 | Format | 6 digits, `000000` to `999999`, from `crypto.randomInt`; leading zeros kept | A predictable generator would let codes be guessed; zero-padding keeps all million possible |
 | Valid for | 10 minutes | Long enough to switch to the inbox, short enough that an old email is useless |
 | Attempts | 5 per code | A million possibilities, five guesses: a one in 200,000 chance |
-| One at a time | One live code per account and purpose. A new code replaces the old one, which stops working at once, and the attempt count starts again | So "send it again" never leaves two codes that work |
+| One at a time | One live code per address and purpose. A new code replaces the old one, which stops working at once, and the attempt count starts again | So "send it again" never leaves two codes that work |
 | Used once | A right code is used up | So it cannot be replayed |
-| Separate purposes | A reset code does not work for confirming an address, and so on | The purpose is part of what is hashed |
+| Separate purposes | A reset code does not sign in, and a sign-in code does not reset a password | The purpose is part of the key and of what is hashed |
 | Input | Must be exactly six digits in the request (else `422`); surrounding spaces are trimmed | |
 
 The 10 minutes and 5 attempts are hard-coded in
@@ -193,23 +200,26 @@ The 10 minutes and 5 attempts are hard-coded in
 
 **Limits around codes** (full table in [rate-limits.md](./rate-limits.md)):
 
-- code emails to one address: 1 a minute and 5 an hour (sign-up has its own
-  one-a-minute counter, and shares the five an hour);
-- code emails requested from one IP: 10 an hour (resend and forgot password);
+- code emails to one address: 1 a minute and 5 an hour, shared by sign-in
+  and reset codes;
+- code emails requested from one IP: 10 an hour;
 - wrong codes from one IP, across addresses: 20 an hour. Only wrong codes
   count. This stops someone spreading guesses over many addresses, five at
-  a time.
+  a time;
+- wrong codes for one address, across its codes: 10 an hour (D-134). Without
+  it, five codes an hour would give 25 guesses an hour at one address from
+  many IPs.
 
 ## How codes are stored
 
 Never as the code itself. The `VerificationCode` table
-([auth.prisma](../../prisma/models/auth.prisma)) has one row per account and
-purpose:
+([auth.prisma](../../prisma/models/auth.prisma)) has one row per address and
+purpose, whether or not the address has an account (D-129):
 
 | Column | Meaning |
 |---|---|
-| `userId`, `purpose` | Unique together: one live code per purpose |
-| `codeHash` | `HMAC-SHA256(key = JWT_SECRET, "<purpose>:<user id>:<code>")`, hex |
+| `email`, `purpose` | Unique together: one live code per address and purpose. The address is normalised (trimmed, lower case) |
+| `codeHash` | `HMAC-SHA256(key = JWT_SECRET, "<purpose>:<email>:<code>")`, hex |
 | `createdAt`, `expiresAt` | When it was issued, and 10 minutes later |
 | `attempts` | Guesses so far |
 | `consumedAt` | When the right code was used |
@@ -217,8 +227,8 @@ purpose:
 Why an [HMAC](./concepts.md#hmac) and not a plain hash: six digits are only a
 million options, so anyone with the database could hash all million and read
 every code. Keyed with a secret that is not in the database, the stored
-values are useless on their own. The user id and purpose are mixed in, so the
-same code for two accounts or two purposes gives different values.
+values are useless on their own. The address and purpose are mixed in, so the
+same code for two addresses or two purposes gives different values.
 
 **A consequence: changing `JWT_SECRET` kills every code already sent.** The
 stored HMACs were made with the old key, so every waiting code answers
@@ -231,21 +241,32 @@ used ([clean-up-auth.handler.ts](../../src/modules/auth/application/commands/cle
 ## How a code is checked
 
 [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts)
-(`consume`). The attempt is counted in the same SQL statement that reads the
+in two steps.
+
+**`check`** counts the attempt in the same SQL statement that reads the
 code (`UPDATE … SET attempts = attempts + 1 … RETURNING`), so ten guesses
-sent at the same moment use up ten attempts, not one. Then:
+sent at the same moment use up ten attempts, not one. It answers `right`,
+`wrong` or `expired`, and does **not** use the code up:
 
 | Situation | Answer |
 |---|---|
-| No code waiting for this purpose, or it was already used | `400 AUTH_CODE_INVALID` |
-| Past `expiresAt`, or this is the 6th attempt or later | `400 AUTH_CODE_EXPIRED` |
-| Wrong code, and that was the 5th attempt | `400 AUTH_CODE_EXPIRED`: said now, not on the next try |
-| Wrong code, attempts 1 to 4 | `400 AUTH_CODE_INVALID` |
-| Right code | Marked used (a conditional update, so two right answers at once succeed only once); the route carries on |
+| No code waiting for this address and purpose, or it was already used | `wrong`: `400 AUTH_CODE_INVALID` |
+| Past `expiresAt`, or this is the 6th attempt or later | `expired`: `400 AUTH_CODE_EXPIRED` |
+| Wrong code, and that was the 5th attempt | `expired`: said now, not on the next try |
+| Wrong code, attempts 1 to 4 | `wrong`: `400 AUTH_CODE_INVALID` |
+| Right code | `right`; the route carries on |
 
-The hashes are compared in constant time (`timingSafeEqual`). An unknown
-address at `verify-email` or `reset-password` answers
-`400 AUTH_CODE_INVALID` too, so these routes cannot be used to find accounts.
+**`use`** uses a right code up, once the route's other checks have passed
+(reset keeps the code when the password is refused). It is a conditional
+update matching the address, the purpose, the code's hash and "not used yet".
+Two right answers at once succeed only once (the other gets
+`400 AUTH_CODE_INVALID`), and an older code cannot use up a newer one that
+replaced it after `check`.
+
+The hashes are compared in constant time (`timingSafeEqual`). Every address
+that asked has a code, account or not, so `email-code/verify` and
+`reset-password` answer a wrong guess the same everywhere and cannot be used
+to find accounts.
 
 The messages the person sees:
 
@@ -275,7 +296,7 @@ On the 5th attempt a right code still works; only a 5th wrong one ends it.
 | [code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts) | Makes a code, stores its HMAC, queues the email; checks a code |
 | [code-generator.util.ts](../../src/shared/utils/code-generator.util.ts) | The six random digits |
 | [jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts) | `hashVerificationCode`, the HMAC |
-| [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | One live code per purpose; the counted check |
+| [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | One live code per address and purpose; the counted check; using a code up |
 | [domain/errors/](../../src/modules/auth/domain/errors/) | The error messages |
 
 Tests: [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts)

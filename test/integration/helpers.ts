@@ -77,3 +77,50 @@ export const pair = (set: string | undefined) => {
     if (!set) throw new Error('No such cookie: an earlier step failed')
     return set.split(';')[0]
 }
+
+/** A POST from one client of the web app, signed in or not. */
+export type Post = (path: string, body?: object, accessToken?: string) => request.Test
+
+/** The code in the newest email whose subject contains `subject`, once it is not `previous` (an earlier email's). */
+export async function newCodeIn(to: string, subject: string, previous?: string): Promise<string> {
+    for (let attempt = 0; attempt < 40; attempt++) {
+        const code = codeIn(await latestEmail(to, subject))
+        if (code !== previous) return code
+        await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    throw new Error(`No new "${subject}" email reached ${to}`)
+}
+
+/**
+ * Signs in with an emailed code, as the "create an account" and "sign in
+ * with a code" pages do; makes the account if the address has none. Every
+ * code email's subject has "code" in it, in English (no `language` sent).
+ */
+export async function signInWithCode(post: Post, email: string, previousCode?: string) {
+    expect((await post('auth/email-code', { email })).status).toBe(202)
+    const code = await newCodeIn(email, 'code', previousCode)
+    const verified = await post('auth/email-code/verify', { email, code })
+    expect(verified.status).toBe(200)
+    return {
+        accessToken: verified.body.data.access_token as string,
+        account: verified.body.data.account as { created: boolean; completed: boolean },
+        code,
+        response: verified
+    }
+}
+
+/**
+ * Gives an account without a password (made by a code, or with Google) its
+ * first one through "forgot password", which signs in again (every earlier
+ * session ends): returns the new access token. `beforeEmail` runs first: one
+ * code email a minute per address, so a test that just sent one resets that
+ * count there.
+ */
+export async function setFirstPassword(post: Post, email: string, password: string, beforeEmail: () => Promise<void>) {
+    await beforeEmail()
+    expect((await post('auth/forgot-password', { email })).status).toBe(202)
+    const code = await newCodeIn(email, 'Choose a password')
+    const reset = await post('auth/reset-password', { email, code, password })
+    expect(reset.status).toBe(200)
+    return reset.body.data.access_token as string
+}

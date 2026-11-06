@@ -36,15 +36,11 @@ export const AUTH_RATE_LIMITS = {
     loginFailuresPerEmail: { name: 'login-fail-email', limit: 5, windowMs: 15 * MINUTE, reason: 'sign_ins' },
     /** Failed sign-ins per IP, across any addresses: one host spraying passwords. */
     loginFailuresPerIp: { name: 'login-fail-ip', limit: 10, windowMs: 15 * MINUTE, reason: 'network' },
-    /** New accounts per IP. */
-    registrationsPerIp: { name: 'register-ip', limit: 5, windowMs: HOUR, reason: 'network' },
     /**
-     * Sign-up emails per address, a minute: its own counter, so that "sign up,
-     * read the email, ask for a code" is not refused for the minute sign-up
-     * used. The five an hour are shared with every code email.
+     * Emails with a code, per address: one a minute, five an hour, shared by
+     * sign-in and reset codes (REQ-AUTH-02). Stops mail-bombing. There is no
+     * separate limit on new accounts: each one needs a code from these.
      */
-    registrationsPerEmailMinute: { name: 'register-email-min', limit: 1, windowMs: MINUTE, reason: 'emails' },
-    /** Emails with a code, per address: one a minute, five an hour. Stops mail-bombing. */
     codeEmailsPerEmailMinute: { name: 'code-email-min', limit: 1, windowMs: MINUTE, reason: 'emails' },
     codeEmailsPerEmailHour: { name: 'code-email-hour', limit: 5, windowMs: HOUR, reason: 'emails' },
     /** Emails with a code requested from one IP, for any addresses. */
@@ -55,6 +51,13 @@ export const AUTH_RATE_LIMITS = {
      * wrong codes count: a right one is used up anyway.
      */
     codeAttemptsPerIp: { name: 'code-try-ip', limit: 20, windowMs: HOUR, reason: 'network' },
+    /**
+     * Wrong codes per address, across its codes (D-134). Each new code has
+     * five tries, and five codes an hour would give a stranger 25 guesses an
+     * hour at an account from many IPs; this keeps it to ten. Counted for
+     * every address, with an account or not.
+     */
+    codeFailuresPerEmail: { name: 'code-fail-email', limit: 10, windowMs: HOUR, reason: 'codes' },
     /** Wrong current passwords when changing it, per user. */
     currentPasswordFailuresPerUser: {
         name: 'change-pw-fail',

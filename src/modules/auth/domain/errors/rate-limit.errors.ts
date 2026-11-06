@@ -5,15 +5,17 @@ import { DomainError } from '@/shared/domain/domain-error'
  * - `network`: counted per IP;
  * - `emails`: emails to this address;
  * - `sign_ins`: failed sign-ins for this address;
- * - `wrong_password`: wrong current passwords on this account.
+ * - `wrong_password`: wrong current passwords on this account;
+ * - `codes`: wrong codes for this address (D-134).
  */
-export type RateLimitReason = 'network' | 'emails' | 'sign_ins' | 'wrong_password'
+export type RateLimitReason = 'network' | 'emails' | 'sign_ins' | 'wrong_password' | 'codes'
 
 const RATE_LIMIT_MESSAGES: Record<RateLimitReason, string> = {
     network: 'Too many requests from your network.',
     emails: 'We have already sent several emails to this address.',
     sign_ins: 'Too many failed sign-ins for this address.',
-    wrong_password: 'Too many wrong passwords.'
+    wrong_password: 'Too many wrong passwords.',
+    codes: 'Too many wrong codes for this address.'
 }
 
 /** `data.reason`: which kind of limit, so a page can say what to do. */

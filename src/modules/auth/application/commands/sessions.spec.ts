@@ -1,9 +1,4 @@
-import {
-    EmailNotVerifiedError,
-    InvalidCredentialsError,
-    RateLimitedError,
-    RefreshFailedError
-} from '@/modules/auth/domain'
+import { InvalidCredentialsError, RateLimitedError, RefreshFailedError } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
 import { LogoutEverywhereCommand, RefreshCommand } from '..'
 import { setup, signIn } from './auth-test-world.shared-spec'
@@ -17,11 +12,12 @@ describe('Signing in', () => {
         expect(w.hasher.dummyVerifies).toBe(1)
     })
 
-    it('says "not confirmed" only after a right password', async () => {
+    it('refuses an account with no password yet like a wrong password, after the same hashing work', async () => {
+        // Made by a code and never completed: only a code signs in to it (D-60).
         const w = setup()
-        w.account({ emailVerified: false })
-        await expect(signIn(w, 'ada@example.test', 'Wrong-Password-1')).rejects.toThrow(InvalidCredentialsError)
-        await expect(signIn(w)).rejects.toThrow(EmailNotVerifiedError)
+        w.directory.add()
+        await expect(signIn(w)).rejects.toThrow(InvalidCredentialsError)
+        expect(w.hasher.dummyVerifies).toBe(1)
         expect(w.sessions.sessions).toHaveLength(0)
     })
 

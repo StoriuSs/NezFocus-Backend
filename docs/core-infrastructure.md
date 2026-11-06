@@ -149,22 +149,24 @@ providers. Nothing to add to `nest-cli.json`: its asset rule copies
 - **Links** are built from `FRONTEND_URL` (`app.frontendUrl`);
   `SUPPORT_EMAIL` (`app.supportEmail`) is named where only a person can help.
 
-### Auth's templates
+### Auth's emails
 
-In `src/modules/auth/infrastructure/email/templates/`, sent by `AuthEmails`;
-[auth/emails.md](./auth/emails.md) says when, with which subject and context.
+Auth has one layout, `src/modules/auth/infrastructure/email/templates/email.hbs`,
+for every email, and keeps the words apart in `email-copy.ts`, once per
+language (`vi` and `en`, D-132). `AuthEmails` picks an email's words in the
+language asked for and sends them in the layout.
+[auth/emails.md](./auth/emails.md) says which emails there are, when each is
+sent, and how to edit them.
 
-| Template | Purpose |
+| Email | Purpose |
 | --- | --- |
-| `verification-code.hbs` | The code that confirms a sign-up |
-| `password-reset-code.hbs` | The code that resets a password (worded "choose a password" for an account without one) |
-| `password-set-code.hbs` | The code that sets a first password on a signed-in account (one made with Google) |
-| `account-delete-code.hbs` | The code that confirms deleting an account without a password |
-| `account-exists.hbs` | Someone tried to sign up with an address that already has an account |
-| `password-changed.hbs` | The password was changed or reset |
-| `password-added.hbs` | A password was added to an account that had none |
-| `sign-in-method-added.hbs` | Google sign-in was linked to the account |
-| `account-deleted.hbs` | The account was deleted, and when its data goes |
+| Sign-in code | The code that signs in to the address's account |
+| Create-account code | The code that creates an account for an address with none |
+| Reset code | The code that resets a password (worded "choose a password" for an account without one) |
+| Password changed | The password was changed or reset |
+| Password added | A password was added to an account that had none |
+| Sign-in method added | Google sign-in was linked to the account |
+| Account deleted | The account was deleted, and when its data goes |
 
 ### Configuration
 

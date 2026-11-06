@@ -11,7 +11,6 @@ export interface AuthenticatedUser {
     sessionId: string
     /** Null only for an account whose personal data has been erased. */
     email: string | null
-    emailVerified: boolean
     roles: string[]
     username: string | null
     displayName: string | null

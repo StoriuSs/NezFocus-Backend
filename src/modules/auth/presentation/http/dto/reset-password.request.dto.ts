@@ -1,5 +1,6 @@
 import { IsString, MaxLength, MinLength } from 'class-validator'
-import { EmailCodeFields, PASSWORD_INPUT_MAX } from './shared/fields.dto'
+import type { EmailLanguage } from '@/modules/auth/application/ports'
+import { EmailCodeFields, IsEmailLanguage, PASSWORD_INPUT_MAX } from './shared/fields.dto'
 
 export class ResetPasswordRequestDto extends EmailCodeFields {
     /** The new password. */
@@ -7,4 +8,7 @@ export class ResetPasswordRequestDto extends EmailCodeFields {
     @MinLength(1)
     @MaxLength(PASSWORD_INPUT_MAX)
     password: string
+
+    @IsEmailLanguage()
+    language?: EmailLanguage
 }

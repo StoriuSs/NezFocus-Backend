@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang='{{lang}}'>
+    <head>
+        <meta charset='UTF-8' />
+        <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+        <meta name='color-scheme' content='light' />
+        <title>{{subject}}</title>
+    </head>
+    {{!
+        Every auth email: one layout, the words from email-copy.ts. Tables and
+        inline styles, because many mail apps ignore <style> and flexbox.
+        Colours are DESIGN.md's light theme; the mark is the app tile (white N
+        on brand-primary), drawn in HTML so it shows with images blocked.
+    }}
+    <body style='margin: 0; padding: 0; background-color: #f6f8fe'>
+        <span style='display: none; max-height: 0; overflow: hidden'>{{preheader}}</span>
+        <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background-color: #f6f8fe'>
+            <tr>
+                <td align='center' style='padding: 32px 16px'>
+                    <table
+                        role='presentation'
+                        width='100%'
+                        cellpadding='0'
+                        cellspacing='0'
+                        style='max-width: 520px; background-color: #ffffff; border: 1px solid #c2cde8; border-radius: 12px'
+                    >
+                        <tr>
+                            <td style='padding: 32px 32px 0'>
+                                <table role='presentation' cellpadding='0' cellspacing='0'>
+                                    <tr>
+                                        <td
+                                            width='32'
+                                            height='32'
+                                            align='center'
+                                            valign='middle'
+                                            style='width: 32px; height: 32px; background-color: #547fe4; border-radius: 7px; color: #ffffff; font: 700 20px/32px Arial, Helvetica, sans-serif'
+                                        >N</td>
+                                        <td
+                                            style='padding-left: 10px; color: #1b2140; font: 700 18px/32px Arial, Helvetica, sans-serif'
+                                        >{{appName}}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td
+                                style='padding: 24px 32px 0; color: #1b2140; font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 24px'
+                            >
+                                <h1
+                                    style='margin: 0 0 16px; font-size: 22px; line-height: 30px; font-weight: 700'
+                                >{{heading}}</h1>
+                                {{#each before}}
+                                    <p style='margin: 0 0 16px'>{{this}}</p>
+                                {{/each}}
+                                {{#if code}}
+                                    <p
+                                        style='margin: 8px 0 24px; padding: 16px; background-color: #eef2fb; border-radius: 8px; text-align: center; color: #3a64cc; font: 700 32px/40px Consolas, Menlo, monospace; letter-spacing: 8px'
+                                    >{{code}}</p>
+                                {{/if}}
+                                {{#each after}}
+                                    <p style='margin: 0 0 16px'>{{this}}</p>
+                                {{/each}}
+                                {{#if action}}
+                                    <p style='margin: 8px 0 16px'>
+                                        <a
+                                            href='{{action.url}}'
+                                            style='display: inline-block; padding: 10px 20px; background-color: #3a64cc; border-radius: 8px; color: #ffffff; font-weight: 700; text-decoration: none'
+                                        >{{action.label}}</a>
+                                    </p>
+                                {{/if}}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 8px 32px 32px'>
+                                <p
+                                    style='margin: 0; padding-top: 16px; border-top: 1px solid #c2cde8; color: #4b5578; font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 20px'
+                                >{{footer}}</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+</html>

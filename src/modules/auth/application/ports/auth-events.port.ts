@@ -8,7 +8,6 @@ export const AUTH_EVENT_NAMES = [
     'login_rate_limited',
     'refresh_reuse_detected',
     'password_reset',
-    'password_set',
     'registration',
     'oauth_login_succeeded',
     'oauth_login_failed',

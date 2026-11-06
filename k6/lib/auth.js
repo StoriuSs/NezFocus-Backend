@@ -11,7 +11,8 @@ import { config, url } from './config.js'
  *   history. It expires, so use it for smoke runs.
  * - `LOAD_EMAIL` and `LOAD_PASSWORD` — this file signs in through the API's
  *   own `POST /auth/login`, and again shortly before the token expires. The
- *   accounts must exist and be confirmed: `pnpm load:accounts` makes them.
+ *   accounts must exist, with a password and completed:
+ *   `pnpm load:accounts` makes them.
  *
  * Without either, `canSignIn()` returns false and the scripts skip their
  * signed-in scenarios and say so.
@@ -82,12 +83,10 @@ function whyRefused(response) {
         // Not the API's envelope (a proxy's error page): the body says more.
     }
     switch (type) {
-        case 'AUTH_EMAIL_NOT_VERIFIED':
-            return 'The account is not confirmed yet: pnpm load:accounts makes confirmed ones.'
         case 'RATE_LIMIT_EXCEEDED':
             return 'The sign-in limits refused it: too many failed sign-ins from this address or network.'
         case 'AUTH_INVALID_CREDENTIALS':
-            return 'Wrong email or password, or no such account.'
+            return 'Wrong email or password, or no such account (pnpm load:accounts makes ones with a password).'
         default:
             return `Response: ${response.body}`
     }

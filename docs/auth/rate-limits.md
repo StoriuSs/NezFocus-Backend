@@ -71,13 +71,12 @@ All in one file, [rate-limits.ts](../../src/modules/auth/application/rate-limits
 |---|---|---|---|---|---|---|
 | `login-fail-email` | 5 per 15 min | the email address | `sign_ins` | `login` | failed sign-ins only | when the right password is given for that address |
 | `login-fail-ip` | 10 per 15 min | IP | `network` | `login` | failed sign-ins only, any address | never early: the window runs out |
-| `register-ip` | 5 per hour | IP | `network` | `register` | every accepted sign-up | — |
-| `register-email-min` | 1 per minute | the email address | `emails` | `register` | every accepted sign-up | — |
-| `code-email-min` | 1 per minute | the email address | `emails` | `resend-verification`, `forgot-password`, `password/code`, `account/delete-code` | every accepted request | — |
-| `code-email-hour` | 5 per hour | the email address | `emails` | `register`, `resend-verification`, `forgot-password`, `password/code`, `account/delete-code` | every accepted request | — |
-| `code-email-ip` | 10 per hour | IP | `network` | `resend-verification`, `forgot-password` | every accepted request, any address | — |
-| `code-try-ip` | 20 per hour | IP | `network` | `verify-email`, `reset-password`, `password`, `account/delete` (with a code) | **wrong** emailed codes only, any address | — |
-| `change-pw-fail` | 5 per 15 min | the user | `wrong_password` | `change-password`, `account/delete` (with a password) | wrong current passwords only | on a successful change or deletion |
+| `code-email-min` | 1 per minute | the email address | `emails` | `email-code`, `forgot-password` | every accepted request | — |
+| `code-email-hour` | 5 per hour | the email address | `emails` | `email-code`, `forgot-password` | every accepted request | — |
+| `code-email-ip` | 10 per hour | IP | `network` | `email-code`, `forgot-password` | every accepted request, any address | — |
+| `code-try-ip` | 20 per hour | IP | `network` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, any address | — |
+| `code-fail-email` | 10 per hour | the email address | `codes` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, across the address's codes | — |
+| `change-pw-fail` | 5 per 15 min | the user | `wrong_password` | `change-password`, `account/delete` | wrong current passwords only | on a successful change or deletion |
 
 All routes are under `/api/v1/auth/`. Why each exists:
 
@@ -89,9 +88,13 @@ All routes are under `/api/v1/auth/`. Why each exists:
   password on 10 000 accounts, or emailing codes to 10 000 strangers.
 - **Per user** limits protect actions that need a session but also a second
   proof (the current password), so a stolen session cannot guess the rest.
-- **Sign-up's own one-a-minute counter** (`register-email-min`) exists so that
-  "sign up, then press *resend code* straight away" is not refused for the
-  minute sign-up used. The five an hour are shared with every code email.
+- **Code emails are shared** by sign-in and reset codes: one a minute and five
+  an hour per address, whichever kind. There is no separate limit on new
+  accounts: each one needs a code from these.
+- **Wrong codes per address** (`code-fail-email`, D-134). Each code dies on
+  its fifth wrong guess, but a new code brings five more tries, and five codes
+  an hour would give a stranger 25 guesses an hour at one address from many
+  IPs. This keeps it to ten, across the address's codes.
 
 Limits keyed on an address count whether or not an account exists, so being
 refused says nothing about whether the address is registered. Addresses are
@@ -168,6 +171,7 @@ Retry-After: 712
 | `network` | "Too many requests from your network." | Wait. Everyone on this connection (an office, a school) shares this one. |
 | `emails` | "We have already sent several emails to this address." | Check the inbox (and spam) for the last email; wait before asking again |
 | `wrong_password` | "Too many wrong passwords." | Wait, or reset the password |
+| `codes` | "Too many wrong codes for this address." | Wait, then ask for a new code |
 
 Compare with the [global throttler](#the-global-throttler)'s 429: its
 `meta.type` is `THROTTLE_ERROR` and it has no `data.reason`.
@@ -176,17 +180,13 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 
 | Route | Limits |
 |---|---|
-| `POST /auth/register` | `register-ip`, `register-email-min`, `code-email-hour` |
-| `POST /auth/verify-email` | `code-try-ip` |
-| `POST /auth/resend-verification` | `code-email-ip`, `code-email-min`, `code-email-hour` |
+| `POST /auth/email-code` | `code-email-ip`, `code-email-min`, `code-email-hour` |
+| `POST /auth/email-code/verify` | `code-try-ip`, `code-fail-email` |
 | `POST /auth/login` | `login-fail-email`, `login-fail-ip` |
 | `POST /auth/forgot-password` | `code-email-ip`, `code-email-min`, `code-email-hour` |
-| `POST /auth/reset-password` | `code-try-ip` |
+| `POST /auth/reset-password` | `code-try-ip`, `code-fail-email` |
 | `POST /auth/change-password` | `change-pw-fail` |
-| `POST /auth/password/code` | `code-email-min`, `code-email-hour` (the account's address) |
-| `POST /auth/password` | `code-try-ip` |
-| `POST /auth/account/delete-code` | `code-email-min`, `code-email-hour` |
-| `POST /auth/account/delete` | `change-pw-fail` (password), `code-try-ip` (emailed code) |
+| `POST /auth/account/delete` | `change-pw-fail` |
 | `POST /auth/refresh`, `logout`, `logout-all`, `GET` routes, Google | none beyond the global throttler |
 
 [api-reference.md](api-reference.md) has every route's full error list.
@@ -195,7 +195,7 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 
 | Cap | Size | Page |
 |---|---|---|
-| Tries per emailed code | 5, then the code is dead (`AUTH_CODE_EXPIRED`); a new code replaces the old | [passwords-and-codes.md](passwords-and-codes.md) |
+| Tries per emailed code | 5, then the code is dead (`AUTH_CODE_EXPIRED`); a new code replaces the old. A reset code for an address with no account is stored too, so it wears out the same way (D-121) | [passwords-and-codes.md](passwords-and-codes.md) |
 | Emailed code lifetime | 10 minutes | [passwords-and-codes.md](passwords-and-codes.md) |
 
 ## When Redis is down

@@ -46,20 +46,23 @@ model RefreshToken {
   @@index([sessionId])
 }
 
-// The live code for one purpose. Issuing a new one replaces the row, so an
-// older code stops working at once.
+// The live code for one address and purpose. Issuing a new one replaces the
+// row, so an older code stops working at once. Keyed by address, not by
+// account (D-129): a sign-in code goes to an address that may have no account
+// yet, and an address without one still gets a row, so wrong guesses are
+// counted the same for every address (D-121).
 model VerificationCode {
   id         String    @id @default(uuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose    String // email-verify | password-reset | password-set | account-delete
+  // Normalised: trimmed, lower case.
+  email      String
+  purpose    String // sign-in | password-reset
   codeHash   String
   createdAt  DateTime  @default(now()) @db.Timestamptz(6)
   expiresAt  DateTime  @db.Timestamptz(6)
   attempts   Int       @default(0)
   consumedAt DateTime? @db.Timestamptz(6)
 
-  @@unique([userId, purpose])
+  @@unique([email, purpose])
 }
 
 // A sign-in with another provider (Google), linked to one user. The provider's

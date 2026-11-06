@@ -9,15 +9,6 @@ export class InvalidCredentialsError extends DomainError {
     }
 }
 
-/** The password was right, but the address has not been confirmed yet. */
-export class EmailNotVerifiedError extends DomainError {
-    readonly kind = 'forbidden'
-    readonly errorKey = 'AUTH_EMAIL_NOT_VERIFIED'
-    constructor() {
-        super('Confirm your email address before signing in. We can send you a new code.')
-    }
-}
-
 export class AccountDisabledError extends DomainError {
     readonly kind = 'forbidden'
     readonly errorKey = 'AUTH_ACCOUNT_DISABLED'

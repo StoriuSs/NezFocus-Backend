@@ -8,13 +8,13 @@ const DISPLAY_NAME_MAX_LENGTH = 100
 const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
     id: user.id,
     email: user.email,
-    emailVerified: user.emailVerified,
     roles: user.roles,
     username: user.username,
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
     bio: user.bio,
     hasSetUsername: user.hasSetUsername,
+    completedAt: user.completedAt,
     deletedAt: user.deletedAt
 })
 
@@ -36,20 +36,11 @@ export class UserDirectory implements UserDirectoryPort {
         return user ? toDirectoryUser(user) : null
     }
 
-    async createUnverified(email: string): Promise<DirectoryUser | null> {
-        const user = await this.users.createWithEmail(email)
-        return user ? toDirectoryUser(user) : null
-    }
-
-    async createVerified(email: string, displayName: string | null): Promise<DirectoryUser | null> {
+    async create(email: string, displayName: string | null): Promise<DirectoryUser | null> {
         // The provider's display name is the person's to set there, not
         // checked here: bound it as the profile form does.
         const name = displayName?.trim().slice(0, DISPLAY_NAME_MAX_LENGTH) || null
-        const user = await this.users.createWithEmail(email, { verified: true, displayName: name })
+        const user = await this.users.createWithEmail(email, { displayName: name })
         return user ? toDirectoryUser(user) : null
-    }
-
-    async markEmailVerified(id: string): Promise<void> {
-        await this.users.markEmailVerified(id)
     }
 }

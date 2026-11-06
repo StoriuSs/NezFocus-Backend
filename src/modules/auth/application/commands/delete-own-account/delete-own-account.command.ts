@@ -1,14 +1,15 @@
-/** What the person gave to prove it is them; which ones are needed depends on the account. */
+import { DEFAULT_EMAIL_LANGUAGE, EmailLanguage } from '../../ports'
+
+/** What the person gave to prove it is them. */
 export interface DeletionProof {
     password?: string
-    /** The code emailed by SendAccountDeletionCodeCommand. */
-    code?: string
 }
 
 export class DeleteOwnAccountCommand {
     constructor(
         public readonly userId: string,
         public readonly proof: DeletionProof,
-        public readonly ip: string
+        /** The page's language, for the "account deleted" email (D-132). */
+        public readonly language: EmailLanguage = DEFAULT_EMAIL_LANGUAGE
     ) {}
 }

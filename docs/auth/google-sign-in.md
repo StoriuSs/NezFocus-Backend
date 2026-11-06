@@ -1,7 +1,7 @@
 # Signing in with Google
 
 "Continue with Google" lets people sign up and sign in with their Google
-account instead of a password. This page explains how it works inside the API,
+account instead of an emailed code or a password. This page explains how it works inside the API,
 which account a Google sign-in lands in, what the web app is told when it does
 not work, and how to add another provider.
 
@@ -147,7 +147,6 @@ On success the refresh cookie is set on that redirect. The web app's
 `/auth/callback` page then calls `POST /auth/refresh` to get an access token,
 like any page load of a signed-in person. See
 [sessions-and-tokens.md](sessions-and-tokens.md).
-
 ## Which account a Google sign-in lands in
 
 The rules, in order ([finish-oauth.handler.ts](../../src/modules/auth/application/commands/finish-oauth/finish-oauth.handler.ts)):
@@ -157,9 +156,8 @@ The rules, in order ([finish-oauth.handler.ts](../../src/modules/auth/applicatio
 | This Google person (`sub`) is already linked to an account | Sign in to that account | none |
 | ...but that account is deleted | Refused: `?error=account_deleted` | none |
 | Not linked, and Google did not say the email is verified (or sent none) | Refused: `?error=email_unverified` | none |
-| Not linked, no live account has the address | A new account: address confirmed, **no password**, display name from Google (trimmed, at most 100 characters). Linked. | none |
-| Not linked, a **confirmed** account has the address | Linked to it, then signed in | "Google sign-in was added to your {app} account" |
-| Not linked, an **unconfirmed** account has the address | Its password is **deleted**, the address is marked confirmed, then linked and signed in. If there was a password: `&notice=password_removed` | none |
+| Not linked, no live account has the address | A new account: **no password**, not completed, display name from Google (trimmed, at most 100 characters). Linked. It goes through "complete your account" like any other (D-61, D-130) | none |
+| Not linked, an account has the address | Linked to it, then signed in. Its password, if it has one, keeps working | "Google sign-in was added to your {app} account" |
 
 Notes on the table:
 
@@ -169,15 +167,13 @@ Notes on the table:
 - **Only a verified address can link or create.** Otherwise anyone could make a
   Google-type account claiming someone else's address and take over their
   account here.
-- **The unconfirmed-account rule stops a pre-registration attack.** Without it,
-  an attacker could sign up with a victim's address and a password they know,
-  never confirm it, and wait. When the victim later signs in with Google and the
-  account is linked, the attacker's password would still open it. Whoever set
-  that password never proved they read the inbox; Google just did. So the
-  password goes, and the web app tells the person (`notice=password_removed`)
-  in case it was their own and they wonder where it went.
-- **Linking an existing confirmed account emails its owner.** If it was not
-  them, that email is how they find out. It links to `/forgot-password`.
+- **Every account's address is confirmed** (D-133): an account is only made
+  after a right emailed code, or by a provider that verified the address. So
+  no password set by someone who never proved they read the inbox can be
+  waiting on an account Google links.
+- **Linking an existing account emails its owner.** If it was not them, that
+  email is how they find out. It links to `/forgot-password`. Nobody asked for
+  it from a page, so it is in English until accounts store a language (D-132).
 - **Deleted accounts.** Deleting an account removes its Google link, so the same
   Google person signing in again later starts afresh with a new account (the
   deleted account's address is no longer live). `account_deleted` appears only
@@ -193,7 +189,7 @@ Every outcome is a `302` to `FRONTEND_URL/auth/callback` with a query:
 
 | Outcome | Query |
 |---|---|
-| Signed in | `redirect=<path>`, plus `&notice=password_removed` when that applies. The refresh cookie is set. |
+| Signed in | `redirect=<path>`. The refresh cookie is set. |
 | Did not work | `error=<reason>`, plus `&redirect=<path>` when the attempt was found, so the page can offer to try again and land in the same place |
 
 `error` values:
@@ -205,8 +201,8 @@ Every outcome is a `302` to `FRONTEND_URL/auth/callback` with a query:
 | `email_unverified` | Google did not confirm the address | Rare with Google; common with providers that do not send `email_verified` |
 | `account_deleted` | The linked account is deleted | See above |
 
-`notice` has one value, `password_removed`. The React starter's
-`src/features/auth/pages/OAuthCallback.tsx` handles all of these.
+The React starter's `src/features/auth/pages/OAuthCallback.tsx` handles all
+of these.
 
 Only one thing answers with JSON instead of a redirect: an unknown provider
 (`GET /auth/github` when only Google is configured) gives
@@ -225,26 +221,25 @@ reach Google's discovery document gives 500, as JSON.
 | The callback URL given to the library is rebuilt from the registered redirect URI, not from the request | A proxy's internal address leaking into the token request; a mismatch is refused |
 | `redirect` must be a path: start with `/`, not `//`, no `\`, no control characters, at most 2048 characters; otherwise `/` | **Open redirect**: `//evil.example` or `/\evil.example`, which browsers read as another site. The web app checks the value again before following it (`safeRedirect` in its `src/features/auth/paths.ts`). |
 | Only a provider-verified email creates or links an account | Taking over an account with an unverified address |
-| An unconfirmed account's password is removed when Google links it | Pre-registering a victim's address |
 | `code` and `state` are redacted from the request log, error envelopes and Sentry | One-time values kept in logs for weeks |
 
 ## Accounts made with Google
 
-An account created by Google has no password. It works like any other account,
-with three differences:
+An account created by Google has no password and is not completed. It works
+like any other account, with three differences:
 
-- **Adding a password.** From settings, `POST /api/v1/auth/password/code` emails
-  a code, and `POST /api/v1/auth/password` with `{ "code", "new_password" }`
-  sets the first password. Sessions are kept. Or, signed out, "Forgot password"
-  emails a code with the wording "Choose a password". After either, the person
-  can sign in both ways. See [passwords-and-codes.md](passwords-and-codes.md).
-- **Deleting it** needs a code emailed to the address instead of a password
-  (`POST /api/v1/auth/account/delete-code`). See
+- **Adding a password.** "Forgot password" (`POST /api/v1/auth/forgot-password`)
+  emails a code with the wording "Choose a password", and
+  `POST /api/v1/auth/reset-password` sets the first one; the owner is emailed
+  "A password was added". After that, the person can sign in both ways. See
+  [passwords-and-codes.md](passwords-and-codes.md). Completing the account
+  (planned) will also set one.
+- **Deleting it** needs the password, so an account without one chooses one
+  with "Forgot password" first. See
   [../account-deletion.md](../account-deletion.md).
 - **Signing in with a password fails** with the ordinary 401
   `AUTH_INVALID_CREDENTIALS` until a password is set: the API does not reveal
-  how an account signs in. The "you already have an account" email that a
-  repeated sign-up sends does say "sign in with Google".
+  how an account signs in. A code by email always works.
 
 `GET /api/v1/auth/sign-in-methods` tells the settings page what an account has:
 `{ "password": false, "providers": ["google"] }`. There is no route to unlink

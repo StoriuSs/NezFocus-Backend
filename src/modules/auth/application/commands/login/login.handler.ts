@@ -5,7 +5,6 @@ import { normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/use
 import {
     CREDENTIAL_REPOSITORY,
     CredentialRepositoryPort,
-    EmailNotVerifiedError,
     InvalidCredentialsError,
     RateLimitedError
 } from '@/modules/auth/domain'
@@ -77,7 +76,6 @@ export class LoginHandler implements ICommandHandler<LoginCommand> {
         }
 
         await this.limiter.reset(AUTH_RATE_LIMITS.loginFailuresPerEmail, email)
-        if (!user.emailVerified) throw new EmailNotVerifiedError()
 
         // Raising the hashing cost reaches existing accounts as they sign in.
         if (this.hasher.needsRehash(hash)) {

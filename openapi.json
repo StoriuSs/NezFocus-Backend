@@ -618,16 +618,16 @@
         ]
       }
     },
-    "/api/v1/auth/register": {
+    "/api/v1/auth/email-code": {
       "post": {
-        "operationId": "AuthController_register_v1",
+        "operationId": "AuthController_sendEmailCode_v1",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RegisterRequestDto"
+                "$ref": "#/components/schemas/EmailCodeRequestDto"
               }
             }
           }
@@ -656,22 +656,22 @@
             }
           }
         },
-        "summary": "Create an account and email a code to confirm the address. The answer is the same for any address.",
+        "summary": "Email a sign-in code: the first step of creating an account and of\nsigning in with a code (D-59, D-60). Sending again is the same call.\nThe answer is the same for any address, with an account or not.",
         "tags": [
           "auth"
         ]
       }
     },
-    "/api/v1/auth/verify-email": {
+    "/api/v1/auth/email-code/verify": {
       "post": {
-        "operationId": "AuthController_verifyEmail_v1",
+        "operationId": "AuthController_verifyEmailCode_v1",
         "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VerifyEmailRequestDto"
+                "$ref": "#/components/schemas/VerifyEmailCodeRequestDto"
               }
             }
           }
@@ -692,7 +692,7 @@
                       "$ref": "#/components/schemas/ApiResponseMetaDto"
                     },
                     "data": {
-                      "$ref": "#/components/schemas/TokenResponseDto"
+                      "$ref": "#/components/schemas/EmailCodeSignInResponseDto"
                     }
                   }
                 }
@@ -700,51 +700,7 @@
             }
           }
         },
-        "summary": "Confirm the address with the emailed code and the sign-up password, and sign in. Sets the refresh cookie.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/resend-verification": {
-      "post": {
-        "operationId": "AuthController_resendVerification_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "type": "null"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "summary": "Send the sign-up email again: a new code, or \"you already have an\naccount\" for a confirmed address. The answer is the same for any address.",
+        "summary": "Sign in with the emailed code, making the account if the address has\nnone. Sets the refresh cookie. `account.completed` false: the account\nmust be completed before anything else (D-61).",
         "tags": [
           "auth"
         ]
@@ -1121,133 +1077,6 @@
         ]
       }
     },
-    "/api/v1/auth/password/code": {
-      "post": {
-        "operationId": "PasswordController_sendPasswordSetCode_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "type": "null"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "For an account without a password (one made with Google): email a code\nto set one. 409 AUTH_PASSWORD_ALREADY_SET when it has one.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/password": {
-      "post": {
-        "operationId": "PasswordController_setPassword_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetPasswordRequestDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "type": "null"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Set a first password with that code. The account keeps its other sign-in methods, and its sessions.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/v1/auth/account/delete-code": {
-      "post": {
-        "operationId": "AccountDeletionController_sendCode_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "type": "null"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "For deleting an account made with Google, which has no password to\nconfirm with: email a code. 409 AUTH_USE_PASSWORD for one with a password.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/account/delete": {
       "post": {
         "operationId": "AccountDeletionController_delete_v1",
@@ -1291,7 +1120,7 @@
             "bearer": []
           }
         ],
-        "summary": "Delete your own account, with proof it is you: the password (or the\nemailed code, for an account without one). Every session ends, this one included; the owner is emailed.",
+        "summary": "Delete your own account, with the password as proof it is you. Every\nsession ends, this one included; the owner is emailed.",
         "tags": [
           "auth"
         ]
@@ -1425,9 +1254,6 @@
             "type": "string",
             "nullable": true
           },
-          "email_verified": {
-            "type": "boolean"
-          },
           "roles": {
             "type": "array",
             "items": {
@@ -1445,7 +1271,6 @@
         "required": [
           "id",
           "avatar_url",
-          "email_verified",
           "roles",
           "has_set_username"
         ]
@@ -1562,14 +1387,17 @@
           "uploaded_at"
         ]
       },
-      "RegisterRequestDto": {
+      "EmailCodeRequestDto": {
         "type": "object",
         "properties": {
-          "password": {
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
             "type": "string",
-            "description": "At least 8 characters with an upper-case letter, a lower-case letter, a digit and a symbol.",
-            "minLength": 1,
-            "maxLength": 1024
+            "default": "en",
+            "description": "The language of the page, for the email this sends."
           },
           "email": {
             "type": "string",
@@ -1579,7 +1407,71 @@
           }
         },
         "required": [
-          "password",
+          "email"
+        ]
+      },
+      "SignedInAccountDto": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "description": "Made by this sign-in: the address had no account (D-59)."
+          },
+          "completed": {
+            "type": "boolean",
+            "description": "Done the \"complete your account\" step. False: open it before anything\nelse (D-61). The gate that refuses it everywhere else comes with that\nstep (D-128)."
+          }
+        },
+        "required": [
+          "created",
+          "completed"
+        ]
+      },
+      "EmailCodeSignInResponseDto": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/SignedInAccountDto"
+          },
+          "access_token": {
+            "type": "string",
+            "description": "Send as `Authorization: Bearer <access_token>`. Keep it in memory only."
+          },
+          "token_type": {
+            "type": "string",
+            "enum": [
+              "Bearer"
+            ]
+          },
+          "expires_in": {
+            "type": "number",
+            "description": "Seconds until it expires. Refresh shortly before."
+          }
+        },
+        "required": [
+          "account",
+          "access_token",
+          "token_type",
+          "expires_in"
+        ]
+      },
+      "VerifyEmailCodeRequestDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The six digits from the email.",
+            "pattern": "^\\d{6}$"
+          },
+          "email": {
+            "type": "string",
+            "description": "The sign-in address. Compared case-insensitively.",
+            "maxLength": 254,
+            "format": "email"
+          }
+        },
+        "required": [
+          "code",
           "email"
         ]
       },
@@ -1605,47 +1497,6 @@
           "access_token",
           "token_type",
           "expires_in"
-        ]
-      },
-      "VerifyEmailRequestDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "description": "The password the address was signed up with. Signing up again before\nconfirming replaces it, so only the person who chose the current one can\nconfirm the address.",
-            "minLength": 1,
-            "maxLength": 1024
-          },
-          "code": {
-            "type": "string",
-            "description": "The six digits from the email.",
-            "pattern": "^\\d{6}$"
-          },
-          "email": {
-            "type": "string",
-            "description": "The sign-in address. Compared case-insensitively.",
-            "maxLength": 254,
-            "format": "email"
-          }
-        },
-        "required": [
-          "password",
-          "code",
-          "email"
-        ]
-      },
-      "EmailRequestDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "description": "The sign-in address. Compared case-insensitively.",
-            "maxLength": 254,
-            "format": "email"
-          }
-        },
-        "required": [
-          "email"
         ]
       },
       "LoginRequestDto": {
@@ -1686,6 +1537,15 @@
       "ForgotPasswordRequestDto": {
         "type": "object",
         "properties": {
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string",
+            "default": "en",
+            "description": "The language of the page, for the email this sends."
+          },
           "email": {
             "type": "string",
             "description": "The sign-in address. Compared case-insensitively.",
@@ -1700,6 +1560,15 @@
       "ResetPasswordRequestDto": {
         "type": "object",
         "properties": {
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string",
+            "default": "en",
+            "description": "The language of the page, for the email this sends."
+          },
           "password": {
             "type": "string",
             "description": "The new password.",
@@ -1727,6 +1596,15 @@
       "ChangePasswordRequestDto": {
         "type": "object",
         "properties": {
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string",
+            "default": "en",
+            "description": "The language of the page, for the email this sends."
+          },
           "current_password": {
             "type": "string",
             "minLength": 1,
@@ -1763,38 +1641,23 @@
           "providers"
         ]
       },
-      "SetPasswordRequestDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": "The six digits from the email.",
-            "pattern": "^\\d{6}$"
-          },
-          "new_password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1024
-          }
-        },
-        "required": [
-          "code",
-          "new_password"
-        ]
-      },
       "DeleteAccountRequestDto": {
         "type": "object",
         "properties": {
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string",
+            "default": "en",
+            "description": "The language of the page, for the email this sends."
+          },
           "password": {
             "type": "string",
-            "description": "The account's password; for an account that has one.",
+            "description": "The account's password.",
             "minLength": 1,
             "maxLength": 1024
-          },
-          "code": {
-            "type": "string",
-            "description": "The six digits emailed by POST /auth/account/delete-code; for an account without a password.",
-            "pattern": "^\\d{6}$"
           }
         }
       }

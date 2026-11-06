@@ -10,12 +10,13 @@ export class UserEntity {
 
     username: string | null
     email: string | null
-    emailVerified: boolean
     roles: string[]
     displayName: string | null
     avatarUrl: string | null
     bio: string | null
     hasSetUsername: boolean
+    /** When the "complete your account" step was done; null until then (D-61). */
+    completedAt: Date | null
 
     readonly createdAt: Date
     updatedAt: Date
@@ -26,12 +27,12 @@ export class UserEntity {
         id: string
         username?: string | null
         email?: string | null
-        emailVerified?: boolean
         roles?: string[]
         displayName?: string | null
         avatarUrl?: string | null
         bio?: string | null
         hasSetUsername?: boolean
+        completedAt?: Date | null
         createdAt?: Date
         updatedAt?: Date
         deletedAt?: Date | null
@@ -40,12 +41,12 @@ export class UserEntity {
         this.id = props.id
         this.username = props.username ?? null
         this.email = props.email ?? null
-        this.emailVerified = props.emailVerified ?? false
         this.roles = props.roles ?? ['user']
         this.displayName = props.displayName ?? null
         this.avatarUrl = props.avatarUrl ?? null
         this.bio = props.bio ?? null
         this.hasSetUsername = props.hasSetUsername ?? false
+        this.completedAt = props.completedAt ?? null
         this.createdAt = props.createdAt ?? new Date()
         this.updatedAt = props.updatedAt ?? new Date()
         this.deletedAt = props.deletedAt ?? null

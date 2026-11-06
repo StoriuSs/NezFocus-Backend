@@ -333,15 +333,18 @@ database that was created by that version, migration
 `20260923000000_self_hosted_auth` **drops the `User.keycloakId` and
 `User.identityDeletedAt` columns**. The data in them is lost, and nothing in
 the new schema links a user to their Keycloak account. Users keep their row
-(id, email, profile), but have no password here: they sign in again by
-setting one ("forgot password") or with Google. Back up first
-([backups.md](./backups.md)). A fresh clone has nothing to lose.
+(id, email, profile), but have no password here: they sign in again with an
+emailed code, by setting a password ("forgot password"), or with Google. Back
+up first ([backups.md](./backups.md)). A fresh clone has nothing to lose.
 
-Their `emailVerified` is `false` until then, because the column is new. That
-is safe: the clean-up that deletes sign-ups never confirmed
-([auth/accounts.md](./auth/accounts.md)) only deletes accounts that have a
-password here, so it never touches them. Resetting the password confirms the
-address, as signing in with Google does.
+Migration `20261106000000_codes_by_email` (D-129, D-133) keeps them too. It
+drops the old `emailVerified` column, and deletes only old sign-ups that never
+confirmed their address **and** have a password here, which these users do
+not. It adds `completedAt`, set from `createdAt` for every account that had
+already chosen a username; any other account is "not completed" and will go
+through "complete your account" (a planned step) at its next sign-in. It also drops every live emailed code (they
+last ten minutes) and re-keys the `VerificationCode` table by address and
+purpose.
 
 ---
 

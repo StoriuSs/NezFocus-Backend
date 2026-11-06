@@ -85,7 +85,7 @@ describe('Sign-in with another provider over HTTP (integration)', () => {
         const me = await api()
             .get('/api/v1/users/me')
             .set('Authorization', `Bearer ${refreshed.body.data.access_token}`)
-        expect(me.body.data).toMatchObject({ email, email_verified: true })
+        expect(me.body.data).toMatchObject({ email })
 
         try {
             for (const tamper of [

@@ -11,7 +11,6 @@ export const ERROR_TYPES = {
     AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
     AUTH_TOKEN_INVALID: 'AUTH_TOKEN_INVALID',
     AUTH_TOKEN_REVOKED: 'AUTH_TOKEN_REVOKED',
-    AUTH_EMAIL_NOT_VERIFIED: 'AUTH_EMAIL_NOT_VERIFIED',
     AUTH_ACCOUNT_DISABLED: 'AUTH_ACCOUNT_DISABLED',
     AUTH_REFRESH_FAILED: 'AUTH_REFRESH_FAILED',
     AUTH_FORBIDDEN: 'AUTH_FORBIDDEN',
@@ -24,11 +23,9 @@ export const ERROR_TYPES = {
     // The current password, given to change it, is wrong. Not a 401: the
     // session is fine, and clients sign out on any 401.
     AUTH_CURRENT_PASSWORD_INVALID: 'AUTH_CURRENT_PASSWORD_INVALID',
-    AUTH_PASSWORD_ALREADY_SET: 'AUTH_PASSWORD_ALREADY_SET',
     // Deleting an account without the proof it needs; asking for an emailed
     // code when the account's password is the proof.
     AUTH_CONFIRMATION_REQUIRED: 'AUTH_CONFIRMATION_REQUIRED',
-    AUTH_USE_PASSWORD: 'AUTH_USE_PASSWORD',
 
     // User errors
     USER_NOT_FOUND: 'USER_NOT_FOUND',
@@ -96,7 +93,6 @@ export const ERROR_CODES = {
     AUTH_PASSWORD_REJECTED: '422004',
 
     // Forbidden error codes (403)
-    AUTH_EMAIL_NOT_VERIFIED: '403002',
     AUTH_ACCOUNT_DISABLED: '403003',
     AUTH_FORBIDDEN: '403004',
 
@@ -104,8 +100,6 @@ export const ERROR_CODES = {
     USER_NOT_FOUND: '404001',
 
     // Conflict error codes (409)
-    AUTH_PASSWORD_ALREADY_SET: '409004',
-    AUTH_USE_PASSWORD: '409005',
     USERNAME_CONFLICT: '409200',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)

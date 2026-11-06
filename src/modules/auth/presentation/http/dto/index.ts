@@ -7,15 +7,14 @@
 // Requests
 export { ChangePasswordRequestDto } from './change-password.request.dto'
 export { DeleteAccountRequestDto } from './delete-account.request.dto'
-export { EmailRequestDto } from './email.request.dto'
+export { EmailCodeRequestDto } from './email-code.request.dto'
 export { ForgotPasswordRequestDto } from './forgot-password.request.dto'
 export { LoginRequestDto } from './login.request.dto'
-export { RegisterRequestDto } from './register.request.dto'
 export { ResetPasswordRequestDto } from './reset-password.request.dto'
-export { SetPasswordRequestDto } from './set-password.request.dto'
-export { VerifyEmailRequestDto } from './verify-email.request.dto'
+export { VerifyEmailCodeRequestDto } from './verify-email-code.request.dto'
 
 // Responses
 export { AuthOptionsResponseDto } from './auth-options.response.dto'
+export { EmailCodeSignInResponseDto } from './email-code-sign-in.response.dto'
 export { SignInMethodsResponseDto } from './sign-in-methods.response.dto'
 export { TokenResponseDto } from './token.response.dto'

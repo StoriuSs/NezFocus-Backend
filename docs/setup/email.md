@@ -1,8 +1,8 @@
 # Email: sending real mail
 
-The API emails people a six-digit code to confirm their address, reset a
-password, set a first password or delete their account, and it emails them
-when something about their account's security changes. This page gets you an
+The API emails people a six-digit code to sign in (which creates the account
+the first time) or to reset a password, and it emails them when something
+about their account's security changes. This page gets you an
 email provider, proves to the world that its mail comes from your domain, and
 puts its settings in the `EMAIL_*` variables.
 
@@ -272,17 +272,18 @@ printing a value ([../environment.md](../environment.md#checking-a-file)).
 
 ## Check it works
 
-**In development**, sign up and read the code in Mailpit:
+**In development**, ask for a sign-in code and read it in Mailpit:
 
 ```bash
-curl -s -X POST http://localhost:8888/api/v1/auth/register \
+curl -s -X POST http://localhost:8888/api/v1/auth/email-code \
   -H 'Content-Type: application/json' \
-  -d '{"email":"first@example.com","password":"Correct-Horse-42"}'
+  -d '{"email":"first@example.com","language":"en"}'
 ```
 
-The answer is `202` "Check your email to continue." Open
-<http://localhost:8025>: the message "Verify your YourAppName account" holds
-the six-digit code.
+The answer is `202` "Check your email for the code." Open
+<http://localhost:8025>: the message "Your code to create a YourAppName
+account" holds the six-digit code. With `"language":"vi"` it comes in
+Vietnamese.
 
 **In production**, sign up on the web app with an address you can read, or
 use the same `curl` against `https://api.example.com`. Then:

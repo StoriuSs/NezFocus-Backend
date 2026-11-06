@@ -159,17 +159,10 @@ export class PrismaUserRepository implements UserRepositoryPort {
         return user ? UserMapper.toDomain(user) : null
     }
 
-    async createWithEmail(
-        email: string,
-        options: { verified?: boolean; displayName?: string | null } = {}
-    ): Promise<UserEntity | null> {
+    async createWithEmail(email: string, options: { displayName?: string | null } = {}): Promise<UserEntity | null> {
         try {
             const user = await this.prisma.user.create({
-                data: {
-                    email: normaliseEmail(email),
-                    emailVerified: options.verified ?? false,
-                    displayName: options.displayName ?? null
-                }
+                data: { email: normaliseEmail(email), displayName: options.displayName ?? null }
             })
             return UserMapper.toDomain(user)
         } catch (error: unknown) {
@@ -177,27 +170,6 @@ export class PrismaUserRepository implements UserRepositoryPort {
             if (prismaCode(error) === 'P2002') return null
             throw error
         }
-    }
-
-    async markEmailVerified(id: string): Promise<void> {
-        await this.prisma.user.updateMany({ where: { id, deletedAt: null }, data: { emailVerified: true } })
-    }
-
-    async deleteUnverifiedCreatedBefore(createdBefore: Date): Promise<number> {
-        const result = await this.prisma.user.deleteMany({
-            where: {
-                emailVerified: false,
-                createdAt: { lt: createdBefore },
-                deletedAt: null,
-                // Only sign-ups: signing up sets a password at once. An account
-                // without one came from somewhere else, such as a database
-                // upgraded from the Keycloak starter, where every user is
-                // "unverified" here (the column is new) and old. Deleting those
-                // would delete every user. (The one read of an auth table here.)
-                credential: { isNot: null }
-            }
-        })
-        return result.count
     }
 
     async setRoles(id: string, roles: string[]): Promise<UserEntity | null> {

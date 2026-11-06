@@ -3,7 +3,7 @@
 Every sign-in route the API offers, with exactly what to send, what comes back,
 and every error each one can answer. It is written for whoever builds the web
 or mobile client: keep it open while you wire up the forms. If you want the
-story first (what a refresh token is, why sign-up asks for a code), read
+story first (what a refresh token is, why sign-up is a code by email), read
 [concepts.md](./concepts.md) and [flows.md](./flows.md), then come back.
 
 Everything here was taken from the code:
@@ -18,7 +18,7 @@ they disagree with this page, the code wins: please fix the page.
 
 - [Before you start](#before-you-start)
 - [Routes at a glance](#routes-at-a-glance)
-- [Signing up](#signing-up)
+- [Signing up or in with a code](#signing-up-or-in-with-a-code)
 - [Signing in and staying signed in](#signing-in-and-staying-signed-in)
 - [Passwords](#passwords)
 - [Deleting the account](#deleting-the-account)
@@ -112,7 +112,7 @@ What to read in an error:
 A validation error looks slightly different. `data.details` is a list of
 failing fields. Property names in it are the **camelCase** names (the
 conversion has already happened), and in development `data.stack` is added.
-Sending `full_name` to `/auth/register`:
+Sending `full_name` to `/auth/email-code`:
 
 ```json
 {
@@ -132,7 +132,7 @@ Sending `full_name` to `/auth/register`:
         "value": "Ada"
       }
     ],
-    "path": "/api/v1/auth/register",
+    "path": "/api/v1/auth/email-code",
     "method": "POST"
   }
 }
@@ -158,7 +158,7 @@ sends them, by calling with credentials.
 
 | Cookie | Set by | Path | Lives | SameSite | Holds |
 |---|---|---|---|---|---|
-| `refresh_token` | Every route that signs in ([sign in](#sign-in), [confirm the address](#confirm-the-address), [reset password](#reset-password), [refresh](#refresh), [provider callback](#provider-callback)) | `/api/v1/auth` | Until the session's absolute end (`AUTH_SESSION_TTL_DAYS`, 30 days) | `AUTH_COOKIE_SAMESITE` (default `lax`) | The refresh token. Replaced on every refresh |
+| `refresh_token` | Every route that signs in ([sign in with the code](#sign-in-with-the-code), [sign in](#sign-in), [reset password](#reset-password), [refresh](#refresh), [provider callback](#provider-callback)) | `/api/v1/auth` | Until the session's absolute end (`AUTH_SESSION_TTL_DAYS`, 30 days) | `AUTH_COOKIE_SAMESITE` (default `lax`) | The refresh token. Replaced on every refresh |
 | `oauth_state` | [Start a provider sign-in](#start-a-provider-sign-in) | `/api/v1/auth/<provider>/callback` | 10 minutes | `none` if `AUTH_COOKIE_SAMESITE=none`, else `lax` | Ties Google's return to this browser |
 
 `Secure` is on for both in production (and whenever SameSite is `none`),
@@ -212,9 +212,8 @@ than a 401.
 
 | Method and path | Who | Success | Section |
 |---|---|---|---|
-| `POST /auth/register` | Public | 202 | [Sign up](#sign-up) |
-| `POST /auth/verify-email` | Public | 200, signs in | [Confirm the address](#confirm-the-address) |
-| `POST /auth/resend-verification` | Public | 202 | [Send the sign-up email again](#send-the-sign-up-email-again) |
+| `POST /auth/email-code` | Public | 202 | [Email a sign-in code](#email-a-sign-in-code) |
+| `POST /auth/email-code/verify` | Public | 200, signs in | [Sign in with the code](#sign-in-with-the-code) |
 | `POST /auth/login` | Public | 200, signs in | [Sign in](#sign-in) |
 | `POST /auth/refresh` | Cookie + Origin | 200 | [Refresh](#refresh) |
 | `POST /auth/logout` | Cookie + Origin | 200 | [Sign out](#sign-out) |
@@ -223,9 +222,6 @@ than a 401.
 | `POST /auth/reset-password` | Public | 200, signs in | [Reset password](#reset-password) |
 | `POST /auth/change-password` | Signed in | 200 | [Change password](#change-password) |
 | `GET /auth/sign-in-methods` | Signed in | 200 | [Sign-in methods](#sign-in-methods) |
-| `POST /auth/password/code` | Signed in | 200 | [Email a code to set a first password](#email-a-code-to-set-a-first-password) |
-| `POST /auth/password` | Signed in | 200 | [Set a first password](#set-a-first-password) |
-| `POST /auth/account/delete-code` | Signed in | 200 | [Email a deletion code](#email-a-deletion-code) |
 | `POST /auth/account/delete` | Signed in | 200 | [Delete the account](#delete-the-account) |
 | `GET /auth/options` | Public | 200 | [Sign-in options](#sign-in-options) |
 | `GET /auth/{provider}` | Browser navigation | 302 | [Start a provider sign-in](#start-a-provider-sign-in) |
@@ -242,89 +238,85 @@ this `data`, and sets the `refresh_token` cookie in the same response:
 | `token_type` | `"Bearer"` | Always `Bearer` |
 | `expires_in` | integer | Seconds until it expires (`JWT_ACCESS_TTL_SECONDS`, default 900). Refresh shortly before |
 
-The refresh token is never in a body.
+The refresh token is never in a body. [Sign in with the code](#sign-in-with-the-code)
+adds one more field, `account`.
 
-## Signing up
+<a id="language-field"></a>
+**The `language` field.** Every route that sends an email takes an optional
+`language`: `vi` or `en`, default `en`. It is the language of the page, and
+the email is written in it (D-132). Anything else is `422 VALIDATION_ERROR`
+("language must be vi or en"). The routes: `email-code`, `forgot-password`,
+`reset-password`, `change-password` and `account/delete`.
 
-### Sign up
+## Signing up or in with a code
 
-`POST /api/v1/auth/register` · Public · no cookies
+Creating an account and signing in with a code are one flow (D-59, D-60):
+ask for a code, then send it back. A right code signs in to the address's
+account, or creates one at that moment.
 
-Creates an account and emails a six-digit code to confirm the address. It
-does **not** sign in. The answer is the same for a new address, one that
-already has an account, and one registered but never confirmed, so this route
-cannot be used to find out who has an account. (A confirmed address gets a
-"you already have an account" email instead of a code; an unconfirmed one gets
-the new password and a fresh code.)
+### Email a sign-in code
+
+`POST /api/v1/auth/email-code` · Public · no cookies
+
+Emails a six-digit code to the address. Every address gets one, with an
+account or not; only the email's wording differs ("your sign-in code", or
+"your code to create an account"). The answer is the same for every address,
+so this route cannot be used to find out who has an account. Asking again is
+the same call: the new code replaces the old one.
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
 | `email` | string | yes | Trimmed, a valid email address, at most 254 characters |
-| `password` | string | yes | 1 to 1024 characters. The password rules come later ([passwords-and-codes.md](./passwords-and-codes.md)) |
+| `language` | string | no | `vi` or `en` ([the `language` field](#language-field)) |
 
 **Success:** `202`,
-message "Check your email to continue.", `data: null`.
-
-**Errors**, in the order they are checked:
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password breaks a rule (checked against the address only) | `data.rules`: rule ids such as `["uppercase","special"]` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `register-ip` (5 an hour per IP) | `data.reason: "network"`, `Retry-After` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `register-email-min` (1 a minute per address) or `code-email-hour` (5 an hour per address) | `data.reason: "emails"`, `Retry-After` |
-
-### Confirm the address
-
-`POST /api/v1/auth/verify-email` · Public · sets `refresh_token`
-
-Confirms the address with the emailed code and the password chosen at
-sign-up, and signs in. The password stops someone who signs the same address
-up again before you confirm from taking the account over
-([accounts.md](./accounts.md#confirming-the-address)).
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `email` | string | yes | Trimmed, valid email, at most 254 |
-| `code` | string | yes | Trimmed, exactly six digits (`^\d{6}$`); otherwise "code must be the six digits from the email" |
-| `password` | string | yes | 1 to 1024 characters. The password from the last sign-up for this address |
-
-**Success:** `200`,
-message "Your email address is confirmed. You are signed in.",
-`data`: [the token answer](#token-answer).
-
-**Errors:**
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
-| 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, wrong password, no code pending (already confirmed, or a newer code replaced it), or no such account. One error for all, on purpose. A wrong password does not use up one of the code's tries | |
-| 400 | `AUTH_CODE_EXPIRED` | `400103` | The code is older than 10 minutes, or this was its 5th wrong try | |
-
-Each wrong code counts against `code-try-ip`.
-
-### Send the sign-up email again
-
-`POST /api/v1/auth/resend-verification` · Public · no cookies
-
-Sends a new code to an unconfirmed address, "you already have an account" to
-a confirmed one, and nothing to an unknown one. The answer is the same in
-every case.
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `email` | string | yes | Trimmed, valid email, at most 254 |
-
-**Success:** `202`,
-message "If that address has an account, an email is on its way.", `data: null`.
+message "Check your email for the code.", `data: null`.
 
 **Errors:**
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 10 an hour from this IP | `data.reason: "network"`, `Retry-After` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address | `data.reason: "emails"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with reset codes | `data.reason: "emails"`, `Retry-After` |
 
 Every accepted request counts, whether or not the address has an account.
+
+### Sign in with the code
+
+`POST /api/v1/auth/email-code/verify` · Public · sets `refresh_token`
+
+Signs in with the emailed code. If the address has no account, one is made
+now: no password, no username, not completed yet.
+
+| Field | Type | Required | Checked by the DTO |
+|---|---|---|---|
+| `email` | string | yes | Trimmed, valid email, at most 254 |
+| `code` | string | yes | Trimmed, exactly six digits (`^\d{6}$`); otherwise "code must be the six digits from the email" |
+
+**Success:** `200`, message "You are signed in.", `data`:
+[the token answer](#token-answer) plus `account`:
+
+| `data.account` field | Type | Meaning |
+|---|---|---|
+| `created` | boolean | This sign-in made the account: the address had none |
+| `completed` | boolean | The account has done the "complete your account" step. `false` for every new account |
+
+The "complete your account" step (`POST /auth/complete-account`, choosing a
+username and a password) is planned for a later slice, together with the gate
+that refuses an account that is not completed. For now an account with
+`completed: false` can use the API like any other.
+
+**Errors:**
+
+| Status | `meta.type` | `meta.code` | When | Extras |
+|---|---|---|---|---|
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-fail-email`: 10 wrong codes an hour for this address, across its codes (D-134) | `data.reason: "codes"`, `Retry-After` |
+| 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code sent, a newer code replaced it, or another request used it first | |
+| 400 | `AUTH_CODE_EXPIRED` | `400103` | The code is older than 10 minutes, or this was its 5th wrong try | |
+
+Each wrong code counts against `code-try-ip` and `code-fail-email`. A right
+code is used up before the account is touched, so one code makes one session.
 
 ## Signing in and staying signed in
 
@@ -346,8 +338,7 @@ message "Login successful", `data`: [the token answer](#token-answer).
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-email`: 5 failed sign-ins for this address in 15 minutes | `data.reason: "sign_ins"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-ip`: 10 failed sign-ins from this IP in 15 minutes, any addresses | `data.reason: "network"`, `Retry-After` |
-| 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made with Google). One error for all three, on purpose | |
-| 403 | `AUTH_EMAIL_NOT_VERIFIED` | `403002` | The password was right but the address is not confirmed yet. Offer to [resend the code](#send-the-sign-up-email-again) | |
+| 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made by a code or with Google, and not completed). One error for all three, on purpose | |
 
 Only failures count against the two limits. A right password clears the
 address's count (not the IP's).
@@ -410,12 +401,15 @@ request. Send it with credentials so the cookie-clearing header applies.
 `POST /api/v1/auth/forgot-password` · Public · no cookies
 
 Emails a code for choosing a new password. For an account without a password
-(made with Google), the email offers to choose one. The answer is the same
-whether or not the address has an account.
+(not completed, or made with Google), the email offers to choose one. The
+answer is the same whether or not the address has an account. An address with
+no account still gets a stored code that nobody is sent, so guesses at it
+wear it out after five exactly like a real one (D-121).
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
 | `email` | string | yes | Trimmed, valid email, at most 254 |
+| `language` | string | no | `vi` or `en` ([the `language` field](#language-field)) |
 
 **Success:** `202`,
 message "If that address has an account, an email is on its way.", `data: null`.
@@ -425,20 +419,22 @@ message "If that address has an account, an email is on its way.", `data: null`.
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 10 an hour from this IP | `data.reason: "network"`, `Retry-After` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address | `data.reason: "emails"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with sign-in codes | `data.reason: "emails"`, `Retry-After` |
 
 ### Reset password
 
 `POST /api/v1/auth/reset-password` · Public · sets `refresh_token`
 
 Sets a new password with the emailed code, ends **every** earlier session,
-confirms the address, and signs in on this device.
+and signs in on this device. On an account with no password this adds one,
+and the owner is emailed "password added" instead of "password changed".
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
 | `email` | string | yes | Trimmed, valid email, at most 254 |
 | `code` | string | yes | Trimmed, exactly six digits |
 | `password` | string | yes | 1 to 1024. The new password |
+| `language` | string | no | `vi` or `en`, for the email that follows ([the `language` field](#language-field)) |
 
 **Success:** `200`, message "Your password has been changed. You
 are signed in.", `data`: [the token answer](#token-answer).
@@ -448,9 +444,11 @@ are signed in.", `data`: [the token answer](#token-answer).
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
-| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule. Checked against the address before the account is looked up, then against the username. The code is not used up | `data.rules` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-fail-email`: 10 wrong codes an hour for this address (D-134) | `data.reason: "codes"`, `Retry-After` |
+| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule that needs only the address. Checked before the code, so it does not use a try | `data.rules` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code pending, or no such account | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | Older than 10 minutes, or its 5th wrong try | |
+| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password is the username (D-66). Checked only once the code is known right; the code is not used up | `data.rules: ["matches_username"]` |
 
 ### Change password
 
@@ -463,6 +461,7 @@ this one stays signed in.
 |---|---|---|---|
 | `current_password` | string | yes | 1 to 1024 |
 | `new_password` | string | yes | 1 to 1024 |
+| `language` | string | no | `vi` or `en`, for the "password changed" email ([the `language` field](#language-field)) |
 
 **Success:** `200`, message "Password has been changed
 successfully", `data: null`.
@@ -472,7 +471,7 @@ successfully", `data: null`.
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `change-pw-fail`: 5 wrong current passwords for this account in 15 minutes | `data.reason: "wrong_password"`, `Retry-After` |
-| 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | The current password is wrong, or the account has no password (use [set a first password](#set-a-first-password)). A 400, not a 401: the session is fine, and clients sign out on any 401 | |
+| 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | The current password is wrong, or the account has no password (it chooses one with [forgot password](#forgot-password)). A 400, not a 401: the session is fine, and clients sign out on any 401 | |
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule (checked against the address and the username) | `data.rules` |
 
 The new password may equal the old one: there is no "different from current"
@@ -495,80 +494,25 @@ only when there is none.
 
 **Errors:** the guard errors only.
 
-### Email a code to set a first password
-
-`POST /api/v1/auth/password/code` · Signed in
-
-For an account without a password (made with Google): emails a code to set
-one. No body.
-
-**Success:** `200`, `data: null`.
-
-**Errors**, besides the guard errors:
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 409 | `AUTH_PASSWORD_ALREADY_SET` | `409004` | The account already has a password: use [change password](#change-password) | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for the account's address | `data.reason: "emails"`, `Retry-After` |
-| 400 | `AUTH_CODE_INVALID` | `400102` | The account has no address (its data was erased). Should not happen to a signed-in user | |
-
-### Set a first password
-
-`POST /api/v1/auth/password` · Signed in
-
-Sets the first password with the code from the route above. Sessions and the
-Google link are kept.
-
-| Field | Type | Required | Checked by the DTO |
-|---|---|---|---|
-| `code` | string | yes | Trimmed, exactly six digits |
-| `new_password` | string | yes | 1 to 1024 |
-
-**Success:** `200`, `data: null`.
-
-**Errors**, in order, besides the guard errors:
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
-| 400 | `AUTH_CODE_INVALID` | `400102` | The account has no address | |
-| 409 | `AUTH_PASSWORD_ALREADY_SET` | `409004` | The account already has a password | |
-| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password breaks a rule. The code is not used up | `data.rules` |
-| 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, or none pending | |
-| 400 | `AUTH_CODE_EXPIRED` | `400103` | Older than 10 minutes, or its 5th wrong try | |
+An account without a password chooses its first one with
+[forgot password](#forgot-password) and [reset password](#reset-password).
 
 ## Deleting the account
 
 [accounts.md](./accounts.md) explains what deletion removes, and when.
 
-### Email a deletion code
-
-`POST /api/v1/auth/account/delete-code` · Signed in
-
-For an account without a password (made with Google), which has nothing else
-to prove it is the owner: emails a code. No body.
-
-**Success:** `200`, `data: null`.
-
-**Errors**, besides the guard errors:
-
-| Status | `meta.type` | `meta.code` | When | Extras |
-|---|---|---|---|---|
-| 409 | `AUTH_USE_PASSWORD` | `409005` | The account has a password: send it to [delete the account](#delete-the-account) instead | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` or `code-email-hour` for the account's address | `data.reason: "emails"`, `Retry-After` |
-| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The account has no address or was deleted | |
-
 ### Delete the account
 
 `POST /api/v1/auth/account/delete` · Signed in · clears `refresh_token`
 
-Deletes the signed-in user's own account, with proof it is them. Every
-session ends, this one included. The owner is emailed.
+Deletes the signed-in user's own account, with the password as proof it is
+them. Every session ends, this one included. The owner is emailed. An account
+without a password chooses one with [forgot password](#forgot-password) first.
 
-| Field | Type | Needed when | Checked by the DTO |
+| Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
-| `password` | string | the account has a password | 1 to 1024 |
-| `code` | string | the account has **no** password (from [email a deletion code](#email-a-deletion-code)) | Trimmed, exactly six digits |
+| `password` | string | no, but without it the answer is `AUTH_CONFIRMATION_REQUIRED` | 1 to 1024 |
+| `language` | string | no | `vi` or `en`, for the "account deleted" email ([the `language` field](#language-field)) |
 
 **Success:** `200`,
 message "Account deleted successfully", `data: null`. Send it with
@@ -578,12 +522,9 @@ credentials so the cookie is cleared.
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 400 | `AUTH_CONFIRMATION_REQUIRED` | `400108` | Some proof is missing. Ask for exactly what `needs` lists, then send again | `data.needs`: `["password"]` or `["code"]` |
+| 400 | `AUTH_CONFIRMATION_REQUIRED` | `400108` | No password was sent, or the account has none (it chooses one with [forgot password](#forgot-password) first) | `data.needs`: `["password"]` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `change-pw-fail`: 5 wrong passwords in 15 minutes | `data.reason: "wrong_password"`, `Retry-After` |
 | 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | Wrong password | |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong emailed codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
-| 400 | `AUTH_CODE_INVALID` | `400102` | Wrong emailed code, or none pending | |
-| 400 | `AUTH_CODE_EXPIRED` | `400103` | Emailed code older than 10 minutes, or its 5th wrong try | |
 | 404 | `USER_NOT_FOUND` | `404001` | Two deletions of the same account raced and this one lost | |
 | 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Already deleted | |
 
@@ -636,7 +577,7 @@ one of these query strings:
 
 | Outcome | Query | Cookie set | What the callback page does |
 |---|---|---|---|
-| Signed in | `redirect=<path>` and maybe `notice=password_removed` | `refresh_token` | Call [refresh](#refresh) to get an access token, then go to `redirect` |
+| Signed in | `redirect=<path>` | `refresh_token` | Call [refresh](#refresh) to get an access token, then go to `redirect` |
 | Did not work | `error=<reason>` and, if the attempt was found, `redirect=<path>` | none | Show the message for the reason below |
 
 | `error` | Meaning |
@@ -646,9 +587,9 @@ one of these query strings:
 | `account_deleted` | The Google account is linked to a deleted account |
 | `failed` | Anything else: the return does not match this browser's cookie, the attempt expired (10 minutes) or was used, Google refused the code or ID token, or the database or Redis failed. The API log says which |
 
-`notice=password_removed` means an account registered with this address but
-never confirmed had its password removed when Google linked it (someone else
-may have registered it first). The web app must check `redirect` again before
+A new address gets a new account, not completed and with no password; an
+existing account is linked, and its owner is emailed that a sign-in method was
+added. The web app must check `redirect` again before
 following it. The only JSON this route answers is `404 NOT_FOUND_ERROR` for an
 unknown provider.
 
@@ -667,7 +608,6 @@ message "User fetched successfully".
 |---|---|---|
 | `id` | string | The user id (the access token's `sub`) |
 | `email` | string | The sign-in address, lower-case |
-| `email_verified` | boolean | Always `true` for a signed-in user: sign-in needs a confirmed address |
 | `roles` | string[] | `["user"]` by default; `admin` and others are given with `pnpm user:promote` ([accounts.md](./accounts.md)). Not in the token: read them here |
 | `username`, `display_name`, `avatar_url`, `bio`, `has_set_username` | | The profile, owned by the users module |
 
@@ -684,12 +624,11 @@ Auth limits answer `429 RATE_LIMIT_EXCEEDED` with `data.reason` and
 |---|---|---|---|---|---|
 | `login-fail-email` | 5 per 15 min | address | `sign_ins` | login | Failed sign-ins; cleared by a right password |
 | `login-fail-ip` | 10 per 15 min | IP | `network` | login | Failed sign-ins |
-| `register-ip` | 5 per hour | IP | `network` | register | Accepted sign-ups |
-| `register-email-min` | 1 per minute | address | `emails` | register | Accepted sign-ups |
-| `code-email-min` | 1 per minute | address | `emails` | resend-verification, forgot-password, password/code, account/delete-code | Emails sent |
-| `code-email-hour` | 5 per hour | address | `emails` | register and the four above | Emails sent |
-| `code-email-ip` | 10 per hour | IP | `network` | resend-verification, forgot-password | Requests |
-| `code-try-ip` | 20 per hour | IP | `network` | verify-email, reset-password, password, account/delete (emailed code) | Wrong codes only |
+| `code-email-min` | 1 per minute | address | `emails` | email-code, forgot-password | Emails asked for |
+| `code-email-hour` | 5 per hour | address | `emails` | email-code, forgot-password | Emails asked for |
+| `code-email-ip` | 10 per hour | IP | `network` | email-code, forgot-password | Requests |
+| `code-try-ip` | 20 per hour | IP | `network` | email-code/verify, reset-password | Wrong codes only |
+| `code-fail-email` | 10 per hour | address | `codes` | email-code/verify, reset-password | Wrong codes only, across the address's codes (D-134) |
 | `change-pw-fail` | 5 per 15 min | account | `wrong_password` | change-password, account/delete | Wrong passwords; cleared on success |
 
 A refused request counts against nothing. When several limits refuse, the
@@ -715,13 +654,10 @@ kind; `meta.code` and `meta.type` come from
 | `AUTH_CODE_EXPIRED` | 400 | `400103` | This code no longer works: it expired, or had too many wrong tries. Ask for a new one. | |
 | `AUTH_CURRENT_PASSWORD_INVALID` | 400 | `400104` | Your current password is not right. | |
 | `AUTH_CONFIRMATION_REQUIRED` | 400 | `400108` | Confirm it is you first. | `needs` |
-| `AUTH_EMAIL_NOT_VERIFIED` | 403 | `403002` | Confirm your email address before signing in. We can send you a new code. | |
 | `AUTH_ACCOUNT_DISABLED` | 403 | `403003` | This account has been deleted. | |
 | `AUTH_FORBIDDEN` | 403 | `403004` | This request did not come from an allowed site. | |
 | `NOT_FOUND_ERROR` | 404 | `404000` | There is no sign-in with that provider here. | |
 | `USER_NOT_FOUND` | 404 | `404001` | (from the users module) | |
-| `AUTH_PASSWORD_ALREADY_SET` | 409 | `409004` | This account already has a password. Change it instead. | |
-| `AUTH_USE_PASSWORD` | 409 | `409005` | This account has a password: confirm with it instead. | |
 | `AUTH_PASSWORD_REJECTED` | 422 | `422004` | One sentence per broken rule, joined | `rules` |
 | `VALIDATION_ERROR` | 422 | `422000` | Validation failed | `details[]` |
 | `RATE_LIMIT_EXCEEDED` | 429 | `429001` | "<reason sentence> Try again in N seconds/minutes." | `reason`, `Retry-After` header |
@@ -735,6 +671,7 @@ The `RATE_LIMIT_EXCEEDED` sentence per `data.reason`:
 | `emails` | We have already sent several emails to this address. | address |
 | `sign_ins` | Too many failed sign-ins for this address. | address |
 | `wrong_password` | Too many wrong passwords. | account |
+| `codes` | Too many wrong codes for this address. | address |
 
 The wait is in seconds under 90 seconds, in minutes from there.
 
@@ -747,7 +684,9 @@ so a client can copy it to check as the user types.
 
 `401000` (`AUTH_UNAUTHORIZED`) is only the fallback for a bare 401 thrown
 outside the auth module. `401002`, `401007`, `409001` and `503001` (Keycloak's)
-are retired, never reused: sign-up never says an address is taken.
+are retired, never reused: sign-up never says an address is taken. `403002`,
+`409004` and `409005` belonged to the old sign-up and first-password routes
+and are retired too.
 
 ## Success messages
 
@@ -756,9 +695,9 @@ for logs; react to the status and `data`.
 
 | Route | Status | `meta.message` |
 |---|---|---|
-| register | 202 | Check your email to continue. |
-| resend-verification, forgot-password | 202 | If that address has an account, an email is on its way. |
-| verify-email | 200 | Your email address is confirmed. You are signed in. |
+| email-code | 202 | Check your email for the code. |
+| forgot-password | 202 | If that address has an account, an email is on its way. |
+| email-code/verify | 200 | You are signed in. |
 | login | 200 | Login successful |
 | refresh | 200 | Token refreshed successfully |
 | logout | 200 | Logout successful |
@@ -766,7 +705,7 @@ for logs; react to the status and `data`.
 | reset-password | 200 | Your password has been changed. You are signed in. |
 | change-password | 200 | Password has been changed successfully |
 | account/delete | 200 | Account deleted successfully |
-| sign-in-methods, password/code, password, account/delete-code, options | 200 | Operation completed successfully |
+| sign-in-methods, options | 200 | Operation completed successfully |
 | users/me | 200 | User fetched successfully |
 
 ## How a client should react
@@ -782,20 +721,17 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `401 AUTH_REFRESH_FAILED` | Signed out (the cookie is already cleared). Go to sign-in; `data.reason` says why. On page load this just means "no session": show the signed-out page quietly |
 | `403 AUTH_ACCOUNT_DISABLED` | The account was deleted. Clear everything, go to the signed-out page |
 | `403 AUTH_FORBIDDEN` on refresh or logout | A configuration problem, not the user's: the page's origin is not in `CORS_ORIGINS`. Log it; the user can only try again later |
-| `403 AUTH_EMAIL_NOT_VERIFIED` | Go to the "enter the code" screen with the address filled in, and offer "send a new code" ([resend](#send-the-sign-up-email-again)) |
 | `401 AUTH_INVALID_CREDENTIALS` | "Incorrect email or password", nothing more specific |
 | `422 AUTH_PASSWORD_REJECTED` | Mark each rule in `data.rules` under the password field. Keep what they typed in other fields |
 | `422 VALIDATION_ERROR` | A client bug or a malformed field: show the field from `data.details[].property` (camelCase) |
 | `400 AUTH_CODE_INVALID` | "That code is not right" and let them retry. If they asked for several, only the newest works |
 | `400 AUTH_CODE_EXPIRED` | The code is dead: offer to send a new one |
 | `400 AUTH_CURRENT_PASSWORD_INVALID` | Mark the current-password field. Do **not** sign out |
-| `400 AUTH_CONFIRMATION_REQUIRED` | Ask for the item in `data.needs` (the password or an emailed code) and send again. For `code`, first call [email a deletion code](#email-a-deletion-code) |
-| `409 AUTH_USE_PASSWORD` | Ask for the password instead of sending a code |
-| `409 AUTH_PASSWORD_ALREADY_SET` | Show "change password" instead of "set a password" |
-| `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`emails`: check spam; `sign_ins`: reset the password) |
+| `400 AUTH_CONFIRMATION_REQUIRED` | Ask for the password and send again. An account with no password ([sign-in methods](#sign-in-methods) says `password: false`) chooses one with [forgot password](#forgot-password) first |
+| `200` from `email-code/verify` with `account.completed: false` | Open the "complete your account" step (planned: `POST /auth/complete-account`) |
+| `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later) |
 | `429 THROTTLE_ERROR` | Too many requests from this IP to this route: wait `Retry-After` seconds |
 | `?error=` on the callback page | Show a message per reason (`cancelled` needs none). Keep `redirect` for the next attempt |
-| `?notice=password_removed` | Tell the person a password set before the address was confirmed was removed; they can set one in settings |
 | `500 GENERIC_ERROR` | "Something went wrong", with `meta.request_id` for support |
 
 ## Related

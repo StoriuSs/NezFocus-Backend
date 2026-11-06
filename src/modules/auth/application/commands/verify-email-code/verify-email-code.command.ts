@@ -1,9 +1,8 @@
-export class VerifyEmailCommand {
+/** Sign in with the code from SendEmailCodeCommand, making the account if the address has none. */
+export class VerifyEmailCodeCommand {
     constructor(
         public readonly email: string,
         public readonly code: string,
-        /** The password the address was signed up with. */
-        public readonly password: string,
         public readonly client: { ip: string; userAgent?: string }
     ) {}
 }

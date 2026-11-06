@@ -77,7 +77,6 @@ export class UsersController {
             username: user.username ?? undefined,
             displayName: user.displayName ?? undefined,
             avatarUrl: await this.toAvatarUrl(user.avatarUrl),
-            emailVerified: user.emailVerified,
             roles: user.roles,
             bio: user.bio ?? undefined,
             hasSetUsername: user.hasSetUsername

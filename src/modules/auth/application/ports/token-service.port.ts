@@ -37,9 +37,10 @@ export interface TokenServicePort {
      * What a verification code is stored as. Keyed with the server's secret:
      * a code is only six digits, so a plain hash could be reversed by trying
      * all million, and a database read alone would hand over live codes. Bound
-     * to the user and purpose, so one account's code cannot pass for another's.
+     * to the address and purpose, so a code for one address cannot pass for
+     * another's, and a sign-in code cannot pass for a reset code.
      */
-    hashVerificationCode(code: string, userId: string, purpose: string): string
+    hashVerificationCode(code: string, email: string, purpose: string): string
 }
 
 export const TOKEN_SERVICE = Symbol('TokenServicePort')

@@ -4,7 +4,6 @@ import { PrismaService } from '@/shared/infrastructure/persistence/database/pris
 import { CodeCheck, CodePurpose, VerificationCodeRepositoryPort } from '@/modules/auth/domain'
 
 interface CountedCode {
-    id: string
     codeHash: string
     attempts: number
     expiresAt: Date
@@ -17,21 +16,21 @@ const sameHash = (a: string, b: string) =>
 export class PrismaVerificationCodeRepository implements VerificationCodeRepositoryPort {
     constructor(private readonly prisma: PrismaService) {}
 
-    async replace(userId: string, purpose: CodePurpose, codeHash: string, expiresAt: Date): Promise<void> {
+    async replace(email: string, purpose: CodePurpose, codeHash: string, expiresAt: Date): Promise<void> {
         await this.prisma.verificationCode.upsert({
-            where: { userId_purpose: { userId, purpose } },
-            create: { userId, purpose, codeHash, expiresAt },
+            where: { email_purpose: { email, purpose } },
+            create: { email, purpose, codeHash, expiresAt },
             update: { codeHash, expiresAt, attempts: 0, consumedAt: null, createdAt: new Date() }
         })
     }
 
     /**
-     * The attempt is counted in the same statement that reads the code, so
+     * The try is counted in the same statement that reads the code, so
      * guesses made at the same moment each use one up — a read, then a
-     * separate increment, would let a burst of guesses through at attempt 1.
+     * separate increment, would let a burst of guesses through at try 1.
      */
-    async consume(
-        userId: string,
+    async check(
+        email: string,
         purpose: CodePurpose,
         codeHash: string,
         now: Date,
@@ -39,22 +38,22 @@ export class PrismaVerificationCodeRepository implements VerificationCodeReposit
     ): Promise<CodeCheck> {
         const [code] = await this.prisma.$queryRaw<CountedCode[]>`
             UPDATE "VerificationCode" SET "attempts" = "attempts" + 1
-            WHERE "userId" = ${userId} AND "purpose" = ${purpose} AND "consumedAt" IS NULL
-            RETURNING "id", "codeHash", "attempts", "expiresAt"`
+            WHERE "email" = ${email} AND "purpose" = ${purpose} AND "consumedAt" IS NULL
+            RETURNING "codeHash", "attempts", "expiresAt"`
         // Never sent, or already used.
-        if (!code) return 'invalid'
+        if (!code) return 'wrong'
         if (code.expiresAt <= now || code.attempts > maxAttempts) return 'expired'
+        if (sameHash(code.codeHash, codeHash)) return 'right'
+        // That was the last try: say so now, not on the next one.
+        return code.attempts >= maxAttempts ? 'expired' : 'wrong'
+    }
 
-        if (!sameHash(code.codeHash, codeHash)) {
-            // That was the last try: say so now, not on the next attempt.
-            return code.attempts >= maxAttempts ? 'expired' : 'invalid'
-        }
-
+    async use(email: string, purpose: CodePurpose, codeHash: string, now: Date): Promise<boolean> {
         const used = await this.prisma.verificationCode.updateMany({
-            where: { id: code.id, consumedAt: null },
+            where: { email, purpose, codeHash, consumedAt: null },
             data: { consumedAt: now }
         })
-        return used.count === 1 ? 'ok' : 'invalid'
+        return used.count === 1
     }
 
     async deleteStale(before: Date): Promise<number> {

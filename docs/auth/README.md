@@ -18,7 +18,8 @@ in five minutes.
 
 | Feature | In short | Read |
 |---|---|---|
-| Sign up with email and password | The address is confirmed with a six-digit emailed code; confirming signs you in | [flows.md](./flows.md#sign-up-and-confirm-the-address) |
+| Sign up or sign in with a code | One flow (D-59, D-60): a six-digit code emailed to any address; the right code signs in to the address's account, or creates one, not completed yet | [flows.md](./flows.md#sign-up-or-sign-in-with-a-code) |
+| Sign in with a password | For an account that has one (set with "forgot password" for now; the "complete your account" step is planned) | [flows.md](./flows.md#sign-in) |
 | Password rules | At least 8 characters, upper and lower case, a digit and a symbol; not the address or username (no common-password list, D-29). Each rule has an id the frontend can show | [passwords-and-codes.md](./passwords-and-codes.md#the-password-rules) |
 | Password storage | Argon2id, upgraded automatically when the settings are raised | [passwords-and-codes.md](./passwords-and-codes.md#how-passwords-are-stored) |
 | Sessions | A 15-minute access token (JWT) in memory, plus a refresh token in an httpOnly cookie; a session lasts 30 days | [sessions-and-tokens.md](./sessions-and-tokens.md) |
@@ -27,9 +28,9 @@ in five minutes.
 | Forgot, reset, change password | Reset by emailed code (ends every session); change with the current password (ends the others) | [flows.md](./flows.md#forgot-and-reset-the-password) |
 | Sign in with Google | OpenID Connect with PKCE; optional, on when its two settings are set | [google-sign-in.md](./google-sign-in.md) |
 | Rate limits | Per address, per IP and per user, on every operation an attacker would repeat | [rate-limits.md](./rate-limits.md) |
-| No account enumeration | Sign-up, sign-in and "forgot password" answer the same whether or not an address has an account | [security.md](./security.md) |
-| Security emails | The owner is told when the password or sign-in methods change, and when the account is deleted | [emails.md](./emails.md) |
-| Account deletion | Needs proof (password or emailed code); personal details erased after 30 days | [accounts.md](./accounts.md) |
+| No account enumeration | Asking for a code, sign-in and "forgot password" answer the same whether or not an address has an account | [security.md](./security.md) |
+| Security emails | The owner is told when the password or sign-in methods change, and when the account is deleted. Every email in Vietnamese or English, the page's language (D-132) | [emails.md](./emails.md) |
+| Account deletion | Needs the password; personal details erased after 30 days | [accounts.md](./accounts.md) |
 | Roles | `["user"]` by default; `pnpm user:promote` makes an administrator; `@Roles('admin')` on a route | [accounts.md](./accounts.md) |
 | Monitoring | Sign-in events counted (`auth_events_total`), a dashboard row, alerts on failed-login spikes and token reuse | [operations.md](./operations.md) |
 
@@ -86,26 +87,27 @@ Pick the line that fits; each is a reading order.
 ## Try it in five minutes
 
 With the development stack running (`pnpm docker:dev`; the API on
-`http://localhost:8888`, Mailpit on `http://localhost:8025`), sign up, sign
-in and refresh with `curl`. A request without an `Origin` header, like
-these, passes the Origin check, and `cookies.txt` plays the browser's part.
+`http://localhost:8888`, Mailpit on `http://localhost:8025`), sign up and
+refresh with `curl`. A request without an `Origin` header, like these,
+passes the Origin check, and `cookies.txt` plays the browser's part.
 
-1. **Sign up.** The answer is `202` and an email goes to Mailpit:
+1. **Ask for a code.** The answer is `202` and an email goes to Mailpit:
 
    ```bash
-   curl -i -X POST http://localhost:8888/api/v1/auth/register \
+   curl -i -X POST http://localhost:8888/api/v1/auth/email-code \
      -H 'Content-Type: application/json' \
-     -d '{"email":"ada@example.com","password":"Harbour-Lantern-42"}'
+     -d '{"email":"ada@example.com","language":"en"}'
    ```
 
 2. **Read the code** at `http://localhost:8025`.
-3. **Confirm**, which signs you in. The access token is in the body; the
-   refresh cookie goes into `cookies.txt`:
+3. **Send it back**, which creates the account and signs you in. The access
+   token is in the body, with `account: { created: true, completed: false }`;
+   the refresh cookie goes into `cookies.txt`:
 
    ```bash
-   curl -i -c cookies.txt -X POST http://localhost:8888/api/v1/auth/verify-email \
+   curl -i -c cookies.txt -X POST http://localhost:8888/api/v1/auth/email-code/verify \
      -H 'Content-Type: application/json' \
-     -d '{"email":"ada@example.com","code":"123456","password":"Harbour-Lantern-42"}'
+     -d '{"email":"ada@example.com","code":"123456"}'
    ```
 
 4. **Call a signed-in route** with the token:
@@ -128,8 +130,9 @@ these, passes the Origin check, and `cookies.txt` plays the browser's part.
    curl -i -b cookies.txt -c cookies.txt -X POST http://localhost:8888/api/v1/auth/logout
    ```
 
-Try a weak password in step 1 (`password`) to see `422 AUTH_PASSWORD_REJECTED`
-and its `data.rules`, or a wrong code in step 3 to see `400 AUTH_CODE_INVALID`.
+Try a wrong code in step 3 to see `400 AUTH_CODE_INVALID`, or a weak
+password (`password`) at `POST /auth/reset-password` to see
+`422 AUTH_PASSWORD_REJECTED` and its `data.rules`.
 The interactive API docs are at `http://localhost:8888/api-docs`
 ([openapi.md](../openapi.md)).
 
@@ -138,14 +141,14 @@ The interactive API docs are at `http://localhost:8888/api-docs`
 | Page | Read it for |
 |---|---|
 | [concepts.md](./concepts.md) | Auth in plain words, and a glossary tied to the code. Start here if the words are new |
-| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up, sign in, refresh, sign out, reset, change, first password, Google, deletion |
+| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up or in with a code, sign in with a password, refresh, sign out, reset, change, Google, deletion |
 | [sessions-and-tokens.md](./sessions-and-tokens.md) | Access token, refresh cookie, sessions, rotation, what ends a session, the per-request check, Redis down, cross-site setups |
 | [passwords-and-codes.md](./passwords-and-codes.md) | The password rules, Argon2id, the six-digit emailed codes |
-| [emails.md](./emails.md) | Every email, the queue that sends them, Mailpit, editing templates |
+| [emails.md](./emails.md) | Every email, its two languages, the queue that sends them, Mailpit, editing the words and the layout |
 | [google-sign-in.md](./google-sign-in.md) | How "Continue with Google" works, which account it lands in, adding another provider |
 | [rate-limits.md](./rate-limits.md) | Every limit, and how to tune them |
 | [security.md](./security.md) | The threats, how each is handled, what is not covered, production must-dos |
-| [accounts.md](./accounts.md) | Account lifecycle: unconfirmed, confirmed, deleted; roles |
+| [accounts.md](./accounts.md) | Account lifecycle: not completed, completed, deleted; roles |
 | [api-reference.md](./api-reference.md) | Every route, body, answer and error code |
 | [in-the-code.md](./in-the-code.md) | Module layout, ports and adapters, jobs, Redis keys, tables, tests, how to extend |
 | [operations.md](./operations.md) | Production checklist, key rotation, command-line tools, monitoring, troubleshooting, FAQ |
@@ -170,4 +173,4 @@ with a comment. Full list: [environment.md](../environment.md).
 | `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_SECURE` | rarely | Only for a web app and API on different sites ([cross-site setups](./sessions-and-tokens.md#cross-site-setups)) |
 | `JWT_ACCESS_TTL_SECONDS`, `AUTH_SESSION_TTL_DAYS` | optional | 900 seconds and 30 days by default |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional | Google sign-in, both or neither |
-| `UNVERIFIED_ACCOUNT_RETENTION_DAYS`, `DELETED_ACCOUNT_RETENTION_DAYS` | optional | 7 and 30 days by default |
+| `DELETED_ACCOUNT_RETENTION_DAYS` | optional | 30 days by default |

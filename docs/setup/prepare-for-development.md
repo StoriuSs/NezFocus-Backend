@@ -208,42 +208,47 @@ values only choose the port on your machine; inside Docker nothing changes.
 
 ## Step 7: Sign up for real
 
-Signing up here works like on any website: you register, the app emails you a
-six-digit code, and entering the code confirms the address and signs you in.
-Mailpit catches the email, so nothing is delivered for real.
+Signing up is a code by email: you give your address, the app emails you a
+six-digit code, and entering the code creates the account and signs you in.
+Signing in later works the same way. Mailpit catches the email, so nothing is
+delivered for real.
 
 ```bash
 API=http://localhost:8888/api/v1
 
-# 1. Register. The answer is 202 ("check your email") with no data.
-curl -i -X POST $API/auth/register -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"Harbour-Lantern-42"}'
+# 1. Ask for a code. The answer is 202 ("check your email for the code") with
+#    no data, whether or not the address has an account.
+curl -i -X POST $API/auth/email-code -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","language":"en"}'
 ```
 
-The password must have at least 8 characters, with a lower-case letter, an
-upper-case letter, a digit and a character that is neither, and must not be a
-common one. A 422 answer lists each rule it broke
-([../auth/passwords-and-codes.md](../auth/passwords-and-codes.md)).
-
-2. Open http://localhost:8025. The newest email, "Verify your ... account",
-   holds a six-digit code. It is valid for 10 minutes.
+2. Open http://localhost:8025. The newest email, "Your code to create a ...
+   account", holds a six-digit code. It is valid for 10 minutes.
 
 ```bash
-# 3. Confirm the address with the code and the password you signed up with.
-#    This signs you in: the answer holds an access token, and the refresh
-#    cookie lands in cookies.txt.
-curl -i -c cookies.txt -X POST $API/auth/verify-email -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","code":"123456","password":"Harbour-Lantern-42"}'
+# 3. Send the code back. This creates the account and signs you in: the
+#    answer holds an access token, and the refresh cookie lands in cookies.txt.
+curl -i -c cookies.txt -X POST $API/auth/email-code/verify -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","code":"123456"}'
 ```
 
 The answer looks like this (shortened):
 
 ```json
 {
-  "meta": { "message": "Your email address is confirmed. You are signed in.", "...": "..." },
-  "data": { "access_token": "eyJhbGciOi...", "token_type": "Bearer", "expires_in": 900 }
+  "meta": { "message": "You are signed in.", "...": "..." },
+  "data": {
+    "access_token": "eyJhbGciOi...",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "account": { "created": true, "completed": false }
+  }
 }
 ```
+
+`completed: false` means the account has no username or password yet. The
+"complete your account" step that sets them is planned; until then the
+account works as it is.
 
 The **access token** is a short-lived pass (15 minutes) that you send with
 every request. The **refresh token** is a long-lived secret in a cookie that
@@ -258,10 +263,23 @@ curl $API/users/me -H "Authorization: Bearer $TOKEN"
 # 5. Get a new access token with the refresh cookie, as the web app does.
 curl -b cookies.txt -c cookies.txt -X POST $API/auth/refresh
 
-# 6. Next time, sign in with the password.
+# 6. To sign in with a password too, choose one with "forgot password":
+#    ask for a code (wait a minute after the last one), then send it with the
+#    new password. Read the code in Mailpit, "Choose a password for ...".
+curl -i -X POST $API/auth/forgot-password -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com"}'
+curl -i -c cookies.txt -X POST $API/auth/reset-password -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","code":"654321","password":"Harbour-Lantern-42"}'
+
+# 7. Next time, sign in with a new code (steps 1 to 3) or with the password.
 curl -i -c cookies.txt -X POST $API/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"you@example.com","password":"Harbour-Lantern-42"}'
 ```
+
+The password must have at least 8 characters, with a lower-case letter, an
+upper-case letter, a digit and a character that is neither. A 422 answer
+lists each rule it broke
+([../auth/passwords-and-codes.md](../auth/passwords-and-codes.md)).
 
 To make that account an administrator:
 
@@ -275,8 +293,7 @@ match. Or run it inside the app container, which has the right address already:
 
 Delete `cookies.txt` when you are done: it holds a live sign-in.
 
-**You are done when** `/users/me` answers 200 with your email address and
-`"email_verified": true`.
+**You are done when** `/users/me` answers 200 with your email address.
 
 Every route, body and error: [../auth/api-reference.md](../auth/api-reference.md).
 Every flow drawn out: [../auth/flows.md](../auth/flows.md).
@@ -408,7 +425,7 @@ Grafana Cloud instead of running Grafana locally: [grafana-cloud.md](./grafana-c
 | `pnpm user:promote` or `pnpm prisma:migrate` cannot connect | `DATABASE_URL` does not match `DB_*` | Step 3 |
 | No email in Mailpit | The job failed | http://localhost:8888/admin/queues, queue `auth`, look for a failed `send-code` job |
 | Every request answers 401 | No `Authorization: Bearer` header, or the token expired (15 minutes) | `meta.type` says which: `AUTH_TOKEN_MISSING`, `AUTH_TOKEN_EXPIRED`. Sign in again or call `/auth/refresh` |
-| 429 on register | The sign-up limits: one sign-up per email address per minute, five per hour from one IP address | Wait (the `Retry-After` header says how long), or use another email address ([../auth/rate-limits.md](../auth/rate-limits.md)) |
+| 429 on email-code | The code-email limits: one code email per address a minute and five an hour (shared with "forgot password"), ten an hour from one IP address | Wait (the `Retry-After` header says how long), or use another email address ([../auth/rate-limits.md](../auth/rate-limits.md)) |
 | Hot reload does not restart the app on save | File events don't reach Docker on some setups | The compose file already polls; check `pnpm docker:logs` for a compile error |
 
 More: [../../GETTING_STARTED.md](../../GETTING_STARTED.md#troubleshooting) and

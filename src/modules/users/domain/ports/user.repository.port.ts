@@ -68,28 +68,14 @@ export interface UserRepositoryPort {
     findLiveByEmail(email: string): Promise<UserEntity | null>
 
     /**
-     * A new user with this address, stored lower case. Unverified unless
-     * `verified` says otherwise: an address another provider (Google) has
-     * already confirmed.
+     * A new user with this address, stored lower case. The caller has
+     * confirmed the address (a code sent to it, or a provider): there is no
+     * unconfirmed account (D-133).
      *
-     * @returns null if a live user already has it — two registrations racing
-     *   for one address meet at the unique index, not at a check before it
+     * @returns null if a live user already has it — two sign-ups racing for
+     *   one address meet at the unique index, not at a check before it
      */
-    createWithEmail(
-        email: string,
-        options?: { verified?: boolean; displayName?: string | null }
-    ): Promise<UserEntity | null>
-
-    markEmailVerified(id: string): Promise<void>
-
-    /**
-     * Hard-delete accounts never verified and created before `createdBefore`.
-     * Without it, anyone could hold any address by registering it and never
-     * confirming. Their credentials and codes go with them (foreign keys).
-     *
-     * @returns how many were deleted
-     */
-    deleteUnverifiedCreatedBefore(createdBefore: Date): Promise<number>
+    createWithEmail(email: string, options?: { displayName?: string | null }): Promise<UserEntity | null>
 
     /** Replace a user's roles. Only `pnpm user:promote` calls this. */
     setRoles(id: string, roles: string[]): Promise<UserEntity | null>

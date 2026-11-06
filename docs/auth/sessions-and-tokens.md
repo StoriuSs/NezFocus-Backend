@@ -62,8 +62,8 @@ The claims:
 role away or deleting an account takes effect at once instead of when the
 token expires.
 
-The response that carries it (from `POST /auth/login`, `verify-email`,
-`reset-password` and `refresh`):
+The response that carries it (from `POST /auth/login`, `email-code/verify`,
+`reset-password` and `refresh`; `email-code/verify` adds `account`):
 
 ```json
 {
@@ -185,7 +185,7 @@ One row per sign-in, in the `Session` table
 
 - **Created** only by [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts),
   called by [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts).
-  Every way of signing in (password, confirming an address, resetting a
+  Every way of signing in (password, an emailed code, resetting a
   password, Google) ends there.
 - **Absolute lifetime.** Refreshing never moves `expiresAt`. After 30 days
   the person signs in again, however active they were.
@@ -288,7 +288,7 @@ more than 10 seconds later. That is indistinguishable from theft by design.
 The mapping is in [session-end.ts](../../src/modules/auth/domain/session-end.ts).
 A session with `revokedAt` set but no reason reads as `logout`.
 
-**Not ended by**: setting a first password, linking Google, or a role change
+**Not ended by**: linking Google, or a role change
 (roles are read on every request, so they apply at once without ending
 anything).
 
@@ -335,7 +335,7 @@ flowchart TD
 3. **User.** A hit is used as is; a miss reads the user through the users
    module. A deleted account is refused.
 4. **`request.user`** is built from the user record: id, session id, email,
-   username, name, `emailVerified`, roles and the profile. That is what
+   username, name, roles and the profile. That is what
    `@CurrentUser()` returns and what `@Roles()` checks.
 
 **The cache:**
@@ -526,7 +526,7 @@ More symptoms: [operations.md](./operations.md).
 The React starter already does all of this; another client must too.
 
 1. **Send credentials on every request that sets, reads or clears the
-   cookie**: `login`, `verify-email`, `reset-password`, `refresh`,
+   cookie**: `login`, `email-code/verify`, `reset-password`, `refresh`,
    `logout`, `logout-all` and `account/delete`. With `fetch`,
    `credentials: 'include'`; with axios, `withCredentials: true`. A
    cross-origin answer's `Set-Cookie` (including the one that clears the

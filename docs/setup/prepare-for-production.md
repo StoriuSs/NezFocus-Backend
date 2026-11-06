@@ -330,7 +330,6 @@ BASE_URL=https://api.example.com
 FRONTEND_URL=https://app.example.com   # required: links in emails point here
 SUPPORT_EMAIL=support@example.com      # optional
 DELETED_ACCOUNT_RETENTION_DAYS=30      # a policy decision, possibly a legal one
-UNVERIFIED_ACCOUNT_RETENTION_DAYS=7
 ```
 
 **`PORT` matters here.** The production compose file publishes the API on

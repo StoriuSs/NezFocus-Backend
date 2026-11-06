@@ -48,11 +48,11 @@ async function main(): Promise<void> {
             const existing = await prisma.user.findFirst({ where: { email, deletedAt: null } })
             if (existing) {
                 userId = existing.id
-                if (!existing.emailVerified) {
-                    await prisma.user.update({ where: { id: userId }, data: { emailVerified: true } })
+                if (!existing.completedAt) {
+                    await prisma.user.update({ where: { id: userId }, data: { completedAt: new Date() } })
                 }
             } else {
-                userId = (await prisma.user.create({ data: { email, emailVerified: true } })).id
+                userId = (await prisma.user.create({ data: { email, completedAt: new Date() } })).id
                 created++
             }
             await prisma.credential.upsert({

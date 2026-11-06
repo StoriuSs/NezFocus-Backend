@@ -273,7 +273,7 @@ What to do about each: [auth/operations.md](./auth/operations.md).
 
 `auth_events_total` counts more than the two rules use. Its `event` label also
 takes `login_succeeded`, `login_rate_limited`, `registration`,
-`password_reset`, `password_set`, `oauth_login_succeeded`,
+`password_reset`, `oauth_login_succeeded`,
 `oauth_login_failed`, `oauth_account_linked` and `account_deleted`
 (`src/modules/auth/application/ports/auth-events.port.ts`). The API
 dashboard's "Sign-in and accounts" row draws them. To alert on one, copy

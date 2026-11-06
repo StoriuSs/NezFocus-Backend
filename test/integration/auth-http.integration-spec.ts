@@ -3,7 +3,19 @@ import { ConfigService } from '@nestjs/config'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import request from 'supertest'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { bootApp, closeApp, codeIn, cookieOf, FRONTEND, latestEmail, pair } from './helpers'
+import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
+import { AUTH_RATE_LIMITS } from '@/modules/auth/application/rate-limits'
+import {
+    bootApp,
+    closeApp,
+    cookieOf,
+    FRONTEND,
+    latestEmail,
+    newCodeIn,
+    pair,
+    setFirstPassword,
+    signInWithCode
+} from './helpers'
 import { testClientIp, testIPv6Network } from './targets'
 
 /**
@@ -26,6 +38,8 @@ describe('Auth over HTTP (integration)', () => {
     const api = () => request(app.getHttpServer())
     const post = (path: string, body: object = {}) =>
         api().post(`/api/v1/${path}`).set('X-Forwarded-For', CLIENT_IP).set('Origin', FRONTEND).send(body)
+    /** As if a minute went by: one code email a minute per address. */
+    const nextMinute = (email: string) => app.get(RateLimiter).reset(AUTH_RATE_LIMITS.codeEmailsPerEmailMinute, email)
     const me = (accessToken: string) => api().get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken}`)
 
     beforeAll(async () => {
@@ -40,13 +54,29 @@ describe('Auth over HTTP (integration)', () => {
         await closeApp(app)
     })
 
-    it('signs up, confirms with the sign-up password, signs in, refreshes from the web app only, and signs out', async () => {
-        expect((await post('auth/register', { email: EMAIL, password: PASSWORD })).status).toBe(202)
-        const code = codeIn(await latestEmail(EMAIL, 'Verify'))
-        // The sign-up password is part of confirming: with another, nothing happens.
-        const otherPassword = await post('auth/verify-email', { email: EMAIL, code, password: 'Quartz-Meadow-Otter-9' })
-        expect([otherPassword.status, otherPassword.body.meta.type]).toEqual([400, 'AUTH_CODE_INVALID'])
-        expect((await post('auth/verify-email', { email: EMAIL, code, password: PASSWORD })).status).toBe(200)
+    it('makes the account with an emailed code, and signs in to it with the next one, in the language of the page', async () => {
+        const email = `itest-http-${randomUUID()}@example.test`
+        const created = await signInWithCode(post, email)
+        expect(created.account).toEqual({ created: true, completed: false })
+        expect(cookieOf(created.response, 'refresh_token')).toMatch(/; HttpOnly/)
+        expect((await me(created.accessToken)).body.data).toMatchObject({ email })
+        await latestEmail(email, 'create')
+
+        // The same address again, from a Vietnamese page: a sign-in, worded so, and no new account.
+        await nextMinute(email)
+        expect((await post('auth/email-code', { email, language: 'vi' })).status).toBe(202)
+        const code = await newCodeIn(email, 'Mã OTP đăng nhập', created.code)
+        const again = await post('auth/email-code/verify', { email, code })
+        expect(again.body.data.account).toEqual({ created: false, completed: false })
+        expect((await me(again.body.data.access_token)).body.data.id).toBe((await me(created.accessToken)).body.data.id)
+        // Used up.
+        const reused = await post('auth/email-code/verify', { email, code })
+        expect([reused.status, reused.body.meta.type]).toEqual([400, 'AUTH_CODE_INVALID'])
+    })
+
+    it('gives the account a password, signs in with it, refreshes from the web app only, and signs out', async () => {
+        await signInWithCode(post, EMAIL)
+        await setFirstPassword(post, EMAIL, PASSWORD, () => nextMinute(EMAIL))
 
         // A bearer token in the body, the refresh token only in an httpOnly cookie on the auth path.
         const login = await post('auth/login', { email: EMAIL.toUpperCase(), password: PASSWORD })

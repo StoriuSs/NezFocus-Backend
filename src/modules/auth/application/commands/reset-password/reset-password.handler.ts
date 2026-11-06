@@ -31,16 +31,26 @@ import { SignInGate } from '../../services/sign-in-gate'
 import { withGuess } from '../../services/limits'
 
 /**
- * Choose a new password with the code from "forgot password", and sign in.
+ * Choose a new password with the code from "forgot password", and sign in
+ * (REQ-AUTH-04, D-62).
  *
- * - The password is checked before the code, so a password the policy refuses
- *   does not use up the code.
- * - Every earlier session ends, this device's included: whoever else was
- *   signed in — possibly the reason for the reset — is out. Then one new
- *   session starts, for the person who just proved they read the inbox and
- *   chose the password.
- * - The address counts as confirmed: the code reached it. This is also how an
- *   account from before this module, which has no password, gets one.
+ * The order of the checks is what keeps this from telling anyone which
+ * addresses have accounts:
+ *
+ * 1. The password rules that need only the address. Their answer is the same
+ *    with or without an account, and a refused password does not use a try.
+ * 2. The code. Every address that asked has one (ForgotPasswordHandler), so a
+ *    wrong guess is counted and answered the same everywhere: wrong codes per
+ *    IP, per address (D-134), and five per code.
+ * 3. Only with the right code — the person reads the inbox — the account, and
+ *    "the password is your username" (D-66). Checked before the code was
+ *    known right, that answer would say "an account with this username has
+ *    this address" to anyone guessing.
+ * 4. Then the code is used up: a password refused at 3 keeps it.
+ *
+ * Every earlier session ends, this device's included: whoever else was signed
+ * in — possibly the reason for the reset — is out. Then one new session
+ * starts, for the person who just proved they read the inbox.
  */
 @CommandHandler(ResetPasswordCommand)
 export class ResetPasswordHandler implements ICommandHandler<ResetPasswordCommand> {
@@ -58,41 +68,43 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
     ) {}
 
     async execute(command: ResetPasswordCommand): Promise<IssuedSession> {
-        const email = normaliseEmail(command.email)
-        const guesses: [RateLimitRule, string][] = [[AUTH_RATE_LIMITS.codeAttemptsPerIp, command.client.ip]]
+        const address = normaliseEmail(command.email)
+        const guesses: [RateLimitRule, string][] = [
+            [AUTH_RATE_LIMITS.codeAttemptsPerIp, command.client.ip],
+            [AUTH_RATE_LIMITS.codeFailuresPerEmail, address]
+        ]
         const now = new Date()
         const user = await withGuess(this.limiter, guesses, async (guess) => {
-            // With the address only, before the lookup: whether the password is
-            // refused must not depend on whether the account exists.
-            const byAddress = checkPassword(command.newPassword, { email })
+            const byAddress = checkPassword(command.newPassword, { email: address })
             if (byAddress.length > 0) throw new PasswordRejectedError(byAddress)
 
-            const found = await this.directory.findByEmail(email)
+            const result = await this.codeIssuer.check(address, command.code, 'password-reset', now)
+            const found = result === 'right' ? await this.directory.findByEmail(address) : null
+            // `right` with no account: the unsent code of an address without
+            // one was guessed. Wrong all the same.
             if (!found) {
                 guess.wrong()
-                throw new CodeInvalidError()
+                throw result === 'expired' ? new CodeExpiredError() : new CodeInvalidError()
             }
-            const byUsername = checkPassword(command.newPassword, { email, username: found.username })
+
+            const byUsername = checkPassword(command.newPassword, { email: address, username: found.username })
             if (byUsername.length > 0) throw new PasswordRejectedError(byUsername)
 
-            const result = await this.codeIssuer.check(found.id, command.code, 'password-reset', now)
-            if (result !== 'ok') {
-                guess.wrong()
-                throw result === 'expired' ? new CodeExpiredError() : new CodeInvalidError()
+            if (!(await this.codeIssuer.use(address, command.code, 'password-reset', now))) {
+                throw new CodeInvalidError()
             }
             return found
         })
 
-        // An account made with Google has no password until now: its owner is
-        // told one was added, not that theirs changed.
+        // No password until now (never completed, or made with Google): its
+        // owner is told one was added, not that theirs changed.
         const hadPassword = (await this.credentials.findHash(user.id)) !== null
         await this.credentials.setHash(user.id, await this.hasher.hash(command.newPassword))
-        if (!user.emailVerified) await this.directory.markEmailVerified(user.id)
         const ended = await this.sessions.revokeAllForUser(user.id, 'password-reset', now)
         await this.cache.invalidateSessions(ended)
         await this.cache.invalidateUser(user.id)
-        if (hadPassword) await this.mailer.sendPasswordChanged(email)
-        else await this.mailer.sendPasswordAdded(email)
+        if (hadPassword) await this.mailer.sendPasswordChanged(address, command.language)
+        else await this.mailer.sendPasswordAdded(address, command.language)
         this.events.record('password_reset')
         return this.gate.pass(user.id, command.client, now)
     }

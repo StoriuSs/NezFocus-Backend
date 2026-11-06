@@ -1,6 +1,9 @@
+import { applyDecorators } from '@nestjs/common'
+import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
-import { IsEmail, Matches, MaxLength } from 'class-validator'
+import { IsEmail, IsIn, IsOptional, Matches, MaxLength } from 'class-validator'
 import { trimString } from '@/shared/utils/transform.util'
+import { EMAIL_LANGUAGES } from '@/modules/auth/application/ports'
 
 /*
  * Fields several /auth request bodies share. The file name ends in .dto.ts so
@@ -23,6 +26,22 @@ export class EmailField {
     @MaxLength(254)
     email: string
 }
+
+/**
+ * `language`: the page's language, for the email the request sends (D-132).
+ * A field of each body that emails, not a header, so it follows the language
+ * switch at the foot of the page and not only the browser's setting.
+ */
+export const IsEmailLanguage = () =>
+    applyDecorators(
+        ApiPropertyOptional({
+            enum: EMAIL_LANGUAGES,
+            default: 'en',
+            description: 'The language of the page, for the email this sends.'
+        }),
+        IsOptional(),
+        IsIn(EMAIL_LANGUAGES, { message: 'language must be vi or en' })
+    )
 
 export class EmailCodeFields extends EmailField {
     /** The six digits from the email. */

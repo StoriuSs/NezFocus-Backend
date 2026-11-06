@@ -8,9 +8,9 @@ export const MESSAGES = {
     AUTH: {
         LOGIN_SUCCESS: 'Login successful',
         // The same whether or not the address has an account.
-        REGISTER_ACCEPTED: 'Check your email to continue.',
+        CODE_SENT: 'Check your email for the code.',
         CODE_SENT_IF_ACCOUNT: 'If that address has an account, an email is on its way.',
-        EMAIL_VERIFIED: 'Your email address is confirmed. You are signed in.',
+        CODE_SIGN_IN_SUCCESS: 'You are signed in.',
         LOGOUT_EVERYWHERE_SUCCESS: 'Signed out on every device',
         LOGOUT_SUCCESS: 'Logout successful',
         TOKEN_REFRESHED: 'Token refreshed successfully',

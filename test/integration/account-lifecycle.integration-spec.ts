@@ -64,27 +64,25 @@ describe('Account lifecycle (integration)', () => {
         })
     })
 
-    describe('the sweep', () => {
-        it('deletes sign-ups never verified once old enough, and nothing else', async () => {
-            const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
-            const stale = await newUser({ createdAt: old })
-            const fresh = await newUser()
-            const verified = await newUser({ createdAt: old, emailVerified: true })
-            const deleted = await newUser({ createdAt: old, deletedAt: new Date() })
-            for (const user of [stale, fresh, verified, deleted]) {
-                await prisma.credential.create({ data: { userId: user.id, passwordHash: 'x' } })
-            }
-            // Brought over from the Keycloak starter: "unverified" (the column is new), old, no password here.
-            const upgraded = await newUser({ createdAt: old })
+    describe('createWithEmail', () => {
+        // Signing in with a code makes the account when the address has none:
+        // two such sign-ins at once must make one account, the other told so.
+        it('makes one account when two are made for one address at once, whatever its case', async () => {
+            const email = `itest-create-${randomUUID()}@example.test`
+            const made = await Promise.all([users.createWithEmail(email), users.createWithEmail(email.toUpperCase())])
 
-            await users.deleteUnverifiedCreatedBefore(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+            expect(made.filter(Boolean)).toHaveLength(1)
+            expect(made.find(Boolean)).toMatchObject({ email, completedAt: null })
+            await prisma.user.deleteMany({ where: { email } })
+        })
 
-            const left = await prisma.user.findMany({
-                where: { id: { in: [stale.id, fresh.id, verified.id, deleted.id, upgraded.id] } }
-            })
-            expect(left.map((user) => user.id).sort()).toEqual([deleted.id, fresh.id, verified.id, upgraded.id].sort())
-            // Its password went with it.
-            expect(await prisma.credential.findUnique({ where: { userId: stale.id } })).toBeNull()
+        it('makes a new account for the address of a deleted one', async () => {
+            const deleted = await newUser({ deletedAt: new Date() })
+
+            const made = await users.createWithEmail(deleted.email!)
+
+            expect(made?.id).not.toBe(deleted.id)
+            await prisma.user.deleteMany({ where: { id: made!.id } })
         })
     })
 })

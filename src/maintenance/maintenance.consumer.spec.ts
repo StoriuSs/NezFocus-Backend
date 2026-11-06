@@ -14,8 +14,7 @@ describe('MaintenanceConsumer', () => {
         }
         const commandBus = { execute: jest.fn().mockResolvedValue({}) }
         const config = {
-            get: (key: string) =>
-                ({ 'app.deletedAccountRetentionDays': 30, 'app.unverifiedAccountRetentionDays': 7 })[key]
+            get: (key: string) => ({ 'app.deletedAccountRetentionDays': 30 })[key]
         }
         const consumer = new MaintenanceConsumer(
             commandBus as unknown as CommandBus,
@@ -51,7 +50,7 @@ describe('MaintenanceConsumer', () => {
 
         const [sweep, cleanUp] = commandBus.execute.mock.calls.map(([command]) => command)
         expect(sweep).toBeInstanceOf(SweepDeletedAccountsCommand)
-        expect(sweep).toMatchObject({ retentionDays: 30, unverifiedRetentionDays: 7 })
+        expect(sweep).toMatchObject({ retentionDays: 30 })
         expect(cleanUp).toBeInstanceOf(CleanUpAuthCommand)
     })
 

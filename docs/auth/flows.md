@@ -1,8 +1,8 @@
 # Every flow, step by step
 
-What happens, in order, when someone signs up, signs in, refreshes, signs
-out, resets or changes a password, signs in with Google, or deletes their
-account. Each flow has a diagram, then numbered steps naming the route, what
+What happens, in order, when someone signs up or signs in with a code, signs
+in with a password, refreshes, signs out, resets or changes a password, signs
+in with Google, or deletes their account. Each flow has a diagram, then numbered steps naming the route, what
 is checked, and what can go wrong.
 
 Read this if you are building the frontend, writing a test, or want to know
@@ -11,13 +11,12 @@ explained in [concepts.md](./concepts.md). Every route's full request and
 response shapes are in [api-reference.md](./api-reference.md).
 
 - [How to read this page](#how-to-read-this-page)
-- [Sign up and confirm the address](#sign-up-and-confirm-the-address)
+- [Sign up or sign in with a code](#sign-up-or-sign-in-with-a-code)
 - [Sign in](#sign-in)
 - [Refresh](#refresh)
 - [Sign out](#sign-out)
 - [Forgot and reset the password](#forgot-and-reset-the-password)
 - [Change the password](#change-the-password)
-- [Set a first password](#set-a-first-password)
 - [Sign in with Google](#sign-in-with-google)
 - [Delete the account](#delete-the-account)
 
@@ -43,10 +42,11 @@ response shapes are in [api-reference.md](./api-reference.md).
   ([emails.md](./emails.md)). In development they land in Mailpit,
   `http://localhost:8025`.
 
-## Sign up and confirm the address
+## Sign up or sign in with a code
 
-Creating an account takes two requests: one that emails a code, and one that
-checks it and signs in.
+Creating an account and signing in with a code are one flow (D-59, D-60):
+one request emails a code, the other checks it and signs in. A right code
+signs in to the address's account, or makes one if it has none.
 
 ```mermaid
 sequenceDiagram
@@ -55,108 +55,79 @@ sequenceDiagram
     participant R as Redis
     participant P as Postgres
     participant Q as Email queue
-    W->>A: POST /auth/register with email, password
-    A->>A: password rules, with the address
+    W->>A: POST /auth/email-code with email, language
     A->>R: limits used up? if not, count them
-    A->>A: hash the password (Argon2id)
     A->>P: find the address
-    alt address already confirmed
-        A->>Q: account-exists email
-    else new, or registered but never confirmed
-        A->>P: create the user (or reuse it), store the hash
-        A->>P: store the code's HMAC, valid 10 min
-        A->>Q: send-code email with the 6 digits
-    end
-    A-->>W: 202 "Check your email to continue."
+    A->>P: store the code's HMAC for the address, valid 10 min
+    A->>Q: send-code email: "sign-in code" or "code to create an account"
+    A-->>W: 202 "Check your email for the code."
     Note over W,Q: the person reads the code in their inbox
-    W->>A: POST /auth/verify-email with email, code, password
-    A->>R: count this try against the IP (refused if used up)
-    A->>P: find the user, check the password, then check and use up the code
-    A->>P: mark the address confirmed
+    W->>A: POST /auth/email-code/verify with email, code
+    A->>R: count this try against the IP and the address (refused if used up)
+    A->>P: check the code (counts one of its tries), then use it up
+    A->>P: find the account, or create one (no password, not completed)
     A->>P: create session and refresh token
-    A-->>W: 200 access token, Set-Cookie refresh_token
+    A-->>W: 200 access token, account, Set-Cookie refresh_token
 ```
 
-**1. `POST /auth/register`** (public). Body: `email`, `password`.
-[register.handler.ts](../../src/modules/auth/application/commands/register/register.handler.ts)
+**1. `POST /auth/email-code`** (public). Body: `email`, optional `language`
+(`vi` or `en`, default `en`). Asking again is the same call.
+[send-email-code.handler.ts](../../src/modules/auth/application/commands/send-email-code/send-email-code.handler.ts)
 
 1. The address is trimmed and lower-cased.
-2. The password is checked against the
-   [rules](./passwords-and-codes.md#the-password-rules), with the address only.
-   Broken: `422 AUTH_PASSWORD_REJECTED`, `data.rules` lists the rule ids.
-   This comes first so a password the form must change does not use up one
-   of the address's emails.
-3. The limits: new accounts per IP (5 an hour), sign-up emails per address
-   (1 a minute), code emails per address (5 an hour). Used up:
-   `429 RATE_LIMIT_EXCEEDED` with `data.reason` `network` or `emails` and a
-   `Retry-After` header. Otherwise each is counted (two requests racing past
-   the check are still caught by the count).
-4. The password is hashed, every time, so the answer takes as long whether or
-   not the address is taken.
-5. Then, depending on the address:
-   - **already confirmed**: no account is made; its owner is emailed "You
-     already have an account" (`account-exists`), with links to sign in and
-     to reset the password;
-   - **registered but never confirmed**: the new password replaces the old
-     one, and a fresh code is emailed. Whoever can read the inbox is the
-     owner;
-   - **new**: an unconfirmed user is created, the hash stored, and a code
-     emailed (`send-code`, purpose `email-verify`).
-6. Answer: `202`, `data: null`. The same answer
-   in every case, so sign-up cannot be used to find out who has an account.
+2. The limits: code emails per IP (10 an hour), per address (1 a minute,
+   5 an hour, shared with reset codes). Used up: `429 RATE_LIMIT_EXCEEDED`
+   with `data.reason` `network` or `emails` and a `Retry-After` header.
+   Otherwise each is counted (two requests racing past the check are still
+   caught by the count). There is no separate limit on new accounts: each one
+   needs a code from these.
+3. A `sign-in` code is stored for the address, replacing any earlier one, and
+   emailed (`send-code`). Every address gets one. Only the wording differs:
+   "your sign-in code" if the address has an account, "your code to create an
+   account" if not, in the request's `language` (D-132).
+4. Answer: `202`, `data: null`. The same answer and the same work for every
+   address, so this route cannot be used to find out who has an account
+   (D-121).
 
-**2. `POST /auth/verify-email`** (public). Body: `email`, `code` (exactly six
-digits, else `422`), `password` (the one from the last sign-up, else `422`).
-[verify-email.handler.ts](../../src/modules/auth/application/commands/verify-email/verify-email.handler.ts)
+**2. `POST /auth/email-code/verify`** (public). Body: `email`, `code`
+(exactly six digits, else `422`). Send it with credentials so the browser
+stores the cookie.
+[verify-email-code.handler.ts](../../src/modules/auth/application/commands/verify-email-code/verify-email-code.handler.ts)
 
-1. Wrong codes from this IP: 20 an hour across all addresses. The try is
-   counted before anything is checked, and taken back if it was right, so a
-   burst of requests sent at once is limited like a slow one. Used up:
-   `429 RATE_LIMIT_EXCEEDED`, `data.reason: "network"`.
-2. The user is looked up by address and the password checked (an unknown
-   address still runs a hash). A wrong password stops here, with the
-   same answer as a wrong code, and without using up one of the code's tries.
-   It is there because signing up again replaces the password of an
-   unconfirmed account: see [accounts.md](./accounts.md#confirming-the-address).
-3. The code is checked. Each check counts one of the code's 5 attempts, in the
+1. Wrong codes from this IP (20 an hour, across addresses) and for this
+   address (10 an hour, across its codes, D-134). The try is counted before
+   anything is checked, and taken back if it was right, so a burst of
+   requests sent at once is limited like a slow one. Used up:
+   `429 RATE_LIMIT_EXCEEDED`, `data.reason` `network` or `codes`.
+2. The code is checked. Each check counts one of the code's 5 tries, in the
    same database statement.
-   - unknown address, wrong password, wrong code, or no code waiting:
-     `400 AUTH_CODE_INVALID` (one error for all, so this route cannot find
-     accounts either);
+   - wrong code, or no code sent: `400 AUTH_CODE_INVALID`;
    - older than 10 minutes, or the 5th wrong try: `400 AUTH_CODE_EXPIRED`.
      The person asks for a new code.
-   Either failure counts one against the IP's 20.
-4. Right code: the code is used up, the address marked confirmed, and the
-   cached user dropped.
+   Either failure counts one against the IP and the address.
+3. Right code: it is used up, by an update that matches its hash too, so an
+   older code can never use up a newer one. Another request used it first:
+   `400 AUTH_CODE_INVALID`. One code makes one session.
+4. The address's account, or a new one: no password, no username,
+   `completedAt` empty ("not completed"). Two sign-ups racing for one address
+   meet at the database's unique index; the loser signs in to the winner's
+   account.
 5. Signed in through the [sign-in gate](./sessions-and-tokens.md#sessions):
-   `200`, the access token in the body and
-   the refresh cookie set.
+   `200`, the access token in the body with
+   `account: { created, completed }`, and the refresh cookie set.
 
-**Resending the code: `POST /auth/resend-verification`** (public). Body:
-`email`.
-[resend-verification.handler.ts](../../src/modules/auth/application/commands/resend-verification/resend-verification.handler.ts)
-
-1. Limits, checked and counted: code emails per IP (10 an hour), per address
-   (1 a minute, 5 an hour). Used up: `429` with `data.reason` `network` or
-   `emails`.
-2. No account: nothing is sent. Unconfirmed: a new code, which makes the
-   earlier one stop working. Confirmed: the `account-exists` email.
-3. Answer: `202` "If that address has an account, an email is on its way."
+`completed: false` tells the web app to open the "complete your account"
+step (D-61). That step (`POST /auth/complete-account`) and the gate that
+refuses an account that has not done it are planned for a later slice.
 
 **What can go wrong for the person**
 
 - The code never arrives: see [emails.md](./emails.md#when-redis-or-smtp-is-down).
 - They wait more than 10 minutes, or type it wrong 5 times: they ask for a
   new one. Only the newest code works.
-- They reload the confirm page: the web app no longer has the password from
-  the sign-up form, so it asks for it alongside the code.
-- They signed up twice with different passwords: only the newest code works,
-  with the password from that last sign-up.
-- They never confirm: the account is deleted after
-  `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (7), which frees the address
-  ([accounts.md](./accounts.md)).
-- They try to sign in before confirming: `403 AUTH_EMAIL_NOT_VERIFIED`
-  (only after the right password), so the web app can offer to resend.
+- They asked for two codes: only the newest works.
+- They guessed wrong 10 times in an hour across several codes:
+  `429`, `data.reason: "codes"`, until the hour has passed.
 
 ## Sign in
 
@@ -175,12 +146,8 @@ sequenceDiagram
         A-->>W: 401 AUTH_INVALID_CREDENTIALS
     else right password
         A->>R: clear the address's failure count
-        alt address not confirmed
-            A-->>W: 403 AUTH_EMAIL_NOT_VERIFIED
-        else
-            A->>P: create session and refresh token
-            A-->>W: 200 access token, Set-Cookie refresh_token
-        end
+        A->>P: create session and refresh token
+        A-->>W: 200 access token, Set-Cookie refresh_token
     end
 ```
 
@@ -194,19 +161,18 @@ credentials so the browser stores the cookie.
    or `network` (the IP). The 6th attempt after 5 failures is the first
    refused.
 2. The password is checked. A wrong password, an unknown address and an
-   account with no password (made with Google) are the same answer,
+   account with no password (made by a code or with Google, and not
+   completed) are the same answer,
    `401 AUTH_INVALID_CREDENTIALS` "Incorrect email or password.", and take
    the same time (an unknown address is checked against a dummy hash). A
    failure counts one against the address and one against the IP.
 3. Right password: the address's failure count is cleared (the IP's is not).
-4. Address not confirmed: `403 AUTH_EMAIL_NOT_VERIFIED`. Said only now,
-   after the right password, so it gives nothing away; the web app offers
-   `resend-verification`.
-5. The hash is upgraded if it was made with older Argon2 settings.
-6. The sign-in gate starts a session: `200`,
+4. The hash is upgraded if it was made with older Argon2 settings.
+5. The sign-in gate starts a session: `200`,
    `{ access_token, token_type, expires_in }`, and the refresh cookie.
 
-The forms around it: a "Forgot password?" link
+The forms around it: "Sign in with a code"
+([above](#sign-up-or-sign-in-with-a-code)), a "Forgot password?" link
 ([below](#forgot-and-reset-the-password)), and "Continue with Google" when
 `GET /auth/options` lists `google` ([below](#sign-in-with-google)).
 
@@ -318,6 +284,9 @@ Send with credentials so the clearing `Set-Cookie` applies.
 
 ## Forgot and reset the password
 
+Also how an account without a password (not completed, or made with Google)
+chooses its first one.
+
 ```mermaid
 sequenceDiagram
     participant W as Web app
@@ -325,51 +294,61 @@ sequenceDiagram
     participant R as Redis
     participant P as Postgres
     participant Q as Email queue
-    W->>A: POST /auth/forgot-password with email
+    W->>A: POST /auth/forgot-password with email, language
     A->>R: limits used up? if not, count them
+    A->>P: store a password-reset code for the address, 10 min
     A->>P: find the address
     opt account exists
-        A->>P: store a password-reset code, 10 min
         A->>Q: send-code email
     end
     A-->>W: 202 "If that address has an account, an email is on its way."
-    W->>A: POST /auth/reset-password with email, code, password
+    W->>A: POST /auth/reset-password with email, code, password, language
     A->>A: password rules, with the address
-    A->>P: find the user, check the rules with the username, check the code
-    A->>P: store the new hash, mark the address confirmed
+    A->>P: check the code (counts a try)
+    A->>P: right: find the user, check the rules with the username, use up the code
+    A->>P: store the new hash
     A->>P: end every session (password-reset)
     A->>Q: password-changed email (or password-added)
     A->>P: create session
     A-->>W: 200 access token, Set-Cookie refresh_token
 ```
 
-**1. `POST /auth/forgot-password`** (public). Body: `email`.
+**1. `POST /auth/forgot-password`** (public). Body: `email`, optional
+`language`.
 [forgot-password.handler.ts](../../src/modules/auth/application/commands/forgot-password/forgot-password.handler.ts)
 
 1. Limits checked and counted: code emails per IP (10 an hour), per
-   address (1 a minute, 5 an hour). Used up: `429`, `data.reason` `network`
-   or `emails`. Counted for every address, account or not.
-2. No account: nothing is sent. Otherwise a `password-reset` code is emailed.
-   For an account with no password yet (made with Google), the email is
-   worded "Choose a password" instead of "Reset".
-3. Always `202` with the same message.
+   address (1 a minute, 5 an hour, shared with sign-in codes). Used up:
+   `429`, `data.reason` `network` or `emails`. Counted for every address,
+   account or not.
+2. No account: a `password-reset` code is still stored, and sent to nobody.
+   Guesses at it are counted and wear it out after five exactly as for a real
+   one, so "the fifth guess says expired" cannot tell which addresses have
+   accounts (D-121).
+3. An account: a `password-reset` code is emailed. For an account with no
+   password yet, the email is worded "Choose a password" instead of "Reset".
+4. Always `202` with the same message.
 
 **2. `POST /auth/reset-password`** (public). Body: `email`, `code`,
-`password` (the new one). Send with credentials: it signs in.
+`password` (the new one), optional `language`. Send with credentials: it
+signs in.
 [reset-password.handler.ts](../../src/modules/auth/application/commands/reset-password/reset-password.handler.ts)
 
-1. Wrong codes from this IP: 20 an hour. Used up: `429`,
-   `data.reason: "network"`.
-2. The new password against the rules, with the address only:
-   `422 AUTH_PASSWORD_REJECTED`. Before the lookup, so the refusal cannot
-   depend on whether the account exists.
-3. Unknown address: `400 AUTH_CODE_INVALID` (and one wrong code counted).
-4. The rules again, with the username too: `422 AUTH_PASSWORD_REJECTED`.
-   Before the code, so a refused password does not use the code up.
-5. The code: `400 AUTH_CODE_INVALID` or `400 AUTH_CODE_EXPIRED`, counting a
-   wrong code against the IP.
-6. The new hash is stored and the address marked confirmed (the code reached
-   it).
+1. Wrong codes from this IP (20 an hour) and for this address (10 an hour,
+   D-134). Used up: `429`, `data.reason` `network` or `codes`.
+2. The new password against the rules that need only the address:
+   `422 AUTH_PASSWORD_REJECTED`. The answer is the same with or without an
+   account, and a refused password does not use a try.
+3. The code: `400 AUTH_CODE_INVALID` or `400 AUTH_CODE_EXPIRED`, counting a
+   wrong code against the IP and the address. Every address that asked has a
+   code, so this is answered the same everywhere. A right guess at the unsent
+   code of an address without an account is answered as wrong.
+4. Only with the right code, the account is looked up and the rule "the
+   password is not the username" checked (D-66): `422 AUTH_PASSWORD_REJECTED`.
+   Checked earlier, that answer would tell a guesser which username has this
+   address. The code is not used up.
+5. The code is used up. Another request used it first: `400 AUTH_CODE_INVALID`.
+6. The new hash is stored.
 7. **Every session ends** (reason `password-reset`), on every device,
    including this one's old session. Whoever else was signed in, possibly
    the reason for the reset, is out.
@@ -408,8 +387,8 @@ sequenceDiagram
 2. Wrong current password, or an account with no password:
    `400 AUTH_CURRENT_PASSWORD_INVALID`, counting one. It is a `400`, not a
    `401`, on purpose: clients treat any `401` as "signed out".
-   Accounts without a password use [set a first password](#set-a-first-password)
-   instead.
+   Accounts without a password choose one with
+   [forgot password](#forgot-and-reset-the-password) instead.
 3. The new password against the rules, with the address and the username:
    `422 AUTH_PASSWORD_REJECTED`.
 4. The new hash is stored, **every other session ends** (reason
@@ -417,52 +396,6 @@ sequenceDiagram
    `password-changed`.
 5. `200`, `data: null`. This
    session stays signed in; its cookie is unchanged.
-
-## Set a first password
-
-For an account made with Google, which has no password. Being signed in is
-not enough on its own (a session left open on a shared computer would let
-anyone add a permanent way in), so a code goes to the inbox first.
-
-```mermaid
-sequenceDiagram
-    participant W as Web app
-    participant A as API
-    participant P as Postgres
-    participant Q as Email queue
-    W->>A: GET /auth/sign-in-methods (Bearer)
-    A-->>W: 200 password false, providers google
-    W->>A: POST /auth/password/code (Bearer)
-    A->>P: store a password-set code, 10 min
-    A->>Q: send-code email
-    A-->>W: 200
-    W->>A: POST /auth/password with code, new_password (Bearer)
-    A->>A: new password against the rules
-    A->>P: check the code, store the hash
-    A->>Q: password-added email
-    A-->>W: 200, sessions unchanged
-```
-
-1. **`GET /auth/sign-in-methods`** (signed in): `{ password: false,
-   providers: ["google"] }` tells the settings page to offer "Set a
-   password" rather than "Change password".
-2. **`POST /auth/password/code`** (signed in, no body).
-   [set-password.handler.ts](../../src/modules/auth/application/commands/set-password/set-password.handler.ts)
-   - The account has a password already: `409 AUTH_PASSWORD_ALREADY_SET`.
-   - Code emails to the address: 1 a minute, 5 an hour. Used up: `429`,
-     `data.reason: "emails"`.
-   - A `password-set` code is emailed. `200`, `data: null`.
-3. **`POST /auth/password`** (signed in). Body: `code`, `new_password`.
-   - Wrong codes from this IP: 20 an hour (`429`, `network`).
-   - Has a password already: `409 AUTH_PASSWORD_ALREADY_SET`.
-   - The rules, with address and username: `422 AUTH_PASSWORD_REJECTED`.
-     Checked before the code, so a refused password does not use it up.
-   - The code: `400 AUTH_CODE_INVALID` or `400 AUTH_CODE_EXPIRED`.
-   - The hash is stored, the owner emailed `password-added`. `200`,
-     `data: null`. Sessions are untouched, and Google keeps working.
-
-"Forgot password" on the sign-in page reaches the same result for someone
-who is not signed in: the reset email is worded "Choose a password".
 
 ## Sign in with Google
 
@@ -528,9 +461,7 @@ error, and the `oauth_state` cookie is cleared.
    `?error=account_deleted`.
 5. The sign-in gate: a session and the refresh cookie, then
    `?redirect=/path`.
-6. When a never-confirmed account's password was removed while linking,
-   `&notice=password_removed` is added, so the web app can tell the person.
-7. Unexpected errors (database, Redis): `?error=failed`, logged at error
+6. Unexpected errors (database, Redis): `?error=failed`, logged at error
    level. The reason for every failure is logged at warn level: "google
    sign-in did not complete (failed): …".
 
@@ -552,30 +483,25 @@ flowchart TD
     L -->|no| V{Email present and verified by Google?}
     V -->|no| U[error=email_unverified]
     V -->|yes| E{A live account with this address?}
-    E -->|none| N[Create a confirmed account with no password, link it]
-    E -->|confirmed| C[Link it, email sign-in-method-added]
-    E -->|never confirmed| X[Delete its password, mark confirmed, link it, notice=password_removed if it had one]
+    E -->|none| N[Create an account with no password, not completed, link it]
+    E -->|yes| C[Link it, email sign-in-method-added]
     N --> IN
     C --> IN
-    X --> IN
 ```
 
 | Situation | What happens | Email |
 |---|---|---|
 | **Returning**: already linked | Signed in to that account | none |
-| **First time, no account** | A new account: confirmed, display name from Google, no password | none |
-| **Linking a confirmed account** (signed up with a password earlier) | Linked; the password keeps working too | `sign-in-method-added` ("Google sign-in was added…"), the one they need if it was not them |
-| **Linking a never-confirmed account** | Its password is **deleted**, the address marked confirmed, then linked | none; the web app shows `notice=password_removed` |
+| **First time, no account** | A new account: display name from Google, no password, not completed | none |
+| **Linking an existing account** (made with a code earlier) | Linked; its password, if it has one, keeps working too | `sign-in-method-added` ("Google sign-in was added…"), the one they need if it was not them. In English until accounts store a language (D-132) |
 
-Why delete the password in the last case: whoever set it never proved they
-read the inbox, and Google just did. Otherwise someone could register a
-victim's address first, wait for the victim to use Google, then sign in with
-the password they chose.
+Every account's address is confirmed: by a right code, or by Google (D-133).
+So linking never has to undo anything someone else set up on the address.
 
 ## Delete the account
 
 Deleting needs proof it is the owner, not only a signed-in session (or anyone
-at an unlocked computer could do it). Which proof depends on the account.
+at an unlocked computer could do it). The proof is the password.
 
 ```mermaid
 sequenceDiagram
@@ -583,49 +509,34 @@ sequenceDiagram
     participant A as API
     participant P as Postgres
     participant Q as Email queue
-    opt account without a password (made with Google)
-        W->>A: POST /auth/account/delete-code (Bearer)
-        A->>Q: send-code email (account-delete)
-        A-->>W: 200
-    end
-    W->>A: POST /auth/account/delete with password or code (Bearer, credentials)
-    A->>A: proof complete? check the password, or the emailed code
+    W->>A: POST /auth/account/delete with password (Bearer, credentials)
+    A->>A: password sent, and the account has one? check it
     A->>P: mark the account deleted
     Note over A,P: an event ends every session and removes the password and Google links
     A->>Q: account-deleted email
     A-->>W: 200, cookie cleared
 ```
 
-**1. `POST /auth/account/delete-code`** (signed in, no body), only for an
-account with no password.
+**`POST /auth/account/delete`** (signed in). Body: `password`, and an
+optional `language` for the email. Send with credentials so the cookie is
+cleared.
 [delete-own-account.handler.ts](../../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts)
 
-- The account has a password: `409 AUTH_USE_PASSWORD` (confirm with the
-  password instead).
-- Code emails to the address: 1 a minute, 5 an hour (`429`, `emails`).
-- An `account-delete` code is emailed. `200`, `data: null`.
-
-**2. `POST /auth/account/delete`** (signed in). Body: `password` (accounts
-with one), or `code` (accounts without). Send with credentials so the
-cookie is cleared.
-
-1. Proof missing: `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs`,
-   `["password"]` or `["code"]`. A web app can send an empty body first to
-   learn what this account needs.
-2. The password, if the account has one. Wrong current passwords per user:
-   5 per 15 minutes (`429`, `wrong_password`). Wrong:
-   `400 AUTH_CURRENT_PASSWORD_INVALID`.
-3. The emailed code, for an account without a password. Wrong codes per IP:
-   20 an hour (`429`, `network`). Wrong or expired: `400 AUTH_CODE_INVALID`
-   or `400 AUTH_CODE_EXPIRED`.
-4. The users module marks the account deleted. A second deletion racing this
+1. No password sent, or the account has none:
+   `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. An
+   account without a password (not completed, or made with Google) chooses
+   one with [forgot password](#forgot-and-reset-the-password) first.
+2. Wrong current passwords per user: 5 per 15 minutes (`429`,
+   `wrong_password`). Wrong: `400 AUTH_CURRENT_PASSWORD_INVALID`.
+3. The users module marks the account deleted. A second deletion racing this
    one: `404 USER_NOT_FOUND`.
-5. Straight after, an event handler ends every session (reason
+4. Straight after, an event handler ends every session (reason
    `account-deleted`) and removes the password and the Google links. Until
    it has run, the guard already refuses the account.
-6. The owner is emailed `account-deleted`, which says when their personal
-   details are erased (`DELETED_ACCOUNT_RETENTION_DAYS`, default 30).
-7. `200`, and the cookie is cleared. Every
+5. The owner is emailed `account-deleted`, in the request's `language`, which
+   says when their personal details are erased
+   (`DELETED_ACCOUNT_RETENTION_DAYS`, default 30).
+6. `200`, and the cookie is cleared. Every
    other device gets `403 AUTH_ACCOUNT_DISABLED` on its next request.
 
 What is kept and erased, and when: [accounts.md](./accounts.md).

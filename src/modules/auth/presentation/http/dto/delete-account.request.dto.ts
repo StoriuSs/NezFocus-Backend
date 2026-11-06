@@ -1,24 +1,19 @@
-import { Transform } from 'class-transformer'
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
-import { trimString } from '@/shared/utils/transform.util'
-import { PASSWORD_INPUT_MAX } from './shared/fields.dto'
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import type { EmailLanguage } from '@/modules/auth/application/ports'
+import { IsEmailLanguage, PASSWORD_INPUT_MAX } from './shared/fields.dto'
 
 /**
- * Proof for deleting your own account (POST /auth/account/delete). Which
- * fields are needed depends on the account: a 400 AUTH_CONFIRMATION_REQUIRED
- * lists the missing ones.
+ * Proof for deleting your own account (POST /auth/account/delete): the
+ * password. Missing, a 400 AUTH_CONFIRMATION_REQUIRED says so.
  */
 export class DeleteAccountRequestDto {
-    /** The account's password; for an account that has one. */
+    /** The account's password. */
     @IsOptional()
     @IsString()
     @MinLength(1)
     @MaxLength(PASSWORD_INPUT_MAX)
     password?: string
 
-    /** The six digits emailed by POST /auth/account/delete-code; for an account without a password. */
-    @IsOptional()
-    @Transform(trimString)
-    @Matches(/^\d{6}$/, { message: 'code must be the six digits from the email' })
-    code?: string
+    @IsEmailLanguage()
+    language?: EmailLanguage
 }

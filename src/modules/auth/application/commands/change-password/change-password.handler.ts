@@ -60,6 +60,6 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
         const ended = await this.sessions.revokeAllForUser(user.id, 'password-changed', new Date(), command.sessionId)
         await this.cache.invalidateSessions(ended)
         await this.limiter.reset(rule, command.userId)
-        if (user.email) await this.mailer.sendPasswordChanged(user.email)
+        if (user.email) await this.mailer.sendPasswordChanged(user.email, command.language)
     }
 }

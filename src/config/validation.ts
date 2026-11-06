@@ -73,8 +73,6 @@ export const validationSchema = Joi.object({
     SUPPORT_EMAIL: Joi.string().email().allow('').optional(),
     GRACEFUL_SHUTDOWN_TIMEOUT_MS: Joi.number().default(5000),
     DELETED_ACCOUNT_RETENTION_DAYS: Joi.number().integer().min(0).default(30),
-    // Days an account may stay unverified before the sweep deletes it.
-    UNVERIFIED_ACCOUNT_RETENTION_DAYS: Joi.number().integer().min(1).default(7),
 
     // cors.config.ts
     CORS_ORIGINS: Joi.string().default('http://localhost:3001'),

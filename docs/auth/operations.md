@@ -81,7 +81,7 @@ openssl rand -hex 32   # JWT_SECRET
 
 **After deploying**, with a real address:
 
-- [ ] Sign up, receive the code, confirm: you are signed in.
+- [ ] Ask for a code, receive it, send it back: the account is made and you are signed in.
 - [ ] Reload the web app: you are still signed in (the refresh cookie works).
 - [ ] Wait 16 minutes, use the app: still signed in (refresh works after the
       first access token expired).
@@ -113,7 +113,6 @@ is in [environment.md](../environment.md#authentication). Where they are used:
 | `CORS_CREDENTIALS` | `true` | Must be true | |
 | `APP_NAME` | `Test App` | Your product's name | New emails only |
 | `SUPPORT_EMAIL` | empty | Recommended | |
-| `UNVERIFIED_ACCOUNT_RETENTION_DAYS` | `7` | At least 1 | |
 | `DELETED_ACCOUNT_RETENTION_DAYS` | `30` | At least 0 | |
 | `THROTTLE_TTL`, `THROTTLE_LIMIT` | `60`, `100` | | The global per-IP-per-route throttler ([rate-limits.md](./rate-limits.md)) |
 | `EMAIL_*` | Mailpit in development | `EMAIL_HOST` required | |

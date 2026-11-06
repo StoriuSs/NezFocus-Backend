@@ -1,57 +1,49 @@
 import { JobsOptions } from 'bullmq'
 import { CodePurpose } from '@/modules/auth/domain'
+import type { EmailLanguage } from '@/modules/auth/application/ports'
 
 /*
  * The auth email jobs on the `auth` queue: their names, what each carries, and
  * how they are retried. One contract for both sides: BullMqAuthMailer adds
  * them, AuthJobsConsumer sends them.
  * A job already in Redis was written with an earlier version of these, so a
- * field added later stays optional.
+ * field added later stays optional: `language` absent means English.
  */
 
 export const AUTH_JOBS = {
     SEND_CODE: 'send-code',
     PASSWORD_CHANGED: 'password-changed',
-    ACCOUNT_EXISTS: 'account-exists',
     PASSWORD_ADDED: 'password-added',
     SIGN_IN_METHOD_ADDED: 'sign-in-method-added',
     ACCOUNT_DELETED: 'account-deleted'
 } as const
 
-export interface SendCodeJob {
+interface Localised {
     to: string
+    language?: EmailLanguage
+}
+
+export interface SendCodeJob extends Localised {
     code: string
     purpose: CodePurpose
     expiresInMinutes: number
-    /** Absent on a job queued before it existed: worded as a reset. */
+    /** A sign-in code: the address has an account. */
+    accountExists?: boolean
+    /** A reset code for an account with no password yet. */
     firstPassword?: boolean
     /** The account's display name, when it has one. */
     name?: string
 }
 
-export interface PasswordChangedJob {
-    to: string
-}
+export type PasswordChangedJob = Localised
 
-export interface AccountExistsJob {
-    to: string
-    /** Absent on a job queued before these existed: the email then names no method. */
-    password?: boolean
-    providers?: string[]
-}
+export type PasswordAddedJob = Localised
 
-export interface PasswordAddedJob {
-    to: string
-}
-
-export interface SignInMethodAddedJob {
-    to: string
+export interface SignInMethodAddedJob extends Localised {
     providerName: string
 }
 
-export interface AccountDeletedJob {
-    to: string
-}
+export type AccountDeletedJob = Localised
 
 /**
  * Overrides the queue defaults, which suit work that can wait an hour and a

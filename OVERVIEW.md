@@ -35,7 +35,7 @@ Concretely, what you get on top of Nest:
 
 | | |
 | --- | --- |
-| **Sign-in you own** | Email and password with emailed codes, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
+| **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
 | **An architecture that survives growth** | Hexagonal layers and CQRS, with two worked modules: `users`, and the larger `auth` |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
@@ -60,7 +60,7 @@ rather spend your first month on your product than on plumbing.
   connection pool, an in-process cache and background workers. None of that
   suits a function that starts and stops per request.
 - **You need SAML, LDAP, many social logins, or an admin console for support
-  staff.** Sign-in here is email and password and Google, written into the
+  staff.** Sign-in here is an emailed code, a password and Google, written into the
   app ([docs/auth/](./docs/auth/README.md)). Use the
   [Keycloak starter](https://github.com/StoriuSs/nest-starter-hexagonal), the
   same stack with an identity server beside it.
@@ -114,15 +114,16 @@ MONITORING=grafana-cloud
 # to start without them rather than starting blind
 ```
 
-Only one outside service is required: **an email provider**, because sign-up
-and password reset email a code. Google sign-in is off until you set its
-keys; S3 storage, Sentry and Grafana Cloud are optional too.
+Only one outside service is required: **an email provider**, because signing
+up, signing in by code and password reset all email a code. Google sign-in is
+off until you set its keys; S3 storage, Sentry and Grafana Cloud are optional
+too.
 [docs/setup/README.md](./docs/setup/README.md) lists every one, with the steps
 to get its keys.
 
 **In development**, `pnpm docker:dev` runs the same app, database, Redis and
 monitoring on your machine, without nginx and the backup service, and adds
-**Mailpit**: an inbox that catches every email the app sends, so the sign-up
+**Mailpit**: an inbox that catches every email the app sends, so the sign-in
 codes land there and nothing is delivered for real. The tests add **RustFS**
 (S3 without an AWS account). So the email and S3 paths can be built and tested
 with nothing to sign up for.
@@ -199,11 +200,11 @@ sequenceDiagram
     participant A as API
     participant M as Email (Mailpit in dev)
 
-    W->>A: POST /auth/register {email, password}
+    W->>A: POST /auth/email-code {email, language}
     A-->>M: a 6-digit code
-    A-->>W: 202, whatever the address
-    W->>A: POST /auth/verify-email {email, code}
-    A-->>W: access token + refresh cookie
+    A-->>W: 202, the same for every address
+    W->>A: POST /auth/email-code/verify {email, code}
+    A-->>W: access token + refresh cookie (the account is made if the address had none)
     W->>A: GET /users/me, Bearer access token
     A-->>W: the profile
     Note over W,A: 15 minutes later
@@ -327,7 +328,7 @@ own module. You inherit these without writing anything.
 
 | | What it does for you | Where |
 | --- | --- | --- |
-| **Authentication** | Sign-up confirmed by an emailed code, sign-in, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with proof (`POST /auth/account/delete`). `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
+| **Authentication** | Sign-up and sign-in by an emailed code (one flow), sign-in with a password, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with the password (`POST /auth/account/delete`). Emails in Vietnamese or English. `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
 | **Rate limiting** | A per-IP, per-route limit on every route, counted in Redis so the limit is the limit across every instance. On top, the sign-in routes count per address, per IP and per account (`rl:*` keys) | [rate-limit.md](./docs/rate-limit.md) · [auth/rate-limits.md](./docs/auth/rate-limits.md) |
 | **Idempotency** | A retried payment or a double-tapped button does the work once. `@Idempotent('1h')` on the route | [idempotency.md](./docs/idempotency.md) |
 | **Caching** | Two layers, memory in front of Redis, with a clear rule about which state may use which | [cache.md](./docs/cache.md) |
@@ -417,7 +418,7 @@ Where to go for a given change:
 | How sign-in behaves | `src/modules/auth/`, and the settings in `src/config/auth.config.ts` |
 | What happens on a request, everywhere | `src/app.module.ts` |
 | Rate limits, timeouts, upload limits | `.env.example` documents every one; the sign-in limits are in `src/modules/auth/application/rate-limits.ts` |
-| An email's text | The module's `infrastructure/email/templates/` (auth's: `src/modules/auth/infrastructure/email/templates/`) |
+| An email's text | The module's `infrastructure/email/templates/`; auth keeps its words in `src/modules/auth/infrastructure/email/email-copy.ts` (per language) and one layout in `templates/email.hbs` |
 | A job that runs on a schedule | `src/maintenance/maintenance-tasks.ts` |
 | An alert rule or a dashboard | `monitoring/` |
 
@@ -447,7 +448,7 @@ to reverse-engineer.
 **Authentication the application owns, rather than an identity server.** This
 starter is the sibling of the Keycloak one, for projects that would rather not
 run a second server with its own database, admin console and upgrade cycle. The
-cost is real: password hashing, reset flows, email verification, Google
+cost is real: password hashing, reset flows, emailed codes, Google
 sign-in and session management are code in this repository,
 and the CVEs become yours. It is the right trade when you want one deployable
 and a sign-in page you control, and the wrong one when you need SAML, LDAP or

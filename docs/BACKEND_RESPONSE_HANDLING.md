@@ -104,7 +104,7 @@ field in `data.details`:
         "value": "x"
       }
     ],
-    "path": "/api/v1/auth/register",
+    "path": "/api/v1/auth/email-code",
     "method": "POST"
   }
 }
@@ -120,8 +120,8 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | Error | Extra fields in `data` |
 | --- | --- |
 | `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `matches_email`, ...), so a form can mark them one by one |
-| `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `emails`, `sign_ins` or `wrong_password` |
-| `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password` or `code`) |
+| `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `emails`, `sign_ins`, `wrong_password` or `codes` |
+| `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password`) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |
 
 A password the policy refuses:
@@ -132,7 +132,7 @@ A password the policy refuses:
   "data": {
     "rules": ["min_length", "digit"],
     "details": "Use at least 8 characters. Include a digit.",
-    "path": "/api/v1/auth/register",
+    "path": "/api/v1/auth/reset-password",
     "method": "POST"
   }
 }
@@ -167,7 +167,6 @@ were dropped; no `2xxxxx` code is sent any more.
 | `401005` | `AUTH_TOKEN_INVALID` | The access token is not one this API issued |
 | `401006` | `AUTH_TOKEN_REVOKED` | The session behind the token has ended (`data.reason`) |
 | `401008` | `AUTH_REFRESH_FAILED` | The refresh cookie is missing, expired or ended: sign in again |
-| `403002` | `AUTH_EMAIL_NOT_VERIFIED` | Sign-in before the address was confirmed |
 | `403003` | `AUTH_ACCOUNT_DISABLED` | The account was deleted |
 | `403004` | `AUTH_FORBIDDEN` | Not allowed: a missing role, or a cookie route called from an origin not in `CORS_ORIGINS` |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
@@ -175,8 +174,6 @@ were dropped; no `2xxxxx` code is sent any more.
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |
 | `408000` | `REQUEST_TIMEOUT_ERROR` | The request ran past `REQUEST_TIMEOUT_MS` |
 | `409000` | `CONFLICT_ERROR` | A 409 with no code of its own |
-| `409004` | `AUTH_PASSWORD_ALREADY_SET` | Setting a first password on an account that has one |
-| `409005` | `AUTH_USE_PASSWORD` | Asking for an emailed deletion code on an account that has a password |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | The body is too large |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over `MAX_FILE_SIZE` |

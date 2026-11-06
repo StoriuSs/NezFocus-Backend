@@ -34,15 +34,18 @@ folder layout is explained in [in-the-code.md](./in-the-code.md).
 Ada creates an account and uses the app for a month. Here is what happens,
 with the terms from the glossary in bold.
 
-1. **Sign up.** Ada types her address and a password. The API checks the
-   password against the rules, stores only its **hash** (made with
-   **Argon2**), and emails her a six-digit code. The answer is the same
-   whether or not the address already had an account, so nobody can use the
-   form to find out who has one (**account enumeration**).
-2. **Confirm.** Ada types the code. The API compares it with what it stored
-   (an **HMAC** of the code, never the code itself), marks her address as
-   confirmed, and starts a **session**: a row in Postgres that says "Ada is
-   signed in on this browser until 30 days from now".
+1. **Ask for a code.** Ada types her address. The API emails her a six-digit
+   code, and stores only an **HMAC** of it, never the code itself. Every
+   address gets a code and the same answer, whether or not it already had an
+   account, so nobody can use the form to find out who has one (**account
+   enumeration**). Only the email's wording says which.
+2. **Send it back.** Ada types the code. The API compares it with what it
+   stored. Her address had no account, so the right code creates one now:
+   her address is confirmed by the code itself, and the account has no
+   password or username yet ("not completed"). Then the API starts a
+   **session**: a row in Postgres that says "Ada is signed in on this browser
+   until 30 days from now". (A password, if she sets one later, is stored
+   only as a **hash** made with **Argon2**.)
 3. **Two tokens.** The API hands back two secrets. The **access token** (a
    **JWT**) goes in the response body; the web app keeps it in memory and
    sends it with every request as `Authorization: Bearer …`. The **refresh
@@ -325,7 +328,7 @@ can make it.
 
 In this starter:
 
-- Emailed codes are stored as `HMAC-SHA256(JWT_SECRET, "<purpose>:<user id>:<code>")`
+- Emailed codes are stored as `HMAC-SHA256(JWT_SECRET, "<purpose>:<email>:<code>")`
   ([jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts),
   `hashVerificationCode`). A consequence: changing `JWT_SECRET` makes every
   code already emailed stop working.
@@ -437,13 +440,16 @@ campaign wants.
 
 In this starter, routes that take an address answer the same either way:
 
-- sign-up and "forgot password" always answer `202`; what goes out (a code,
-  a "you already have an account" email, or nothing) is only visible in the
-  inbox;
+- asking for a code and "forgot password" always answer `202`; what goes out
+  (a sign-in code, a create-account code, a reset code, or nothing) is only
+  visible in the inbox;
+- "forgot password" for an address with no account still stores a code
+  nobody is sent, so guesses at it wear it out after five like a real one
+  (D-121);
 - a wrong password, an unknown address and an account with no password are
   one error, `401 AUTH_INVALID_CREDENTIALS`, in the same time;
-- an unknown address at `verify-email` or `reset-password` is the same
-  error as a wrong code, and so is a wrong password at `verify-email`;
+- at `reset-password`, "the password is your username" is said only after
+  the right code (D-66);
 - limits keyed on an address count whether or not the account exists.
 
 More in [security.md](./security.md).
@@ -479,7 +485,7 @@ In this starter, everything that should work once does:
 | What | How a second use is stopped |
 |---|---|
 | Refresh token | Marked used; a second use ends the session ([reuse detection](./sessions-and-tokens.md#reuse-detection)) |
-| Emailed code | Marked consumed in the same database statement that checks it |
+| Emailed code | Each check counts a try in one statement; a right code is then used up by a conditional update that matches its hash and "not used yet", so only one request wins |
 | Google sign-in attempt | Taken from Redis with `GETDEL`, so only one return can finish it |
 
 ## Related

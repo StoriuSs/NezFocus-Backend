@@ -7,6 +7,8 @@ import {
     AuthEventsPort,
     AuthEventSubject,
     AuthMailerPort,
+    CodeEmail,
+    EmailLanguage,
     OAuthAttempt,
     OAuthChecks,
     OAuthIdentity,
@@ -34,7 +36,6 @@ import { RateLimitRule, RateLimitState } from '../rate-limits'
 import { CodeIssuer } from '../services/code-issuer'
 import { SessionIssuer } from '../services/session-issuer'
 import { SignInGate } from '../services/sign-in-gate'
-import { SignInMethods } from '../services/sign-in-methods'
 import {
     ChangePasswordHandler,
     DeleteOwnAccountHandler,
@@ -44,13 +45,10 @@ import {
     LoginHandler,
     LogoutEverywhereHandler,
     RefreshHandler,
-    RegisterHandler,
     ResetPasswordHandler,
-    SendAccountDeletionCodeHandler,
-    SendPasswordSetCodeHandler,
-    SetPasswordHandler,
+    SendEmailCodeHandler,
     StartOAuthHandler,
-    VerifyEmailHandler
+    VerifyEmailCodeHandler
 } from '..'
 
 /*
@@ -81,13 +79,13 @@ class FakeDirectory implements UserDirectoryPort {
         const user: DirectoryUser = {
             id: `user-${this.next++}`,
             email: 'ada@example.test',
-            emailVerified: true,
             roles: ['user'],
             username: null,
             displayName: null,
             avatarUrl: null,
             bio: null,
             hasSetUsername: false,
+            completedAt: null,
             deletedAt: null,
             ...overrides
         }
@@ -101,16 +99,9 @@ class FakeDirectory implements UserDirectoryPort {
     async findById(id: string) {
         return this.users.get(id) ?? null
     }
-    async createUnverified(email: string) {
+    async create(email: string, displayName: string | null) {
         if (await this.findByEmail(email)) return null
-        return this.add({ email, emailVerified: false })
-    }
-    async createVerified(email: string, displayName: string | null) {
-        if (await this.findByEmail(email)) return null
-        return this.add({ email, emailVerified: true, displayName })
-    }
-    async markEmailVerified(id: string) {
-        this.users.get(id)!.emailVerified = true
+        return this.add({ email, displayName })
     }
 }
 
@@ -195,8 +186,8 @@ class FakeTokens implements TokenServicePort {
     hashRefreshToken(token: string) {
         return `sha:${token}`
     }
-    hashVerificationCode(code: string, userId: string, purpose: string) {
-        return `hmac:${purpose}:${userId}:${code}`
+    hashVerificationCode(code: string, email: string, purpose: string) {
+        return `hmac:${purpose}:${email}:${code}`
     }
 }
 
@@ -273,19 +264,25 @@ class FakeSessions implements SessionRepositoryPort {
     }
 }
 
+/** The rules of PrismaVerificationCodeRepository: one row per address and purpose. */
 class FakeCodes implements VerificationCodeRepositoryPort {
     codes = new Map<string, { hash: string; expiresAt: Date; attempts: number; used: boolean }>()
-    async replace(userId: string, purpose: CodePurpose, codeHash: string, expiresAt: Date) {
-        this.codes.set(`${userId}:${purpose}`, { hash: codeHash, expiresAt, attempts: 0, used: false })
+    async replace(email: string, purpose: CodePurpose, codeHash: string, expiresAt: Date) {
+        this.codes.set(`${email}:${purpose}`, { hash: codeHash, expiresAt, attempts: 0, used: false })
     }
-    async consume(userId: string, purpose: CodePurpose, codeHash: string, now: Date, max: number): Promise<CodeCheck> {
-        const code = this.codes.get(`${userId}:${purpose}`)
-        if (!code || code.used) return 'invalid'
+    async check(email: string, purpose: CodePurpose, codeHash: string, now: Date, max: number): Promise<CodeCheck> {
+        const code = this.codes.get(`${email}:${purpose}`)
+        if (!code || code.used) return 'wrong'
         code.attempts++
         if (code.expiresAt <= now || code.attempts > max) return 'expired'
-        if (code.hash !== codeHash) return code.attempts >= max ? 'expired' : 'invalid'
+        if (code.hash === codeHash) return 'right'
+        return code.attempts >= max ? 'expired' : 'wrong'
+    }
+    async use(email: string, purpose: CodePurpose, codeHash: string) {
+        const code = this.codes.get(`${email}:${purpose}`)
+        if (!code || code.used || code.hash !== codeHash) return false
         code.used = true
-        return 'ok'
+        return true
     }
     async deleteStale() {
         return 0
@@ -307,20 +304,25 @@ class FakeCache implements SessionCachePort {
     }
 }
 
-/** Keeps the codes it was asked to send, and who was told they already have an account. */
+/** Keeps the emails it was asked to send. */
 class FakeMailer implements AuthMailerPort {
-    codes: { to: string; code: string; purpose: CodePurpose }[] = []
-    accountExists: string[] = []
-    async sendCode(to: string, code: string, purpose: CodePurpose) {
-        this.codes.push({ to, code, purpose })
+    codes: { to: string; code: string; purpose: CodePurpose; email: CodeEmail }[] = []
+    notices: { to: string; kind: string; language: EmailLanguage }[] = []
+    async sendCode(to: string, code: string, purpose: CodePurpose, _minutes: number, email: CodeEmail) {
+        this.codes.push({ to, code, purpose, email })
     }
-    async sendAccountExists(to: string) {
-        this.accountExists.push(to)
+    async sendAccountDeleted(to: string, language: EmailLanguage) {
+        this.notices.push({ to, kind: 'account-deleted', language })
     }
-    async sendAccountDeleted() {}
-    async sendPasswordChanged() {}
-    async sendPasswordAdded() {}
-    async sendSignInMethodAdded() {}
+    async sendPasswordChanged(to: string, language: EmailLanguage) {
+        this.notices.push({ to, kind: 'password-changed', language })
+    }
+    async sendPasswordAdded(to: string, language: EmailLanguage) {
+        this.notices.push({ to, kind: 'password-added', language })
+    }
+    async sendSignInMethodAdded(to: string, _provider: string, language: EmailLanguage) {
+        this.notices.push({ to, kind: 'sign-in-method-added', language })
+    }
     lastCode(to: string, purpose: CodePurpose) {
         return [...this.codes].reverse().find((c) => c.to === to && c.purpose === purpose)?.code
     }
@@ -415,7 +417,6 @@ export function setup() {
     const oauthState = new FakeOAuthState()
     const oauthAccounts = new FakeOAuthAccounts()
     const gate = new SignInGate(sessionIssuer)
-    const signInMethods = new SignInMethods(credentials, oauthAccounts, [google])
     // The users module's side of a deletion: what DeleteAccountHandler does.
     const usersBus = {
         execute: async (command: DeleteAccountCommand) => {
@@ -441,49 +442,17 @@ export function setup() {
             oauthSettings,
             oauthAccounts,
             directory,
-            credentials,
-            cache,
             mailer,
             events,
             gate
         ),
-        register: new RegisterHandler(
-            directory,
-            credentials,
-            hasher,
-            limiter,
-            events,
-            mailer,
-            codeIssuer,
-            signInMethods
-        ),
-        verify: new VerifyEmailHandler(directory, credentials, hasher, limiter, cache, events, codeIssuer, gate),
-        sendPasswordSetCode: new SendPasswordSetCodeHandler(directory, limiter, signInMethods, codeIssuer),
-        setPassword: new SetPasswordHandler(
-            directory,
-            credentials,
-            hasher,
-            limiter,
-            mailer,
-            events,
-            signInMethods,
-            codeIssuer
-        ),
+        sendCode: new SendEmailCodeHandler(directory, limiter, codeIssuer),
+        verifyCode: new VerifyEmailCodeHandler(directory, limiter, events, codeIssuer, gate),
         login: new LoginHandler(directory, credentials, hasher, limiter, events, gate),
         refresh: new RefreshHandler(sessions, tokens, cache, events, settings),
         logoutEverywhere: new LogoutEverywhereHandler(sessions, cache),
         forgot: new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer),
-        sendDeletionCode: new SendAccountDeletionCodeHandler(directory, credentials, limiter, codeIssuer),
-        deleteAccount: new DeleteOwnAccountHandler(
-            directory,
-            credentials,
-            hasher,
-            limiter,
-            mailer,
-            events,
-            codeIssuer,
-            usersBus
-        ),
+        deleteAccount: new DeleteOwnAccountHandler(directory, credentials, hasher, limiter, mailer, events, usersBus),
         reset: new ResetPasswordHandler(
             directory,
             credentials,
@@ -498,14 +467,14 @@ export function setup() {
         ),
         change: new ChangePasswordHandler(directory, credentials, sessions, hasher, cache, mailer, limiter),
 
-        /** A confirmed account with a password. */
+        /** An account with a password. */
         account(overrides: Partial<DirectoryUser> = {}, password = PASSWORD) {
             const user = directory.add(overrides)
             credentials.hashes.set(user.id, `hash:${password}`)
             return user
         },
 
-        /** A confirmed account made with Google: no password, a Google link. */
+        /** An account made with Google: no password, a Google link. */
         googleAccount(overrides: Partial<DirectoryUser> = {}) {
             const user = directory.add(overrides)
             oauthAccounts.links.push({ userId: user.id, provider: 'google', subject: `google-sub-${user.id}` })

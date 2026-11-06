@@ -11,15 +11,12 @@ import {
     ForgotPasswordCommand,
     GetSignInMethodsQuery,
     IssuedSession,
-    ResetPasswordCommand,
-    SendPasswordSetCodeCommand,
-    SetPasswordCommand
+    ResetPasswordCommand
 } from '@/modules/auth/application'
 import {
     ChangePasswordRequestDto,
     ForgotPasswordRequestDto,
     ResetPasswordRequestDto,
-    SetPasswordRequestDto,
     SignInMethodsResponseDto,
     TokenResponseDto
 } from './dto'
@@ -27,8 +24,8 @@ import { AuthCookies } from './auth-cookies'
 import { accepted, client, clientIp, ok } from './route-helpers'
 
 /**
- * Passwords: forgotten, changed, or set for the first time on an account made
- * with Google; and how an account signs in (docs/auth/api-reference.md).
+ * Passwords: forgotten or changed; and how an account signs in
+ * (docs/auth/api-reference.md).
  */
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
@@ -45,7 +42,7 @@ export class PasswordController {
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiEnvelopeResponse(null, HttpStatus.ACCEPTED)
     async forgotPassword(@Body() dto: ForgotPasswordRequestDto, @Req() req: Request): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new ForgotPasswordCommand(dto.email, clientIp(req)))
+        await this.commandBus.execute(new ForgotPasswordCommand(dto.email, clientIp(req), dto.language))
         return accepted(MESSAGES.AUTH.CODE_SENT_IF_ACCOUNT)
     }
 
@@ -63,7 +60,7 @@ export class PasswordController {
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<TokenResponseDto>> {
         const session: IssuedSession = await this.commandBus.execute(
-            new ResetPasswordCommand(dto.email, dto.code, dto.password, client(req))
+            new ResetPasswordCommand(dto.email, dto.code, dto.password, client(req), dto.language)
         )
         return this.cookies.signedIn(res, session, MESSAGES.AUTH.PASSWORD_RESET_SUCCESS)
     }
@@ -78,7 +75,7 @@ export class PasswordController {
         @Body() dto: ChangePasswordRequestDto
     ): Promise<ServiceResponse<null>> {
         await this.commandBus.execute(
-            new ChangePasswordCommand(user.id, user.sessionId, dto.currentPassword, dto.newPassword)
+            new ChangePasswordCommand(user.id, user.sessionId, dto.currentPassword, dto.newPassword, dto.language)
         )
         return createResponse(MESSAGES.AUTH.PASSWORD_CHANGED_SUCCESS, null)
     }
@@ -93,32 +90,5 @@ export class PasswordController {
             new GetSignInMethodsQuery(user.id)
         )
         return ok(validateAndTransform(SignInMethodsResponseDto, methods))
-    }
-
-    /**
-     * For an account without a password (one made with Google): email a code
-     * to set one. 409 AUTH_PASSWORD_ALREADY_SET when it has one.
-     */
-    @Post('password/code')
-    @HttpCode(HttpStatus.OK)
-    @ApiBearerAuth('bearer')
-    @ApiEnvelopeResponse(null)
-    async sendPasswordSetCode(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new SendPasswordSetCodeCommand(user.id))
-        return ok(null)
-    }
-
-    /** Set a first password with that code. The account keeps its other sign-in methods, and its sessions. */
-    @Post('password')
-    @HttpCode(HttpStatus.OK)
-    @ApiBearerAuth('bearer')
-    @ApiEnvelopeResponse(null)
-    async setPassword(
-        @CurrentUser() user: AuthenticatedUser,
-        @Body() dto: SetPasswordRequestDto,
-        @Req() req: Request
-    ): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new SetPasswordCommand(user.id, dto.code, dto.newPassword, clientIp(req)))
-        return ok(null)
     }
 }

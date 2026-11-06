@@ -84,7 +84,7 @@ export class JoseTokenService implements TokenServicePort {
         return createHash('sha256').update(token).digest('hex')
     }
 
-    hashVerificationCode(code: string, userId: string, purpose: string): string {
-        return createHmac('sha256', this.key).update(`${purpose}:${userId}:${code}`).digest('hex')
+    hashVerificationCode(code: string, email: string, purpose: string): string {
+        return createHmac('sha256', this.key).update(`${purpose}:${email}:${code}`).digest('hex')
     }
 }

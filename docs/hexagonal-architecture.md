@@ -120,12 +120,12 @@ export class UserEntity {
 
     username: string | null
     email: string | null
-    emailVerified: boolean
     roles: string[]
     displayName: string | null
     avatarUrl: string | null      // a storage key, e.g. avatars/avatar-<id>-<time>-<random>.webp
     bio: string | null
     hasSetUsername: boolean
+    completedAt: Date | null      // when "complete your account" was done; null until then
 
     readonly createdAt: Date
     updatedAt: Date
@@ -133,7 +133,7 @@ export class UserEntity {
     deletedBy: string | null
 
     constructor(props: { id: string; username?: string | null /* ...every field, optional */ }) {
-        // ...defaults: roles ['user'], emailVerified false, and so on
+        // ...defaults: roles ['user'], completedAt null, and so on
     }
 
     get isDeleted(): boolean {

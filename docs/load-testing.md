@@ -120,11 +120,11 @@ export API_URL=https://api.example.com
 export LOAD_EMAIL=loadtest@example.test
 export LOAD_PASSWORD='...'
 
-pnpm load:accounts        # creates the account, confirmed (not in production)
+pnpm load:accounts        # creates the account, with a password, completed (not in production)
 k6 run k6/smoke.js
 ```
 
-The account must exist and be confirmed. `pnpm load:accounts` writes it
+The account must exist and have a password. `pnpm load:accounts` writes it
 straight into the database the app's `DATABASE_URL` points at, with the same
 `LOAD_*` settings k6 reads; running it again resets the password. It refuses to run with `NODE_ENV=production`.
 Without a token or an account, the scripts skip their signed-in scenarios and
@@ -321,7 +321,7 @@ several accounts and set `LOAD_USER_COUNT`:
 ```bash
 export LOAD_EMAIL='loadtest{n}@example.test'
 export LOAD_USER_COUNT=50
-pnpm load:accounts        # loadtest1@ … loadtest50@, all confirmed
+pnpm load:accounts        # loadtest1@ … loadtest50@, all with a password
 ```
 
 Virtual user 1 signs in as `loadtest1@example.test`, virtual user 2 as
@@ -346,7 +346,6 @@ the way. Each of these stops k6 with "The API refused the login":
 
 | k6 says | Cause | Fix |
 |---|---|---|
-| "not confirmed yet" | The address exists but never confirmed its email | `pnpm load:accounts` confirms it |
 | "Wrong email or password" | `LOAD_PASSWORD` differs from the account's | Run `pnpm load:accounts` again with the same `LOAD_*`: it resets the password |
 | "The sign-in limits refused it" (HTTP 429) | Too many failed sign-ins: 5 per address, or 10 per IP, in 15 minutes | Wait 15 minutes ([auth/rate-limits.md](./auth/rate-limits.md)) |
 

@@ -8,29 +8,31 @@ import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
 import {
     AuthOptions,
+    DEFAULT_EMAIL_LANGUAGE,
+    EmailCodeSignIn,
     GetAuthOptionsQuery,
     IssuedSession,
     LoginCommand,
     LogoutCommand,
     LogoutEverywhereCommand,
     RefreshCommand,
-    RegisterCommand,
-    ResendVerificationCommand,
-    VerifyEmailCommand
+    SendEmailCodeCommand,
+    VerifyEmailCodeCommand
 } from '@/modules/auth/application'
 import {
     AuthOptionsResponseDto,
-    EmailRequestDto,
+    EmailCodeRequestDto,
+    EmailCodeSignInResponseDto,
     LoginRequestDto,
-    RegisterRequestDto,
     TokenResponseDto,
-    VerifyEmailRequestDto
+    VerifyEmailCodeRequestDto
 } from './dto'
 import { AuthCookies } from './auth-cookies'
 import { accepted, client, clientIp, ok } from './route-helpers'
 
 /**
- * Signing up, signing in and sessions (docs/auth/api-reference.md). The other
+ * Creating an account and signing in, by code or password, and sessions
+ * (docs/auth/api-reference.md). The other
  * /auth routes are in the controllers beside this one: passwords, deleting
  * the account, and other providers.
  *
@@ -46,43 +48,47 @@ export class AuthController {
         private readonly cookies: AuthCookies
     ) {}
 
-    /** Create an account and email a code to confirm the address. The answer is the same for any address. */
+    /**
+     * Email a sign-in code: the first step of creating an account and of
+     * signing in with a code (D-59, D-60). Sending again is the same call.
+     * The answer is the same for any address, with an account or not.
+     */
     @Public()
-    @Post('register')
+    @Post('email-code')
     @HttpCode(HttpStatus.ACCEPTED)
     @ApiEnvelopeResponse(null, HttpStatus.ACCEPTED)
-    async register(@Body() dto: RegisterRequestDto, @Req() req: Request): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new RegisterCommand(dto.email, dto.password, clientIp(req)))
-        return accepted(MESSAGES.AUTH.REGISTER_ACCEPTED)
-    }
-
-    /** Confirm the address with the emailed code and the sign-up password, and sign in. Sets the refresh cookie. */
-    @Public()
-    @Post('verify-email')
-    @HttpCode(HttpStatus.OK)
-    @ApiEnvelopeResponse(TokenResponseDto)
-    async verifyEmail(
-        @Body() dto: VerifyEmailRequestDto,
-        @Req() req: Request,
-        @Res({ passthrough: true }) res: Response
-    ): Promise<ServiceResponse<TokenResponseDto>> {
-        const session: IssuedSession = await this.commandBus.execute(
-            new VerifyEmailCommand(dto.email, dto.code, dto.password, client(req))
+    async sendEmailCode(@Body() dto: EmailCodeRequestDto, @Req() req: Request): Promise<ServiceResponse<null>> {
+        await this.commandBus.execute(
+            new SendEmailCodeCommand(dto.email, dto.language ?? DEFAULT_EMAIL_LANGUAGE, clientIp(req))
         )
-        return this.cookies.signedIn(res, session, MESSAGES.AUTH.EMAIL_VERIFIED)
+        return accepted(MESSAGES.AUTH.CODE_SENT)
     }
 
     /**
-     * Send the sign-up email again: a new code, or "you already have an
-     * account" for a confirmed address. The answer is the same for any address.
+     * Sign in with the emailed code, making the account if the address has
+     * none. Sets the refresh cookie. `account.completed` false: the account
+     * must be completed before anything else (D-61).
      */
     @Public()
-    @Post('resend-verification')
-    @HttpCode(HttpStatus.ACCEPTED)
-    @ApiEnvelopeResponse(null, HttpStatus.ACCEPTED)
-    async resendVerification(@Body() dto: EmailRequestDto, @Req() req: Request): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new ResendVerificationCommand(dto.email, clientIp(req)))
-        return accepted(MESSAGES.AUTH.CODE_SENT_IF_ACCOUNT)
+    @Post('email-code/verify')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(EmailCodeSignInResponseDto)
+    async verifyEmailCode(
+        @Body() dto: VerifyEmailCodeRequestDto,
+        @Req() req: Request,
+        @Res({ passthrough: true }) res: Response
+    ): Promise<ServiceResponse<EmailCodeSignInResponseDto>> {
+        const signedIn: EmailCodeSignIn = await this.commandBus.execute(
+            new VerifyEmailCodeCommand(dto.email, dto.code, client(req))
+        )
+        this.cookies.setRefresh(res, signedIn.session)
+        const body = validateAndTransform(EmailCodeSignInResponseDto, {
+            accessToken: signedIn.session.accessToken,
+            tokenType: 'Bearer',
+            expiresIn: signedIn.session.expiresInSeconds,
+            account: signedIn.account
+        })
+        return createResponse(MESSAGES.AUTH.CODE_SIGN_IN_SUCCESS, body)
     }
 
     /** Sign in. Sets the refresh cookie. */

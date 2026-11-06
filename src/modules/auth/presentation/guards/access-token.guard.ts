@@ -54,7 +54,6 @@ function toAuthenticatedUser({ user, sessionId }: Principal): AuthenticatedUser 
         id: user.id,
         sessionId,
         email: user.email,
-        emailVerified: user.emailVerified,
         roles: user.roles,
         username: user.username,
         displayName: user.displayName,

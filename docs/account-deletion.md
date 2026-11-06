@@ -26,8 +26,9 @@ the deep one.
 
 ## In short
 
-1. The signed-in person calls `POST /api/v1/auth/account/delete` with proof: their
-   password, or an emailed code if the account has no password.
+1. The signed-in person calls `POST /api/v1/auth/account/delete` with proof:
+   their password. An account without one chooses one with "forgot password"
+   first.
 2. The account is marked deleted (not removed), and the refresh cookie is
    cleared.
 3. Moments later, in the same process, every session ends and the sign-in data
@@ -40,30 +41,28 @@ the deep one.
 ## Proving it is the owner
 
 A signed-in session alone is not enough: anyone at an unlocked computer could
-otherwise delete the account. What the API asks for depends on the account:
+otherwise delete the account. The API asks for the current password, and
+nothing else:
 
-| The account | Body field | What it is |
+| Body field | Required | What it is |
 |---|---|---|
-| has a password | `password` | the current password |
-| has no password (made with Google) | `code` | 6 digits from `POST /api/v1/auth/account/delete-code`, sent to the account's address |
-
-Examples:
+| `password` | yes, in practice | the current password |
+| `language` | no | `vi` or `en`, the page's language, for the "account deleted" email (D-132) |
 
 ```json
-{ "password": "correct horse battery staple" }
-{ "code": "731905" }
+{ "password": "correct horse battery staple", "language": "vi" }
 ```
 
-If something the account needs is missing, the answer is
-400 `AUTH_CONFIRMATION_REQUIRED` with `data.needs` listing it, for example
-`{ "needs": ["password"] }`. A page that does not know the
-account yet can send `{}` and read `needs`; the React starter asks
-`GET /auth/sign-in-methods` instead.
+If the password is missing, or the account has none, the answer is
+400 `AUTH_CONFIRMATION_REQUIRED` with `{ "needs": ["password"] }`.
 
-**Getting the emailed code.** `POST /api/v1/auth/account/delete-code`, signed in,
-no body. It answers 200 and emails "Your code to delete your {app} account"
-(6 digits, valid 10 minutes, 5 tries, only the newest works). An account that
-has a password gets 409 `AUTH_USE_PASSWORD` instead: the password is the proof.
+**An account without a password** (not completed yet, or made with Google)
+has no proof to give. It chooses a password first with "forgot password"
+(`POST /auth/forgot-password`, then `POST /auth/reset-password`), then
+deletes with it. `GET /auth/sign-in-methods` tells the page which case it is
+(`password: false`). Every account sets a password when it is completed
+(D-61, D-130; the "complete your account" step is planned), so this only
+concerns accounts that have not done it.
 
 ## What runs, in order
 
@@ -82,7 +81,7 @@ sequenceDiagram
     participant E as AccountDeletedEvent handlers
     W->>C: POST /auth/account/delete { proof }
     C->>D: DeleteOwnAccountCommand
-    D->>D: check the password or the emailed code
+    D->>D: check the password
     D->>U: DeleteAccountCommand(userId)
     U->>DB: UPDATE User SET deletedAt WHERE id AND deletedAt IS NULL
     U-)E: publish AccountDeletedEvent
@@ -92,11 +91,11 @@ sequenceDiagram
     E->>E: queue the avatar file for deletion
 ```
 
-1. **`AccountDeletionController.delete`** passes the proof and the client IP to
-   `DeleteOwnAccountCommand`.
-2. **`DeleteOwnAccountHandler`** (auth) refuses a deleted account, works out what
-   proof is needed, and checks it, counting wrong answers against the
-   [limits](#limits).
+1. **`AccountDeletionController.delete`** passes the password and the
+   `language` to `DeleteOwnAccountCommand`.
+2. **`DeleteOwnAccountHandler`** (auth) refuses a deleted account, asks for
+   the password if none was sent or the account has none, and checks it,
+   counting wrong answers against the [limits](#limits).
 3. It sends the users module's **`DeleteAccountCommand(userId, userId)`** (the
    second id is who deleted it, stored as `deletedBy`).
 4. **`DeleteAccountHandler`** (users) calls `softDelete`: one conditional
@@ -108,7 +107,7 @@ sequenceDiagram
    upload could have overtaken.
 5. It publishes **`AccountDeletedEvent`** with the user id and the avatar key.
 6. Back in `DeleteOwnAccountHandler`: the wrong-password counter is reset, the
-   "Your {app} account was deleted" email is queued, and
+   "Your {app} account was deleted" email is queued in the request's language, and
    `auth_events_total{event="account_deleted"}` is counted.
 7. The controller clears the refresh cookie and answers 200, "Account deleted
    successfully", `data: null`.
@@ -141,7 +140,7 @@ in the same database.)
 | Moments later | Avatar file queued for deletion | `CleanupAccountAvatarHandler` |
 | Moments later | "Your account was deleted" email queued | `DeleteOwnAccountHandler` |
 | Within the hour, only if the step above failed | The same session, password and link clean-up, with a warning in the log | hourly auth clean-up |
-| A day after they stop working | Emailed codes (`VerificationCode` rows), the used deletion code included | hourly auth clean-up |
+| A day after they stop working | Emailed codes (`VerificationCode` rows, keyed by address, not by account) | hourly auth clean-up |
 | 7 days after the session ended | `Session` rows and all their refresh tokens | hourly auth clean-up |
 | After `DELETED_ACCOUNT_RETENTION_DAYS` (30), at the next 15-minute sweep | `email`, `username`, `displayName`, `bio`, `avatarUrl` set to null | `SweepDeletedAccountsHandler` |
 | Never | The `User` row itself (id, roles, flags, dates, `deletedAt`, `deletedBy`), and rows in your own tables that point to it | — |
@@ -198,19 +197,13 @@ recognise, nor one a regulator would accept. So the row is also emptied, later.
 entry in [maintenance-tasks.ts](../src/maintenance/maintenance-tasks.ts), on the
 `maintenance` queue; the schedule lives in Redis, so with several app
 instances each run still happens once). It
-does two things, both safe to repeat:
+**erases** the personal fields (email, username, display name, bio, avatar
+key) of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago
+(default 30, `0` for "at the next sweep"). The row stays, so foreign keys
+hold and the account is still recognised and refused. It is safe to repeat.
 
-1. **Erases** the personal fields (email, username, display name, bio, avatar
-   key) of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago
-   (default 30, `0` for "at the next sweep"). The row stays, so foreign keys
-   hold and the account is still recognised and refused.
-2. **Removes** sign-ups that were never confirmed and are older than
-   `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (default 7). Nobody ever signed in to
-   them, so they are deleted outright, with their password and codes, which
-   frees the address for its real owner. Only accounts with a password here
-   count as sign-ups, so users brought over from the Keycloak starter (no
-   password yet, "unconfirmed" because the column is new) are never removed
-   ([auth/accounts.md](auth/accounts.md#unconfirmed-accounts-are-removed-after-a-week)).
+There is no sweep of unconfirmed sign-ups: an account is only made once its
+address is confirmed, by a right emailed code or by Google (D-133).
 
 If you add tables holding personal data about a user (addresses, messages,
 uploads), add them to the erase step, or to an `AccountDeletedEvent` handler of
@@ -242,36 +235,24 @@ From `POST /api/v1/auth/account/delete`:
 
 | Status | `meta.type` | Code | When | `data` |
 |---|---|---|---|---|
-| 400 | `AUTH_CONFIRMATION_REQUIRED` | 400108 | Proof missing | `needs`: `password` or `code` |
+| 400 | `AUTH_CONFIRMATION_REQUIRED` | 400108 | No password sent, or the account has none | `needs`: `["password"]` |
 | 400 | `AUTH_CURRENT_PASSWORD_INVALID` | 400104 | Wrong password (400, not 401: clients treat any 401 as "signed out") | — |
-| 400 | `AUTH_CODE_INVALID` | 400102 | Wrong emailed code, or not the newest | — |
-| 400 | `AUTH_CODE_EXPIRED` | 400103 | Emailed code older than 10 minutes, or out of tries: ask for a new one | — |
-| 429 | `RATE_LIMIT_EXCEEDED` | 429001 | A limit below is used up | `reason`, and the `Retry-After` header |
+| 429 | `RATE_LIMIT_EXCEEDED` | 429001 | The limit below is used up | `reason`, and the `Retry-After` header |
 | 403 | `AUTH_ACCOUNT_DISABLED` | 403003 | Already deleted | — |
 | 404 | `USER_NOT_FOUND` | 404001 | Lost a race with another deletion of the same account | — |
-| 422 | `VALIDATION_ERROR` | 422000 | `code` not 6 digits, an unknown field | per-field list |
+| 422 | `VALIDATION_ERROR` | 422000 | `language` not `vi` or `en`, an unknown field | per-field list |
 
-From `POST /api/v1/auth/account/delete-code`:
-
-| Status | `meta.type` | Code | When |
-|---|---|---|---|
-| 409 | `AUTH_USE_PASSWORD` | 409005 | The account has a password: confirm with it instead |
-| 429 | `RATE_LIMIT_EXCEEDED` | 429001 | 1 code email per minute or 5 per hour to this address (`reason: "emails"`) |
-| 403 | `AUTH_ACCOUNT_DISABLED` | 403003 | Already deleted |
-
-Plus, on both, the usual signed-in errors (missing or expired access token) and
+Plus the usual signed-in errors (missing or expired access token) and
 the global throttler. Every auth error: [auth/api-reference.md](auth/api-reference.md).
 
 ## Limits
 
-Each kind of proof counts against the same limit it does elsewhere, so the
+The password counts against the same limit as when changing it, so the
 deletion form is not a back door for guessing:
 
 | Proof | Limit | `reason` on 429 |
 |---|---|---|
 | Password | `change-pw-fail`: 5 wrong per 15 minutes, per user (shared with change-password) | `wrong_password` |
-| Emailed code | `code-try-ip`: 20 wrong per hour, per IP; and 5 tries per code | `network` |
-| Sending the code | `code-email-min` and `code-email-hour`: 1 a minute, 5 an hour, per address | `emails` |
 
 Details: [auth/rate-limits.md](auth/rate-limits.md).
 
@@ -281,16 +262,14 @@ In the React starter (`React-Starter-No-Keycloak`):
 
 - **`src/features/auth/components/DeleteAccountDialog.tsx`**, shown on the profile
   page (`src/features/users/pages/Profile.tsx`) as the "Delete account" button.
-  When opened it reads `GET /auth/sign-in-methods` to decide which fields to
-  show: the password, or a "Send code" button (with a 60-second wait, or the
-  API's `Retry-After`) and a code field. The delete button stays disabled until
-  the needed fields are filled.
+  It needs the password field only. For an account without a password
+  (`GET /auth/sign-in-methods` says `password: false`) it should point to
+  "forgot password" instead.
 - Errors land on the right field: `AUTH_CURRENT_PASSWORD_INVALID` on the
-  password, `AUTH_CODE_INVALID` and `AUTH_CODE_EXPIRED` on the code.
-  `AUTH_CONFIRMATION_REQUIRED` or `AUTH_USE_PASSWORD` mean the account changed
-  in another tab (a password was added), so it reads the account again.
-- **`src/features/auth/api/auth.api.ts`**: `sendAccountDeletionCode()` and
-  `deleteAccount({ password?, code? })`. The delete request is
+  password. `AUTH_CONFIRMATION_REQUIRED` means no password was sent, or the
+  account has none.
+- **`src/features/auth/api/auth.api.ts`**: `deleteAccount({ password })`,
+  with the page's `language`. The delete request is
   sent `withCredentials`, so the response's cookie-clearing `Set-Cookie` is
   applied by the browser.
 - On success the dialog signs out locally with the reason `account-deleted`.
@@ -346,17 +325,17 @@ the username out of the sweep's erase list.
 
 | File | Role |
 |---|---|
-| [account-deletion.controller.ts](../src/modules/auth/presentation/http/account-deletion.controller.ts) | `POST /auth/account/delete-code` and `/auth/account/delete`; clears the cookie |
+| [account-deletion.controller.ts](../src/modules/auth/presentation/http/account-deletion.controller.ts) | `POST /auth/account/delete`; clears the cookie |
 | [delete-own-account.handler.ts](../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts) | The proof, the limits, the email and the metric |
 | [delete-account.handler.ts](../src/modules/users/application/commands/delete-account/delete-account.handler.ts) | The soft delete; publishes `AccountDeletedEvent` |
 | [end-sessions-of-deleted-account.handler.ts](../src/modules/auth/application/events/handlers/end-sessions-of-deleted-account.handler.ts) | `EndSessionsOfDeletedAccountHandler` |
 | [cleanup-account-avatar.handler.ts](../src/modules/users/application/events/handlers/cleanup-account-avatar.handler.ts) | Queues the avatar's removal |
 | [clean-up-auth.handler.ts](../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts) | The hourly safety net and housekeeping |
-| [sweep-deleted-accounts.handler.ts](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts) | Erasing personal data; removing unconfirmed accounts |
+| [sweep-deleted-accounts.handler.ts](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts) | Erasing personal data |
 | [maintenance-tasks.ts](../src/maintenance/maintenance-tasks.ts) | Runs the sweep every 15 minutes, and the clean-up every hour |
 | [prisma-user.repository.ts](../src/modules/users/infrastructure/persistence/prisma-user.repository.ts) | The soft-delete filtering, `softDelete`, the erase query |
 
 Related: [auth/accounts.md](auth/accounts.md) (the account's whole life),
 [auth/security.md](auth/security.md), [BULLMQ-GUIDE.md](BULLMQ-GUIDE.md) (the
 queues), [environment.md](environment.md) (`DELETED_ACCOUNT_RETENTION_DAYS`,
-`UNVERIFIED_ACCOUNT_RETENTION_DAYS`, `SUPPORT_EMAIL`).
+`SUPPORT_EMAIL`).

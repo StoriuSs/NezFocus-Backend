@@ -61,7 +61,6 @@ describe('Auth persistence and sessions (integration)', () => {
             data: {
                 id: `itest-${randomUUID()}`,
                 email: `itest-${randomUUID()}@example.test`,
-                emailVerified: true,
                 ...overrides
             }
         })
@@ -146,31 +145,61 @@ describe('Auth persistence and sessions (integration)', () => {
     })
 
     describe('emailed codes', () => {
-        const hashOf = (code: string, userId: string) => tokens.hashVerificationCode(code, userId, 'email-verify')
+        // By address, account or not (D-129): these addresses have none.
+        const newAddress = () => `itest-code-${randomUUID()}@example.test`
+        const hashOf = (code: string, email: string) => tokens.hashVerificationCode(code, email, 'sign-in')
         const inTenMinutes = () => new Date(Date.now() + 10 * 60_000)
 
+        afterAll(async () => {
+            await prisma.verificationCode.deleteMany({ where: { email: { startsWith: 'itest-code-' } } })
+        })
+
         it('counts every one of ten wrong guesses made at once, and lets one of five simultaneous right answers through', async () => {
-            const guessed = await newUser()
-            await codes.replace(guessed.id, 'email-verify', hashOf('123456', guessed.id), inTenMinutes())
+            const guessed = newAddress()
+            await codes.replace(guessed, 'sign-in', hashOf('123456', guessed), inTenMinutes())
             const guesses = await Promise.all(
                 Array.from({ length: 10 }, (_, i) =>
-                    codes.consume(guessed.id, 'email-verify', hashOf(String(900000 + i), guessed.id), new Date(), 5)
+                    codes.check(guessed, 'sign-in', hashOf(String(900000 + i), guessed), new Date(), 5)
                 )
             )
-            expect(guesses.filter((g) => g === 'invalid')).toHaveLength(4)
+            expect(guesses.filter((g) => g === 'wrong')).toHaveLength(4)
             // Dead after: the right code is refused too.
-            expect(await codes.consume(guessed.id, 'email-verify', hashOf('123456', guessed.id), new Date(), 5)).toBe(
-                'expired'
-            )
+            expect(await codes.check(guessed, 'sign-in', hashOf('123456', guessed), new Date(), 5)).toBe('expired')
 
-            const owner = await newUser()
-            await codes.replace(owner.id, 'email-verify', hashOf('123456', owner.id), inTenMinutes())
+            const owner = newAddress()
+            await codes.replace(owner, 'sign-in', hashOf('123456', owner), inTenMinutes())
             const answers = await Promise.all(
-                Array.from({ length: 5 }, () =>
-                    codes.consume(owner.id, 'email-verify', hashOf('123456', owner.id), new Date(), 5)
-                )
+                Array.from({ length: 5 }, async () => {
+                    const right =
+                        (await codes.check(owner, 'sign-in', hashOf('123456', owner), new Date(), 5)) === 'right'
+                    return right && (await codes.use(owner, 'sign-in', hashOf('123456', owner), new Date()))
+                })
             )
-            expect(answers.filter((r) => r === 'ok')).toHaveLength(1)
+            expect(answers.filter(Boolean)).toHaveLength(1)
+        })
+
+        it('does not let an older code use up the newer one that replaced it', async () => {
+            // A guess at the old code passes its check, then a new code is sent before it is used.
+            const email = newAddress()
+            await codes.replace(email, 'sign-in', hashOf('111111', email), inTenMinutes())
+            expect(await codes.check(email, 'sign-in', hashOf('111111', email), new Date(), 5)).toBe('right')
+            await codes.replace(email, 'sign-in', hashOf('222222', email), inTenMinutes())
+
+            expect(await codes.use(email, 'sign-in', hashOf('111111', email), new Date())).toBe(false)
+            expect(await codes.check(email, 'sign-in', hashOf('222222', email), new Date(), 5)).toBe('right')
+            expect(await codes.use(email, 'sign-in', hashOf('222222', email), new Date())).toBe(true)
+        })
+
+        it('keeps a sign-in code and a reset code for one address apart', async () => {
+            const email = newAddress()
+            await codes.replace(email, 'sign-in', hashOf('123456', email), inTenMinutes())
+            const resetHash = tokens.hashVerificationCode('123456', email, 'password-reset')
+            await codes.replace(email, 'password-reset', resetHash, inTenMinutes())
+
+            // The same six digits, but the reset hash is not the sign-in one.
+            expect(resetHash).not.toBe(hashOf('123456', email))
+            expect(await codes.check(email, 'sign-in', resetHash, new Date(), 5)).toBe('wrong')
+            expect(await codes.check(email, 'password-reset', resetHash, new Date(), 5)).toBe('right')
         })
     })
 

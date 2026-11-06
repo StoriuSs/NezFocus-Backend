@@ -1,6 +1,6 @@
-import { InvalidCredentialsError, OAuthSignInError } from '@/modules/auth/domain'
+import { OAuthSignInError } from '@/modules/auth/domain'
 import { FinishOAuthCommand, safeReturnPath, StartOAuthCommand } from '..'
-import { CLIENT, sessionOf, setup, signIn, World } from './auth-test-world.shared-spec'
+import { CLIENT, PASSWORD, sessionOf, setup, World } from './auth-test-world.shared-spec'
 
 /** Leave for the provider, come back with a code, as the browser would. */
 async function viaGoogle(w: World) {
@@ -35,18 +35,27 @@ describe('Signing in with Google', () => {
         expect(w.sessions.sessions).toHaveLength(0)
     })
 
-    it('deletes the password of an account never confirmed before linking it', async () => {
-        // Someone registered the address first, never confirmed it, and waits
-        // for its owner to sign in with Google. The password must not survive.
+    it('makes a new address an account not completed yet, with no password (D-130)', async () => {
         const w = setup()
-        const squatted = w.account({ emailVerified: false }, 'Squatter-Password-9')
 
         const finished = await viaGoogle(w)
 
-        expect(sessionOf(finished).accessToken).toBe(`access:${squatted.id}:session-1`)
-        expect(finished.notice).toBe('password_removed')
-        expect(w.credentials.hashes.has(squatted.id)).toBe(false)
-        await expect(signIn(w, 'ada@example.test', 'Squatter-Password-9')).rejects.toThrow(InvalidCredentialsError)
+        const user = (await w.directory.findByEmail('ada@example.test'))!
+        expect(sessionOf(finished).accessToken).toBe(`access:${user.id}:session-1`)
+        expect(user).toMatchObject({ displayName: 'Ada', completedAt: null })
+        expect(w.credentials.hashes.has(user.id)).toBe(false)
+        expect(w.mailer.notices).toEqual([])
+    })
+
+    it('links the account an address already has, keeps its password, and tells its owner', async () => {
+        const w = setup()
+        const owner = w.account()
+
+        const finished = await viaGoogle(w)
+
+        expect(sessionOf(finished).accessToken).toBe(`access:${owner.id}:session-1`)
+        expect(w.credentials.hashes.get(owner.id)).toBe(`hash:${PASSWORD}`)
+        expect(w.mailer.notices).toEqual([{ to: 'ada@example.test', kind: 'sign-in-method-added', language: 'en' }])
     })
 
     it('refuses a linked account that has been deleted', async () => {

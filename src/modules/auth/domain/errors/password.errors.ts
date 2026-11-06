@@ -19,12 +19,3 @@ export class CurrentPasswordInvalidError extends DomainError {
         super('Your current password is not right.')
     }
 }
-
-/** Setting a first password, for an account that has one: change it instead. */
-export class PasswordAlreadySetError extends DomainError {
-    readonly kind = 'conflict'
-    readonly errorKey = 'AUTH_PASSWORD_ALREADY_SET'
-    constructor() {
-        super('This account already has a password. Change it instead.')
-    }
-}

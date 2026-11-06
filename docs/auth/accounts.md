@@ -1,17 +1,17 @@
 # Accounts: from sign-up to deletion
 
-This page follows one account through its life: how it is created, confirmed,
-signed in to (with a password, Google, or both), given roles, and deleted. It is
-the overview; each step links to the page with the exact rules.
+This page follows one account through its life: how it is created by a code
+or by Google, completed, signed in to (with a code, a password, Google, or
+more than one), given roles, and deleted. It is the overview; each step links
+to the page with the exact rules.
 
 Read it to understand what states an account can be in and what moves it
 between them, to give someone admin rights, or to protect a route by role.
 
 - [The states of an account](#the-states-of-an-account)
 - [Creating an account](#creating-an-account)
-- [Confirming the address](#confirming-the-address)
-- [Unconfirmed accounts are removed after a week](#unconfirmed-accounts-are-removed-after-a-week)
-- [Ways to sign in: password, Google, or both](#ways-to-sign-in-password-google-or-both)
+- [Completing the account](#completing-the-account)
+- [Ways to sign in: code, password, Google](#ways-to-sign-in-code-password-google)
 - [What the profile says about the account](#what-the-profile-says-about-the-account)
 - [Deleting an account](#deleting-an-account)
 - [Roles](#roles)
@@ -21,22 +21,26 @@ between them, to give someone admin rights, or to protect a route by role.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Unconfirmed: sign up with email and password
-    [*] --> Confirmed: first Continue with Google
-    Unconfirmed --> Confirmed: emailed code (verify-email or reset-password)
-    Unconfirmed --> Confirmed: Google sign-in with the same address (password removed)
-    Unconfirmed --> [*]: not confirmed within 7 days, removed
-    Confirmed --> Deleted: POST /auth/account/delete with proof
+    [*] --> NotCompleted: right emailed code for a new address
+    [*] --> NotCompleted: first Continue with Google
+    NotCompleted --> Completed: complete your account (planned)
+    NotCompleted --> Deleted: POST /auth/account/delete with the password
+    Completed --> Deleted: POST /auth/account/delete with the password
     Deleted --> Erased: after 30 days, personal data erased
     Erased --> [*]
 ```
 
 | State | Can sign in? | Stored | Ends when |
 |---|---|---|---|
-| **Unconfirmed** | No: the right password gets 403 `AUTH_EMAIL_NOT_VERIFIED` | `User` row with `emailVerified = false`, the password hash, a pending code | the address is confirmed, or after `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (7) it is removed completely |
-| **Confirmed** | Yes | `User` row, plus a password and/or a Google link, sessions | the owner deletes it |
+| **Not completed** | Yes, with a code or Google (and a password, if one was added by reset) | `User` row with `completedAt` empty; no username; usually no password | the owner completes it, or deletes it |
+| **Completed** | Yes | `User` row with `completedAt` set, plus a password and/or a Google link, sessions | the owner deletes it |
 | **Deleted** | No: 403 `AUTH_ACCOUNT_DISABLED` | `User` row with `deletedAt` set; sign-in data already removed | after `DELETED_ACCOUNT_RETENTION_DAYS` (30) its personal data is erased |
 | **Erased** | No | the `User` row without personal data: id, roles, flags and dates | never: the row stays so that other data pointing to it keeps working |
+
+There is no "unconfirmed" state (D-133). An account is only made once its
+owner has proved they read the inbox: the code sent to the address was right,
+or Google verified the address. So every account's address is confirmed, and
+nothing has to sweep away sign-ups that never confirmed.
 
 Addresses are stored lower-case and are unique among live accounts, ignoring
 case. A deleted account's address is free again at once: the same person can
@@ -46,117 +50,74 @@ sign up afresh.
 
 There are two ways in:
 
-- **Sign up**, `POST /api/v1/auth/register` with `{ email, password }`. The
-  password must pass the [policy](passwords-and-codes.md). The account is created
-  **unconfirmed**, and a 6-digit code is emailed. The answer is always 202 "Check
-  your email to continue", whatever the address:
-  - a new address: a new account and a code;
-  - an address with an unconfirmed account: its password is replaced with the
-    new one and a new code is sent (whoever set the old one never proved they own
-    the inbox). This is why confirming asks for the password as well as the
-    code: see below;
-  - an address with a confirmed account: nothing changes, and the owner is
-    emailed "You already have a {app} account", saying how they sign in.
-
-  Answering the same in every case means sign-up cannot be used to find out who
-  has an account.
+- **A code by email** (D-59, D-60). `POST /api/v1/auth/email-code` with
+  `{ email, language? }` emails a 6-digit code to any address, then
+  `POST /api/v1/auth/email-code/verify` with `{ email, code }` signs in. If
+  the address has no account, the right code creates one at that moment: no
+  password, no username, not completed. The first request answers 202 "Check
+  your email for the code." whatever the address; only the email's wording
+  says which ("your sign-in code" or "your code to create an account"), and
+  only the inbox's owner reads it. So this cannot be used to find out who has
+  an account. The answer to the second says
+  `account: { created, completed }`.
 - **"Continue with Google"** for an address with no account: the account is
-  created **confirmed** (Google verified the address), with no password, and the
-  display name from Google. See [google-sign-in.md](google-sign-in.md).
-
-Every step, with diagrams: [flows.md](flows.md).
-
-## Confirming the address
-
-`POST /api/v1/auth/verify-email` with `{ email, code, password }` confirms the
-address **and signs in** (the access token and the refresh cookie). The
-password is the one chosen at sign-up; the web app still has it from the
-sign-up form, so the person only types the code (after a reload of the page,
-they type the password again).
-
-Why the password: signing up again with an unconfirmed address replaces its
-password (above). With the code alone, someone who knew your address could
-sign it up again with their own password in the minutes before you confirmed.
-The code would still come to you, and by typing it you would confirm an account
-whose password they hold. With the password asked for, your confirmation fails
-instead ("That code, or the password, is not right"), and signing up again puts
-your password back.
-
-A wrong password is the same answer as a wrong code, so the route cannot be
-used to test passwords or find accounts, and it does not use up one of the
-code's five tries.
+  created with no password, not completed, and the display name from Google
+  (D-130). See [google-sign-in.md](google-sign-in.md).
 
 - The code is 6 digits, valid 10 minutes, 5 tries; only the newest one works.
-- `POST /api/v1/auth/resend-verification` with `{ email }` sends a new one (at
-  most one a minute and five an hour per address).
-- "Forgot password" also works for an unconfirmed account: resetting the
-  password with the emailed code confirms the address too, since the code
-  proved the person reads the inbox.
-- Signing in to an unconfirmed account with the right password answers
-  403 `AUTH_EMAIL_NOT_VERIFIED`, so the page can offer to resend the code. A
-  wrong password answers the ordinary 401: the "not confirmed" answer is given
-  only to someone who knows the password.
+- Asking again is the same call (at most one a minute and five an hour per
+  address, shared with reset codes).
+- Wrong codes are also limited per address: 10 an hour across its codes
+  (D-134).
 
-Codes and their rules: [passwords-and-codes.md](passwords-and-codes.md).
+Every step, with diagrams: [flows.md](flows.md). Codes and their rules:
+[passwords-and-codes.md](passwords-and-codes.md).
 
-## Unconfirmed accounts are removed after a week
+## Completing the account
 
-Every 15 minutes, a sweep deletes accounts that were never confirmed and are
-older than `UNVERIFIED_ACCOUNT_RETENTION_DAYS` (default 7, at least 1). They are
-removed completely, with their password and codes, not just marked: nobody ever
-signed in to them.
+`completedAt` on the `User` row marks the "complete your account" step done
+(D-61). A new account, by code or by Google, starts with it empty, and the
+sign-in answer says `completed: false` so the web app opens the step.
 
-Only sign-ups are removed: accounts with a password here, which signing up
-always sets. An unconfirmed account without one did not come from sign-up. The
-case that matters is a database upgraded from the Keycloak starter, where every
-existing user starts out "unconfirmed" (the column is new) and is older than a
-week. The sweep leaves those alone
-([prisma-module.md](../prisma-module.md#upgrading-from-the-keycloak-starter)).
+The step itself (`POST /auth/complete-account`: a username and a password)
+and the gate that refuses an account that has not done it come in a later
+slice. Until then an account that is not completed can use the API like any
+other.
 
-Why: otherwise anyone could sign up with an address they do not own and hold
-it forever. The real owner can always sign up again (which replaces the
-squatter's password) or use Google, but removing them keeps the table clean.
+Accounts that existed before migration `20261106000000_codes_by_email` and
+had already chosen a username (`hasSetUsername`) were marked completed, with
+`completedAt` set to their `createdAt`.
 
-The sweep is `SweepDeletedAccountsHandler`
-([sweep-deleted-accounts.handler.ts](../../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts)),
-run by the `maintenance` queue's `deleted-accounts-sweep` schedule
-([maintenance-tasks.ts](../../src/maintenance/maintenance-tasks.ts)). The
-schedule lives in Redis, so with several app instances each run still happens
-once.
+## Ways to sign in: code, password, Google
 
-## Ways to sign in: password, Google, or both
-
-An account can have a **password** (a row in `Credential`), a **Google link**
-(a row in `OAuthAccount`), or both. Both work at any time; neither is primary.
+Every account can sign in with an **emailed code**. It can also have a
+**password** (a row in `Credential`), a **Google link** (a row in
+`OAuthAccount`), or both. All work at any time; none is primary.
 
 `GET /api/v1/auth/sign-in-methods` tells the settings page what this account
 has: `{ "password": true, "providers": ["google"] }`.
 
 | To | How | Sessions |
 |---|---|---|
-| Add Google to a password account | Sign in with Google once. A confirmed account with the same address is linked, and its owner emailed "Google sign-in was added". | kept |
-| Add a password to a Google account | Signed in: `POST /auth/password/code` emails a code, then `POST /auth/password` with `{ code, new_password }`. Signed out: "Forgot password" (the email offers to *choose* a password). The owner is emailed "A password was added". | kept |
+| Add Google to an account | Sign in with Google once. An account with the same address is linked, and its owner emailed "Google sign-in was added". | kept |
+| Add a password to an account without one | "Forgot password": `POST /auth/forgot-password` (the email offers to *choose* a password), then `POST /auth/reset-password`. The owner is emailed "A password was added". (Completing the account, planned, will also set one.) | **all** sessions end; this one starts fresh |
 | Change the password | `POST /auth/change-password` with `{ current_password, new_password }` | every **other** session ends |
 | Reset a forgotten password | `POST /auth/forgot-password`, then `POST /auth/reset-password` with `{ email, code, password }` | **all** sessions end; this one starts fresh |
 | Remove Google, or change the address | Not supported: there are no routes for these | — |
 
-Setting a first password needs an emailed code, not just a session: someone at
-a borrowed computer where the owner is signed in with Google could otherwise add
-a password they know and keep access.
+Adding a first password needs an emailed code, not just a session: someone at
+a borrowed computer where the owner is signed in could otherwise add a
+password they know and keep access.
 
 Details: [passwords-and-codes.md](passwords-and-codes.md),
 [sessions-and-tokens.md](sessions-and-tokens.md).
 
 ## What the profile says about the account
 
-`GET /api/v1/users/me` returns the signed-in user's profile, including two
-fields the auth module maintains:
+`GET /api/v1/users/me` returns the signed-in user's profile, including
+`roles`, for example `["user"]` or `["user", "admin"]` ([below](#roles)).
 
-- `email_verified`: always `true` for someone who can call it, since unconfirmed
-  accounts cannot sign in;
-- `roles`: for example `["user"]` or `["user", "admin"]` ([below](#roles)).
-
-These come from the per-request session check, so a change (a new role, a
+It comes from the per-request session check, so a change (a new role, a
 deletion) shows on the next request.
 
 ## Deleting an account
@@ -165,16 +126,14 @@ People delete their own account from the web app's profile page. A session
 alone is not enough: the API wants proof it is the owner, so that someone at an
 unlocked computer cannot do it.
 
-`POST /api/v1/auth/account/delete` with:
+`POST /api/v1/auth/account/delete` with `password` (and an optional
+`language` for the email). The password is the only proof. An account without
+one (not completed, or made with Google) chooses one with "Forgot password"
+first.
 
-| The account has | Send |
-|---|---|
-| a password | `password` |
-| no password (made with Google) | `code`, emailed by `POST /api/v1/auth/account/delete-code` first |
-
-If something is missing the answer is 400 `AUTH_CONFIRMATION_REQUIRED` with
-`data.needs`, for example `["password"]`, so the page knows
-which fields to show. Wrong answers count against the same limits as at sign-in.
+If the password is missing, or the account has none, the answer is 400
+`AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. Wrong passwords
+count against the same limit as when changing the password.
 
 On success (200):
 
@@ -251,7 +210,6 @@ the API's check is the one that counts.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `UNVERIFIED_ACCOUNT_RETENTION_DAYS` | 7 (at least 1) | Unconfirmed accounts older than this are removed |
 | `DELETED_ACCOUNT_RETENTION_DAYS` | 30 (0 or more) | Deleted accounts' personal data is erased after this; also stated in the account-deleted email |
 | `SUPPORT_EMAIL` | empty | Named in the account-deleted email |
 | `APP_NAME` | `Test App` in code, `YourAppName` in `.env.example` | In every email subject |
