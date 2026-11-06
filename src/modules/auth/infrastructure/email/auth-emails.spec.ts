@@ -87,6 +87,11 @@ describe('AuthEmails', () => {
         expect(subjectOf('en', 'first-password')).toBe('Choose a password for your NezFocus account')
     })
 
+    it('shows the app tile from the web app in every email, with the N as its fallback', () => {
+        const tile = `<img src='https://app.example.test/email-logo-64.png' width='32' height='32' alt='N'`
+        for (const { html } of sent) expect(html).toContain(tile)
+    })
+
     it('escapes what it is given, so a display name cannot add markup', async () => {
         const email = {
             send: async (_to: string, _subject: string, template: string, context: Record<string, unknown>) => {

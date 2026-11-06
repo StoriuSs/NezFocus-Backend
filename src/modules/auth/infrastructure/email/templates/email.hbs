@@ -9,8 +9,10 @@
     {{!
         Every auth email: one layout, the words from email-copy.ts. Tables and
         inline styles, because many mail apps ignore <style> and flexbox.
-        Colours are DESIGN.md's light theme; the mark is the app tile (white N
-        on brand-primary), drawn in HTML so it shows with images blocked.
+        Colours are DESIGN.md's light theme. The mark is the app tile, a 64px
+        PNG from the web app shown at 32 (sharp on dense screens). Its cell is
+        brand-primary and its alt text is a white N, so with images blocked
+        the reader still sees the tile, as the HTML-only mark looked before.
     }}
     <body style='margin: 0; padding: 0; background-color: #f6f8fe'>
         <span style='display: none; max-height: 0; overflow: hidden'>{{preheader}}</span>
@@ -34,7 +36,7 @@
                                             align='center'
                                             valign='middle'
                                             style='width: 32px; height: 32px; background-color: #547fe4; border-radius: 7px; color: #ffffff; font: 700 20px/32px Arial, Helvetica, sans-serif'
-                                        >N</td>
+                                        ><img src='{{logoUrl}}' width='32' height='32' alt='N' style='display: block; width: 32px; height: 32px; border: 0; border-radius: 7px; color: #ffffff; font: 700 20px/32px Arial, Helvetica, sans-serif; text-align: center' /></td>
                                         <td
                                             style='padding-left: 10px; color: #1b2140; font: 700 18px/32px Arial, Helvetica, sans-serif'
                                         >{{appName}}</td>

@@ -76,11 +76,21 @@ export class AuthEmails {
     }
 
     private async send(to: string, language: EmailLanguage, content: EmailContent): Promise<void> {
-        await this.email.send(to, content.subject, LAYOUT, { lang: language, appName: this.appName, ...content })
+        await this.email.send(to, content.subject, LAYOUT, {
+            lang: language,
+            appName: this.appName,
+            // The web app serves it (NezFocus-Frontend public/): the API sends no files of its own.
+            logoUrl: `${this.frontendUrl}/email-logo-64.png`,
+            ...content
+        })
     }
 
     private get links() {
-        return { app: this.appName, resetUrl: `${this.config.get<string>('app.frontendUrl')!}/forgot-password` }
+        return { app: this.appName, resetUrl: `${this.frontendUrl}/forgot-password` }
+    }
+
+    private get frontendUrl(): string {
+        return this.config.get<string>('app.frontendUrl')!
     }
 
     private get appName(): string {

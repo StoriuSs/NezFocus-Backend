@@ -97,11 +97,14 @@ NezFocus, "mã OTP" for the six digits).
 
 Every email has the same parts, filled from email-copy.ts: a heading, a few
 paragraphs, the code (code emails), a button (some notices), and a footer.
-The layout shows them under the NezFocus tile (a white "N" on the brand
-blue, drawn in HTML so it shows with images blocked) and the app's name.
+The layout shows them under the NezFocus tile and the app's name. The tile is
+an image, `FRONTEND_URL/email-logo-64.png` (served from the web app's
+`public/`; 64px shown at 32, sharp on dense screens), in a brand-blue cell
+whose alt text is a white "N": with images blocked the reader still sees the
+tile. Mailpit in development loads it only while the web app is running.
 
 Links in emails are built from `FRONTEND_URL` and point at `/forgot-password`,
-which the web app must have.
+which the web app must have, and at the logo above.
 
 ### Sign-in code
 
