@@ -8,7 +8,7 @@
 services:
   # Node Exporter - Hardware and OS metrics
   node-exporter:
-    container_name: node-exporter-hexagonal-auth-dev
+    container_name: node-exporter-nezfocus-web-dev
     image: prom/node-exporter:v1.12.1
     volumes:
       - /proc:/host/proc:ro
@@ -28,7 +28,7 @@ services:
 
   # Postgres and Redis exporters - metrics for the alert rules
   postgres-exporter:
-    container_name: postgres-exporter-hexagonal-auth-dev
+    container_name: postgres-exporter-nezfocus-web-dev
     image: prometheuscommunity/postgres-exporter:v0.20.1
     environment:
       DATA_SOURCE_URI: db:5432/${DB_NAME}?sslmode=disable
@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
 
   redis-exporter:
-    container_name: redis-exporter-hexagonal-auth-dev
+    container_name: redis-exporter-nezfocus-web-dev
     image: oliver006/redis_exporter:v1.91.1-alpine
     environment:
       REDIS_ADDR: redis://redis:6379

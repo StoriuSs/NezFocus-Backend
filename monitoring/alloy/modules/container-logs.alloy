@@ -41,7 +41,7 @@ declare "container_logs" {
 			target_label  = "service"
 		}
 
-		// Compose project (hexagonal-auth-dev / hexagonal-auth-prod)
+		// Compose project (nezfocus-web-dev / hexagonal-auth-prod)
 		rule {
 			source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
 			target_label  = "project"

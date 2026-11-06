@@ -157,7 +157,7 @@ jobs:
       - run: pnpm test:integration
       - name: The migrations produce the schema
         run: |
-          docker exec postgres-hexagonal-auth sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE DATABASE shadow"'
+          docker exec postgres-nezfocus-web sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE DATABASE shadow"'
           SHADOW_DATABASE_URL=$(node -e "
             const e = require('dotenv').parse(require('fs').readFileSync('.env.development'))
             const auth = encodeURIComponent(e.DB_USERNAME) + ':' + encodeURIComponent(e.DB_PASSWORD)

@@ -29,7 +29,7 @@ monitoring services from `monitoring/compose/`, chosen by `MONITORING`.
 |------|---------|
 | `Dockerfile` | Multi-stage build with `dev` and `prod` targets |
 | `.dockerignore` | Excludes unnecessary files from the build context |
-| `docker-compose.dev.yaml` | Full dev stack with hot reload (project `hexagonal-auth-dev`) |
+| `docker-compose.dev.yaml` | Full dev stack with hot reload (project `nezfocus-web-dev`) |
 | `docker-compose.prod.yaml` | Full prod stack, hardened for a single VPS (project `hexagonal-auth-prod`) |
 | `monitoring/compose/{dev,prod}-{local,grafana-cloud}.yaml` | The monitoring services, included by the two files above |
 | `monitoring/compose/dev-exporters.yaml` | The dev exporters, included by the two dev monitoring files |

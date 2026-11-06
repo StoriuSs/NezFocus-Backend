@@ -326,7 +326,7 @@ start. [monitoring.md](./monitoring.md) explains the two modes.
 | `ALERTMANAGER_PORT` | | `9093` | Host port for Alertmanager | compose | |
 | `ALERT_WEBHOOK_URL` | prod | | Where alerts are posted: a Discord webhook (Slack or Teams after changing the receiver). Must be `https` and not the template's placeholder. In development, empty means alerts are shown but not sent | app (checked), compose, `monitoring:cloud-sync` | [setup/discord-alerts.md](./setup/discord-alerts.md) |
 | `ALERT_HEARTBEAT_URL` | | | A heartbeat URL called every minute while alerting works (production only; also uncomment the receiver in `alertmanager.yml`) | compose, `monitoring:cloud-sync` | [setup/uptime-check.md](./setup/uptime-check.md) |
-| `COMPOSE_PROJECT_NAME` | | from `name:` in the compose file | A Compose built-in, not something to set: the project name (`hexagonal-auth-dev`, `hexagonal-auth-prod`) labels alerts and limits Alloy to this stack's containers | compose | [making-it-yours.md](./making-it-yours.md) |
+| `COMPOSE_PROJECT_NAME` | | from `name:` in the compose file | A Compose built-in, not something to set: the project name (`nezfocus-web-dev`, `hexagonal-auth-prod`) labels alerts and limits Alloy to this stack's containers | compose | [making-it-yours.md](./making-it-yours.md) |
 
 All ports above are bound to `127.0.0.1`: reachable from the machine itself (or
 an SSH tunnel), never from the network.

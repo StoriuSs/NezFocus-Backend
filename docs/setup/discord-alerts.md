@@ -118,7 +118,7 @@ It arrives within a minute, and a "Resolved" message follows 5 to 10 minutes
 later. In development, with a webhook set:
 
 ```bash
-docker exec alertmanager-hexagonal-auth-dev amtool --alertmanager.url=http://localhost:9093 \
+docker exec alertmanager-nezfocus-web-dev amtool --alertmanager.url=http://localhost:9093 \
   alert add TestAlert 'severity="warning"' --annotation='summary="Test alert from development"'
 ```
 

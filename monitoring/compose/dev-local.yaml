@@ -13,7 +13,7 @@ include:
 services:
   # Prometheus - Metrics collection
   prometheus:
-    container_name: prometheus-hexagonal-auth
+    container_name: prometheus-nezfocus-web
     image: prom/prometheus:v3.14.0
     ports:
       - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
@@ -36,7 +36,7 @@ services:
 
   # Grafana - Metrics visualization
   grafana:
-    container_name: grafana-hexagonal-auth
+    container_name: grafana-nezfocus-web
     # 12.4, the maintained line before 13: Grafana 13.2 grew past 1 GB while
     # showing these dashboards, and was killed at the production limit (256M).
     # 12.4 stays near 150 MB. Check memory before moving to a newer major.
@@ -64,7 +64,7 @@ services:
 
   # Loki - Log aggregation
   loki:
-    container_name: loki-hexagonal-auth
+    container_name: loki-nezfocus-web
     image: grafana/loki:3.7.7
     ports:
       - "127.0.0.1:${LOKI_PORT:-3100}:3100"
@@ -81,7 +81,7 @@ services:
   # is set in .env.development: then it uses the production configuration and
   # posts there (use a test channel). See docs/alerts.md, "Development".
   alertmanager:
-    container_name: alertmanager-hexagonal-auth-dev
+    container_name: alertmanager-nezfocus-web-dev
     image: prom/alertmanager:v0.34.1
     ports:
       - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
@@ -103,7 +103,7 @@ services:
 
   # Alloy - Log shipping to Loki (monitoring/alloy/local.alloy)
   alloy:
-    container_name: alloy-hexagonal-auth
+    container_name: alloy-nezfocus-web
     image: grafana/alloy:v1.19.2
     ports:
       - "127.0.0.1:${ALLOY_PORT:-12345}:12345"  # UI: each component and its state

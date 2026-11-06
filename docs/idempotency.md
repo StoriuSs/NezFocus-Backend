@@ -560,7 +560,7 @@ async chargePayment() {}
 Every record expires by itself. To see how many there are:
 
 ```bash
-docker exec -it redis-hexagonal-auth redis-cli -a "$REDIS_PASSWORD" --scan --pattern 'idempotency:*' | wc -l
+docker exec -it redis-nezfocus-web redis-cli -a "$REDIS_PASSWORD" --scan --pattern 'idempotency:*' | wc -l
 ```
 
 Don't delete them by hand (see above). The Redis dashboard shows memory use
@@ -642,7 +642,7 @@ none gets 422. The automated version is `test/e2e/idempotency-replay.e2e-spec.ts
 
 1. **Check Redis Connection**
    ```bash
-   docker exec -it redis-hexagonal-auth redis-cli -a "$REDIS_PASSWORD" ping
+   docker exec -it redis-nezfocus-web redis-cli -a "$REDIS_PASSWORD" ping
    # Should return: PONG
    ```
    With Redis down the interceptor lets every request through; the app's log says "allowing the request".

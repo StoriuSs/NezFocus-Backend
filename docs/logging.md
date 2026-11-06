@@ -86,7 +86,7 @@ pretty pass through unchanged. Ways to run without the container at all:
 
 [`monitoring/alloy/modules/container-logs.alloy`](../monitoring/alloy/modules/container-logs.alloy), used by `local.alloy` and `grafana-cloud.alloy` next to it:
 
-1. **Discovery.** Alloy asks the Docker API for containers with the label `com.docker.compose.project=${COMPOSE_PROJECT}`. `COMPOSE_PROJECT` is set on the alloy service, which lives in `monitoring/compose/<dev|prod>-<mode>.yaml` (the compose files include one of them), from compose's own project name (`${COMPOSE_PROJECT_NAME}`: `hexagonal-auth-dev` / `hexagonal-auth-prod`, or whatever `-p` says), so each stack ships only its own containers. Other containers on the host are never picked up.
+1. **Discovery.** Alloy asks the Docker API for containers with the label `com.docker.compose.project=${COMPOSE_PROJECT}`. `COMPOSE_PROJECT` is set on the alloy service, which lives in `monitoring/compose/<dev|prod>-<mode>.yaml` (the compose files include one of them), from compose's own project name (`${COMPOSE_PROJECT_NAME}`: `nezfocus-web-dev` / `hexagonal-auth-prod`, or whatever `-p` says), so each stack ships only its own containers. Other containers on the host are never picked up.
 2. **Labels.** Each stream gets `service`, `project` and `container`, taken from Docker and Compose metadata.
 3. **App lines only** (`{service="app"}`):
    - join multi-line output into one entry (below),
@@ -171,8 +171,8 @@ What is still plain text, by design: the Prisma CLI's short summary when migrati
 | Label | Source | Example values |
 |---|---|---|
 | `service` | Compose service name | `app`, `db`, `redis`, `loki` |
-| `project` | Compose project | `hexagonal-auth-dev`, `hexagonal-auth-prod` |
-| `container` | Container name | `nestapp-hexagonal-auth-dev` |
+| `project` | Compose project | `nezfocus-web-dev`, `hexagonal-auth-prod` |
+| `container` | Container name | `nestapp-nezfocus-web-dev` |
 | `level` | Parsed from app JSON (app lines only); `error` for a stack trace printed around the logger | `info`, `warn`, `error` |
 | `environment` | development or production | `production` |
 | `service_name` | Added by Loki, a copy of `service`; Grafana's Logs Drilldown groups by it | `app` |
@@ -435,7 +435,7 @@ Environment variables:
 ### A container's logs are missing in Grafana
 
 ```bash
-docker logs alloy-hexagonal-auth --tail 50          # push errors?
+docker logs alloy-nezfocus-web --tail 50          # push errors?
 ```
 
 Then open Alloy's UI (http://localhost:12345) → `loki.source.docker.containers`. Under **targets_info** it lists every container it reads, with its last error.

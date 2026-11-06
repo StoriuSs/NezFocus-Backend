@@ -327,7 +327,7 @@ and [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts
 To reset the auth limits on a development machine:
 
 ```bash
-docker exec redis-hexagonal-auth sh -c "redis-cli --scan --pattern 'rl:*' | xargs -r redis-cli del"
+docker exec redis-nezfocus-web sh -c "redis-cli --scan --pattern 'rl:*' | xargs -r redis-cli del"
 ```
 
 ## Prisma tables

@@ -603,7 +603,7 @@ Verifies both layers:
 ```bash
 # Connect (production: redis-hexagonal-auth-prod). The container has REDISCLI_AUTH set,
 # so redis-cli needs no password argument.
-docker exec -it redis-hexagonal-auth redis-cli
+docker exec -it redis-nezfocus-web redis-cli
 
 # List all keys
 KEYS *

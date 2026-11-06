@@ -1,6 +1,6 @@
 # Constraints — NezFocus Backend
 
-Chuẩn chất lượng của repo này, chốt ở G0 (04/11/2026) qua skill `agent-skills:constraint-driven-development`. Mỗi luật có lệnh kiểm tra và lý do. AI và người viết code đều đọc file này trước khi code; **không hạ chuẩn ở đây để một thay đổi qua được kiểm tra**. Muốn nới một luật thì chủ dự án quyết, ghi lý do, và sửa file này trong một commit riêng, không chung với code đang đỏ.
+Chuẩn chất lượng của repo này, chốt ở G0 (04/11/2026) qua skill `agent-skills:constraint-driven-development`. Mỗi luật có lệnh kiểm tra và lý do. AI và người viết code đều đọc file này trước khi code; **không hạ chuẩn ở đây để một thay đổi qua được kiểm tra**. Muốn nới một luật thì chủ dự án quyết, ghi lý do, và sửa file này trong một commit riêng, không chung với code đang đỏ; commit message của commit đó có dòng `Constraints-approved: <lý do>`.
 
 Lần rà gần nhất: 05/11/2026, Phạm Trung Hiếu.
 
@@ -32,7 +32,7 @@ Kiểm bởi `node scripts/constraints/floor-guard.mjs`, chuyển thể từ b�
 - Không làm test dễ đi: không thêm `.skip`, `.only`, `.todo`, `xit`, `xdescribe`.
 - Không xóa test hay assertion mà không có lý do: xóa file test hay bỏ một `expect` thì commit message phải có dòng `Tests-removed: <vì sao>`. `check:task` liệt kê những chỗ này để AI đưa lý do vào commit message gợi ý; hook `commit-msg` và CI chặn khi thiếu.
 - Không có secret trong code: xem dòng "Secret" ở bảng dưới.
-- File này không bị nới để một thay đổi qua được: hạ một ngưỡng, xóa một luật hay thêm một dòng ngoại lệ đều bị floor-guard báo.
+- File này không bị nới để một thay đổi qua được: hạ một ngưỡng, xóa một luật hay thêm một dòng ngoại lệ đều bị floor-guard báo. Đổi hay xóa một ngưỡng chỉ qua được khi commit message có dòng `Constraints-approved: <lý do>`, tức chủ dự án đã duyệt (thêm 06/11/2026); floor-guard vẫn in ra để thay đổi không lặng lẽ.
 
 **Nhánh `learn/*` (bước B3 của docs/WORKFLOW.md)** chỉ được miễn luật "việc dở" (`TODO(human)`, thân hàm bị thay bằng `throw`), vì bản viết lại bắt đầu từ chữ ký và thân trống. Luật secret, luật cấm skip / xóa test và việc test phải chạy vẫn giữ nguyên: test là thứ chấm bản viết lại.
 

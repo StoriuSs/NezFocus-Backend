@@ -135,7 +135,7 @@ If Redis cannot be reached, the storage logs an error and **allows** the request
 The hash covers `<Controller>-<handler>-relaxed-<ip>`, so keys cannot be read back to an IP. To inspect:
 
 ```bash
-docker exec -it redis-hexagonal-auth redis-cli -a "$REDIS_PASSWORD"
+docker exec -it redis-nezfocus-web redis-cli -a "$REDIS_PASSWORD"
 SCAN 0 MATCH throttle:* COUNT 100
 GET throttle:relaxed:<hash>
 PTTL throttle:relaxed:<hash>

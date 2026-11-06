@@ -12,7 +12,7 @@
     "docker:down": "docker compose -f docker-compose.dev.yaml down",
     "docker:reset": "docker compose -f docker-compose.dev.yaml down -v",
     "docker:services": "docker compose --env-file .env.development -f docker-compose.dev.yaml --profile testing up -d --remove-orphans db redis rustfs rustfs-buckets mailpit && docker compose --env-file .env.development -f docker-compose.dev.yaml stop app",
-    "docker:logs": "docker logs nestapp-hexagonal-auth-dev -f --tail 200 | pino-pretty",
+    "docker:logs": "docker logs nestapp-nezfocus-web-dev -f --tail 200 | pino-pretty",
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",

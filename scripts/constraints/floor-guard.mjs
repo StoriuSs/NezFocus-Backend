@@ -13,6 +13,11 @@
 // the commit message. With no message to read (pnpm check:task), it is listed
 // as needing one, and the commit-msg hook and CI enforce it.
 //
+// A change to CONSTRAINTS.md that lowers the bar (a looser threshold, a rule
+// removed) is the owner's decision (CONSTRAINTS.md): it passes only with a
+// "Constraints-approved: <why>" line in the commit message, and is printed
+// either way so it stays loud.
+//
 // On a learn/* branch the stub rules are off: the rewrite starts from
 // signatures and TODO(human) bodies (docs/WORKFLOW.md, B3). Everything else
 // still applies there.
@@ -37,6 +42,7 @@ else if (hasFlag('--ci')) {
     if (message === null) bail(TOOL, 'could not read the commit messages')
 }
 const testsRemovedReason = message !== null && /^Tests-removed:\s*\S/m.test(message)
+const constraintsApproved = message !== null && /^Constraints-approved:\s*\S/m.test(message)
 
 const findings = []
 const flag = (rule, file, text) => findings.push({ rule, file, text: text.trim().slice(0, 120) })
@@ -143,8 +149,17 @@ for (const r of removedRules) {
 // A removed test with its reason in the commit message passes; with no
 // message to read yet, it is listed but does not fail.
 const NEEDS_REASON = ['test-deleted', 'assertion-removed']
+// The same for a lowered bar in CONSTRAINTS.md, with the owner's approval.
+const NEEDS_APPROVAL = ['threshold-loosened', 'threshold-changed', 'threshold-removed', 'rule-removed']
 const needsReason = findings.filter((f) => NEEDS_REASON.includes(f.rule))
-const blocking = findings.filter((f) => !NEEDS_REASON.includes(f.rule) || (message !== null && !testsRemovedReason))
+const needsApproval = findings.filter((f) => NEEDS_APPROVAL.includes(f.rule))
+const blocking = findings.filter((f) =>
+    NEEDS_REASON.includes(f.rule)
+        ? message !== null && !testsRemovedReason
+        : NEEDS_APPROVAL.includes(f.rule)
+          ? message !== null && !constraintsApproved
+          : true
+)
 
 const where = staged ? 'staged' : `since ${base.slice(0, 12)}`
 if (needsReason.length && !needsReason.some((f) => blocking.includes(f))) {
@@ -154,14 +169,27 @@ if (needsReason.length && !needsReason.some((f) => blocking.includes(f))) {
     console.log(`${TOOL}: tests removed ${where}, ${note}:`)
     for (const f of needsReason) console.log(`  [${f.rule}] ${f.file}: ${f.text}`)
 }
+if (needsApproval.length && !needsApproval.some((f) => blocking.includes(f))) {
+    const note = constraintsApproved
+        ? 'approved in the commit message (Constraints-approved:)'
+        : `the commit message must carry the owner's approval: a line "Constraints-approved: <why>"`
+    console.log(`${TOOL}: the bar in CONSTRAINTS.md is lowered ${where}, ${note}:`)
+    for (const f of needsApproval) console.log(`  [${f.rule}] ${f.file}: ${f.text}`)
+}
 if (!blocking.length) {
-    if (!needsReason.length) console.log(`${TOOL}: clean (${where}${learn ? ', learn branch' : ''})`)
+    if (!needsReason.length && !needsApproval.length)
+        console.log(`${TOOL}: clean (${where}${learn ? ', learn branch' : ''})`)
     process.exit(0)
 }
 console.error(`${TOOL}: ${blocking.length} floor violation(s) ${where}:`)
 for (const f of blocking) console.error(`  [${f.rule}] ${f.file}: ${f.text}`)
 if (blocking.some((f) => NEEDS_REASON.includes(f.rule))) {
     console.error('\nA removed test needs a line "Tests-removed: <why>" in the commit message.')
+}
+if (blocking.some((f) => NEEDS_APPROVAL.includes(f.rule))) {
+    console.error(
+        `\nLowering the bar in CONSTRAINTS.md is the owner's decision: a line "Constraints-approved: <why>" in the commit message.`
+    )
 }
 if (blocking.some((f) => f.rule === 'rule-removed')) {
     console.error(

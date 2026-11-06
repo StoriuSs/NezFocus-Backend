@@ -496,7 +496,7 @@ A stack started from an earlier version of this starter runs Promtail, Loki 2.9,
 
   ```bash
   docker compose -f docker-compose.dev.yaml --env-file .env.development rm -sf loki
-  docker volume rm hexagonal-auth-dev_loki-data
+  docker volume rm nezfocus-web-dev_loki-data
   ```
 
 - **Keep them** (production). In `monitoring/loki/loki-config.yml`, put the old period back in front of the new one, and start the new one on a date (UTC) after the day you deploy. Until that date Loki also needs structured metadata off, which only schema v13 supports:

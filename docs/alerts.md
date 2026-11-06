@@ -490,20 +490,20 @@ on `http://localhost:${ALERTMANAGER_PORT}` (default 9093).
    ```
 2. `pnpm docker:dev`. Alertmanager is recreated and uses the production
    configuration, `alertmanager.yml`; its log says `Using alertmanager.yml`
-   (`docker logs alertmanager-hexagonal-auth-dev`).
+   (`docker logs alertmanager-nezfocus-web-dev`).
 3. Make something fire:
    - a test alert:
      ```bash
-     docker exec alertmanager-hexagonal-auth-dev amtool --alertmanager.url=http://localhost:9093 \
+     docker exec alertmanager-nezfocus-web-dev amtool --alertmanager.url=http://localhost:9093 \
        alert add TestAlert 'severity="warning"' --annotation='summary="Test alert from development"'
      ```
-   - or a real one: `docker stop redis-hexagonal-auth`. `RedisDown` arrives about 2
-     minutes later; `docker start redis-hexagonal-auth`, and "Resolved" follows
+   - or a real one: `docker stop redis-nezfocus-web`. `RedisDown` arrives about 2
+     minutes later; `docker start redis-nezfocus-web`, and "Resolved" follows
      within 5 minutes.
 4. Remove the line (or leave it empty) and run `pnpm docker:dev` again to stop.
 
 Development alerts carry `environment="development"` and the dev project name
-(`hexagonal-auth-dev`), so they are easy to tell apart. A few are never sent from
+(`nezfocus-web-dev`), so they are easy to tell apart. A few are never sent from
 development, because they only mean someone is developing: `AppRestarting`
 (hot reload restarts the app on every save), `BackupNeverRan` (there is no
 backup service in dev), and `Watchdog`, which must never reach a production

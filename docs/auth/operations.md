@@ -268,7 +268,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yaml exec redis
 ```
 
 The limit names are in [rate-limits.md](./rate-limits.md). In development,
-`docker exec redis-hexagonal-auth sh -c "redis-cli --scan --pattern 'rl:*' | xargs -r redis-cli del"`
+`docker exec redis-nezfocus-web sh -c "redis-cli --scan --pattern 'rl:*' | xargs -r redis-cli del"`
 clears them all.
 
 ### Where can I see who is signed in?

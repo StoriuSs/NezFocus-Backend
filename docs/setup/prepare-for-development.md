@@ -156,7 +156,7 @@ pnpm docker:dev
 ```
 
 This builds the app's image and starts it with Postgres, Redis, Mailpit and the
-monitoring tools, all in the Docker Compose project `hexagonal-auth-dev`. The
+monitoring tools, all in the Docker Compose project `nezfocus-web-dev`. The
 first run downloads images and takes several minutes; later runs take seconds.
 
 When the containers are up, the app installs nothing more, applies the database
@@ -271,7 +271,7 @@ pnpm user:promote you@example.com
 
 (It reads `DATABASE_URL` from `.env.development`, which is why step 3 made it
 match. Or run it inside the app container, which has the right address already:
-`docker exec nestapp-hexagonal-auth-dev pnpm user:promote you@example.com`.)
+`docker exec nestapp-nezfocus-web-dev pnpm user:promote you@example.com`.)
 
 Delete `cookies.txt` when you are done: it holds a live sign-in.
 

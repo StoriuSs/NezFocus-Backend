@@ -73,7 +73,7 @@ pnpm env:check
 pnpm docker:dev
 ```
 
-This builds the app image and starts, all in the `hexagonal-auth-dev` Compose
+This builds the app image and starts, all in the `nezfocus-web-dev` Compose
 project:
 
 | Service | Where it is | Notes |
@@ -286,7 +286,7 @@ locally, set `MONITORING=grafana-cloud`: see
 
 ```bash
 docker compose --env-file .env.development -f docker-compose.dev.yaml ps
-docker logs nestapp-hexagonal-auth-dev     # or postgres-hexagonal-auth, redis-hexagonal-auth
+docker logs nestapp-nezfocus-web-dev     # or postgres-nezfocus-web, redis-nezfocus-web
 ```
 
 A port already in use is the usual cause ("port is already allocated"): see
@@ -323,12 +323,12 @@ pnpm docker:dev
 instead:
 
 ```bash
-docker exec -it postgres-hexagonal-auth psql -U <the original user> -c \
+docker exec -it postgres-nezfocus-web psql -U <the original user> -c \
     "CREATE ROLE your_db_user LOGIN PASSWORD 'your_db_password' SUPERUSER"
 ```
 
 Other things to check: is Postgres healthy at all (`docker ps`), and
-`docker logs postgres-hexagonal-auth`. When the error comes from a command you
+`docker logs postgres-nezfocus-web`. When the error comes from a command you
 ran on this machine (`pnpm prisma:migrate`), it is `DATABASE_URL` that does not
 match.
 
@@ -358,7 +358,7 @@ was ([docs/auth/rate-limits.md](./docs/auth/rate-limits.md)). In development
 you can delete the counters (`rl:*` keys) rather than wait:
 
 ```bash
-docker exec redis-hexagonal-auth sh -c "redis-cli --scan --pattern 'rl:*' | xargs -r redis-cli del"
+docker exec redis-nezfocus-web sh -c "redis-cli --scan --pattern 'rl:*' | xargs -r redis-cli del"
 ```
 
 ### pnpm says "Unsupported environment"

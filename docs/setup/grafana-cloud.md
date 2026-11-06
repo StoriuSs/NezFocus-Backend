@@ -53,7 +53,7 @@ A **stack** is your own Grafana, with its own Prometheus (metrics) and Loki
 
 One stack can hold several projects and environments: everything the starter
 sends is labelled with its Compose project (`hexagonal-auth-prod`,
-`hexagonal-auth-dev`) and environment, and the uploaded dashboards and alerts
+`nezfocus-web-dev`) and environment, and the uploaded dashboards and alerts
 filter on those labels. So development and production can share one stack, as
 long as the free plan's 10,000 series is enough (it is, just).
 

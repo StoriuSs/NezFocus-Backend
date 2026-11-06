@@ -3,7 +3,7 @@
 # (db, prometheus-data, ...) — resolve to the SAME Docker volumes. That
 # lets a dev stack attach to the production PGDATA, and makes a `down -v`
 # against one file destroy the other's data.
-name: hexagonal-auth-dev
+name: nezfocus-web-dev
 
 # Every published port binds to 127.0.0.1. A bare "5432:5432" listens on all
 # interfaces, and on Linux Docker writes its own iptables rules ahead of ufw —
@@ -23,7 +23,7 @@ include:
 services:
   # ── NestJS Application (Development) ──
   app:
-    container_name: nestapp-hexagonal-auth-dev
+    container_name: nestapp-nezfocus-web-dev
     build:
       context: .
       dockerfile: Dockerfile
@@ -94,7 +94,7 @@ services:
 
   # PostgreSQL Database
   db:
-    container_name: postgres-hexagonal-auth
+    container_name: postgres-nezfocus-web
     image: postgres:16.2-alpine
     environment:
       POSTGRES_USER: ${DB_USERNAME}
@@ -118,7 +118,7 @@ services:
 
   # Redis Cache
   redis:
-    container_name: redis-hexagonal-auth
+    container_name: redis-nezfocus-web
     image: redis:7.2.4-alpine
     # Password from the environment rather than a literal argument, which
     # would show in `docker inspect` and `ps`. redis-cli reads REDISCLI_AUTH.
@@ -143,7 +143,7 @@ services:
   # quay.io in September 2026). Any S3-compatible server works here — nothing
   # in the app is specific to one. Console: http://localhost:9101/rustfs/console/
   rustfs:
-    container_name: rustfs-hexagonal-auth-test
+    container_name: rustfs-nezfocus-web-test
     image: rustfs/rustfs:1.0.0
     profiles: [testing]
     environment:
@@ -190,7 +190,7 @@ services:
   # signing up is confirmed with an emailed code. Accepts any credentials, or
   # none, so no real SMTP account is needed.
   mailpit:
-    container_name: mailpit-hexagonal-auth
+    container_name: mailpit-nezfocus-web
     image: axllent/mailpit:v1.31.1
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
