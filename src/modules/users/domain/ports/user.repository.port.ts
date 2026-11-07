@@ -55,7 +55,7 @@ export interface UserRepositoryPort {
     findLanguage(id: string): Promise<string | null>
 
     /**
-     * Point a live user at a new avatar, returning the key it replaced.
+     * Point a live user at a new avatar, or at none (null), returning the key it replaced.
      *
      * Read-and-write in one statement: two concurrent uploads each get back the
      * key they actually replaced, so every superseded file is cleaned up. With
@@ -64,7 +64,10 @@ export interface UserRepositoryPort {
      *
      * @returns null if the user is gone or soft-deleted
      */
-    replaceAvatar(id: string, avatarKey: string): Promise<{ user: UserEntity; previousAvatarKey: string | null } | null>
+    replaceAvatar(
+        id: string,
+        avatarKey: string | null
+    ): Promise<{ user: UserEntity; previousAvatarKey: string | null } | null>
 
     /**
      * Soft-delete a live user. The returned entity reflects the row as it was

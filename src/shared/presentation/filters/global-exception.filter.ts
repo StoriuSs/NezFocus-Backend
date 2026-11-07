@@ -40,6 +40,15 @@ const STATUS_ERROR_MAP: Record<number, { type: string; code: string }> = {
 }
 
 /**
+ * A 413 raised inside Nest is a file over its route's limit: FileInterceptor
+ * turns multer's LIMIT_FILE_SIZE into PayloadTooLargeException. The page names
+ * it ("larger than 8 MB"), so it gets the upload's own error. body-parser's
+ * 413 (a JSON body over its limit) is not an HttpException and keeps
+ * PAYLOAD_TOO_LARGE.
+ */
+const FILE_TOO_LARGE = { type: ERROR_TYPES.UPLOAD_FILE_TOO_LARGE, code: ERROR_CODES.UPLOAD_FILE_TOO_LARGE }
+
+/**
  * An `http-errors` error meant for the client: a 4xx status and `expose: true`
  * (http-errors sets it for 4xx only, so its message is safe to return).
  */
@@ -201,7 +210,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             // Derive from the status rather than assuming 400 — a bare
             // NotFoundException or terminus' 503 must not be reported as a
             // client validation error.
-            const derived = STATUS_ERROR_MAP[status]
+            const derived = status === HttpStatus.PAYLOAD_TOO_LARGE ? FILE_TOO_LARGE : STATUS_ERROR_MAP[status]
             errorType = derived?.type ?? errorType
             errorCode = derived?.code ?? errorCode
 

@@ -6,6 +6,8 @@ export * from './commands/update-profile/update-profile.command'
 export * from './commands/update-profile/update-profile.handler'
 export * from './commands/upload-avatar/upload-avatar.command'
 export * from './commands/upload-avatar/upload-avatar.handler'
+export * from './commands/remove-avatar/remove-avatar.command'
+export * from './commands/remove-avatar/remove-avatar.handler'
 export * from './commands/delete-account/delete-account.command'
 export * from './commands/delete-account/delete-account.handler'
 export * from './commands/sweep-deleted-accounts/sweep-deleted-accounts.command'
@@ -20,6 +22,7 @@ export * from './queries/resolve-avatar-url/resolve-avatar-url.handler'
 // Export all events
 export * from './events/account-deleted.event'
 export * from './events/avatar-uploaded.event'
+export * from './events/avatar-removed.event'
 export * from './events/user-profile-updated.event'
 
 // Export all event handlers

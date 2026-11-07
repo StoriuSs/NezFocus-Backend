@@ -4,6 +4,7 @@ import { UploadService } from '@/shared/infrastructure/storage/upload.service'
 import { ImageProcessingOptions } from '@/shared/infrastructure/storage/services/image-processing.service'
 import { getFullUrl } from '@/shared/utils'
 import { StoragePort, UploadedFileResult } from '@/modules/users/application'
+import { AVATAR_FORMATS } from '@/modules/users/domain'
 
 /**
  * Upload Storage Adapter — Outbound Adapter
@@ -12,8 +13,12 @@ import { StoragePort, UploadedFileResult } from '@/modules/users/application'
  * The application layer uses StoragePort, which knows nothing about
  * Express, Multer, or the underlying storage implementation.
  */
-/** An avatar: at most 512×512, WebP, no metadata (a photo's EXIF can hold where it was taken). */
+/**
+ * An avatar: JPG, PNG or WEBP by what the bytes really are; stored at most
+ * 512×512, WebP, no metadata (a photo's EXIF can hold where it was taken).
+ */
 const AVATAR_IMAGE: ImageProcessingOptions = {
+    inputFormats: AVATAR_FORMATS,
     convertToWebp: true,
     quality: 85,
     stripMetadata: true,

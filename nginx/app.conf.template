@@ -79,9 +79,10 @@ server {
 	real_ip_recursive on;
 
 	# ── Limits ──────────────────────────────────────────────────────────
-	# The largest body the API accepts is a 5 MB avatar (MAX_FILE_SIZE); the
-	# extra 1 MB covers multipart framing. Raise both together.
-	client_max_body_size 6M;
+	# The largest body the API accepts is an 8 MB avatar (AVATAR_MAX_BYTES in
+	# src/modules/users/domain/avatar.rules.ts); the extra 1 MB covers
+	# multipart framing. Raise both together.
+	client_max_body_size 9M;
 	# Above the app's REQUEST_TIMEOUT_MS (30s), so the app answers 408 with
 	# its own error envelope before nginx gives up with a bare 504.
 	proxy_read_timeout 60s;

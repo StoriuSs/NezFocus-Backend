@@ -58,3 +58,6 @@ coverage/
 
 # Deploy state on the server (deploy.sh)
 .deploy/
+
+# Files the integration tests upload (UPLOAD_DEST in test/setup.ts)
+test-uploads/

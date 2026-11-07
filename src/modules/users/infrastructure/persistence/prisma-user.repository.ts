@@ -113,7 +113,7 @@ export class PrismaUserRepository implements UserRepositoryPort {
 
     async replaceAvatar(
         id: string,
-        avatarKey: string
+        avatarKey: string | null
     ): Promise<{ user: UserEntity; previousAvatarKey: string | null } | null> {
         // The subquery's FOR UPDATE locks the row, so a concurrent upload waits
         // and then reads the key this one wrote. Each statement returns the

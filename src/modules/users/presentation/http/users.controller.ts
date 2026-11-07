@@ -2,21 +2,18 @@ import {
     Controller,
     Get,
     Body,
+    Delete,
     Patch,
     Post,
     Param,
     UseInterceptors,
     UploadedFile,
     HttpCode,
-    HttpStatus,
-    ParseFilePipe,
-    MaxFileSizeValidator,
-    FileTypeValidator
+    HttpStatus
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger'
 import { memoryStorage } from 'multer'
-import { UPLOAD_LIMITS } from '@/config/upload.config'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 
 // Presentation DTOs
@@ -33,22 +30,19 @@ import {
 import {
     CheckUsernameQuery,
     ResolveAvatarUrlQuery,
+    RemoveAvatarCommand,
     UpdateProfileCommand,
     UploadAvatarCommand,
     UploadAvatarResult
 } from '@/modules/users/application'
-import { UserEntity } from '@/modules/users/domain'
+import { AVATAR_MAX_BYTES, UserEntity } from '@/modules/users/domain'
+import { AvatarFilePipe } from './avatar-file.pipe'
 
 // Shared
 import { AllowIncomplete, ApiEnvelopeResponse, CurrentUser, Idempotent } from '@/shared/presentation/decorators'
 import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/types'
 import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
-
-/** The accepted image types, as FileTypeValidator takes them. */
-const IMAGE_TYPES = new RegExp(
-    `^(${UPLOAD_LIMITS.allowedImageMimeTypes.map((type) => type.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|')})$`
-)
 
 @ApiTags('users')
 @ApiBearerAuth('bearer')
@@ -135,25 +129,13 @@ export class UsersController {
             // rejected before it is ever buffered into memory. Without this the
             // default is Infinity — a handful of concurrent large uploads was
             // enough to OOM the container.
-            limits: { fileSize: UPLOAD_LIMITS.maxFileSizeBytes, files: 1 }
+            // Over the limit: 413 UPLOAD_FILE_TOO_LARGE (GlobalExceptionFilter).
+            limits: { fileSize: AVATAR_MAX_BYTES, files: 1 }
         })
     )
     async uploadAvatar(
         @CurrentUser() user: AuthenticatedUser,
-        @UploadedFile(
-            new ParseFilePipe({
-                fileIsRequired: true,
-                validators: [
-                    // The validator wants a size below maxSize; multer (2.4)
-                    // accepts a file of exactly the limit, so both allow it.
-                    new MaxFileSizeValidator({ maxSize: UPLOAD_LIMITS.maxFileSizeBytes + 1 }),
-                    // Raster images only. The declared Content-Type is a client
-                    // claim, so this is a first pass — sharp verifies the actual
-                    // decoded format downstream.
-                    new FileTypeValidator({ fileType: IMAGE_TYPES })
-                ]
-            })
-        )
+        @UploadedFile(AvatarFilePipe)
         file: Express.Multer.File
     ) {
         const result: UploadAvatarResult = await this.commandBus.execute(
@@ -168,5 +150,17 @@ export class UsersController {
         })
 
         return createResponse(MESSAGES.UPLOAD.SUCCESS, responseData)
+    }
+
+    /**
+     * Back to the initial (S-ME-02, D-72). The profile page calls this only
+     * once its "Undo" has run out. Without an avatar it answers the same.
+     */
+    @Delete('me/avatar')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(null)
+    async removeAvatar(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<null>> {
+        await this.commandBus.execute(new RemoveAvatarCommand(user.id))
+        return createResponse(MESSAGES.USER.AVATAR_REMOVED, null)
     }
 }

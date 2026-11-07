@@ -1,13 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { UserEntity, UserRepositoryPort, USER_REPOSITORY } from '@/modules/users/domain'
+import { displayNameFrom, UserEntity, UserRepositoryPort, USER_REPOSITORY } from '@/modules/users/domain'
 import {
     AccountCompletionInput,
     DirectoryUser,
     UserDirectoryPort
 } from '@/modules/users/application/ports/user-directory.port'
-
-/** A display name's limit (REQ-AUTH-06); a Google name is cut to it (REQ-AUTH-10). */
-const DISPLAY_NAME_MAX_LENGTH = 32
 
 const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
     id: user.id,
@@ -40,10 +37,9 @@ export class UserDirectory implements UserDirectoryPort {
     }
 
     async create(email: string, displayName: string | null): Promise<DirectoryUser | null> {
-        // The provider's display name is the person's to set there, not
-        // checked here: bound it as the profile form does.
-        const name = displayName?.trim().slice(0, DISPLAY_NAME_MAX_LENGTH) || null
-        const user = await this.users.createWithEmail(email, { displayName: name })
+        // The provider's display name is the person's to set there: cut it
+        // to the profile's rules (REQ-AUTH-10, D-139), or drop it.
+        const user = await this.users.createWithEmail(email, { displayName: displayNameFrom(displayName) })
         return user ? toDirectoryUser(user) : null
     }
 

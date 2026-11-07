@@ -908,6 +908,43 @@
         "tags": [
           "users"
         ]
+      },
+      "delete": {
+        "operationId": "UsersController_removeAvatar_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Back to the initial (S-ME-02, D-72). The profile page calls this only\nonce its \"Undo\" has run out. Without an avatar it answers the same.",
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/health": {
@@ -1444,6 +1481,12 @@
       "CompleteAccountRequestDto": {
         "type": "object",
         "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "Shown in chat and study rooms: 1-32 characters, at least one visible (REQ-AUTH-06, D-69, D-139).",
+            "minLength": 1,
+            "maxLength": 32
+          },
           "language": {
             "description": "The account's language: the switch at the foot of the page (D-64).",
             "enum": [
@@ -1451,12 +1494,6 @@
               "en"
             ],
             "type": "string"
-          },
-          "display_name": {
-            "type": "string",
-            "description": "Shown in chat and study rooms: 1-32 characters (REQ-AUTH-06, D-69).",
-            "minLength": 1,
-            "maxLength": 32
           },
           "username": {
             "type": "string",
@@ -1478,8 +1515,8 @@
           }
         },
         "required": [
-          "language",
           "display_name",
+          "language",
           "username",
           "password",
           "timezone",
@@ -1801,12 +1838,14 @@
         "properties": {
           "display_name": {
             "type": "string",
-            "maxLength": 100
+            "description": "1-32 characters, at least one visible; it cannot be cleared (D-69).",
+            "minLength": 1,
+            "maxLength": 32
           },
           "bio": {
             "type": "string",
-            "description": "An empty string clears the bio.",
-            "maxLength": 500
+            "description": "Up to 200 characters, line breaks allowed. An empty string clears the bio.",
+            "maxLength": 200
           }
         }
       },

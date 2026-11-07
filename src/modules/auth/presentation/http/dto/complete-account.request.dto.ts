@@ -2,12 +2,9 @@ import { ApiProperty } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
 import { Equals, IsIn, IsString, Matches, MaxLength, MinLength, ValidateBy } from 'class-validator'
 import { trimString } from '@/shared/utils/transform.util'
-import { canonicalTimeZone, normaliseUsername, USERNAME_PATTERN } from '@/modules/users'
+import { canonicalTimeZone, DisplayNameField, normaliseUsername, USERNAME_PATTERN } from '@/modules/users'
 import { EMAIL_LANGUAGES, type EmailLanguage } from '@/modules/auth/application/ports'
 import { PASSWORD_INPUT_MAX } from './shared/fields.dto'
-
-/** The longest display name (REQ-AUTH-06). */
-const DISPLAY_NAME_MAX = 32
 
 /** An IANA zone name ICU knows; not an offset (timezone.rules.ts). */
 const IsTimeZoneName = () =>
@@ -24,11 +21,8 @@ const IsTimeZoneName = () =>
  * field is required.
  */
 export class CompleteAccountRequestDto {
-    /** Shown in chat and study rooms: 1-32 characters (REQ-AUTH-06, D-69). */
-    @Transform(trimString)
-    @IsString()
-    @MinLength(1, { message: 'display_name must not be empty' })
-    @MaxLength(DISPLAY_NAME_MAX, { message: `display_name must be at most ${DISPLAY_NAME_MAX} characters` })
+    /** Shown in chat and study rooms: 1-32 characters, at least one visible (REQ-AUTH-06, D-69, D-139). */
+    @DisplayNameField(true)
     displayName: string
 
     /**

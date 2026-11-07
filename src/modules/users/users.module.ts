@@ -13,6 +13,7 @@ import {
     USER_DIRECTORY,
     UpdateProfileHandler,
     UploadAvatarHandler,
+    RemoveAvatarHandler,
     DeleteAccountHandler,
     SweepDeletedAccountsHandler,
     CheckUsernameHandler,
@@ -27,7 +28,13 @@ import { BullMqBackgroundJobs, PrismaUserRepository, UploadStorage, UserDirector
 // Presentation (Inbound Adapters)
 import { UsersController } from './presentation'
 
-const CommandHandlers = [UpdateProfileHandler, UploadAvatarHandler, DeleteAccountHandler, SweepDeletedAccountsHandler]
+const CommandHandlers = [
+    UpdateProfileHandler,
+    UploadAvatarHandler,
+    RemoveAvatarHandler,
+    DeleteAccountHandler,
+    SweepDeletedAccountsHandler
+]
 
 const QueryHandlers = [CheckUsernameHandler, ResolveAvatarUrlHandler]
 

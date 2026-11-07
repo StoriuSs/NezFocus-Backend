@@ -1,27 +1,26 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
-import { Transform } from 'class-transformer'
-import { trimString } from '@/shared/utils/transform.util'
+import { ValidateIf } from 'class-validator'
+import { BioField, DisplayNameField } from './profile-text.decorators'
+
+/** Checked only when sent: `null` is not "not sent", and is refused rather than blanking the field. */
+const IfSent = () => ValidateIf((_dto: object, value: unknown) => value !== undefined)
 
 /**
- * HTTP Request DTO for updating user profile
- * class-validator decorators apply here (presentation concern)
+ * PATCH /users/me (S-ME-02, REQ-AUTH-06, D-139). Either field may be left
+ * out; the profile page sends both. Both are composed (NFC) and trimmed, and
+ * counted in characters, not UTF-16 units.
  *
- * Limits match the response DTOs. Without them a 100 KB bio (body-parser's
- * limit) was stored, cached in Redis and sent back on every /users/me, and an
- * empty display name blanked the profile.
+ * The limits keep a 100 KB bio (body-parser's limit) out of the database,
+ * the Redis cache and every /users/me, and an empty or invisible display
+ * name off the member list.
  */
 export class UpdateProfileRequestDto {
-    @Transform(trimString)
-    @IsOptional()
-    @IsString()
-    @IsNotEmpty({ message: 'displayName must not be empty' })
-    @MaxLength(100)
+    /** 1-32 characters, at least one visible; it cannot be cleared (D-69). */
+    @IfSent()
+    @DisplayNameField(false)
     displayName?: string
 
-    /** An empty string clears the bio. */
-    @Transform(trimString)
-    @IsOptional()
-    @IsString()
-    @MaxLength(500)
+    /** Up to 200 characters, line breaks allowed. An empty string clears the bio. */
+    @IfSent()
+    @BioField()
     bio?: string
 }

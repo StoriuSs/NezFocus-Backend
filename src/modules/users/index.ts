@@ -29,3 +29,5 @@ export { normaliseEmail } from './domain/email.rules'
 // What a username and a time zone may be, for the "complete your account" step.
 export { USERNAME_PATTERN, normaliseUsername } from './domain/username.rules'
 export { canonicalTimeZone } from './domain/timezone.rules'
+// What a display name may be (D-139), for the same step and the profile page.
+export { DisplayNameField } from './presentation/http/dto/profile-text.decorators'

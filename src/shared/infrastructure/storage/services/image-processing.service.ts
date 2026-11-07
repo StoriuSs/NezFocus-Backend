@@ -26,6 +26,11 @@ export interface ImageProcessingOptions {
     maxWidth?: number
     /** Maximum height - will resize if larger */
     maxHeight?: number
+    /**
+     * Decoded formats this upload takes, narrower than the default list (an
+     * avatar takes no GIF). Anything else is UPLOAD_INVALID_TYPE.
+     */
+    inputFormats?: readonly string[]
 }
 
 /**
@@ -115,7 +120,8 @@ export class ImageProcessingService {
 
             const metadata = await pipeline.metadata()
 
-            if (!metadata.format || !ALLOWED_INPUT_FORMATS.includes(metadata.format)) {
+            const formats = opts.inputFormats ?? ALLOWED_INPUT_FORMATS
+            if (!metadata.format || !formats.includes(metadata.format)) {
                 throw new CustomException({
                     code: ERROR_CODES.UPLOAD_INVALID_TYPE,
                     type: ERROR_TYPES.UPLOAD_INVALID_TYPE,

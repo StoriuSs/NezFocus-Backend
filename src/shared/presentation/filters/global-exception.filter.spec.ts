@@ -1,4 +1,4 @@
-import { ArgumentsHost } from '@nestjs/common'
+import { ArgumentsHost, PayloadTooLargeException } from '@nestjs/common'
 import { Logger as PinoLogger } from 'nestjs-pino'
 import { CustomException } from '@/shared/presentation/exceptions'
 import { GlobalExceptionFilter } from './global-exception.filter'
@@ -53,5 +53,19 @@ describe('GlobalExceptionFilter', () => {
         expect(JSON.stringify(jest.mocked(logger.error).mock.calls.at(-1))).toContain(
             'getaddrinfo ENOTFOUND minio.internal'
         )
+    })
+
+    it("names a file over its route's limit UPLOAD_FILE_TOO_LARGE, and a JSON body over its own PAYLOAD_TOO_LARGE", () => {
+        const typeFor = (exception: unknown) => {
+            const host = httpHost(baseRequest)
+            new GlobalExceptionFilter(logger).catch(exception, host)
+            const response = host.switchToHttp().getResponse<{ status: jest.Mock; json: jest.Mock }>()
+            return [response.status.mock.calls[0][0], response.json.mock.calls[0][0].meta.type]
+        }
+        // What FileInterceptor throws for multer's LIMIT_FILE_SIZE.
+        expect(typeFor(new PayloadTooLargeException('File too large'))).toEqual([413, 'UPLOAD_FILE_TOO_LARGE'])
+        // What body-parser throws (an http-errors error, not an HttpException).
+        const bodyTooLarge = Object.assign(new Error('request entity too large'), { status: 413, expose: true })
+        expect(typeFor(bodyTooLarge)).toEqual([413, 'PAYLOAD_TOO_LARGE_ERROR'])
     })
 })
