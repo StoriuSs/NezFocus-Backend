@@ -136,8 +136,8 @@ RAM back and to keep your alerting alive when the server is not.
 
 Only once you run **more than one app instance**. Until then a local Redis is
 faster and simpler. Losing it for a while is survivable: the cache refills,
-the per-request session check falls back to Postgres, and the rate limits
-fail open. But losing its **data** loses real things:
+the per-request session check falls back to Postgres, and the global
+throttler fails open. But losing its **data** loses real things:
 
 - queued emails, including sign-up and password-reset codes not yet sent
   (the person asks for a new one);
@@ -147,7 +147,8 @@ fail open. But losing its **data** loses real things:
 - scheduled jobs (they are registered again at the next start).
 
 None of these is permanent damage, which is why a local Redis is fine on one
-server. While Redis is down, though, the sign-in limits are off: see
+server. While Redis is down, though, the sign-in limits fail closed (D-137):
+nobody can sign in, ask for a code or change a password until it is back. See
 [rate-limit.md](./rate-limit.md#sign-in-routes-two-layers-of-limits).
 
 ```bash

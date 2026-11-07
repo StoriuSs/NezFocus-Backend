@@ -224,10 +224,11 @@ The queue holds nothing but emails: auth's hourly clean-up runs on the
 | What is down | What happens |
 |---|---|
 | **SMTP** | Requests still answer normally (the job is queued). Each email is tried 3 times over about 15 seconds, then given up, logged and reported. The person never gets the code; they ask for a new one once the mail server is back |
-| **Redis** | The job cannot be queued. A request that would send an email waits for Redis, and fails with a timeout after `REQUEST_TIMEOUT_MS` (30 seconds) if it does not come back. Where the request had already stored a code, that code exists but was never sent; asking again makes a new one |
+| **Redis** | The job cannot be queued. A request that would send an email waits for Redis, and fails with a timeout after `REQUEST_TIMEOUT_MS` (30 seconds) if it does not come back. Where the request had already stored a code, that code exists but was never sent; asking again makes a new one. Routes that send a code count an auth limit first, and with Redis down those answer `503` at once (D-137). A queueing failure is not always answered: "forgot password" logs it and answers 202, as for an address with no account; the notice after a reset or "complete your account" is logged, and the request succeeds |
 
 Routes that do not send email ("forgot password" for an unknown address,
-sign-in) are unaffected by either. More on Redis outages:
+sign-in) are unaffected by SMTP. With Redis down, those that count an auth
+limit (sign-in, codes) answer `503`. More on Redis outages:
 [sessions-and-tokens.md](./sessions-and-tokens.md#when-redis-is-down).
 
 ## Codes in the queue

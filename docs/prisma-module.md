@@ -145,7 +145,7 @@ Add new models by creating new `.prisma` files in `prisma/models/`. Prisma will 
 
 ### The auth tables
 
-`prisma/models/auth.prisma` belongs to the auth module. The users module never reads these tables; the auth module reaches the `User` row through a port. Every table references `User` with `onDelete: Cascade`.
+`prisma/models/auth.prisma` belongs to the auth module. The users module never reads these tables; the auth module reaches the `User` row through a port. One exception: completing an account writes the password hash to `Credential` inside the users repository's `complete` transaction, so a completion that loses changes no password ([auth/accounts.md](./auth/accounts.md#completing-the-account)). Every table references `User` with `onDelete: Cascade`.
 
 | Model | One row per | Notes |
 |---|---|---|

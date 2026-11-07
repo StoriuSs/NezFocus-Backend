@@ -184,17 +184,17 @@ others in [application/ports/](../../src/modules/auth/application/ports/).
 |---|---|---|---|
 | `PASSWORD_HASHER` | Hash, verify, "needs rehash", a dummy verify for unknown addresses | [argon2-password-hasher.adapter.ts](../../src/modules/auth/infrastructure/adapters/argon2-password-hasher.adapter.ts) | `@node-rs/argon2` |
 | `TOKEN_SERVICE` | Issue and verify access tokens; make refresh tokens; hash refresh tokens and emailed codes | [jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts) | `jose` |
-| `CREDENTIAL_REPOSITORY` | The password hash | [prisma-credential.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-credential.repository.ts) | Prisma |
+| `CREDENTIAL_REPOSITORY` | The password hash; `replaceHash` replaces it only if it is still the one expected (re-hashing at sign-in) | [prisma-credential.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-credential.repository.ts) | Prisma |
 | `SESSION_REPOSITORY` | Sessions and refresh tokens: create, rotate (row lock), revoke, find, clean up | [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Prisma |
-| `VERIFICATION_CODE_REPOSITORY` | The live emailed code per address and purpose: `replace`, `check` (counts the try in one `UPDATE … RETURNING`), `use` (only if the hash still matches and it is unused, so an older code cannot use up a newer one), `deleteStale` | [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | Prisma |
+| `VERIFICATION_CODE_REPOSITORY` | The live emailed code per address and purpose: `replace`, `check` (counts a wrong try in one `UPDATE … RETURNING`; a right guess uses none), `use` (only if the hash still matches and it is unused, so an older code cannot use up a newer one), `deleteStale` | [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | Prisma |
 | `OAUTH_ACCOUNT_REPOSITORY` | Provider links (`provider`, `sub` → user) | [prisma-oauth-account.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-oauth-account.repository.ts) | Prisma |
 | `OAUTH_STATE` | An OAuth attempt while the browser is at Google, taken once | [redis-oauth-state.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-oauth-state.adapter.ts) | Redis |
 | `OAUTH_PROVIDERS` | The configured providers (an array): `start()` and `finish()` | [openid-connect-provider.adapter.ts](../../src/modules/auth/infrastructure/adapters/openid-connect-provider.adapter.ts), one instance per provider, built from config in `auth.module.ts` | `openid-client` |
 | `AUTH_MAILER` | Queue each email | [bullmq-auth-mailer.adapter.ts](../../src/modules/auth/infrastructure/adapters/bullmq-auth-mailer.adapter.ts) | BullMQ |
 | `AUTH_EVENTS` | Count an event | [prometheus-auth-events.adapter.ts](../../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts) | prom-client |
 | `PRINCIPAL` and `SESSION_CACHE` | The per-request session check; invalidation; the refresh grace replacement | [redis-session-cache.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-session-cache.adapter.ts) (one instance answers both) | Redis, Postgres fallback |
-| `RATE_LIMIT` | `hit`, `check`, `reset` a fixed-window counter | the shared [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) | Redis (Lua) |
-| `USER_DIRECTORY` | The user row, owned by the users module: find, create, `complete` (the "complete your account" write), `languageOf` (for emails nobody asked for) | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
+| `RATE_LIMIT` | `hit`, `check`, `release`, `reset` a fixed-window counter; `hit` and `check` throw `LimitsUnavailableError` (503) when Redis is down (D-137) | the shared [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) | Redis (Lua) |
+| `USER_DIRECTORY` | The user row, owned by the users module: find, create, `complete` (the "complete your account" write, the password included, in one transaction), `languageOf` (for emails nobody asked for) | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
 
 Settings, also provided by `auth.module.ts` from config:
 
@@ -249,9 +249,10 @@ by several handlers:
 |---|---|---|
 | `SignInGate` ([sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)) | **The only way into a session** after a first step: `pass` starts it through `SessionIssuer`, so a rule every sign-in path must follow has one place to live | login, email-code/verify, reset-password, finish-oauth |
 | `SessionIssuer` ([session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts)) | Creates the `Session` row and its first refresh token, and signs the access token | `SignInGate` |
-| `CodeIssuer` ([code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts)) | Codes by address (D-129). `issue(address, purpose, now, email)` makes a six-digit code, stores its HMAC (replacing any earlier one for the address and purpose) and queues the email, or sends nothing when `email` is null; `check` counts a guess as one of the code's tries; `use` uses a right code up | email-code, email-code/verify, forgot-password, reset-password |
+| `CodeIssuer` ([code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts)) | Codes by address (D-129). `issue(address, purpose, now, email, whenMailFails?)` makes a six-digit code, stores its HMAC (replacing any earlier one for the address and purpose) and queues the email, or sends nothing when `email` is null; with `whenMailFails`, an email that cannot be queued is handed to it instead of failing the request (forgot-password); `check` counts a wrong guess as one of the code's tries; `use` uses a right code up | email-code, email-code/verify, forgot-password, reset-password |
 | `SignInMethods` ([sign-in-methods.ts](../../src/modules/auth/application/services/sign-in-methods.ts)) | "Has a password? Which providers?", and a provider's display name | sign-in-methods |
-| `limits.ts` ([limits.ts](../../src/modules/auth/application/services/limits.ts)) | `refuseIfLimited` (check, count nothing), `enforce` (check, then count), `withGuess` (count a guess while it is checked) | every limited handler |
+| `limits.ts` ([limits.ts](../../src/modules/auth/application/services/limits.ts)) | `refuseIfLimited` (check, count nothing), `enforce` (check, then count; requests that raced past the check and are refused by the count give their hits back), `withGuess` (count a guess while it is checked) | every limited handler |
+| `afterCommit` ([after-commit.ts](../../src/modules/auth/application/services/after-commit.ts)) | Runs the steps after a change is committed (dropping cached copies, queueing the notice email); a failing step is logged, the request still succeeds | reset-password, complete-account |
 
 One rule both a handler and an adapter need is in the domain instead,
 [session-end.ts](../../src/modules/auth/domain/session-end.ts): `sessionEndReason` turns a stored revoke reason
@@ -270,7 +271,10 @@ in [events/handlers/](../../src/modules/auth/application/events/handlers/):
 
 In the other direction, auth calls into users through `USER_DIRECTORY`
 (`findByEmail`, `findById`, `create(email, displayName)`) and the
-`DeleteAccountCommand`, both from the users index. The users module also
+`DeleteAccountCommand`, both from the users index. One write crosses the line
+the other way: the users repository's `complete` upserts auth's `Credential`
+row inside its own transaction, so a completion that loses changes no
+password ([accounts.md](./accounts.md)). The users module also
 deletes the avatar on `AccountDeletedEvent` (its own
 `CleanupAccountAvatarHandler`). The full deletion chain is in
 [accounts.md](./accounts.md) and [account-deletion.md](../account-deletion.md).
@@ -327,9 +331,9 @@ and [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts
 | `auth:session:<id>:v`, `auth:user:<id>:v` | A version number, bumped on every invalidation so a slow reader cannot put back a stale copy | 24 h | `invalidate()` in [versioned-cache.ts](../../src/shared/infrastructure/cache/versioned-cache.ts) | |
 | `auth:replaced:<sha256 of old refresh token>` | The replacement refresh token, for a second tab | 10 s | Refresh | The second tab's refresh fails; it signs in again |
 | `auth:oauth:<state>` | The Google attempt: provider, PKCE verifier, nonce, return path | 600 s, taken once (GETDEL) | Start a provider sign-in | Google sign-in fails (`?error=failed` or a 500 on start) |
-| `rl:<limit name>:<sha256 of lower-cased subject>` | An auth limit's counter (subject = address, IP or user id; never stored in clear) | the limit's window | `RateLimiter` | Limits fail **open**: nothing is limited |
+| `rl:<limit name>:<sha256 of lower-cased subject>` | An auth limit's counter (subject = address, IP or user id; never stored in clear) | the limit's window | `RateLimiter` | Limits fail **closed** (D-137): routes that count one answer 503 |
 | `throttle:relaxed:<hash>`, `throttle:block:relaxed:<hash>` | The global throttler, per route; the hash covers the tracker, `user:<id>` with a valid access token, `ip:<network>` without (D-135) | `THROTTLE_TTL` | `@nestjs/throttler` | Fails open |
-| `bull:auth:*` | The `auth` queue's email jobs | per job options | BullMQ | Emails cannot be queued: routes that send one fail |
+| `bull:auth:*` | The `auth` queue's email jobs | per job options | BullMQ | Emails cannot be queued: `email-code` fails; `forgot-password` logs it and still answers 202; the notice after a reset or a completion is logged, the request succeeds |
 
 To reset the auth limits on a development machine:
 
@@ -412,9 +416,11 @@ what to do about each.
 | warn | `google sign-in did not complete (<reason>): <detail>` | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) |
 | error | `google sign-in failed: ...` (database or Redis, with the stack) | oauth.controller.ts |
 | error (once a minute at most) | `Session cache unavailable, reading from the database` / `Session cache update failed` | [redis-session-cache.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-session-cache.adapter.ts) |
-| error (once a minute at most) | `Rate limiting unavailable, allowing the request` | [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) |
+| error (once a minute at most) | `Rate limiting unavailable, refusing the request` (a check or a count; answered 503), `Rate limiting unavailable` (a release or reset; only logged) | [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) |
 | warn | `... of deleted accounts: an account deletion's event was not handled` | [clean-up-auth.handler.ts](../../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts) |
 | log | `Removed N ended session(s) and N old code(s)` | clean-up-auth.handler.ts |
+| error | `Could not queue a password reset email: ...` | [forgot-password.handler.ts](../../src/modules/auth/application/commands/forgot-password/forgot-password.handler.ts) |
+| error | `Password reset: a step after the change failed: ...` / `Account completion: a step after the change failed: ...` | [after-commit.ts](../../src/modules/auth/application/services/after-commit.ts) |
 | error | `Could not end the sessions of deleted account ...` / `Could not drop the cached copy of user ...` | [events/handlers/](../../src/modules/auth/application/events/handlers/) |
 
 What never reaches a log or Sentry: the `Authorization`, `Cookie` and
@@ -446,7 +452,7 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 | Suites | What they prove |
 |---|---|
 | The command specs in [commands/](../../src/modules/auth/application/commands/): `email-code`, `sessions`, `passwords`, `google`, `delete-account` | Every handler against in-memory fakes of every port ([auth-test-world.shared-spec.ts](../../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)): a code request answers the same for every address; the right code makes the account or signs in to it; only the newest code, each once; the code-email and wrong-code limits (D-134); a reset code for an address with no account wears out like a real one (D-121); one error for wrong password and unknown address; the sign-in limits, bursts included; refresh rotation and reuse; reset and change password, emails in the page's language; Google's browser check, new and linked accounts, unverified address and deleted account; deletion takes only the password |
-| [limits.spec.ts](../../src/modules/auth/application/services/limits.spec.ts) | A wrong guess stays counted, a right one is given back; a burst gets no more than the limit |
+| [limits.spec.ts](../../src/modules/auth/application/services/limits.spec.ts) | A wrong guess stays counted, a right one is given back; a burst gets no more than the limit; a burst racing past `enforce`'s check counts only the request it lets through |
 | [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts) | Each rule broken on its own, the length bounds, Vietnamese letters, no common-password rule (D-29), the address or username dressed up |
 | [jose-token-service.adapter.spec.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.spec.ts) | An access token for another audience, from another issuer, or past its lifetime is refused |
 | [validation.spec.ts](../../src/config/validation.spec.ts) | The production refusals, auth's included (a missing, weak or template-placeholder secret) |

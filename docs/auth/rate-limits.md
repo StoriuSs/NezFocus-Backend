@@ -127,7 +127,10 @@ a counter.
 - **Refused without counting.** Before doing anything, a route checks its
   limits without counting. If one is used up, the request is refused and counts
   against nothing. So pressing "send code again" during the one-minute wait does
-  not use up the five an hour.
+  not use up the five an hour. Requests that race past that check together are
+  caught by the count, and the ones it refuses give their hits back
+  (`enforce` in limits.ts): six code-email requests sent at once send one
+  email and use one of the five an hour, not six.
 - **Failures only, where it matters.** Sign-in, code checks and password
   checks count only wrong answers. A person who gets it right is never slowed
   down by their own successes.
@@ -155,7 +158,7 @@ a counter.
   as the IPv4 address. The same goes for the global throttler's count of
   anonymous requests ([rate-limit.md](../rate-limit.md)). The code is
   [ip-network.ts](../../src/shared/utils/ip-network.util.ts).
-- **They fail open.** See [When Redis is down](#when-redis-is-down).
+- **They fail closed** (D-137). See [When Redis is down](#when-redis-is-down).
 
 The machinery is the shared `RateLimiter`
 ([rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts));
@@ -215,21 +218,30 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 
 | Cap | Size | Page |
 |---|---|---|
-| Tries per emailed code | 5, then the code is dead (`AUTH_CODE_EXPIRED`); a new code replaces the old. A reset code for an address with no account is stored too, so it wears out the same way (D-121) | [passwords-and-codes.md](passwords-and-codes.md) |
+| Tries per emailed code | 5 wrong guesses, then the code is dead (`AUTH_CODE_EXPIRED`); a new code replaces the old. A reset code for an address with no account is stored too, so it wears out the same way (D-121) | [passwords-and-codes.md](passwords-and-codes.md) |
 | Emailed code lifetime | 10 minutes | [passwords-and-codes.md](passwords-and-codes.md) |
 
 ## When Redis is down
 
-Both layers **fail open**: if Redis cannot be reached, every check allows the
-request, and the failure is logged at most once a minute ("Rate limiting
-unavailable, allowing the request" for the auth limits, "Rate limit storage
-unavailable, allowing requests" for the throttler).
+The two layers fail differently (D-137):
 
-That is a choice. A Redis outage already degrades the app; refusing every
-sign-in on top would make it a total outage. The cost is real: while Redis is
-down, the brute-force protection is off. The `RedisDown` alert fires, and the
-outage should be short. See [security.md](security.md) for how each outside
-service fails.
+- **The global throttler fails open**: every request is allowed, and the
+  failure is logged at most once a minute ("Rate limit storage unavailable,
+  allowing requests").
+- **The auth limits fail closed**: a route that has to check or count one
+  answers **503**, `meta.type: "SERVICE_UNAVAILABLE_ERROR"`, code `503000`
+  ("Signing in is unavailable for a moment. Try again shortly."). The failure
+  is logged at most once a minute ("Rate limiting unavailable, refusing the
+  request"). Clearing a counter (`release`, `reset`) only logs: failing it
+  lets nothing extra through.
+
+That is a choice. The auth limits are what stops guessing at codes and
+passwords. Let through uncounted, a client could ask for a new code with every
+request and guess five times at each, for as long as the outage lasts. The
+cost: while Redis is down nobody can sign in, ask for a code, reset or change
+a password, or delete their account. People already signed in carry on. The
+`RedisDown` alert fires, and the outage should be short. See
+[security.md](security.md) for how each outside service fails.
 
 ## Unlocking someone early
 

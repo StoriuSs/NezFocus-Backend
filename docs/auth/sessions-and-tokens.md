@@ -368,7 +368,7 @@ features do need it:
 | The check on every request | Works: every request reads Postgres. Logged at most once a minute: "Session cache unavailable, reading from the database" |
 | Cache invalidation | Fails and is logged ("Session cache update failed"). An entry that should have gone lives at most 5 more minutes, once Redis is back |
 | Refresh | Works. The grace replacement cannot be stored, so a second tab racing the first gets `401` and signs in again |
-| Rate limits | Not enforced (they fail open, logged once a minute). See [rate-limits.md](./rate-limits.md) |
+| Auth rate limits | Fail closed (D-137): sign-in, codes, reset, change password and account deletion answer `503`, logged once a minute. See [rate-limits.md](./rate-limits.md#when-redis-is-down) |
 | Google sign-in | Fails: the attempt lives only in Redis. Back to the web app with `?error=failed` |
 | Anything that sends an email | Fails: the email queue lives in Redis ([emails.md](./emails.md#when-redis-or-smtp-is-down)) |
 

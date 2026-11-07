@@ -160,7 +160,10 @@ Three details:
 - **Raising the parameters upgrades accounts as they sign in.** After a
   successful sign-in, a hash that is not
   Argon2id, or uses less memory, fewer passes or a different number of lanes
-  than the current settings, is replaced with a fresh one.
+  than the current settings, is replaced with a fresh one, but only if the
+  stored hash is still the one just checked (`replaceHash`). A password reset
+  racing the sign-in is not undone, and that sign-in opens no session
+  ([flows.md](./flows.md#sign-in)).
 
 Argon2 is slow on purpose: each sign-in costs a noticeable slice of a CPU.
 That matters for load tests ([load-testing.md](../load-testing.md)) and is the
@@ -189,7 +192,7 @@ guess says expired" cannot tell which addresses have accounts (D-121).
 |---|---|---|
 | Format | 6 digits, `000000` to `999999`, from `crypto.randomInt`; leading zeros kept | A predictable generator would let codes be guessed; zero-padding keeps all million possible |
 | Valid for | 10 minutes | Long enough to switch to the inbox, short enough that an old email is useless |
-| Attempts | 5 per code | A million possibilities, five guesses: a one in 200,000 chance |
+| Attempts | 5 wrong guesses per code; a right guess uses none | A million possibilities, five guesses: a one in 200,000 chance |
 | One at a time | One live code per address and purpose. A new code replaces the old one, which stops working at once, and the attempt count starts again | So "send it again" never leaves two codes that work |
 | Used once | A right code is used up | So it cannot be replayed |
 | Separate purposes | A reset code does not sign in, and a sign-in code does not reset a password | The purpose is part of the key and of what is hashed |
@@ -222,7 +225,7 @@ purpose, whether or not the address has an account (D-129):
 | `email`, `purpose` | Unique together: one live code per address and purpose. The address is normalised (trimmed, lower case) |
 | `codeHash` | `HMAC-SHA256(key = JWT_SECRET, "<purpose>:<email>:<code>")`, hex |
 | `createdAt`, `expiresAt` | When it was issued, and 10 minutes later |
-| `attempts` | Guesses so far |
+| `attempts` | Wrong guesses so far |
 | `consumedAt` | When the right code was used |
 
 Why an [HMAC](./concepts.md#hmac) and not a plain hash: six digits are only a
@@ -244,18 +247,21 @@ used ([clean-up-auth.handler.ts](../../src/modules/auth/application/commands/cle
 [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts)
 in two steps.
 
-**`check`** counts the attempt in the same SQL statement that reads the
-code (`UPDATE … SET attempts = attempts + 1 … RETURNING`), so ten guesses
-sent at the same moment use up ten attempts, not one. It answers `right`,
-`wrong` or `expired`, and does **not** use the code up:
+**`check`** counts a wrong guess in the same SQL statement that reads the
+code (`UPDATE … SET attempts = attempts + CASE WHEN "codeHash" = <guess>
+THEN 0 ELSE 1 END … RETURNING`), so ten wrong guesses sent at the same moment
+use up ten attempts, not one. A right guess uses none: a reset that refused
+the new password keeps the code, and its owner checking it again does not
+wear it out. It answers `right`, `wrong` or `expired`, and does **not** use
+the code up:
 
 | Situation | Answer |
 |---|---|
 | No code waiting for this address and purpose, or it was already used | `wrong`: `400 AUTH_CODE_INVALID` |
-| Past `expiresAt`, or this is the 6th attempt or later | `expired`: `400 AUTH_CODE_EXPIRED` |
-| Wrong code, and that was the 5th attempt | `expired`: said now, not on the next try |
-| Wrong code, attempts 1 to 4 | `wrong`: `400 AUTH_CODE_INVALID` |
-| Right code | `right`; the route carries on |
+| Past `expiresAt`, or 5 wrong guesses already made (right guess or not) | `expired`: `400 AUTH_CODE_EXPIRED` |
+| Wrong code, and that was the 5th wrong guess | `expired`: said now, not on the next try |
+| Wrong code, wrong guesses 1 to 4 | `wrong`: `400 AUTH_CODE_INVALID` |
+| Right code, fewer than 5 wrong guesses before it | `right`; the route carries on |
 
 **`use`** uses a right code up, once the route's other checks have passed
 (reset keeps the code when the password is refused). It is a conditional
@@ -276,7 +282,8 @@ The messages the person sees:
 - `AUTH_CODE_EXPIRED`: "This code no longer works: it expired, or had too
   many wrong tries. Ask for a new one."
 
-On the 5th attempt a right code still works; only a 5th wrong one ends it.
+After four wrong guesses a right code still works; a 5th wrong one ends it,
+and after that even the right code answers `AUTH_CODE_EXPIRED`.
 
 ## Changing the rules
 

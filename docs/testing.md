@@ -572,7 +572,8 @@ describe('CompleteAccountHandler', () => {
             providers: [
                 CompleteAccountHandler,
                 { provide: USER_DIRECTORY, useValue: directory },
-                { provide: CREDENTIAL_REPOSITORY, useValue: { setHash: jest.fn() } },
+                // The password is written by directory.complete, in its transaction.
+                { provide: CREDENTIAL_REPOSITORY, useValue: { findHash: jest.fn().mockResolvedValue(null) } },
                 { provide: PASSWORD_HASHER, useValue: { hash: jest.fn().mockResolvedValue('hash') } },
                 { provide: SESSION_CACHE, useValue: cache }
             ]

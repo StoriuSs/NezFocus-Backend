@@ -289,9 +289,13 @@ await this.limiter.hit(rule, userId)                    // count this one
   address sits in Redis in clear.
 - `hit` is one atomic Lua script (`INCR`, and start the window on the first
   hit), so two instances cannot both let the sixth request through.
-- **It fails open**: if Redis is down, every check allows the request and the
-  failure is logged once a minute. A Redis outage already degrades the app;
-  refusing every sign-in on top would make it a total one.
+- **It fails closed** (D-137): if Redis is down, `hit` and `check` throw
+  `LimitsUnavailableError` (`src/shared/domain`, kind `unavailable`, answered
+  503) and the failure is logged once a minute. `release` and `reset` only
+  log. The auth limits are what stops guessing at codes and passwords, so
+  they refuse rather than let requests through uncounted; the cost is that
+  nobody can sign in until Redis is back. A limit of your own that should not
+  stop its route during an outage must catch the error itself.
 
 Throw a `DomainError` with `kind = 'rate_limited'` and `retryAfterSeconds` to
 answer 429 with `Retry-After`. How the auth module combines its limits:

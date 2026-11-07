@@ -735,13 +735,16 @@ flowchart LR
 1. **`UserDirectoryPort`** ([`user-directory.port.ts`](../src/modules/users/application/ports/user-directory.port.ts)).
    The users module publishes the few operations auth needs: find a user by
    email or id, create an account, complete it ("complete your account":
-   name, username, Terms and first settings in one write), and read the
+   name, username, Terms, first settings and the password hash in one
+   transaction), and read the
    account's language for emails nobody asked for. It speaks in a small `DirectoryUser` record, not the
    `UserEntity`, so auth never depends on the entity's shape. `UsersModule`
    binds it to `UserDirectory` and exports only that token
    (`exports: [USER_DIRECTORY]`); `AuthModule` imports `UsersModule` and
    injects it with `@Inject(USER_DIRECTORY)`. Auth never reads the `User`
-   table itself.
+   table itself. The reverse has one exception: `complete` writes auth's
+   `Credential` row in its transaction, so a completion that loses (another
+   tab first, the username taken) changes no password.
 2. **Dispatching users' `DeleteAccountCommand`.** `POST /api/v1/auth/account/delete`
    is an auth route, because deleting needs proof (the password or an emailed
    code). Once

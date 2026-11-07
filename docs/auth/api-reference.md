@@ -353,13 +353,16 @@ on it.
 | `display_name` | string | yes | Trimmed, 1 to 32 characters |
 | `username` | string | yes | Trimmed and lower-cased, then 2 to 32 of `a-z 0-9 _ .` ("username must be 2-32 lowercase letters, numbers, underscores or dots"). Permanent |
 | `password` | string | yes | 1 to 1024. The rules are checked by the handler |
-| `timezone` | string | yes | An IANA zone name such as `Asia/Ho_Chi_Minh`, stored in its canonical spelling. An offset (`+07:00`) is refused |
+| `timezone` | string | yes | An IANA zone name such as `Asia/Ho_Chi_Minh`, stored as sent, but in ICU's letter case (`asia/tokyo` is stored `Asia/Tokyo`). An offset (`+07:00`, or `Etc/GMT+7` in any letter case) is refused |
 | `language` | string | yes | `vi` or `en`: the account's language, also used for emails nobody asked for |
 | `terms_accepted` | boolean | yes | Must be `true` ("terms_accepted must be true") |
 
 **Success:** `200`, message "Account completed", `data: null`. The access
 token in use keeps working and now passes the gate; read
-[`GET /users/me`](#the-current-user) again for the profile. No email is sent.
+[`GET /users/me`](#the-current-user) again for the profile. No email is sent,
+except "password changed" when the account already had a password (chosen
+through "forgot password"). If that email or dropping the cached user fails,
+it is logged and the answer is still `200`: the account is completed.
 
 **Errors**, in the order they are checked, besides the guard errors:
 
@@ -370,8 +373,9 @@ token in use keeps working and now passes the gate; read
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password breaks a rule, or is the email, the part before `@`, or this username (D-66) | `data.rules` |
 | 409 | `USERNAME_CONFLICT` | `409200` | A live account has the username. Decided as it is written: [username-available](#the-gate) is only a hint | |
 
-If the username is taken, nothing else is completed: send again with another
-one (the password is simply replaced).
+The password is written in the same transaction that completes the account.
+If the username is taken, or another submission completed the account first,
+nothing is written, the password included: send again with another username.
 
 ## Signing in and staying signed in
 
@@ -396,7 +400,9 @@ message "Login successful", `data`: [the token answer](#token-answer).
 | 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made by a code or with Google, and not completed). One error for all three, on purpose | |
 
 Only failures count against the two limits. A right password clears the
-address's count (not the IP's).
+address's count (not the IP's). A right password that a reset replaced while
+it was being checked answers `401 AUTH_INVALID_CREDENTIALS` too, without
+counting: the reset ended every session, and this sign-in must not open one.
 
 ### Refresh
 
@@ -468,6 +474,8 @@ wear it out after five exactly like a real one (D-121).
 
 **Success:** `202`,
 message "If that address has an account, an email is on its way.", `data: null`.
+Also when the email cannot be queued: that is logged, and the answer stays the
+same as for an address with no account.
 
 **Errors:**
 
@@ -492,7 +500,9 @@ and the owner is emailed "password added" instead of "password changed".
 | `language` | string | no | `vi` or `en`, for the email that follows ([the `language` field](#language-field)) |
 
 **Success:** `200`, message "Your password has been changed. You
-are signed in.", `data`: [the token answer](#token-answer).
+are signed in.", `data`: [the token answer](#token-answer). Once the password
+is changed and the sessions ended, dropping cached copies and queueing the
+email are logged if they fail; the answer is still `200`.
 
 **Errors**, in the order they are checked:
 
@@ -503,7 +513,7 @@ are signed in.", `data`: [the token answer](#token-answer).
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule that needs only the address. Checked before the code, so it does not use a try | `data.rules` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code pending, or no such account | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | Older than 10 minutes, or its 5th wrong try | |
-| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password is the username (D-66). Checked only once the code is known right; the code is not used up | `data.rules: ["matches_username"]` |
+| 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password is the username (D-66). Checked only once the code is known right; the code is not used up, and sending it again with another password uses no try | `data.rules: ["matches_username"]` |
 
 ### Change password
 
@@ -689,6 +699,10 @@ otherwise). Details and tuning:
 | `code-fail-email` | 10 per hour | address | `codes` | email-code/verify, reset-password | Wrong codes only, across the address's codes (D-134) |
 | `change-pw-fail` | 5 per 15 min | account | `wrong_password` | change-password, account/delete | Wrong passwords; cleared on success |
 
+With Redis down, these limits cannot be counted and every route listed here
+answers `503 SERVICE_UNAVAILABLE_ERROR` (D-137); the global throttler lets
+requests through.
+
 A refused request counts against nothing. When several limits refuse, the
 answer names the one with the longest wait. The 429 message says the wait in
 words ("Try again in 14 minutes"); `Retry-After` gives it in seconds, and CORS
@@ -723,6 +737,7 @@ kind; `meta.code` and `meta.type` come from
 | `VALIDATION_ERROR` | 422 | `422000` | Validation failed | `details[]` |
 | `RATE_LIMIT_EXCEEDED` | 429 | `429001` | "<reason sentence> Try again in N seconds/minutes." | `reason`, `Retry-After` header |
 | `THROTTLE_ERROR` | 429 | `429001` | ThrottlerException: Too Many Requests | `Retry-After` header |
+| `SERVICE_UNAVAILABLE_ERROR` | 503 | `503000` | Signing in is unavailable for a moment. Try again shortly. | Redis is down, and the auth limits fail closed (D-137): any route with an [auth limit](#rate-limits-by-route) |
 
 The `RATE_LIMIT_EXCEEDED` sentence per `data.reason`:
 

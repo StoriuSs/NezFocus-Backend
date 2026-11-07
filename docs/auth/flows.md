@@ -64,7 +64,7 @@ sequenceDiagram
     Note over W,Q: the person reads the code in their inbox
     W->>A: POST /auth/email-code/verify with email, code
     A->>R: count this try against the IP and the address (refused if used up)
-    A->>P: check the code (counts one of its tries), then use it up
+    A->>P: check the code (a wrong one counts one of its tries), then use it up
     A->>P: find the account, or create one (no password, not completed)
     A->>P: create session and refresh token
     A-->>W: 200 access token, account, Set-Cookie refresh_token
@@ -79,8 +79,9 @@ sequenceDiagram
    5 an hour, shared with reset codes). Used up: `429 RATE_LIMIT_EXCEEDED`
    with `data.reason` `network`, `recent_email` (the minute) or `emails`
    (the hour) and a `Retry-After` header.
-   Otherwise each is counted (two requests racing past the check are still
-   caught by the count). There is no separate limit on new accounts: each one
+   Otherwise each is counted. Requests racing past the check are caught by the
+   count, and the refused ones give their hits back: six sent at once send one
+   email and use one of the five an hour. There is no separate limit on new accounts: each one
    needs a code from these.
 3. A `sign-in` code is stored for the address, replacing any earlier one, and
    emailed (`send-code`). Every address gets one. Only the wording differs:
@@ -100,8 +101,9 @@ stores the cookie.
    anything is checked, and taken back if it was right, so a burst of
    requests sent at once is limited like a slow one. Used up:
    `429 RATE_LIMIT_EXCEEDED`, `data.reason` `network` or `codes`.
-2. The code is checked. Each check counts one of the code's 5 tries, in the
-   same database statement.
+2. The code is checked. A wrong guess uses one of the code's 5 tries, counted
+   in the same database statement; a right one uses none. A code with 5 wrong
+   tries is dead, even for the right guess.
    - wrong code, or no code sent: `400 AUTH_CODE_INVALID`;
    - older than 10 minutes, or the 5th wrong try: `400 AUTH_CODE_EXPIRED`.
      The person asks for a new code.
@@ -172,8 +174,15 @@ credentials so the browser stores the cookie.
    the same time (an unknown address is checked against a dummy hash). A
    failure counts one against the address and one against the IP.
 3. Right password: the address's failure count is cleared (the IP's is not).
-4. The hash is upgraded if it was made with older Argon2 settings.
-5. The sign-in gate starts a session: `200`,
+4. The hash is upgraded if it was made with older Argon2 settings. The new
+   hash replaces the stored one only if that is still the hash just checked
+   (`replaceHash`).
+5. The stored hash must still be the one checked (or its upgrade). A reset
+   that changed the password meanwhile answers
+   `401 AUTH_INVALID_CREDENTIALS`, not counted as a failure: a sign-in with
+   the old password racing a reset must not keep a session the reset ended,
+   or put the old password back.
+6. The sign-in gate starts a session: `200`,
    `{ access_token, token_type, expires_in }`, and the refresh cookie.
 
 The forms around it: "Sign in with a code"
@@ -309,7 +318,7 @@ sequenceDiagram
     A-->>W: 202 "If that address has an account, an email is on its way."
     W->>A: POST /auth/reset-password with email, code, password, language
     A->>A: password rules, with the address
-    A->>P: check the code (counts a try)
+    A->>P: check the code (a wrong one counts a try)
     A->>P: right: find the user, check the rules with the username, use up the code
     A->>P: store the new hash
     A->>P: end every session (password-reset)
@@ -332,6 +341,8 @@ sequenceDiagram
    accounts (D-121).
 3. An account: a `password-reset` code is emailed. For an account with no
    password yet, the email is worded "Choose a password" instead of "Reset".
+   If the email cannot be queued, that is logged and the answer is still
+   `202`, as for an address with no account.
 4. Always `202` with the same message.
 
 **2. `POST /auth/reset-password`** (public). Body: `email`, `code`,
@@ -351,14 +362,17 @@ signs in.
 4. Only with the right code, the account is looked up and the rule "the
    password is not the username" checked (D-66): `422 AUTH_PASSWORD_REJECTED`.
    Checked earlier, that answer would tell a guesser which username has this
-   address. The code is not used up.
+   address. The code is not used up, and the right code checked again does
+   not use a try, so the person can choose another password with it.
 5. The code is used up. Another request used it first: `400 AUTH_CODE_INVALID`.
 6. The new hash is stored.
 7. **Every session ends** (reason `password-reset`), on every device,
    including this one's old session. Whoever else was signed in, possibly
    the reason for the reset, is out.
-8. The owner is emailed `password-changed`, or `password-added` if the
-   account had no password before.
+8. The cached sessions and user are dropped, and the owner is emailed
+   `password-changed`, or `password-added` if the account had no password
+   before. The password has already changed, so a failure here is logged
+   (`afterCommit`) and the reset still signs in.
 9. The sign-in gate: one new session for this device, `200`,
    token and cookie.
 

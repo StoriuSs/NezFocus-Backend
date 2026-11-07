@@ -339,7 +339,8 @@ hashed so no email address sits in Redis in clear.
 
 **Storage**: Raw `REDIS_CLIENT`, through `RateLimiter`
 (`src/shared/infrastructure/rate-limit/rate-limiter.ts`): one Lua script does
-`INCR` and starts the window. Fails open when Redis is down. The rules:
+`INCR` and starts the window. Fails closed when Redis is down (D-137): the
+route answers 503 rather than let a guess through uncounted. The rules:
 [auth/rate-limits.md](./auth/rate-limits.md).
 
 ---

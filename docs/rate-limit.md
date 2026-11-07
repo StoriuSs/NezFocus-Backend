@@ -131,6 +131,8 @@ A web app on another origin can only read headers that CORS exposes, and the API
 
 If Redis cannot be reached, the storage logs an error and **allows** the request. Rate limiting protects the service; refusing every request during a Redis outage would turn a cache failure into a full outage. The Redis client is created with `disableOfflineQueue`, so this happens immediately rather than after requests hang.
 
+This is the global throttler only. The auth module's limits, built on `RateLimiter`, fail closed (D-137): see [Limits for One Operation](#limits-for-one-operation-ratelimiter).
+
 ## Redis Keys
 
 | Key | Value | Expiry |
@@ -203,7 +205,15 @@ await this.limiter.reset(rule, email)   // forget the subject's hits
 - **Fixed window**, like the throttler, starting at the subject's first hit.
 - **Subjects are hashed** into the key (`rl:<name>:<sha256>`): no email address
   sits in Redis in clear.
-- **Fails open** when Redis is down, logged once a minute.
+- **Fails closed** when Redis is down (D-137): `hit` and `check` throw
+  `LimitsUnavailableError` (`src/shared/domain/limits-unavailable.error.ts`),
+  which answers `503` with `meta.type` `SERVICE_UNAVAILABLE_ERROR` and
+  `meta.code` `503000`. The log says "Rate limiting unavailable, refusing the
+  request", once a minute at most. `release` and `reset` only log ("Rate
+  limiting unavailable"): failing them lets nothing extra through. These
+  limits are what stops guessing at codes and passwords; let through uncounted
+  during an outage, a client could ask for a new code every request and guess
+  five times at each. The global throttler still fails open.
 
 Throwing a `DomainError` of kind `rate_limited` (as `RateLimitedError` in the
 auth module does) answers `429` with a `Retry-After` header.
@@ -240,11 +250,13 @@ What the two layers mean in practice:
   guard against password guessing. The auth limits per IP use a 5-minute
   window, so a refusal there costs minutes, not an hour. There is no allowlist
   of exempt IPs (kept as an option for later, D-135).
-- **When Redis is down, both fail open.** The throttler and the auth limits
-  then allow everything. That keeps sign-in working during an outage, but it
-  also means **no brute-force protection** until Redis is back: the
-  `RedisDown` alert is the signal to act. (Session checks fall back to
-  Postgres meanwhile; see [sessions-and-tokens.md](./auth/sessions-and-tokens.md).)
+- **When Redis is down, the throttler fails open and the auth limits fail
+  closed** (D-137). Every route stays reachable, but the routes that count an
+  auth limit (sign-in, code emails, code checks, password reset, password
+  change, account deletion) answer `503` until Redis is back: nobody can sign in, ask for a code
+  or change a password. Signed-in sessions go on (session checks fall back to
+  Postgres; see [sessions-and-tokens.md](./auth/sessions-and-tokens.md)). The
+  `RedisDown` alert is the signal to act.
 - A refused sign-in by the auth limits is counted as
   `auth_events_total{event="login_rate_limited"}`, on the API dashboard's
   "Sign-in and accounts" row ([monitoring.md](./monitoring.md#auth-metrics)).
@@ -262,6 +274,9 @@ All anonymous requests share one tracker (signed-in ones are counted per user). 
 
 **A client is never limited.**
 Check Redis is reachable (`/health` → `rate_limiter`): the throttler fails open. Remember buckets are per endpoint, so spreading requests across endpoints multiplies the allowance.
+
+**Sign-in answers 503 `SERVICE_UNAVAILABLE_ERROR`.**
+Redis cannot be reached, and the auth limits fail closed (D-137). The log has "Rate limiting unavailable, refusing the request". Fix Redis.
 
 **Limits differ between instances.**
 They shouldn't: counters live only in Redis. Confirm every instance points at the same `REDIS_HOST`/`REDIS_PORT`.

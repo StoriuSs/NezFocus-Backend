@@ -85,22 +85,31 @@ The [handler](../../src/modules/auth/application/commands/complete-account/compl
 
 1. Checks the password against the policy, also against the email, the part
    before `@` and the chosen username (D-66).
-2. Stores the password.
+2. Hashes the password.
 3. In one transaction (the users repository's `complete`): sets the display
-   name, the username, `completedAt` and `termsAcceptedAt`, and creates the
-   `UserSettings` row (time zone, language, every other setting at its
+   name, the username, `completedAt` and `termsAcceptedAt`, writes the
+   password hash (auth's `Credential` row, created or replaced), and creates
+   the `UserSettings` row (time zone, language, every other setting at its
    default). The `UPDATE` has `completedAt: null` in its `WHERE`, so two
    submissions at once complete the account once; the loser gets 409
    `ACCOUNT_ALREADY_COMPLETE`. Whether the username is free is decided by the
    unique index at that moment (409 `USERNAME_CONFLICT`); the availability
    check the page makes while typing is only a hint.
 4. Drops the cached copy of the user, so the access token already in use
-   passes the gate on the very next request. No new token is issued.
+   passes the gate on the very next request. No new token is issued. If the
+   account already had a password (chosen through "forgot password"), queues
+   the "password changed" email. Both run after the transaction has committed
+   (`afterCommit`): a failure is logged, and the request still succeeds.
 
-The password is stored before the account is completed, so a completed account
-always has one (D-130). If step 3 fails (the username was taken a moment
-ago), the account is still not completed and the next try replaces the
-password.
+The password is written in the same transaction that completes the account, so
+a completed account always has one (D-130), and a submission that loses
+changes no password: not the second of two tabs (`ACCOUNT_ALREADY_COMPLETE`),
+not one whose username was taken a moment ago (`USERNAME_CONFLICT`). Written
+first, as before, the losing tab could leave its password on the completed
+account, and a taken username could replace a password chosen through "forgot
+password" without its owner being emailed. That write is the one place the
+users module touches an auth table, kept there so it cannot happen apart from
+the completion.
 
 The username is permanent: there is no route to change it.
 

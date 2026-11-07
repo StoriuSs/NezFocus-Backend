@@ -197,7 +197,9 @@ deletions). All of it is `auth_events_total{event}`
 | `sign-in failed:` (error) | A Google return failed on the database or Redis | Check those |
 | `an account deletion's event was not handled` | The hourly clean-up finished a deletion whose event was lost (a crash at the wrong moment). Nothing was exposed meanwhile | None, unless it repeats |
 | `Session cache unavailable, reading from the database` | Redis is down; sign-in checks fall back to Postgres | Fix Redis (`RedisDown` will be firing) |
-| `Rate limiting unavailable, allowing the request` | Redis is down; **auth limits are off** until it is back | Fix Redis |
+| `Rate limiting unavailable, refusing the request` | Redis is down; the auth limits fail closed (D-137), so **nobody can sign in**, ask for a code or change a password (503) until it is back. Signed-in sessions carry on | Fix Redis (`RedisDown` will be firing) |
+| `Could not queue a password reset email` | "Forgot password" for an address with an account could not queue the email; the person was still answered 202 | Check Redis and the `auth` queue; the person can ask again |
+| `a step after the change failed` (`Password reset:` or `Account completion:`) | The change was made, but dropping a cached copy or queueing the notice email failed. The request still succeeded | Check Redis and the `auth` queue. A cached copy left behind expires within minutes |
 | A failed `send-code` job (queue dashboard, or Sentry) | An email with a code could not be sent after 3 tries (about 15 seconds) | Check SMTP; the person must ask for a new code |
 
 To see auth refusals by type over the last hour, in Loki:
@@ -222,6 +224,7 @@ Secrets do not reach the logs: request bodies are never logged, and Google's
 | Back in the web app with `?error=failed` after Google | The API log's `sign-in did not complete (failed): <detail>` says which: the browser did not send back the `oauth_state` cookie (blocked cookies, or a different browser), the attempt took more than 10 minutes, Google refused the code, or Google or Redis could not be reached | Act on the detail; a single occurrence is usually the person, not the server |
 | The "Continue with Google" button is missing | `GOOGLE_CLIENT_ID` or `GOOGLE_CLIENT_SECRET` is empty (`GET /auth/options` lists no providers) | Set both and redeploy |
 | Many people get `429` with `data.reason: "network"`, or `429 THROTTLE_ERROR`, at the same time | The API sees every request as coming from one IP, so everyone shares one per-IP count. Signed-in requests are not part of it: the global throttler counts them per user (D-135), so this hits signing in, codes and refresh. The app trusts exactly **one** proxy hop (`trust proxy 1` in [configure-app.ts](../../src/bootstrap/configure-app.ts)) and expects that proxy (nginx) to set `X-Forwarded-For` to the real client | Keep the shipped nginx config: it sets `X-Forwarded-For $remote_addr` and, behind Cloudflare's proxy, takes the client IP from `CF-Connecting-IP`. With another load balancer in front of nginx, set the real IP from it in nginx, or change the hop count in `configure-app.ts`. Check: the `ip` column of recent rows in the `Session` table should show real client addresses. A whole office behind one IP may also simply need a higher limit: `THROTTLE_ANONYMOUS_LIMIT`, or the auth limits per IP in code ([rate-limits.md](./rate-limits.md)). An allowlist of exempt IPs is not available; see D-135 |
+| Sign-in, codes and password changes answer `503 SERVICE_UNAVAILABLE_ERROR` | Redis cannot be reached, and the auth limits fail closed (D-137) | Fix Redis. Signed-in users are not affected |
 | One person is told to wait 15 minutes after a few wrong passwords | `login-fail-email`: 5 failures per address per 15 minutes | Working as intended. To unlock now, see [the FAQ](#how-do-i-clear-a-limit-for-one-person) |
 | Every request answers `401 AUTH_TOKEN_INVALID` after a deploy, and refresh fixes it | `JWT_SECRET` or `BASE_URL` changed: existing access tokens no longer verify | Expected once. If it keeps happening, the app instances disagree on `JWT_SECRET` or `BASE_URL` |
 | A user is signed out right after two tabs refreshed | The second tab refreshed more than 10 seconds after the first (a tab asleep in the background) with the old cookie, which looks exactly like a stolen token | By design. If it is common for your users, the refresh grace is `refreshGraceMs` in `auth.module.ts` |
@@ -278,9 +281,10 @@ its `userId`, `createdAt`, `lastUsedAt` (last refresh), `expiresAt`, `ip` and
 ### What happens when Redis goes down?
 
 Signed-in users keep working: the session check reads Postgres instead, and
-refresh works (without the two-tab grace). The auth limits and the global
-throttler stop limiting. Google sign-in and every email (codes included)
-fail until Redis is back. `RedisDown` alerts.
+refresh works (without the two-tab grace). The global throttler stops
+limiting. The auth limits fail closed (D-137): signing in, asking for a code,
+resetting or changing a password and deleting the account answer 503. Google
+sign-in and every email (codes included) fail until Redis is back. `RedisDown` alerts.
 [sessions-and-tokens.md](./sessions-and-tokens.md) has the details.
 
 ### Can I make sessions last longer, or access tokens?

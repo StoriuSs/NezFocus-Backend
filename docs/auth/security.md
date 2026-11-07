@@ -27,7 +27,7 @@ there for a reason given below. Words like "hashing", "HMAC", "CSRF" and
 | **Password guessing** on one account | 5 failed sign-ins per address per 15 minutes, then 429. Argon2id makes each guess cost about 19 MiB of memory and real CPU time, so offline guessing of a stolen hash is slow too. | [rate-limits.md](rate-limits.md), [passwords-and-codes.md](passwords-and-codes.md) |
 | **Credential stuffing and password spraying**: leaked passwords from other sites, or one common password tried on many accounts | 30 failed sign-ins per IP per 5 minutes across all addresses, a short window so a shared network (a lab, a hall) waits minutes, not an hour (D-135); each account is still held to 5 failures per address per 15 minutes, whatever the IP; new passwords must pass the policy (no common-password list, D-29); the `AuthFailedLoginSpike` alert (more than 50 failures in 10 minutes). | [rate-limits.md](rate-limits.md) |
 | **Account enumeration**: finding out which addresses have accounts | One error, `AUTH_INVALID_CREDENTIALS`, for a wrong password, an unknown address and an account without a password, in the same time (an unknown address still runs a dummy Argon2 check). Asking for a code and forgot password answer the same 202 for every address, and do the same work: every address gets a code (a reset code for an address with no account is stored and sent to nobody, so it wears out like a real one, D-121); only the email's wording differs. At reset, "the password is your username" is said only after the right code (D-66). Limits keyed on an address count whether or not it exists. | [flows.md](flows.md) |
-| **Guessing an emailed code** | 6 random digits, valid 10 minutes, 5 tries per code (counted atomically, so parallel guesses each count), only the newest code works, 30 wrong codes per IP per 5 minutes across all addresses (D-135), and 10 wrong codes per address per hour across its codes, whatever the IP (D-134). Codes are compared in constant time. | [passwords-and-codes.md](passwords-and-codes.md) |
+| **Guessing an emailed code** | 6 random digits, valid 10 minutes, 5 wrong guesses per code (counted atomically, so parallel guesses each count), only the newest code works, 30 wrong codes per IP per 5 minutes across all addresses (D-135), and 10 wrong codes per address per hour across its codes, whatever the IP (D-134). Codes are compared in constant time. | [passwords-and-codes.md](passwords-and-codes.md) |
 | **Mail bombing**: making the API email someone over and over | 1 code email per address per minute and 5 per hour; 30 per IP per 5 minutes (D-135). | [rate-limits.md](rate-limits.md) |
 | **Floods** of requests | The global throttler, per route per `THROTTLE_TTL`, before authentication runs: `THROTTLE_LIMIT` requests per signed-in user, `THROTTLE_ANONYMOUS_LIMIT` per IP for requests without a valid access token (a forged or expired token counts as none, D-135). Bounded inputs (passwords at most 1024 characters, new ones at most 128) keep one request cheap. | [rate-limits.md](rate-limits.md#the-global-throttler) |
 
@@ -49,7 +49,7 @@ there for a reason given below. Words like "hashing", "HMAC", "CSRF" and
 |---|---|---|
 | **Pre-registering a victim's address**, then waiting for them to sign in with Google | There is nothing to pre-register: an account is only made once its address is confirmed, by a right emailed code or by a provider that verified it (D-133). No account waits on an address with a password its owner did not set. | [google-sign-in.md](google-sign-in.md#which-account-a-google-sign-in-lands-in), [accounts.md](accounts.md) |
 | **Unverified provider email** | Google (or any provider) can create or link an account only for an address it says it verified; links are keyed on Google's stable `sub`, not the email. | [google-sign-in.md](google-sign-in.md) |
-| **A phished or reused password** | The owner is emailed when the password changes, a password is added, Google sign-in is added, and when the account is deleted. Changing the password ends every other session; resetting it ends all of them. | [emails.md](emails.md) |
+| **A phished or reused password** | The owner is emailed when the password changes, a password is added, Google sign-in is added, and when the account is deleted. Changing the password ends every other session; resetting it ends all of them, and a sign-in with the old password racing the reset opens no session. | [emails.md](emails.md) |
 | **Someone at an unlocked computer** | A session alone is not enough for the dangerous actions: changing the password needs the current one; adding a first password needs an emailed code ("forgot password"), except in "complete your account", which a not-completed account must do before anything else; deleting the account needs the password. | [accounts.md](accounts.md) |
 | **Deleted account still signed in** | Deletion ends every session at once, and the per-request check refuses a deleted user even if that failed. | [../account-deletion.md](../account-deletion.md) |
 | **Reading codes from the queue dashboard** | Emails are queued, and a waiting or failed code email holds the code. `/admin/queues` is always behind basic auth, and production refuses to start with the default `BULL_BOARD_PASSWORD`. | [emails.md](emails.md) |
@@ -121,7 +121,8 @@ or refuses them (fails closed). The choices:
 
 | Check | When its dependency is down | Why |
 |---|---|---|
-| Auth rate limits and the global throttler (Redis) | **open**: requests are allowed, logged once a minute | Refusing every sign-in would turn a Redis outage into a total one. The `RedisDown` alert covers the gap, but brute-force protection is off meanwhile. |
+| Auth rate limits (Redis) | **closed** (D-137): `503 SERVICE_UNAVAILABLE_ERROR` on the routes that count one (sign-in, codes, reset, change password, delete account), logged once a minute | They are what stops guessing at codes and passwords; let through uncounted, a client could ask for a new code every request and guess five times at each. The cost: nobody can sign in while Redis is down. Signed-in sessions carry on, and the `RedisDown` alert fires. |
+| Global throttler (Redis) | **open**: requests are allowed, logged once a minute | It counts every route; refusing them all would turn a Redis outage into a total one. |
 | Session check (Redis) | falls back to Postgres | Redis is an accelerator here, not the source of truth. |
 | Google sign-in (Redis) | **closed**: 500 or `?error=failed` | There is nowhere else to keep them. Passwords keep working. |
 
@@ -150,7 +151,9 @@ Know these before you promise anything to your users:
 - **No signing keys others can verify.** Access tokens are HS256 with a shared
   secret: another service can only verify them by holding `JWT_SECRET` (which
   also lets it mint them).
-- **Rate limits are off while Redis is down**, as described above.
+- **No sign-in while Redis is down.** The auth limits fail closed (D-137), so
+  signing in, codes and password changes answer 503 until it is back; the
+  global throttler is off meanwhile. See above.
 - **The web app's own defences** (Content-Security-Policy, dependency hygiene)
   are the React starter's to keep.
 

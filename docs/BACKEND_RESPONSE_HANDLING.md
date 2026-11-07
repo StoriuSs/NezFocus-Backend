@@ -189,7 +189,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `500000` | `GENERIC_ERROR` | An unexpected error. Logged in full, reported to error tracking |
 | `500002` | `UPLOAD_DELETE_FAILED` | Deleting a stored file failed |
 | `500003` | `UPLOAD_FAILED` | Storing a file failed |
-| `503000` | `SERVICE_UNAVAILABLE_ERROR` | A dependency is down, or the image queue is full |
+| `503000` | `SERVICE_UNAVAILABLE_ERROR` | A dependency is down (Redis, for the sign-in limits: D-137), or the image queue is full |
 
 The two `429001` rows share a code; tell them apart by `meta.type`.
 Retired, never reused (a code must keep one meaning in logs and tickets):

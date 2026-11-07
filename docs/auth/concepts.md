@@ -429,6 +429,8 @@ In this starter there are two layers:
 - auth limits per address, per IP or per user, for example 5 failed sign-ins
   per address per 15 minutes
   ([rate-limits.ts](../../src/modules/auth/application/rate-limits.ts)).
+  If Redis is down they refuse rather than allow (`503`, D-137); the global
+  limit allows.
 
 A refusal is `429 RATE_LIMIT_EXCEEDED` with a `Retry-After` header and a
 `data.reason`. Full table: [rate-limits.md](./rate-limits.md).
@@ -487,7 +489,7 @@ In this starter, everything that should work once does:
 | What | How a second use is stopped |
 |---|---|
 | Refresh token | Marked used; a second use ends the session ([reuse detection](./sessions-and-tokens.md#reuse-detection)) |
-| Emailed code | Each check counts a try in one statement; a right code is then used up by a conditional update that matches its hash and "not used yet", so only one request wins |
+| Emailed code | Each wrong guess counts a try in the statement that checks it; a right code is then used up by a conditional update that matches its hash and "not used yet", so only one request wins |
 | Google sign-in attempt | Taken from Redis with `GETDEL`, so only one return can finish it |
 
 ## Related
