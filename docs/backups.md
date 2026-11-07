@@ -203,6 +203,11 @@ docker compose --env-file .env.production -f docker-compose.prod.yaml exec db \
     "UPDATE \"Session\" SET \"revokedAt\" = now(), \"revokedReason\" = 'logout-all' WHERE \"revokedAt\" IS NULL"
 ```
 
+`logout-all` is what the app's "Sign out the other devices" stores, so each
+device is told it was signed out from another device
+(`signed_out_everywhere`); store `'revoked'` instead for the generic "your
+session has ended" ([auth/operations.md](./auth/operations.md#how-do-i-sign-everyone-out)).
+
 Then clear the session cache as above, so the change applies at once. People
 whose password was changed after the dump should be told to change it again.
 

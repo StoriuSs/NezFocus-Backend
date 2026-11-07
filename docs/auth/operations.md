@@ -251,8 +251,11 @@ UPDATE "Session" SET "revokedAt" = now(), "revokedReason" = 'logout-all'
 WHERE "revokedAt" IS NULL AND "expiresAt" > now();
 ```
 
-Refresh stops working at once (each device is told
-`signed_out_everywhere`). An access token already issued keeps working until
+Refresh stops working at once. `logout-all` is the value the
+"Sign out the other devices" button stores (D-75), so each device is told
+`signed_out_everywhere`, as if the user had pressed it elsewhere. To have the
+devices show only the generic "your session has ended" sentence instead, store
+`'revoked'` (what signing out one device from the list stores). An access token already issued keeps working until
 the session check's cached entry expires, at most 5 minutes. Do this after
 restoring an old backup too: the restore brings back sessions that had been
 ended since.
@@ -274,9 +277,12 @@ clears them all.
 
 ### Where can I see who is signed in?
 
-There is no session list in the app. Each sign-in is a row in `Session` with
+Each user sees their own on the settings page's list of devices
+(`GET /auth/sessions`, D-75), with the IP masked. There is no list across
+users in the app. In the database each sign-in is a row in `Session` with
 its `userId`, `createdAt`, `lastUsedAt` (last refresh), `expiresAt`, `ip` and
-`userAgent`; live ones have `revokedAt` null and `expiresAt` in the future.
+`userAgent` (both of the last refresh, D-138); live ones have `revokedAt`
+null and `expiresAt` in the future.
 
 ### What happens when Redis goes down?
 

@@ -33,9 +33,11 @@ src/modules/auth/
 │   ├── errors/                   every error the module throws, as DomainError subclasses, by topic
 │   ├── ports/                    the four repository ports (credential, session, codes, Google links)
 │   ├── password-policy.ts        the password rules (a client may copy this file)
+│   ├── session-end.ts            a stored revoke reason to the API's data.reason
+│   ├── device.ts, masked-ip.ts   the list of devices: user agent read, IP masked (D-138)
 ├── application/
 │   ├── commands/<name>/          one folder per operation: <name>.command.ts and <name>.handler.ts
-│   ├── queries/<name>/           the same for the two queries
+│   ├── queries/<name>/           the same for the three queries
 │   ├── events/handlers/          reacting to the users module (account deleted, profile changed)
 │   ├── services/                 shared steps: sign-in gate, session issuer, codes, limits, ...
 │   ├── ports/                    the outside services the handlers need (one file each)
@@ -49,7 +51,7 @@ src/modules/auth/
 │   │                             language) and templates/email.hbs (the one layout)
 │   └── persistence/              prisma-*.repository.ts, one per repository port
 ├── presentation/
-│   ├── http/                     the /auth routes in four *.controller.ts, by topic (below); auth-cookies.ts;
+│   ├── http/                     the /auth routes in five *.controller.ts, by topic (below); auth-cookies.ts;
 │   │                             dto/ holds one request or response class per file
 │   ├── guards/access-token.guard.ts  the global bearer-token check
 │   └── consumers/auth-jobs.consumer.ts  the `auth` queue worker: sends the emails
@@ -140,14 +142,15 @@ sign-out immediate.
 
 ## The controllers
 
-The /auth routes are in four controllers, one per topic, all under the same
+The /auth routes are in five controllers, one per topic, all under the same
 `auth` path: the URLs, the Swagger tag and the web app are the same as with
 one controller. Each method stays a few lines: decorators, one bus call, the
 answer.
 
 | Controller | Routes under `/api/v1/auth` |
 |---|---|
-| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `complete-account`, `logout-all`, `options` |
+| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `complete-account`, `options` |
+| [sessions.controller.ts](../../src/modules/auth/presentation/http/sessions.controller.ts) | `GET sessions`, `DELETE sessions`, `DELETE sessions/:id` (the list of signed-in devices, D-75) |
 | [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password`, `sign-in-methods` |
 | [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete` |
 | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) | `:provider`, `:provider/callback` (Google) |
@@ -160,8 +163,8 @@ the Google return sets the refresh cookie, and `refresh` reads it.
 
 **The order they are registered in matters.** `GET auth/:provider` has a
 parameter where the others have a word, so it matches any `GET auth/<word>`:
-`auth/google`, but also `auth/options` and
-`auth/sign-in-methods`. Express tries the routes in the order they were
+`auth/google`, but also `auth/options`, `auth/sign-in-methods` and
+`auth/sessions`. Express tries the routes in the order they were
 registered and takes the first that matches, and Nest registers them
 controller by controller, in the order of the module's `controllers`. With
 OAuthController first, `GET /auth/options` would be a sign-in with a provider
@@ -185,7 +188,7 @@ others in [application/ports/](../../src/modules/auth/application/ports/).
 | `PASSWORD_HASHER` | Hash, verify, "needs rehash", a dummy verify for unknown addresses | [argon2-password-hasher.adapter.ts](../../src/modules/auth/infrastructure/adapters/argon2-password-hasher.adapter.ts) | `@node-rs/argon2` |
 | `TOKEN_SERVICE` | Issue and verify access tokens; make refresh tokens; hash refresh tokens and emailed codes | [jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts) | `jose` |
 | `CREDENTIAL_REPOSITORY` | The password hash; `replaceHash` replaces it only if it is still the one expected (re-hashing at sign-in) | [prisma-credential.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-credential.repository.ts) | Prisma |
-| `SESSION_REPOSITORY` | Sessions and refresh tokens: create, rotate (row lock), revoke, find, clean up | [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Prisma |
+| `SESSION_REPOSITORY` | Sessions and refresh tokens: create, rotate (row lock; records the last use, IP and user agent), revoke (by token, one of a user's with `revokeOne`, or all of a user's, optionally but one), find, list a user's live ones (`listActive`), clean up | [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Prisma |
 | `VERIFICATION_CODE_REPOSITORY` | The live emailed code per address and purpose: `replace`, `check` (counts a wrong try in one `UPDATE … RETURNING`; a right guess uses none), `use` (only if the hash still matches and it is unused, so an older code cannot use up a newer one), `deleteStale` | [prisma-verification-code.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-verification-code.repository.ts) | Prisma |
 | `OAUTH_ACCOUNT_REPOSITORY` | Provider links (`provider`, `sub` → user) | [prisma-oauth-account.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-oauth-account.repository.ts) | Prisma |
 | `OAUTH_STATE` | An OAuth attempt while the browser is at Google, taken once | [redis-oauth-state.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-oauth-state.adapter.ts) | Redis |
@@ -207,7 +210,7 @@ Settings, also provided by `auth.module.ts` from config:
 ## Routes, commands and handlers
 
 Each operation is a folder under `src/modules/auth/application/commands/` (or
-`queries/` for the two queries, which go through the `QueryBus`), named after
+`queries/` for the three queries, which go through the `QueryBus`), named after
 its command: `<name>.command.ts` and `<name>.handler.ts`.
 
 | Route | Command or query | Folder |
@@ -218,7 +221,9 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 | `POST /auth/login` | `LoginCommand` | [login/](../../src/modules/auth/application/commands/login/) |
 | `POST /auth/refresh` | `RefreshCommand` | [refresh/](../../src/modules/auth/application/commands/refresh/) |
 | `POST /auth/logout` | `LogoutCommand` | [logout/](../../src/modules/auth/application/commands/logout/) |
-| `POST /auth/logout-all` | `LogoutEverywhereCommand` | [logout-everywhere/](../../src/modules/auth/application/commands/logout-everywhere/) |
+| `GET /auth/sessions` | `ListSessionsQuery`: masks the IP and reads the user agent at list time (D-138) | [list-sessions/](../../src/modules/auth/application/queries/list-sessions/) |
+| `DELETE /auth/sessions/{id}` | `RevokeSessionCommand` | [revoke-session/](../../src/modules/auth/application/commands/revoke-session/) |
+| `DELETE /auth/sessions` | `RevokeOtherSessionsCommand` | [revoke-other-sessions/](../../src/modules/auth/application/commands/revoke-other-sessions/) |
 | `POST /auth/forgot-password` | `ForgotPasswordCommand` | [forgot-password/](../../src/modules/auth/application/commands/forgot-password/) |
 | `POST /auth/reset-password` | `ResetPasswordCommand` | [reset-password/](../../src/modules/auth/application/commands/reset-password/) |
 | `POST /auth/change-password` | `ChangePasswordCommand` | [change-password/](../../src/modules/auth/application/commands/change-password/) |
@@ -257,7 +262,14 @@ by several handlers:
 One rule both a handler and an adapter need is in the domain instead,
 [session-end.ts](../../src/modules/auth/domain/session-end.ts): `sessionEndReason` turns a stored revoke reason
 (`logout-all`) into the API's `data.reason` (`signed_out_everywhere`). Refresh
-and the session cache both use it.
+and the session cache both use it. Two more are there for the list of
+devices (D-138), both plain functions with no library:
+[device.ts](../../src/modules/auth/domain/device.ts) (`describeDevice`: the
+browser, system and device kind from a user agent, by an ordered table of
+patterns, the first match winning; `null` for one it does not know) and
+[masked-ip.ts](../../src/modules/auth/domain/masked-ip.ts) (`maskIp`: the
+first two groups of an IPv4 or IPv6 address, `::ffff:a.b.c.d` read as IPv4,
+`null` for anything that is not an address).
 
 ## Events: how auth and users meet
 
@@ -351,7 +363,7 @@ row is deleted. Migrations: `20260923000000_self_hosted_auth`,
 | Table | One row per | Key columns | Notes |
 |---|---|---|---|
 | `Credential` | user with a password | `userId` (primary key), `passwordHash` (argon2id, parameters in the string), `passwordUpdatedAt` | No row = no password (an account made with Google) |
-| `Session` | sign-in | `id` (the access token's `sid`), `userId`, `createdAt`, `lastUsedAt`, `expiresAt` (absolute), `revokedAt`, `revokedReason`, `userAgent` (≤ 512), `ip` | `revokedReason`: `logout`, `logout-all`, `password-changed`, `password-reset`, `reuse-detected`, `account-deleted`. Indexes `(userId, revokedAt)`, `(expiresAt)` |
+| `Session` | sign-in | `id` (the access token's `sid`), `userId`, `createdAt`, `lastUsedAt`, `expiresAt` (absolute), `revokedAt`, `revokedReason`, `userAgent` (≤ 512), `ip` | `revokedReason`: `logout`, `logout-all` ("Sign out the other devices"; the value predates the button keeping this device), `revoked` (one device from the list), `password-changed`, `password-reset`, `reuse-detected`, `account-deleted`. `lastUsedAt`, `ip` and `userAgent` are rewritten on each refresh (D-138). Indexes `(userId, revokedAt)`, `(expiresAt)` |
 | `RefreshToken` | refresh token ever issued | `tokenHash` (SHA-256, unique), `sessionId`, `expiresAt`, `usedAt`, `replacedById` | Used tokens are kept with their session: presenting one again is how theft is noticed |
 | `VerificationCode` | address and purpose | `email` (normalised: trimmed, lower case), `purpose` (`sign-in`, `password-reset`), `codeHash` (HMAC of `purpose:email:code`, keyed with `JWT_SECRET`), `expiresAt`, `attempts`, `consumedAt` | Unique `(email, purpose)`: a new code replaces the old. Keyed by address, not by account (D-129): a sign-in code goes to an address that may have no account, and an address without one still gets a reset row (D-121) |
 | `OAuthAccount` | provider link | `provider` (`google`), `providerAccountId` (the provider's `sub`), `userId` | Unique `(provider, providerAccountId)`. Stores the `sub`, never the address |
@@ -381,7 +393,8 @@ can alert. The list is `AUTH_EVENT_NAMES` in
 | `oauth_account_linked` | Google linked to an existing account |
 | `account_deleted` | `POST /auth/account/delete` succeeded |
 
-Nothing is recorded for change-password, logout or logout-all.
+Nothing is recorded for change-password, logout, or signing out devices from
+the list (`DELETE /auth/sessions`, `DELETE /auth/sessions/{id}`).
 
 Also: `cache_hits_total` and `cache_misses_total` with `cache="auth_session"`
 and `cache="auth_user"`, from the session check.
@@ -451,17 +464,18 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 
 | Suites | What they prove |
 |---|---|
-| The command specs in [commands/](../../src/modules/auth/application/commands/): `email-code`, `sessions`, `passwords`, `google`, `delete-account` | Every handler against in-memory fakes of every port ([auth-test-world.shared-spec.ts](../../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)): a code request answers the same for every address; the right code makes the account or signs in to it; only the newest code, each once; the code-email and wrong-code limits (D-134); a reset code for an address with no account wears out like a real one (D-121); one error for wrong password and unknown address; the sign-in limits, bursts included; refresh rotation and reuse; reset and change password, emails in the page's language; Google's browser check, new and linked accounts, unverified address and deleted account; deletion takes only the password |
+| The command specs in [commands/](../../src/modules/auth/application/commands/): `email-code`, `sessions`, `passwords`, `google`, `delete-account` | Every handler against in-memory fakes of every port ([auth-test-world.shared-spec.ts](../../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)): a code request answers the same for every address; the right code makes the account or signs in to it; only the newest code, each once; the code-email and wrong-code limits (D-134); a reset code for an address with no account wears out like a real one (D-121); one error for wrong password and unknown address; the sign-in limits, bursts included; refresh rotation and reuse; the list of devices (this device first, the IP masked, each refresh recording where it came from), signing out one device (the same answer for someone else's) and the other devices; reset and change password, emails in the page's language; Google's browser check, new and linked accounts, unverified address and deleted account; deletion takes only the password |
 | [limits.spec.ts](../../src/modules/auth/application/services/limits.spec.ts) | A wrong guess stays counted, a right one is given back; a burst gets no more than the limit; a burst racing past `enforce`'s check counts only the request it lets through |
 | [password-policy.spec.ts](../../src/modules/auth/domain/password-policy.spec.ts) | Each rule broken on its own, the length bounds, Vietnamese letters, no common-password rule (D-29), the address or username dressed up |
 | [jose-token-service.adapter.spec.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.spec.ts) | An access token for another audience, from another issuer, or past its lifetime is refused |
+| [device.spec.ts](../../src/modules/auth/domain/device.spec.ts), [masked-ip.spec.ts](../../src/modules/auth/domain/masked-ip.spec.ts), [route-helpers.spec.ts](../../src/modules/auth/presentation/http/route-helpers.spec.ts) | The list of devices (D-138): browsers that borrow each other's names read right, an unknown one is null; IPv4, IPv6 and `::ffff:` addresses keep only their network; the stored user agent is cut to 512 |
 | [validation.spec.ts](../../src/config/validation.spec.ts) | The production refusals, auth's included (a missing, weak or template-placeholder secret) |
 
 **E2e suite** (the controllers, nothing running)
 
 | Suite | What it proves |
 |---|---|
-| [auth-routes.e2e-spec.ts](../../test/e2e/auth-routes.e2e-spec.ts) | In the order the module registers the four controllers, `GET auth/sign-in-methods` and `auth/options` reach their own handlers, not `GET auth/:provider`; with OAuthController first they would not ([the controllers](#the-controllers)) |
+| [auth-routes.e2e-spec.ts](../../test/e2e/auth-routes.e2e-spec.ts) | In the order the module registers the five controllers, `GET auth/sign-in-methods`, `auth/options` and `auth/sessions` reach their own handlers, not `GET auth/:provider`; with OAuthController first they would not ([the controllers](#the-controllers)) |
 
 **Integration suites** (real Postgres, Redis and Mailpit)
 

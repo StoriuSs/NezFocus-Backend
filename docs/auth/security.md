@@ -77,8 +77,10 @@ What a copy of the database holds, and why it is not enough:
 So keep `JWT_SECRET` out of the database backups' reach: in the env file and your password manager, not next to the dumps.
 
 Not secret, and stored in clear: email addresses, names and other profile
-fields, and each session's IP address and user agent (512 characters at most).
-A deleted account's personal fields are erased after
+fields, and each session's IP address and user agent of its last refresh (512
+characters at most). The list of devices (`GET /auth/sessions`) shows the user
+only the network part of the IP (`14.231.x.x`): the full address and the user
+agent never leave the server (D-138). A deleted account's personal fields are erased after
 `DELETED_ACCOUNT_RETENTION_DAYS` ([../account-deletion.md](../account-deletion.md)).
 
 ## What is kept out of logs and Sentry
@@ -133,8 +135,12 @@ Know these before you promise anything to your users:
 - **No audit log.** Sign-ins, failures and changes are counted in metrics
   (`auth_events_total`) and some are logged, but there is no table of "who did
   what, when" and no per-user sign-in history.
-- **No list of devices.** Sessions are stored with IP and user agent, but there
-  is no route to list them or end one; only "sign out everywhere".
+- **A plain list of devices.** `GET /auth/sessions` lists the live sessions,
+  and one or all the others can be ended (D-75). It shows a browser, a system
+  and a masked IP, read from a small table of user agents (D-138): no
+  location, no device names, and a browser it does not know is "Unknown
+  browser". Ending a device takes effect at its next request, like any
+  sign-out.
 - **No "new sign-in" email** for a new device or location, and no email about
   failed sign-in attempts.
 - **No second sign-in step**: no authenticator-app codes, no passkeys or

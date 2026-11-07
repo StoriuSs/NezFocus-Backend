@@ -294,10 +294,10 @@ read when your module talks to several outside systems:
 
 ```
 auth/
-├── domain/                     # Errors, repository ports, the password policy
+├── domain/                     # Errors, repository ports, the password policy, reading a user agent, masking an IP
 ├── application/
-│   ├── commands/               # send-email-code, verify-email-code, complete-account, login, refresh, delete-own-account, finish-oauth, ...
-│   ├── queries/                # sign-in methods, sign-in options
+│   ├── commands/               # send-email-code, verify-email-code, complete-account, login, refresh, revoke-session, revoke-other-sessions, delete-own-account, finish-oauth, ...
+│   ├── queries/                # sign-in methods, sign-in options, list sessions
 │   ├── events/handlers/        # Reacting to the users module's events
 │   ├── services/               # Shared steps: issue a session, check a code, the limits
 │   ├── ports/                  # Hasher, tokens, OIDC, mailer, rate limits, ...
@@ -306,7 +306,7 @@ auth/
 │   ├── adapters/               # Argon2, jose (JWT), openid-client, Redis, BullMQ, Prometheus
 │   └── persistence/            # The Prisma repositories
 ├── presentation/
-│   ├── http/                   # The /auth routes in four controllers, by topic; DTOs
+│   ├── http/                   # The /auth routes in five controllers, by topic; DTOs
 │   ├── guards/                 # AccessTokenGuard, global
 │   └── consumers/              # Sends the emails, runs the hourly clean-up
 └── auth.module.ts

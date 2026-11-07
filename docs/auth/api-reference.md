@@ -21,6 +21,7 @@ they disagree with this page, the code wins: please fix the page.
 - [Signing up or in with a code](#signing-up-or-in-with-a-code)
 - [Completing the account](#completing-the-account)
 - [Signing in and staying signed in](#signing-in-and-staying-signed-in)
+- [Signed-in devices](#signed-in-devices)
 - [Passwords](#passwords)
 - [Deleting the account](#deleting-the-account)
 - [Google and other providers](#google-and-other-providers)
@@ -169,9 +170,10 @@ or as `AUTH_COOKIE_SECURE` says. Cross-site setups are explained in
 [sessions-and-tokens.md](./sessions-and-tokens.md).
 
 The cookie is scoped to `/api/v1/auth`, so the browser sends it only to the
-auth routes. A cookie-clearing answer (`logout`, `logout-all`,
-`account/delete`, a failed `refresh`) only takes effect in the browser if the
-request was sent with credentials.
+auth routes. A cookie-clearing answer (`logout`, `account/delete`, a failed
+`refresh`) only takes effect in the browser if the request was sent with
+credentials. The [signed-in devices](#signed-in-devices) routes never touch the
+cookie: this device stays signed in.
 
 ### Errors any route can return
 
@@ -200,7 +202,8 @@ session ended. Only the holder of that dead session is told.
 | `data.reason` | Why |
 |---|---|
 | `signed_out` | This session signed out (`POST /auth/logout`) |
-| `signed_out_everywhere` | "Sign out everywhere", from any device |
+| `signed_out_everywhere` | "Sign out the other devices", chosen on another device (D-75) |
+| `revoked` | Signed out from the [list of devices](#sign-out-one-device), on another device. The frontend shows the generic "your session has ended" sentence |
 | `password_changed` | The password was changed (other devices) or reset (every device) |
 | `security` | Its refresh token was used twice, so it is presumed stolen |
 | `account_deleted` | The account was deleted (on refresh only: signed-in routes answer `403 AUTH_ACCOUNT_DISABLED` instead) |
@@ -222,7 +225,9 @@ than a 401.
 | `POST /auth/login` | Public | 200, signs in | [Sign in](#sign-in) |
 | `POST /auth/refresh` | Cookie + Origin | 200 | [Refresh](#refresh) |
 | `POST /auth/logout` | Cookie + Origin | 200 | [Sign out](#sign-out) |
-| `POST /auth/logout-all` | Signed in | 200 | [Sign out everywhere](#sign-out-everywhere) |
+| `GET /auth/sessions` | Signed in | 200 | [List the signed-in devices](#list-the-signed-in-devices) |
+| `DELETE /auth/sessions/{id}` | Signed in | 200 | [Sign out one device](#sign-out-one-device) |
+| `DELETE /auth/sessions` | Signed in | 200 | [Sign out the other devices](#sign-out-the-other-devices) |
 | `POST /auth/forgot-password` | Public | 202 | [Forgot password](#forgot-password) |
 | `POST /auth/reset-password` | Public | 200, signs in | [Reset password](#reset-password) |
 | `POST /auth/change-password` | Signed in | 200 | [Change password](#change-password) |
@@ -421,10 +426,13 @@ message "Token refreshed successfully", `data`: [the token answer](#token-answer
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 403 | `AUTH_FORBIDDEN` | `403004` | The request has an `Origin` header that is not in `CORS_ORIGINS`. The cookie is left alone. A request with no `Origin` (curl, a mobile app) is allowed | |
-| 401 | `AUTH_REFRESH_FAILED` | `401008` | No cookie, an unknown or expired token, a token presented twice (theft), or its session has ended. **The cookie is cleared** | `data.reason` (optional): `expired`, `signed_out`, `signed_out_everywhere`, `password_changed`, `security`, `account_deleted` ([reasons](#session-end-reasons)) |
+| 401 | `AUTH_REFRESH_FAILED` | `401008` | No cookie, an unknown or expired token, a token presented twice (theft), or its session has ended. **The cookie is cleared** | `data.reason` (optional): `expired`, `signed_out`, `signed_out_everywhere`, `revoked`, `password_changed`, `security`, `account_deleted` ([reasons](#session-end-reasons)) |
 
 No auth limit applies, only the global throttler. A refresh does not extend
 the session: it ends `AUTH_SESSION_TTL_DAYS` after sign-in whatever happens.
+A refresh that rotates the token also records the request's IP and user agent
+on the session, with the time: what the [list of devices](#list-the-signed-in-devices)
+shows (D-138).
 
 ### Sign out
 
@@ -442,16 +450,86 @@ dead one: the result is the same, signed out.
 |---|---|---|---|
 | 403 | `AUTH_FORBIDDEN` | `403004` | `Origin` present and not in `CORS_ORIGINS`. Nothing changes |
 
-### Sign out everywhere
+## Signed-in devices
 
-`POST /api/v1/auth/logout-all` · Signed in · clears `refresh_token`
+Each sign-in is a session, and each session is one row of the settings
+page's list of devices (D-75). These routes list them and end them. None of
+them touches the `refresh_token` cookie: signing out this device is
+[sign out](#sign-out). All three are in
+[sessions.controller.ts](../../src/modules/auth/presentation/http/sessions.controller.ts).
 
-Ends every session of the user, this one included. No body.
+### List the signed-in devices
 
-**Success:** `200`,
-message "Signed out on every device", `data: null`. Other devices get
-`401 AUTH_TOKEN_REVOKED` with `reason: "signed_out_everywhere"` on their next
-request. Send it with credentials so the cookie-clearing header applies.
+`GET /api/v1/auth/sessions` · Signed in · no cookies
+
+The user's live sessions: not ended and not past their absolute end.
+
+**Success:** `200`, message "Operation completed successfully", `data`:
+`{ "sessions": [ ... ] }`. Each session:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | The session id. End it with [sign out one device](#sign-out-one-device) |
+| `browser` | string or null | Chrome, Edge, Firefox, Safari, Opera, Cốc Cốc, Samsung Internet or Chromium; `null` when the user agent names none of these (show "Unknown browser") |
+| `os` | string or null | Windows, macOS, iOS, iPadOS, Android, ChromeOS, Ubuntu or Linux; `null` when it names none of these |
+| `device` | `"desktop"`, `"tablet"` or `"mobile"` | For the row's icon. `desktop` when nothing says otherwise |
+| `ip` | string or null | The network only, the rest masked: `14.231.x.x`, `2405:4802:x:x…`. `null` when the request had no address |
+| `last_active_at` | string (ISO date) | The last refresh, or the sign-in before any |
+| `signed_in_at` | string (ISO date) | When the session was created |
+| `current` | boolean | The session of this request: "This device" |
+
+The order: this device first, then the most recently active, a tie going to
+the later sign-in.
+
+`browser`, `os`, `device` and `ip` describe the last refresh (or the sign-in,
+before any). They are read from the stored user agent and address when the
+list is asked for, by a small table of patterns rather than a library (D-138):
+an iPad on Safari's default "desktop site" says it is a Mac, so it shows as
+macOS on a desktop. The address is masked on the server
+([masked-ip.ts](../../src/modules/auth/domain/masked-ip.ts)); the full address
+and user agent never leave it. An IPv4 address written as IPv6
+(`::ffff:14.231.8.9`) is shown as IPv4.
+
+**Errors:** the guard errors only.
+
+### Sign out one device
+
+`DELETE /api/v1/auth/sessions/{id}` · Signed in · no cookies
+
+Ends one session of the user, with no confirmation. No body.
+
+**Success:** `200`, message "Signed out that device", `data: null`. The same
+answer when the session had already ended, belongs to someone else, or does
+not exist: the row is gone from the list either way, and nothing tells one
+user about another's sessions (NFR-SEC-05). Someone else's session is left
+alone.
+
+The device it ended is not told now. On its next request it gets
+`401 AUTH_TOKEN_REVOKED`, and on its next refresh `401 AUTH_REFRESH_FAILED`,
+both with `data.reason: "revoked"`.
+
+The route does not refuse this device's own id: that ends this session as
+well, but leaves the cookie in place. Use [sign out](#sign-out) for this
+device.
+
+**Errors:** the guard errors only.
+
+### Sign out the other devices
+
+`DELETE /api/v1/auth/sessions` · Signed in · no cookies
+
+Ends every session of the user except this one (D-75). No body. This device
+stays signed in and keeps its cookie.
+
+**Success:** `200`, message "Signed out the other devices", `data`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `revoked` | integer | How many sessions it ended, for "Signed out 2 other devices". `0` when there were none. It counts the same live sessions the list shows: one past its absolute end is not ended again |
+
+Each of those devices gets `401 AUTH_TOKEN_REVOKED` with
+`data.reason: "signed_out_everywhere"` on its next request, or
+`401 AUTH_REFRESH_FAILED` with the same reason on its next refresh.
 
 **Errors:** the guard errors only.
 
@@ -780,11 +858,12 @@ for logs; react to the status and `data`.
 | login | 200 | Login successful |
 | refresh | 200 | Token refreshed successfully |
 | logout | 200 | Logout successful |
-| logout-all | 200 | Signed out on every device |
+| DELETE sessions/{id} | 200 | Signed out that device |
+| DELETE sessions | 200 | Signed out the other devices |
 | reset-password | 200 | Your password has been changed. You are signed in. |
 | change-password | 200 | Password has been changed successfully |
 | account/delete | 200 | Account deleted successfully |
-| sign-in-methods, options | 200 | Operation completed successfully |
+| sign-in-methods, options, GET sessions | 200 | Operation completed successfully |
 | users/me | 200 | User fetched successfully |
 
 ## How a client should react

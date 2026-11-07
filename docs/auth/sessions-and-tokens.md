@@ -142,8 +142,10 @@ Set-Cookie: refresh_token=Qm9i…; Path=/api/v1/auth; Expires=Wed, 04 Nov 2026 1
 | `Domain` | not set | A host-only cookie: only the API's exact host gets it back, not its sibling subdomains | |
 
 The controller clears the cookie (same attributes, an expired date) on
-`logout`, `logout-all`, `account/delete`, and on every `401` from `refresh`
-(not on its `403 AUTH_FORBIDDEN`, which never looked at the cookie).
+`logout`, `account/delete`, and on every `401` from `refresh`
+(not on its `403 AUTH_FORBIDDEN`, which never looked at the cookie). Signing
+out other devices (`DELETE /auth/sessions`, `DELETE /auth/sessions/{id}`)
+leaves it alone: this device stays signed in.
 `AUTH_COOKIE_SECURE=false` together with `AUTH_COOKIE_SAMESITE=none` is
 refused at start-up: browsers drop such a cookie.
 
@@ -177,11 +179,11 @@ One row per sign-in, in the `Session` table
 | `id` | A UUID: the `sid` claim of every access token issued in this session. It survives rotation, so ending the session ends every token issued in it |
 | `userId` | Whose session |
 | `createdAt` | When it started |
-| `lastUsedAt` | Updated on each refresh |
+| `lastUsedAt` | Updated on each refresh that rotates the token, together with `userAgent` and `ip` |
 | `expiresAt` | Absolute end: `createdAt` + `AUTH_SESSION_TTL_DAYS` (default 30, allowed 1 to 365) |
 | `revokedAt`, `revokedReason` | When and why it was ended early (reasons below) |
-| `userAgent` | The `User-Agent` header at sign-in, cut to 512 characters |
-| `ip` | The client's IP at sign-in (the real one: the app trusts one proxy hop) |
+| `userAgent` | The `User-Agent` header of the last refresh (at sign-in before any), cut to 512 characters ([route-helpers.ts](../../src/modules/auth/presentation/http/route-helpers.ts) `client()`). A request without the header leaves the stored one as it was |
+| `ip` | The client's IP of the last refresh (at sign-in before any): the real one, as the app trusts one proxy hop. `unknown` when Express has none |
 
 - **Created** only by [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts),
   called by [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts).
@@ -194,8 +196,14 @@ One row per sign-in, in the `Session` table
   ([clean-up-auth.handler.ts](../../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts)).
   The week lets a stolen token presented in that time still be recognised as
   reuse.
-- There is no "your devices" page yet; `userAgent` and `ip` are stored for
-  one.
+- **Listed** on the settings page's list of devices (`GET /auth/sessions`,
+  D-75): the live ones, this device first. The browser, system and device
+  kind are read from `userAgent` when the list is asked for
+  ([device.ts](../../src/modules/auth/domain/device.ts)), and `ip` is masked
+  to its network (`14.231.x.x`,
+  [masked-ip.ts](../../src/modules/auth/domain/masked-ip.ts)) before it
+  leaves the server (D-138). Neither is stored a second way, so a better
+  table of user agents applies to old sessions too.
 
 ## Refreshing and rotation
 
@@ -217,7 +225,7 @@ lock until the first has committed:
 | Unknown | `invalid` | `401 AUTH_REFRESH_FAILED`, no reason |
 | Past its `expiresAt` | `invalid` | `401 AUTH_REFRESH_FAILED`, `data.reason: "expired"` |
 | Its session ended (account deleted, revoked, or expired) | `invalid` | `401 AUTH_REFRESH_FAILED`, `data.reason` says why ([table](#what-ends-a-session)) |
-| Never used | `rotated`: a new token is created, the old one marked used and pointed at it, `lastUsedAt` updated | `200`, new access token, new cookie |
+| Never used | `rotated`: a new token is created, the old one marked used and pointed at it, `lastUsedAt`, `ip` and `userAgent` updated | `200`, new access token, new cookie |
 | Used at most 10 seconds ago, and its replacement not used yet | `grace` | `200`, the **same** replacement as the first request got |
 | Used earlier than that, or its replacement already used | `reused`: the session is revoked (`reuse-detected`) | `401 AUTH_REFRESH_FAILED`, `data.reason: "security"` |
 
@@ -279,7 +287,8 @@ more than 10 seconds later. That is indistinguishable from theft by design.
 | What happened | Sessions ended | Stored `revokedReason` | `data.reason` the device is told |
 |---|---|---|---|
 | `POST /auth/logout` | The one the cookie belongs to | `logout` | `signed_out` |
-| `POST /auth/logout-all` | All of the user's, this one included | `logout-all` | `signed_out_everywhere` |
+| `DELETE /auth/sessions` ("Sign out the other devices", D-75) | All of the user's except the one asking | `logout-all` (the value predates the button keeping this device) | `signed_out_everywhere` |
+| `DELETE /auth/sessions/{id}` | That one, if it is the user's | `revoked` | `revoked` |
 | `POST /auth/change-password` | All except the one that made the change | `password-changed` | `password_changed` |
 | `POST /auth/reset-password` | All that existed; then one new session starts for the device that reset | `password-reset` | `password_changed` |
 | A used refresh token comes back | That one | `reuse-detected` | `security` |
@@ -528,7 +537,7 @@ The React starter already does all of this; another client must too.
 
 1. **Send credentials on every request that sets, reads or clears the
    cookie**: `login`, `email-code/verify`, `reset-password`, `refresh`,
-   `logout`, `logout-all` and `account/delete`. With `fetch`,
+   `logout` and `account/delete`. With `fetch`,
    `credentials: 'include'`; with axios, `withCredentials: true`. A
    cross-origin answer's `Set-Cookie` (including the one that clears the
    cookie) is ignored unless the request was sent with credentials.
@@ -572,13 +581,17 @@ entry, the 7 days ended sessions are kept. Every setting:
 | File | What |
 |---|---|
 | [auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts) | Sets, reads and clears the cookies; the `Origin` check |
-| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | Sign-in, `refresh`, `logout`, `logout-all`: the routes that use them |
+| [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | Sign-in, `refresh`, `logout`: the routes that use them |
+| [sessions.controller.ts](../../src/modules/auth/presentation/http/sessions.controller.ts) | The list of devices: list, sign out one, sign out the others (no cookie) |
+| [route-helpers.ts](../../src/modules/auth/presentation/http/route-helpers.ts) | `client()`: the IP and user agent (cut to 512) kept on the session |
 | [jose-token-service.adapter.ts](../../src/modules/auth/infrastructure/adapters/jose-token-service.adapter.ts) | Signs and verifies access tokens; makes and hashes refresh tokens |
 | [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts) | Starts a session |
 | [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts) | The one way into a session |
 | [refresh.handler.ts](../../src/modules/auth/application/commands/refresh/refresh.handler.ts) | Refresh, grace, reuse |
-| [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Rotation under a row lock; revocation |
-| [logout.handler.ts](../../src/modules/auth/application/commands/logout/logout.handler.ts) | Sign out, sign out everywhere |
+| [prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts) | Rotation under a row lock (recording the last use); revocation; the live sessions of a user |
+| [logout.handler.ts](../../src/modules/auth/application/commands/logout/logout.handler.ts) | Sign out |
+| [revoke-session.handler.ts](../../src/modules/auth/application/commands/revoke-session/revoke-session.handler.ts), [revoke-other-sessions.handler.ts](../../src/modules/auth/application/commands/revoke-other-sessions/revoke-other-sessions.handler.ts) | Sign out one device, sign out the other devices |
+| [list-sessions.handler.ts](../../src/modules/auth/application/queries/list-sessions/list-sessions.handler.ts), [device.ts](../../src/modules/auth/domain/device.ts), [masked-ip.ts](../../src/modules/auth/domain/masked-ip.ts) | The list of devices: its order, the user agent read, the IP masked (D-138) |
 | [session-end.ts](../../src/modules/auth/domain/session-end.ts) | Stored reason to `data.reason` |
 | [access-token.guard.ts](../../src/modules/auth/presentation/guards/access-token.guard.ts) | The global guard |
 | [redis-session-cache.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-session-cache.adapter.ts) | The per-request check and its cache |

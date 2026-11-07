@@ -155,8 +155,11 @@ In this starter:
 - Started in exactly one place, [session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts),
   always through [sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts),
   the one gate every way of signing in passes.
-- Ended by signing out, signing out everywhere, a password change or reset, a
-  replayed refresh token, account deletion, or reaching its end date. Each
+- Listed for its owner on the settings page's list of devices
+  (`GET /auth/sessions`), with the browser and system of its last refresh
+  and a masked IP (D-75, D-138).
+- Ended by signing out, signing it out from the list of devices, "sign out
+  the other devices", a password change or reset, a replayed refresh token, account deletion, or reaching its end date. Each
   reason is recorded and told to the device that finds out: see
   [what ends a session](./sessions-and-tokens.md#what-ends-a-session).
 

@@ -26,6 +26,7 @@ in five minutes.
 | Sessions | A 15-minute access token (JWT) in memory, plus a refresh token in an httpOnly cookie; a session lasts 30 days | [sessions-and-tokens.md](./sessions-and-tokens.md) |
 | Stolen-cookie detection | Refresh tokens work once; a replayed one ends the session and raises an alert | [sessions-and-tokens.md](./sessions-and-tokens.md#reuse-detection) |
 | Immediate sign-out | Signing out, changing the password or deleting the account takes effect on the next request | [sessions-and-tokens.md](./sessions-and-tokens.md#what-ends-a-session) |
+| Signed-in devices | The live sessions, this device first, with browser, system and a masked IP; sign out one, or every other one (D-75, D-138) | [api-reference.md](./api-reference.md#signed-in-devices) |
 | Forgot, reset, change password | Reset by emailed code (ends every session); change with the current password (ends the others) | [flows.md](./flows.md#forgot-and-reset-the-password) |
 | Sign in with Google | OpenID Connect with PKCE; optional, on when its two settings are set | [google-sign-in.md](./google-sign-in.md) |
 | Rate limits | Per address, per IP and per user, on every operation an attacker would repeat | [rate-limits.md](./rate-limits.md) |
@@ -35,7 +36,7 @@ in five minutes.
 | Roles | `["user"]` by default; `pnpm user:promote` makes an administrator; `@Roles('admin')` on a route | [accounts.md](./accounts.md) |
 | Monitoring | Sign-in events counted (`auth_events_total`), a dashboard row, alerts on failed-login spikes and token reuse | [operations.md](./operations.md) |
 
-What it does **not** have (yet): a "your devices" page, passkeys
+What it does **not** have (yet): passkeys
 (WebAuthn), an audit-log table, sign-in with providers other than Google
 (adding one is described in [google-sign-in.md](./google-sign-in.md)).
 
@@ -142,7 +143,7 @@ The interactive API docs are at `http://localhost:8888/api-docs`
 | Page | Read it for |
 |---|---|
 | [concepts.md](./concepts.md) | Auth in plain words, and a glossary tied to the code. Start here if the words are new |
-| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up or in with a code, sign in with a password, refresh, sign out, reset, change, Google, deletion |
+| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up or in with a code, sign in with a password, refresh, sign out (this device or others), reset, change, Google, deletion |
 | [sessions-and-tokens.md](./sessions-and-tokens.md) | Access token, refresh cookie, sessions, rotation, what ends a session, the per-request check, Redis down, cross-site setups |
 | [passwords-and-codes.md](./passwords-and-codes.md) | The password rules, Argon2id, the six-digit emailed codes |
 | [emails.md](./emails.md) | Every email, its two languages, the queue that sends them, Mailpit, editing the words and the layout |

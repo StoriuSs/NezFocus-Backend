@@ -227,9 +227,11 @@ Must be sent with credentials.
 2. No cookie, or an unknown token: `401 AUTH_REFRESH_FAILED` with no reason.
 3. The token's row is locked, so a second refresh with the same token waits.
 4. The session ended: `401 AUTH_REFRESH_FAILED` with `data.reason`:
-   `expired`, `signed_out`, `signed_out_everywhere`, `password_changed`,
-   `security` or `account_deleted`.
+   `expired`, `signed_out`, `signed_out_everywhere`, `revoked`,
+   `password_changed`, `security` or `account_deleted`.
 5. Never used: rotated. `200`, a new access token, and a new cookie with the session's original end date.
+   The session records the time, the request's IP and its user agent (cut to
+   512 characters): what the list of devices shows (D-138).
 6. Used within the last 10 seconds and its replacement not yet used: the
    same replacement is handed back (two tabs, below).
 7. Used before that: the session ends, the reuse is logged, counted, alerted
@@ -286,12 +288,33 @@ Send with credentials so the clearing `Set-Cookie` applies.
    nothing and still answers `200`.
 4. The web app forgets the access token it holds in memory.
 
-**`POST /auth/logout-all`** (signed in). No body. Send with credentials.
+### Sign out other devices
 
-1. Every session of the user is ended (reason `logout-all`), this one
-   included, and their cache entries dropped.
-2. `200`, "Signed out on every device", and this browser's cookie is
-   cleared.
+The settings page lists the signed-in devices and can end them (D-75). These
+routes never clear the cookie: this device stays signed in.
+[sessions.controller.ts](../../src/modules/auth/presentation/http/sessions.controller.ts)
+
+**`GET /auth/sessions`** (signed in). The live sessions, this device first
+(`current: true`), then the most recently active. Browser, system, device
+kind and a masked IP (`14.231.x.x`) are read from what the last refresh
+recorded (D-138).
+
+**`DELETE /auth/sessions/{id}`** (signed in). No body.
+
+1. If the session is the user's, it is ended (reason `revoked`) unless it
+   already was, and its cache entry dropped.
+2. Always `200`, "Signed out that device": also for a session that already
+   ended, is someone else's, or does not exist (NFR-SEC-05).
+3. That device gets `401 AUTH_TOKEN_REVOKED` with `data.reason: "revoked"`
+   on its next request, or `401 AUTH_REFRESH_FAILED` with the same reason on
+   its next refresh.
+
+**`DELETE /auth/sessions`** (signed in). No body. "Sign out the other devices".
+
+1. Every session of the user except this one is ended (reason `logout-all`),
+   and their cache entries dropped.
+2. `200`, "Signed out the other devices", `data.revoked`: how many ended.
+   This session and its cookie are untouched.
 3. Every other device gets `401 AUTH_TOKEN_REVOKED` with
    `data.reason: "signed_out_everywhere"` on its next request, or
    `401 AUTH_REFRESH_FAILED` with the same reason on its next refresh.

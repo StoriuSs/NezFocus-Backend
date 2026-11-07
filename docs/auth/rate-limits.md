@@ -210,7 +210,7 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 | `POST /auth/reset-password` | `code-try-ip`, `code-fail-email` |
 | `POST /auth/change-password` | `change-pw-fail` |
 | `POST /auth/account/delete` | `change-pw-fail` |
-| `POST /auth/refresh`, `logout`, `logout-all`, `GET` routes, Google | none beyond the global throttler |
+| `POST /auth/refresh`, `logout`, `DELETE /auth/sessions` and `sessions/{id}`, `GET` routes, Google | none beyond the global throttler |
 
 [api-reference.md](api-reference.md) has every route's full error list.
 
