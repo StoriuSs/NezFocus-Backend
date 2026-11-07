@@ -175,17 +175,37 @@ describe('Auth over HTTP (integration)', () => {
                 .send({ email: `itest-http-nobody-${randomUUID()}@example.test`, password: 'Wrong-Password-1' })
 
         // A new address of the same /64 for every failed sign-in.
-        for (let i = 0; i < 10; i++) expect((await attempt(network())).status).toBe(401)
+        for (let i = 0; i < AUTH_RATE_LIMITS.loginFailuresPerIp.limit; i++) {
+            expect((await attempt(network())).status).toBe(401)
+        }
         expect((await attempt(network())).status).toBe(429)
         expect((await attempt(neighbour())).status).toBe(401)
 
-        // The global throttler too: THROTTLE_LIMIT requests a minute per route, per /64.
-        const limit = app.get(ConfigService).get<number>('throttle.limit')!
+        // The global throttler too: THROTTLE_ANONYMOUS_LIMIT requests a minute per route, per /64.
+        const limit = app.get(ConfigService).get<number>('throttle.anonymousLimit')!
         const options = (ip: string) => api().get('/api/v1/auth/options').set('X-Forwarded-For', ip)
         // One at a time: the app is not listening, so supertest starts the
         // server for each request, and requests sent together reset each other.
         for (let sent = 0; sent < limit; sent++) expect((await options(network())).status).toBe(200)
         expect((await options(network())).status).toBe(429)
         expect((await options(neighbour())).status).toBe(200)
+    })
+
+    it('counts a signed-in user on their own, not with everyone else on their network (D-135)', async () => {
+        const { accessToken } = await signInWithCode(post, `itest-http-${randomUUID()}@example.test`)
+        const sharedIp = testClientIp()
+        const profile = (token?: string) => {
+            const call = api().get('/api/v1/users/me').set('X-Forwarded-For', sharedIp)
+            return token ? call.set('Authorization', `Bearer ${token}`) : call
+        }
+
+        // Everyone without a token on this network uses up its count...
+        const limit = app.get(ConfigService).get<number>('throttle.anonymousLimit')!
+        for (let sent = 0; sent < limit; sent++) expect((await profile()).status).toBe(401)
+        expect((await profile()).status).toBe(429)
+        expect((await profile('forged.token.here')).status).toBe(429)
+
+        // ...and the signed-in student on the same network is still answered.
+        expect((await profile(accessToken)).status).not.toBe(429)
     })
 })

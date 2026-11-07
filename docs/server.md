@@ -146,9 +146,11 @@ console, another machine whose address isn't banned, or simply waiting. Then
 "too many requests from one address" is the app's job, and it does more than
 count requests:
 
-- the global rate limiter caps every route per IP ([rate-limit.md](./rate-limit.md));
-- sign-in has its own limits: 5 failed sign-ins per email address and 10 per
-  IP in 15 minutes, limits on code emails, wrong codes and sign-ups
+- the global rate limiter caps every route per signed-in user, or per IP
+  without a valid access token ([rate-limit.md](./rate-limit.md));
+- sign-in has its own limits: 5 failed sign-ins per email address in 15
+  minutes and 30 per IP in 5 minutes, limits on code emails, wrong codes and
+  sign-ups
   ([auth/rate-limits.md](./auth/rate-limits.md)).
 
 These know which account is being guessed at, which nginx's log does not.

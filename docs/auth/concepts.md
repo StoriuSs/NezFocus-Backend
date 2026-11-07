@@ -423,8 +423,9 @@ password a million times" into "guess five times, then wait".
 
 In this starter there are two layers:
 
-- a global limit per IP per route (`THROTTLE_LIMIT`, default 100 per
-  `THROTTLE_TTL` 60 seconds);
+- a global limit per route, per user when signed in (`THROTTLE_LIMIT`,
+  default 100 per `THROTTLE_TTL` 60 seconds) and per IP otherwise
+  (`THROTTLE_ANONYMOUS_LIMIT`, default 300; D-135);
 - auth limits per address, per IP or per user, for example 5 failed sign-ins
   per address per 15 minutes
   ([rate-limits.ts](../../src/modules/auth/application/rate-limits.ts)).

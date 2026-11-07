@@ -30,9 +30,9 @@ response shapes are in [api-reference.md](./api-reference.md).
 - **Errors** are written as `status TYPE`, for example
   `401 AUTH_INVALID_CREDENTIALS`. The type is `meta.type` in the error
   envelope; extra details are in `data` (for example `data.reason`).
-- **Every route** can also answer `429` from the global per-IP throttler
-  (type `THROTTLE_ERROR`), on top of the auth limits listed per flow
-  ([rate-limits.md](./rate-limits.md)).
+- **Every route** can also answer `429` from the global throttler (type
+  `THROTTLE_ERROR`, counted per user when signed in and per IP otherwise), on
+  top of the auth limits listed per flow ([rate-limits.md](./rate-limits.md)).
 - **"Signed in"** means the route needs `Authorization: Bearer <access_token>`.
   Without a usable one it answers `401 AUTH_TOKEN_MISSING`,
   `AUTH_TOKEN_EXPIRED`, `AUTH_TOKEN_INVALID` or `AUTH_TOKEN_REVOKED`, or
@@ -75,7 +75,7 @@ sequenceDiagram
 [send-email-code.handler.ts](../../src/modules/auth/application/commands/send-email-code/send-email-code.handler.ts)
 
 1. The address is trimmed and lower-cased.
-2. The limits: code emails per IP (10 an hour), per address (1 a minute,
+2. The limits: code emails per IP (30 in 5 minutes), per address (1 a minute,
    5 an hour, shared with reset codes). Used up: `429 RATE_LIMIT_EXCEEDED`
    with `data.reason` `network` or `emails` and a `Retry-After` header.
    Otherwise each is counted (two requests racing past the check are still
@@ -94,7 +94,7 @@ sequenceDiagram
 stores the cookie.
 [verify-email-code.handler.ts](../../src/modules/auth/application/commands/verify-email-code/verify-email-code.handler.ts)
 
-1. Wrong codes from this IP (20 an hour, across addresses) and for this
+1. Wrong codes from this IP (30 in 5 minutes, across addresses) and for this
    address (10 an hour, across its codes, D-134). The try is counted before
    anything is checked, and taken back if it was right, so a burst of
    requests sent at once is limited like a slow one. Used up:
@@ -160,7 +160,7 @@ credentials so the browser stores the cookie.
 [login.handler.ts](../../src/modules/auth/application/commands/login/login.handler.ts)
 
 1. The limits are checked without counting: failed sign-ins per address
-   (5 per 15 minutes) and per IP (10 per 15 minutes).
+   (5 per 15 minutes) and per IP (30 per 5 minutes).
    Used up: `429 RATE_LIMIT_EXCEEDED`, `data.reason` `sign_ins` (the address)
    or `network` (the IP). The 6th attempt after 5 failures is the first
    refused.
@@ -321,7 +321,7 @@ sequenceDiagram
 `language`.
 [forgot-password.handler.ts](../../src/modules/auth/application/commands/forgot-password/forgot-password.handler.ts)
 
-1. Limits checked and counted: code emails per IP (10 an hour), per
+1. Limits checked and counted: code emails per IP (30 in 5 minutes), per
    address (1 a minute, 5 an hour, shared with sign-in codes). Used up:
    `429`, `data.reason` `network` or `emails`. Counted for every address,
    account or not.
@@ -338,7 +338,7 @@ sequenceDiagram
 signs in.
 [reset-password.handler.ts](../../src/modules/auth/application/commands/reset-password/reset-password.handler.ts)
 
-1. Wrong codes from this IP (20 an hour) and for this address (10 an hour,
+1. Wrong codes from this IP (30 in 5 minutes) and for this address (10 an hour,
    D-134). Used up: `429`, `data.reason` `network` or `codes`.
 2. The new password against the rules that need only the address:
    `422 AUTH_PASSWORD_REJECTED`. The answer is the same with or without an

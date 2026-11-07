@@ -184,7 +184,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `422001` | `IMAGE_PROCESSING_FAILED` | The image could not be processed |
 | `422003` | `IDEMPOTENCY_KEY_MISMATCH` | An `Idempotency-Key` reused with a different body |
 | `422004` | `AUTH_PASSWORD_REJECTED` | The password policy refused it (`data.rules`) |
-| `429001` | `THROTTLE_ERROR` | The global per-IP limit (`Retry-After`) |
+| `429001` | `THROTTLE_ERROR` | The global limit, per user when signed in, per IP otherwise (`Retry-After`) |
 | `429001` | `RATE_LIMIT_EXCEEDED` | A sign-in limit (`Retry-After`, `data.reason`) |
 | `500000` | `GENERIC_ERROR` | An unexpected error. Logged in full, reported to error tracking |
 | `500002` | `UPLOAD_DELETE_FAILED` | Deleting a stored file failed |

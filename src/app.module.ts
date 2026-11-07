@@ -57,11 +57,10 @@ import { MaintenanceModule } from '@/maintenance/maintenance.module'
 // Feature modules (Hexagonal Architecture)
 import { UsersModule } from '@/modules/users/users.module'
 import { AuthModule } from '@/modules/auth/auth.module'
-import { AccessTokenGuard } from '@/modules/auth'
+import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
 // Guards
 import { RolesGuard } from '@/shared/presentation'
-import { ipNetwork } from '@/shared/utils/ip-network.util'
 
 @Module({
     imports: [
@@ -95,37 +94,43 @@ import { ipNetwork } from '@/shared/utils/ip-network.util'
         // Rate limiting backed directly by Redis (see KeyvThrottlerStorage for
         // why this must not go through the 2-layer cache)
         ThrottlerModule.forRootAsync({
-            inject: [ConfigService, REDIS_CLIENT],
-            useFactory: (configService: ConfigService, redis: RedisClientType) => ({
-                throttlers: [
-                    {
-                        name: THROTTLER_NAME,
-                        ttl: configService.get<number>('throttle.ttl')! * 1000, // Convert to milliseconds
-                        limit: configService.get<number>('throttle.limit')!
-                    }
-                ],
-                storage: new KeyvThrottlerStorage(redis),
+            imports: [AuthModule],
+            inject: [ConfigService, REDIS_CLIENT, TOKEN_SERVICE],
+            useFactory: (configService: ConfigService, redis: RedisClientType, tokens: TokenServicePort) => {
+                // Per user when the request carries a valid access token, per
+                // IP network otherwise (D-135; throttle-by-user.ts).
+                const { limit, getTracker } = throttleByUser(tokens, {
+                    signedIn: configService.get<number>('throttle.limit')!,
+                    anonymous: configService.get<number>('throttle.anonymousLimit')!
+                })
+                return {
+                    throttlers: [
+                        {
+                            name: THROTTLER_NAME,
+                            ttl: configService.get<number>('throttle.ttl')! * 1000, // Convert to milliseconds
+                            limit
+                        }
+                    ],
+                    storage: new KeyvThrottlerStorage(redis),
 
-                // Track by client IP.
-                //
-                // This guard runs before authentication (see APP_GUARD
-                // ordering below), so `req.user` is not populated yet and
-                // per-user keying is not possible here — by design. This
-                // throttler is the cheap pre-auth shield against anonymous
-                // floods; per-user quotas belong after authentication, built
-                // on atomic Redis operations like KeyvThrottlerStorage's.
-                //
-                // `req.ip` is only meaningful because `trust proxy` is set in
-                // main.ts. Without it Express reports the Nginx socket address
-                // and every client collapses into one bucket. IPv6 clients
-                // count per /64 (ipNetwork): one can use a new address of its
-                // /64 for every request.
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                getTracker: (req: any) => Promise.resolve(ipNetwork(req.ip || req.socket?.remoteAddress || 'unknown'))
+                    // The tracker: `user:<id>` or `ip:<network>`.
+                    //
+                    // This guard runs before authentication (see APP_GUARD
+                    // ordering below), so `req.user` is not set yet: the tracker
+                    // checks the access token itself (signature and expiry). An
+                    // expired or forged token counts per IP like no token.
+                    //
+                    // `req.ip` is only meaningful because `trust proxy` is set in
+                    // main.ts. Without it Express reports the Nginx socket address
+                    // and every client collapses into one bucket. IPv6 clients
+                    // count per /64 (ipNetwork): one can use a new address of its
+                    // /64 for every request.
+                    getTracker
 
-                // Exemptions are declared on the route with @SkipRateLimit()
-                // (the metrics endpoint), not matched against the URL here.
-            })
+                    // Exemptions are declared on the route with @SkipRateLimit()
+                    // (the metrics endpoint), not matched against the URL here.
+                }
+            }
         }),
 
         // Pino Logger
@@ -182,8 +187,8 @@ import { ipNetwork } from '@/shared/utils/ip-network.util'
         // invalid token — so with the old ordering, unauthenticated traffic
         // (the traffic rate limiting exists for) never reached the throttler.
         // The cost of this ordering is that `getTracker` cannot see
-        // `req.user`: every request, authenticated or not, is keyed by client
-        // IP. Per-user limits have to be enforced after authentication.
+        // `req.user`: it checks the access token itself (throttle-by-user.ts)
+        // to count signed-in requests per user and the rest per IP (D-135).
         {
             provide: APP_GUARD,
             useClass: ThrottlerGuard

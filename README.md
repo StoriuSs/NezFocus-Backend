@@ -130,7 +130,7 @@ decisions behind it and an honest list of what this starter is *not* for.
 | **CQRS** | One small handler per command and query, via `@nestjs/cqrs` |
 | **Authentication** | Email and password, emailed codes, refresh-cookie sessions, Google. [See below](#authentication) |
 | **Two-Level Caching** | In-memory LRU + Redis distributed cache |
-| **Rate Limiting** | A global per-IP, per-route limit in Redis, plus per-address, per-IP and per-account limits on the sign-in routes |
+| **Rate Limiting** | A global per-route limit in Redis, per user when signed in and per IP otherwise, plus per-address, per-IP and per-account limits on the sign-in routes |
 | **Database** | PostgreSQL with Prisma ORM + soft delete |
 | **File Uploads** | Local + S3 storage with Sharp image processing |
 | **Health Checks** | Terminus-based liveness, readiness and full checks (DB, Redis, throttler) |

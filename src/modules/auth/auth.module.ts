@@ -195,6 +195,7 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         AccessTokenGuard,
         AuthJobsConsumer
     ],
-    exports: [AccessTokenGuard]
+    // TOKEN_SERVICE: the global throttler checks access tokens too (throttle-by-user.ts).
+    exports: [AccessTokenGuard, TOKEN_SERVICE]
 })
 export class AuthModule {}

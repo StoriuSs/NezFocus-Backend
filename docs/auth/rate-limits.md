@@ -25,7 +25,7 @@ if real users report "Too many requests", or if you want to tune the numbers.
 
 | Layer | Counts | Keyed on | Where |
 |---|---|---|---|
-| **Global throttler** | every request to every route | client IP, per route | every module, set by `THROTTLE_*` |
+| **Global throttler** | every request to every route | the user when signed in, otherwise the client IP; per route | every module, set by `THROTTLE_*` |
 | **Auth limits** | one operation: a failed sign-in, a code email, a wrong code | an address, an IP or a user, per operation | the auth module, set in code |
 
 A request has to pass both. The throttler is a blunt shield against floods; the
@@ -34,15 +34,26 @@ auth limits are precise, and know what they are protecting.
 ## The global throttler
 
 Every route, auth routes included, is under `@nestjs/throttler`, which runs
-before authentication:
+before authentication. It counts a request against one of two trackers
+(D-135):
+
+- **the user** (`user:<id>`), when the request carries a valid access token.
+  The throttler checks the token itself, signature and expiry only, with no
+  session lookup, since the `AccessTokenGuard` has not run yet;
+- **the client IP** (`ip:<network>`, an IPv4 address or an IPv6 /64)
+  otherwise: no token, or an expired or forged one. Making a token up does
+  not escape the IP's count.
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `THROTTLE_TTL` | 60 | Window length, in seconds |
-| `THROTTLE_LIMIT` | 100 | Requests allowed per window, **per client IP, per route** |
+| `THROTTLE_LIMIT` | 100 | Requests allowed per window, **per signed-in user, per route** |
+| `THROTTLE_ANONYMOUS_LIMIT` | 300 | Requests allowed per window, **per client IP, per route**, for requests without a valid access token |
 
-So one IP can call `POST /auth/login` 100 times a minute and, separately,
-`POST /auth/refresh` 100 times a minute. Over that, the answer is:
+So one signed-in user can call `GET /users/me` 100 times a minute and,
+separately, `PATCH /users/me` 100 times a minute; one IP can call
+`POST /auth/login` 300 times a minute without a token. Over that, the answer
+is:
 
 - **429**, `meta.type: "THROTTLE_ERROR"`, code `429001`;
 - a `Retry-After` header in seconds (readable by the web app, as CORS exposes
@@ -53,10 +64,14 @@ Two things to know for auth:
 
 - The client IP is the real one only because the app trusts one proxy hop
   (`trust proxy 1`, for nginx). Behind a second proxy that does not pass the
-  address on, every visitor shares one IP and they all hit the limit together.
-- A whole office or school behind one IP shares the limit too. 100 a minute per
-  route is comfortable; lowering `THROTTLE_LIMIT` a lot can make
-  `/auth/refresh` fail for them.
+  address on, every anonymous visitor shares one IP and they all hit the limit
+  together.
+- A lab or a lecture hall behind one public IP is not one bucket once signed
+  in: each student has their own (D-135). Anonymous requests from the room
+  (sign-in, codes) still share the IP's count, hence its higher limit, since
+  a whole room signs in at once. The web app sends `POST /auth/refresh`
+  without an access token, so it is counted per IP: lowering
+  `THROTTLE_ANONYMOUS_LIMIT` a lot can make it fail for a shared network.
 
 How the throttler counts, its Redis keys and how to exempt a route are on
 [../rate-limit.md](../rate-limit.md).
@@ -70,11 +85,11 @@ All in one file, [rate-limits.ts](../../src/modules/auth/application/rate-limits
 | Name | Limit | Keyed on | Reason | Used by | What counts | Cleared |
 |---|---|---|---|---|---|---|
 | `login-fail-email` | 5 per 15 min | the email address | `sign_ins` | `login` | failed sign-ins only | when the right password is given for that address |
-| `login-fail-ip` | 10 per 15 min | IP | `network` | `login` | failed sign-ins only, any address | never early: the window runs out |
+| `login-fail-ip` | 30 per 5 min | IP | `network` | `login` | failed sign-ins only, any address | never early: the window runs out |
 | `code-email-min` | 1 per minute | the email address | `emails` | `email-code`, `forgot-password` | every accepted request | — |
 | `code-email-hour` | 5 per hour | the email address | `emails` | `email-code`, `forgot-password` | every accepted request | — |
-| `code-email-ip` | 10 per hour | IP | `network` | `email-code`, `forgot-password` | every accepted request, any address | — |
-| `code-try-ip` | 20 per hour | IP | `network` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, any address | — |
+| `code-email-ip` | 30 per 5 min | IP | `network` | `email-code`, `forgot-password` | every accepted request, any address | — |
+| `code-try-ip` | 30 per 5 min | IP | `network` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, any address | — |
 | `code-fail-email` | 10 per hour | the email address | `codes` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, across the address's codes | — |
 | `change-pw-fail` | 5 per 15 min | the user | `wrong_password` | `change-password`, `account/delete` | wrong current passwords only | on a successful change or deletion |
 
@@ -85,7 +100,11 @@ All routes are under `/api/v1/auth/`. Why each exists:
   deliberate: anyone can lock a person out of password sign-in for 15 minutes by
   failing 5 times on purpose.
 - **Per IP** limits stop one machine spraying many addresses: trying one common
-  password on 10 000 accounts, or emailing codes to 10 000 strangers.
+  password on 10 000 accounts, or emailing codes to 10 000 strangers. They
+  all use a short window, 5 minutes (D-135): students share a lab's or a
+  hall's one public IP, so someone else's mistakes there should cost minutes,
+  not an hour. Guessing at one account is still held back by the limits per
+  address, whatever the IP.
 - **Per user** limits protect actions that need a session but also a second
   proof (the current password), so a stolen session cannot guess the rest.
 - **Code emails are shared** by sign-in and reset codes: one a minute and five
@@ -104,7 +123,7 @@ a counter.
 ## How the auth limits behave
 
 - **Fixed windows.** A counter starts at the first hit and lasts the whole
-  window (15 minutes, an hour), then disappears. It is not a sliding window.
+  window (5 minutes, 15 minutes, an hour), then disappears. It is not a sliding window.
 - **Refused without counting.** Before doing anything, a route checks its
   limits without counting. If one is used up, the request is refused and counts
   against nothing. So pressing "send code again" during the one-minute wait does
@@ -133,8 +152,8 @@ a counter.
   (a home, a phone, a rented server) is given a whole /64 and can use a new
   address from it for every request, so counting full IPv6 addresses would
   limit nothing. An IPv4 address in IPv6 form (`::ffff:203.0.113.5`) counts
-  as the IPv4 address. The same goes for the global throttler
-  ([rate-limit.md](../rate-limit.md)). The code is
+  as the IPv4 address. The same goes for the global throttler's count of
+  anonymous requests ([rate-limit.md](../rate-limit.md)). The code is
   [ip-network.ts](../../src/shared/utils/ip-network.util.ts).
 - **They fail open.** See [When Redis is down](#when-redis-is-down).
 
@@ -235,8 +254,13 @@ with a reason next to it, and changing one should be reviewed. Edit
 [rate-limits.ts](../../src/modules/auth/application/rate-limits.ts). Every rule
 has a `name` (part of the Redis key), a `limit`, a `windowMs` and a `reason`.
 
-The global throttler is set with `THROTTLE_TTL` and `THROTTLE_LIMIT` in the env
-file ([../environment.md](../environment.md)).
+The global throttler is set with `THROTTLE_TTL`, `THROTTLE_LIMIT` (per user)
+and `THROTTLE_ANONYMOUS_LIMIT` (per IP) in the env file
+([../environment.md](../environment.md)). Who it counts against is decided in
+[throttle-by-user.ts](../../src/modules/auth/presentation/rate-limit/throttle-by-user.ts).
+
+There is no allowlist of IPs exempt from the limits per IP; it is kept as an
+option for later (D-135).
 
 The integration test `test/integration/rate-limiter.integration-spec.ts`
 covers the limiter against a real Redis.

@@ -184,6 +184,7 @@ export const validationSchema = Joi.object({
     // throttle.config.ts
     THROTTLE_TTL: Joi.number().default(60),
     THROTTLE_LIMIT: Joi.number().default(100),
+    THROTTLE_ANONYMOUS_LIMIT: Joi.number().default(300),
 
     // upload.config.ts
     STORAGE_TYPE: Joi.string().valid('local', 's3').default('local'),

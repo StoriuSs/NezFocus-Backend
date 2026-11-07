@@ -225,8 +225,9 @@ On any `401` from refresh, the response also clears the cookie: a cookie
 that no longer works is only in the way. The new cookie keeps the session's
 original `Expires`.
 
-There is no auth-specific rate limit on refresh; only the global per-IP
-throttler applies ([rate-limits.md](./rate-limits.md)).
+There is no auth-specific rate limit on refresh; only the global throttler
+applies, per IP since the web app sends refresh without an access token
+([rate-limits.md](./rate-limits.md)).
 
 ### The grace window
 

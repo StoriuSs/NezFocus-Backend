@@ -37,6 +37,7 @@ process.env.CACHE_LRU_SIZE = '500'
 // Throttle Configuration (relaxed for testing)
 process.env.THROTTLE_TTL = '60'
 process.env.THROTTLE_LIMIT = '1000'
+process.env.THROTTLE_ANONYMOUS_LIMIT = '300'
 
 // Authentication
 process.env.JWT_SECRET = 'test-only-jwt-secret-0123456789abcdef0123456789'

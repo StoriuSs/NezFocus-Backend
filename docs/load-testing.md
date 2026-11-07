@@ -41,16 +41,19 @@ user's display name, and `upload.js` stores a new avatar for every successful
 request. Point them at a throwaway environment.
 
 **Turn the rate limiter up, or you will measure the rate limiter.** The API
-allows `THROTTLE_LIMIT` requests per `THROTTLE_TTL` seconds *from one address
-to one route* (each route has its own count; see
-[rate-limit.md](./rate-limit.md#buckets-per-endpoint-per-ip)), and a load test
-is one address sending everything. At the default of 100 a minute (the same in
-the code and in `.env.example`), request 101 to a route onwards comes back 429
-and your beautiful graph is a picture of the throttler. On the machine you are
-testing, set something far above what the test will send:
+allows `THROTTLE_LIMIT` requests per `THROTTLE_TTL` seconds *from one signed-in
+user to one route*, and `THROTTLE_ANONYMOUS_LIMIT` *from one address* for
+requests without a valid access token (each route has its own count; see
+[rate-limit.md](./rate-limit.md#buckets-per-endpoint-per-tracker)). A load test
+is one address sending everything, often as one account. At the defaults of
+100 and 300 a minute (the same in the code and in `.env.example`), request 101
+to a route onwards from one account comes back 429 and your beautiful graph is
+a picture of the throttler. On the machine you are testing, set something far
+above what the test will send:
 
 ```bash
 THROTTLE_LIMIT=1000000
+THROTTLE_ANONYMOUS_LIMIT=1000000
 THROTTLE_TTL=60
 ```
 
@@ -347,11 +350,11 @@ the way. Each of these stops k6 with "The API refused the login":
 | k6 says | Cause | Fix |
 |---|---|---|
 | "Wrong email or password" | `LOAD_PASSWORD` differs from the account's | Run `pnpm load:accounts` again with the same `LOAD_*`: it resets the password |
-| "The sign-in limits refused it" (HTTP 429) | Too many failed sign-ins: 5 per address, or 10 per IP, in 15 minutes | Wait 15 minutes ([auth/rate-limits.md](./auth/rate-limits.md)) |
+| "The sign-in limits refused it" (HTTP 429) | Too many failed sign-ins: 5 per address in 15 minutes, or 30 per IP in 5 minutes | Wait out the window: 15 minutes, or 5 for the IP ([auth/rate-limits.md](./auth/rate-limits.md)) |
 
 **A wrong password with many virtual users goes wrong fast.** Every virtual
-user signs in at the start, all from your one IP. Ten of them failing is the
-per-IP limit (10 failed sign-ins in 15 minutes), and every sign-in from your
+user signs in at the start, all from your one IP. Thirty of them failing is the
+per-IP limit (30 failed sign-ins in 5 minutes), and every sign-in from your
 IP is refused for the rest of the window, right password or not. If the
 environment has [alerts](./alerts.md), more than 50 failures in 10 minutes
 also fires `AuthFailedLoginSpike`. Run `smoke.js` first: one virtual user

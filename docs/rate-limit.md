@@ -7,8 +7,8 @@
   - [Where It Runs](#where-it-runs)
   - [Configuration](#configuration)
   - [How the Global Throttler Counts](#how-the-global-throttler-counts)
-    - [Tracker: the client IP](#tracker-the-client-ip)
-    - [Buckets: per endpoint, per IP](#buckets-per-endpoint-per-ip)
+    - [Tracker: the user, or the client IP](#tracker-the-user-or-the-client-ip)
+    - [Buckets: per endpoint, per tracker](#buckets-per-endpoint-per-tracker)
     - [Fixed window](#fixed-window)
     - [Storage: atomic Redis counters](#storage-atomic-redis-counters)
     - [Redis unavailable: fail open](#redis-unavailable-fail-open)
@@ -29,9 +29,9 @@
 
 This page is for anyone who needs to know why a request got `429 Too Many Requests`, or wants to change a limit. It covers the **global throttler**, which every route has, and the `RateLimiter` that the sign-in limits are built on. The sign-in limits themselves (five wrong passwords, one code email a minute...) are listed in [auth/rate-limits.md](./auth/rate-limits.md).
 
-Every request passes through the global throttler (`@nestjs/throttler`) before authentication runs. It counts requests per client IP and per route in Redis, so the limit holds across all app instances, and answers `429 Too Many Requests` once a client exceeds it.
+Every request passes through the global throttler (`@nestjs/throttler`) before authentication runs. It counts requests per route in Redis, so the limit holds across all app instances, and answers `429 Too Many Requests` once a client exceeds it. A request with a valid access token is counted per user; any other request per client IP (D-135).
 
-The throttler is a cheap first line of defence against floods and scripted abuse. It is not a per-user quota system: it runs before authentication, so it never knows who the user is (see [Where It Runs](#where-it-runs)).
+The throttler is a cheap first line of defence against floods and scripted abuse. It is not a per-user quota system: it runs before authentication, so it only knows the user from the access token's signature and expiry, never from the session (see [Where It Runs](#where-it-runs)).
 
 ## Where It Runs
 
@@ -44,7 +44,7 @@ Request
 RequestContextGuard ← never refuses: copies the route onto the request for metrics
   │
   ▼
-ThrottlerGuard      ← counts by IP and route; 429 when over the limit
+ThrottlerGuard      ← counts by user (or IP) and route; 429 when over the limit
   │
   ▼
 AccessTokenGuard    ← 401 without a valid token (unless @Public)
@@ -58,26 +58,32 @@ Handler
 
 The throttler **must** come first. The auth guard throws on a missing token, so if it ran first, unauthenticated traffic — exactly what rate limiting is for — would never be counted.
 
-The cost of that ordering: `req.user` is not populated yet, so the throttler cannot key on the user. Anonymous and authenticated requests are both tracked by IP.
+The cost of that ordering: `req.user` is not populated yet. So the throttler's tracker checks the access token itself, signature and expiry only, with no session lookup, and counts a signed-in request against the user (D-135). Requests without a valid token are tracked by IP.
 
 ## Configuration
 
 ```env
-THROTTLE_TTL=60      # window length, seconds (default 60)
-THROTTLE_LIMIT=100   # requests allowed per window, per endpoint, per IP (default 100)
+THROTTLE_TTL=60                  # window length, seconds (default 60)
+THROTTLE_LIMIT=100               # requests allowed per window, per endpoint, per signed-in user (default 100)
+THROTTLE_ANONYMOUS_LIMIT=300     # requests allowed per window, per endpoint, per IP, without a valid access token (default 300)
 ```
 
-The defaults in code ([`throttle.config.ts`](../src/config/throttle.config.ts), [`validation.ts`](../src/config/validation.ts)) and in `.env.example` are the same: 100 requests a minute. That is generous for one person and tight for a script. Lower it if you want a harsher floor; raise it if many users share one IP (an office, a school, a mobile carrier's NAT).
+The defaults in code ([`throttle.config.ts`](../src/config/throttle.config.ts), [`validation.ts`](../src/config/validation.ts)) and in `.env.example` are the same: 100 requests a minute per user, 300 per IP. 100 is generous for one person and tight for a script. The anonymous limit is higher because many people may share one IP (a lab, a lecture hall, a mobile carrier's NAT) and a whole room signs in at once; raise it if that is still not enough.
 
-`src/config/throttle.config.ts` reads them; `src/app.module.ts` registers one throttler named **`relaxed`** with those values and `KeyvThrottlerStorage` as its storage.
+`src/config/throttle.config.ts` reads them; `src/app.module.ts` registers one throttler named **`relaxed`** with the window, a `limit` that depends on the request, and `KeyvThrottlerStorage` as its storage.
 
 ## How the Global Throttler Counts
 
-### Tracker: the client IP
+### Tracker: the user, or the client IP
 
-```typescript
-getTracker: (req) => Promise.resolve(ipNetwork(req.ip || req.socket?.remoteAddress || 'unknown'))
-```
+`throttleByUser` ([throttle-by-user.ts](../src/modules/auth/presentation/rate-limit/throttle-by-user.ts)) gives the throttler both its `limit` and its `getTracker`:
+
+- a request whose `Authorization: Bearer` token verifies (signature and expiry) is tracked as `user:<id>`, with `THROTTLE_LIMIT`;
+- any other request (no token, or an expired or forged one) is tracked as `ip:<network>`, with `THROTTLE_ANONYMOUS_LIMIT`. Making a token up does not escape the IP's count.
+
+The answer is kept per request, so the token is verified once although the throttler asks twice. A token whose session has just ended still counts per user for the few minutes it has left; the `AccessTokenGuard` refuses the request anyway.
+
+Why per user (D-135): students in one lab or hall share one public IP. Counted per IP, a whole room shared 100 requests a minute per route; counted per user, each signed-in student has their own.
 
 `ipNetwork` ([ip-network.ts](../src/shared/utils/ip-network.util.ts)) leaves an
 IPv4 address as it is and turns an IPv6 address into its /64 network
@@ -85,11 +91,11 @@ IPv4 address as it is and turns an IPv6 address into its /64 network
 send each request from a new address in it; counting full addresses would let
 one client make unlimited requests.
 
-`req.ip` is only the real client address because [`src/bootstrap/configure-app.ts`](../src/bootstrap/configure-app.ts) sets `app.set('trust proxy', 1)`. Without it, behind a reverse proxy every request appears to come from the proxy and all clients share one bucket — including the Docker healthcheck. See [Behind Nginx and Cloudflare](#behind-nginx-and-cloudflare).
+`req.ip` is only the real client address because [`src/bootstrap/configure-app.ts`](../src/bootstrap/configure-app.ts) sets `app.set('trust proxy', 1)`. Without it, behind a reverse proxy every request appears to come from the proxy and all anonymous clients share one bucket — including the Docker healthcheck. See [Behind Nginx and Cloudflare](#behind-nginx-and-cloudflare).
 
-### Buckets: per endpoint, per IP
+### Buckets: per endpoint, per tracker
 
-`@nestjs/throttler` builds the storage key from the **controller class, handler name, throttler name and tracker**, hashed with SHA-256. Each endpoint therefore has its own bucket per IP: with `THROTTLE_LIMIT=100`, one IP can make 100 requests to `GET /users/me` *and* 100 to `PATCH /users/me` in the same window.
+`@nestjs/throttler` builds the storage key from the **controller class, handler name, throttler name and tracker**, hashed with SHA-256. Each endpoint therefore has its own bucket per user or per IP: with `THROTTLE_LIMIT=100`, one signed-in user can make 100 requests to `GET /users/me` *and* 100 to `PATCH /users/me` in the same window.
 
 ### Fixed window
 
@@ -132,7 +138,7 @@ If Redis cannot be reached, the storage logs an error and **allows** the request
 | `throttle:relaxed:<sha256>` | request count in the current window | window length, set on first request |
 | `throttle:block:relaxed:<sha256>` | `1` while blocked (only with `blockDuration`) | `blockDuration` |
 
-The hash covers `<Controller>-<handler>-relaxed-<ip>`, so keys cannot be read back to an IP. To inspect:
+The hash covers `<Controller>-<handler>-relaxed-<tracker>` (`user:<id>` or `ip:<network>`), so keys cannot be read back to a user or an IP. To inspect:
 
 ```bash
 docker exec -it redis-nezfocus-web redis-cli -a "$REDIS_PASSWORD"
@@ -171,11 +177,11 @@ The trust chain has to line up, or every client collapses into one bucket:
 2. **Nginx → app.** Nginx forwards `X-Forwarded-For` with that address.
 3. **App.** `trust proxy` is `1` (in `src/bootstrap/configure-app.ts`) — exactly one hop (Nginx) is trusted, so `req.ip` becomes the client address from `X-Forwarded-For`, and a client cannot spoof it by sending its own header.
 
-If you add another proxy hop (a load balancer in front of Nginx), raise the `trust proxy` hop count to match. This matters more than for the throttler alone: the sign-in limits per IP ("10 failed sign-ins per IP in 15 minutes") use `req.ip` too. With the wrong count, either every user shares one IP and one person's typos lock everyone out, or a client can pick its own IP and is never limited. [domain-dns-tls.md](./setup/domain-dns-tls.md) covers Cloudflare's proxy setting.
+If you add another proxy hop (a load balancer in front of Nginx), raise the `trust proxy` hop count to match. This matters more than for the throttler alone: the sign-in limits per IP ("30 failed sign-ins per IP in 5 minutes") use `req.ip` too. With the wrong count, either every user shares one IP and one person's typos lock everyone out, or a client can pick its own IP and is never limited. [domain-dns-tls.md](./setup/domain-dns-tls.md) covers Cloudflare's proxy setting.
 
 ## Limits for One Operation: RateLimiter
 
-The throttler counts every request from an IP. Some limits are about one
+The throttler counts every request from a user or an IP. Some limits are about one
 operation and one subject instead — "five failed sign-ins per address", "one
 code email a minute". For those, inject `RateLimiter`
 (`src/shared/infrastructure/rate-limit/rate-limiter.ts`, provided by the global
@@ -208,7 +214,9 @@ The auth module's limits are all in [`src/modules/auth/application/rate-limits.t
 
 The routes under `/api/v1/auth/` have no `@Throttle` or `@SkipRateLimit`, so
 the **global throttler applies to them as to every route**: each one allows
-`THROTTLE_LIMIT` requests per window per IP. On top of that, the auth module
+`THROTTLE_LIMIT` requests per window per signed-in user, and
+`THROTTLE_ANONYMOUS_LIMIT` per IP for requests without a valid access token
+(most auth routes: sign-in, codes, refresh). On top of that, the auth module
 counts what matters for security with `RateLimiter`: failed sign-ins per
 address and per IP, sign-ups per IP, code emails per address, wrong codes,
 wrong current passwords. Those limits, their numbers,
@@ -223,11 +231,14 @@ What the two layers mean in practice:
   auth limit's has `meta.type` `RATE_LIMIT_EXCEEDED` and a `data.reason`
   (`sign_ins`, `network`, `emails`, `wrong_password`) that
   says which kind of limit it was, so the web app can show the right message.
-- **Many people behind one IP** (an office, a school) share the throttler's
-  bucket for each route. With the default 100 a minute, `/auth/refresh` and
+- **Many people behind one IP** (a lab, a lecture hall) share the throttler's
+  bucket for each route only while not signed in; once signed in, each has
+  their own (D-135). With the default 300 a minute, `/auth/refresh` and
   `/auth/login` are where they meet it first, since every open tab refreshes.
-  Raise `THROTTLE_LIMIT` if that happens; the auth limits still guard against
-  password guessing.
+  Raise `THROTTLE_ANONYMOUS_LIMIT` if that happens; the auth limits still
+  guard against password guessing. The auth limits per IP use a 5-minute
+  window, so a refusal there costs minutes, not an hour. There is no allowlist
+  of exempt IPs (kept as an option for later, D-135).
 - **When Redis is down, both fail open.** The throttler and the auth limits
   then allow everything. That keeps sign-in working during an outage, but it
   also means **no brute-force protection** until Redis is back: the
@@ -246,7 +257,7 @@ A throttled request is logged by the global exception filter and counted in `htt
 ## Troubleshooting
 
 **Every client gets 429 at the same time.**
-All requests share one tracker. Check that `trust proxy` is set in `src/bootstrap/configure-app.ts`, that Nginx forwards `X-Forwarded-For`, and — behind Cloudflare — that the `real_ip_header` block is present. Log `req.ip` from a handler to confirm.
+All anonymous requests share one tracker (signed-in ones are counted per user). Check that `trust proxy` is set in `src/bootstrap/configure-app.ts`, that Nginx forwards `X-Forwarded-For`, and — behind Cloudflare — that the `real_ip_header` block is present. Log `req.ip` from a handler to confirm.
 
 **A client is never limited.**
 Check Redis is reachable (`/health` → `rate_limiter`): the throttler fails open. Remember buckets are per endpoint, so spreading requests across endpoints multiplies the allowance.

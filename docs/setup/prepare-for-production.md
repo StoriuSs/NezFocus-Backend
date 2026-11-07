@@ -374,13 +374,16 @@ GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=...
 ```
 
-**Rate limit.** Requests per IP address per route, per `THROTTLE_TTL` seconds.
+**Rate limit.** Requests per route, per `THROTTLE_TTL` seconds: per signed-in
+user (`THROTTLE_LIMIT`), and per IP address for requests without a valid
+access token (`THROTTLE_ANONYMOUS_LIMIT`, D-135).
 Keep the template's numbers unless you have a reason; the sign-in routes have
 their own, stricter limits ([../auth/rate-limits.md](../auth/rate-limits.md)).
 
 ```bash
 THROTTLE_TTL=60
 THROTTLE_LIMIT=100
+THROTTLE_ANONYMOUS_LIMIT=300
 ```
 
 **Email** (step 5), for example with Brevo:

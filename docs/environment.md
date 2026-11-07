@@ -237,7 +237,8 @@ seconds. [auth/in-the-code.md](./auth/in-the-code.md) says where to change them.
 | Variable | Required | Default | What it does | Read by | Set up |
 | --- | --- | --- | --- | --- | --- |
 | `THROTTLE_TTL` | | `60` | The global rate limit's window, in seconds | app | |
-| `THROTTLE_LIMIT` | | `100` | Requests per window **per IP, per route**. A refusal is `429` with `Retry-After`. The sign-in routes have their own, stricter limits on top ([auth/rate-limits.md](./auth/rate-limits.md)) | app | [rate-limit.md](./rate-limit.md) |
+| `THROTTLE_LIMIT` | | `100` | Requests per window **per signed-in user, per route** (a request with a valid access token, D-135). A refusal is `429` with `Retry-After`. The sign-in routes have their own, stricter limits on top ([auth/rate-limits.md](./auth/rate-limits.md)) | app | [rate-limit.md](./rate-limit.md) |
+| `THROTTLE_ANONYMOUS_LIMIT` | | `300` | Requests per window **per IP, per route**, for requests without a valid access token (no token, or an expired or forged one). Higher than `THROTTLE_LIMIT` because a whole room behind one IP signs in at once (D-135) | app | [rate-limit.md](./rate-limit.md) |
 | `REQUEST_TIMEOUT_MS` | | `30000` | A request past this answers `408`. It does **not** cancel the work already started | app | |
 
 ### Admin pages

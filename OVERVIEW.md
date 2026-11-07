@@ -150,7 +150,7 @@ sequenceDiagram
 
     C->>N: GET /api/v1/users/me
     N->>Th: with the real client IP
-    Th->>Th: within the rate limit?
+    Th->>Th: within the rate limit? (per user if the token verifies, else per IP)
     Th->>Au: yes
     Au->>Au: @Public()? otherwise verify the token
     Au->>Au: session still live? account not deleted? (Redis, else Postgres)
@@ -332,7 +332,7 @@ own module. You inherit these without writing anything.
 | | What it does for you | Where |
 | --- | --- | --- |
 | **Authentication** | Sign-up and sign-in by an emailed code (one flow), a "complete your account" step (username, password, time zone, language, Terms) that gates every other signed-in route (`ACCOUNT_INCOMPLETE`, `@AllowIncomplete()`), sign-in with a password, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with the password (`POST /auth/account/delete`). Emails in Vietnamese or English. `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
-| **Rate limiting** | A per-IP, per-route limit on every route, counted in Redis so the limit is the limit across every instance. On top, the sign-in routes count per address, per IP and per account (`rl:*` keys) | [rate-limit.md](./docs/rate-limit.md) · [auth/rate-limits.md](./docs/auth/rate-limits.md) |
+| **Rate limiting** | A per-route limit on every route, per user when the request has a valid access token and per IP otherwise (D-135), counted in Redis so the limit is the limit across every instance. On top, the sign-in routes count per address, per IP and per account (`rl:*` keys) | [rate-limit.md](./docs/rate-limit.md) · [auth/rate-limits.md](./docs/auth/rate-limits.md) |
 | **Idempotency** | A retried payment or a double-tapped button does the work once. `@Idempotent('1h')` on the route | [idempotency.md](./docs/idempotency.md) |
 | **Caching** | Two layers, memory in front of Redis, with a clear rule about which state may use which | [cache.md](./docs/cache.md) |
 | **Responses** | One envelope for every success and every error, `camelCase` in the code and `snake_case` on the wire | [BACKEND_RESPONSE_HANDLING.md](./docs/BACKEND_RESPONSE_HANDLING.md) |

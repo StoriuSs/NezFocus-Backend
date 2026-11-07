@@ -147,6 +147,45 @@ describe('Codes by email (REQ-AUTH-01, REQ-AUTH-02)', () => {
         }
     })
 
+    it('sends thirty code emails from one IP in five minutes, to any addresses, reset codes included (D-135)', async () => {
+        const w = setup()
+        for (let i = 0; i < 30; i++) {
+            const address = `n${i}@example.test`
+            await (i % 2 ? send(w, address) : w.forgot.execute(new ForgotPasswordCommand(address, IP, 'vi')))
+        }
+        const refused = await send(w, 'n30@example.test').catch((e: unknown) => e)
+
+        expect(refused).toBeInstanceOf(RateLimitedError)
+        expect((refused as RateLimitedError).details).toEqual({ reason: 'network' })
+        expect((refused as RateLimitedError).retryAfterSeconds).toBe(5 * 60)
+    })
+
+    it('stops wrong codes from one IP at thirty in five minutes, across addresses; a right code is not counted (D-135)', async () => {
+        const w = setup()
+        // Ten addresses, three wrong guesses each: under every limit of an address.
+        for (let i = 0; i < 10; i++) {
+            const address = `n${i}@example.test`
+            await send(w, address)
+            const code = w.mailer.lastCode(address, 'sign-in')!
+            for (let guess = 0; guess < 3; guess++) {
+                if (i === 9 && guess === 2) break
+                await expect(verify(w, otherCode(code), address)).rejects.toThrow(CodeInvalidError)
+            }
+            // The right code on the last address, after 29 wrong ones: it signs in.
+            if (i === 9) await expect(verify(w, code, address)).resolves.toBeDefined()
+        }
+        expect(w.limiter.count(AUTH_RATE_LIMITS.codeAttemptsPerIp, IP)).toBe(29)
+
+        await send(w, 'late@example.test')
+        const late = w.mailer.lastCode('late@example.test', 'sign-in')!
+        await expect(verify(w, otherCode(late), 'late@example.test')).rejects.toThrow(CodeInvalidError)
+        const refused = await verify(w, late, 'late@example.test').catch((e: unknown) => e)
+
+        expect(refused).toBeInstanceOf(RateLimitedError)
+        expect((refused as RateLimitedError).details).toEqual({ reason: 'network' })
+        expect((refused as RateLimitedError).retryAfterSeconds).toBe(5 * 60)
+    })
+
     it('does not take a sign-in code for a password reset, nor a reset code for a sign-in', async () => {
         const w = setup()
         w.account()

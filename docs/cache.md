@@ -278,7 +278,7 @@ Request for item1:
 
 **Where:**
 - `{throttlerName}` = `relaxed` (the single throttler registered in `app.module.ts`)
-- `{hash}` = SHA-256 of `<Controller>-<handler>-<throttlerName>-<client IP>`, built by `@nestjs/throttler` — one bucket per endpoint per IP
+- `{hash}` = SHA-256 of `<Controller>-<handler>-<throttlerName>-<tracker>`, built by `@nestjs/throttler` — one bucket per endpoint per tracker. The tracker is `user:<id>` for a request with a valid access token, `ip:<network>` otherwise (D-135)
 
 **Value**: request count in the current window (block key: `1`)
 
@@ -286,7 +286,7 @@ Request for item1:
 
 **Storage**: Raw `REDIS_CLIENT`, incremented atomically by a Lua script (`INCR` + `PEXPIRE` on first hit). Not the 2-layer cache.
 
-**Tracking**: Client IP only. The throttler guard runs before authentication, so the user is not known yet. See [rate-limit.md](./rate-limit.md).
+**Tracking**: The user when the request carries a valid access token, the client IP otherwise. The throttler guard runs before authentication, so `req.user` is not set yet: the tracker checks the token's signature and expiry itself, with no session lookup. See [rate-limit.md](./rate-limit.md).
 
 **Used In**: `KeyvThrottlerStorage`
 
@@ -484,19 +484,24 @@ You don't need to call `increment` or `reset` manually. The `ThrottlerGuard` (re
 **Configuration in `app.module.ts`**:
 ```typescript
 ThrottlerModule.forRootAsync({
-    inject: [ConfigService, REDIS_CLIENT],
-    useFactory: (configService, redis) => ({
-        throttlers: [{
-            name: 'relaxed',
-            ttl: configService.get('throttle.ttl') * 1000,
-            limit: configService.get('throttle.limit')
-        }],
-        storage: new KeyvThrottlerStorage(redis),  // ← Registered here
-
-        // Runs before authentication, so the client IP is the only identity
-        // available. req.ip is the real client because main.ts trusts one proxy hop.
-        getTracker: (req) => Promise.resolve(req.ip || req.socket?.remoteAddress || 'unknown')
-    })
+    imports: [AuthModule],
+    inject: [ConfigService, REDIS_CLIENT, TOKEN_SERVICE],
+    useFactory: (configService, redis, tokens) => {
+        // Per user with a valid access token, per IP network otherwise (D-135)
+        const { limit, getTracker } = throttleByUser(tokens, {
+            signedIn: configService.get('throttle.limit'),
+            anonymous: configService.get('throttle.anonymousLimit')
+        })
+        return {
+            throttlers: [{
+                name: 'relaxed',
+                ttl: configService.get('throttle.ttl') * 1000,
+                limit
+            }],
+            storage: new KeyvThrottlerStorage(redis),  // ← Registered here
+            getTracker
+        }
+    }
 })
 ```
 

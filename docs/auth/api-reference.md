@@ -188,7 +188,7 @@ repeated in every route below.
 | The account has not done "complete your account", and the route is not one of the [three that allow it](#the-gate) | 403 | `ACCOUNT_INCOMPLETE` | `403100` | |
 | A body field fails its check, or an unknown field is sent | 422 | `VALIDATION_ERROR` | `422000` | `data.details[]` |
 | Malformed JSON | 400 | `BAD_REQUEST_ERROR` | `400000` | |
-| The global per-IP throttler: more than `THROTTLE_LIMIT` (default 100) requests to **this route** from one IP in `THROTTLE_TTL` (60) seconds | 429 | `THROTTLE_ERROR` | `429001` | `Retry-After` header (seconds). No `data.reason` |
+| The global throttler: more than `THROTTLE_LIMIT` (default 100) requests to **this route** from one signed-in user, or `THROTTLE_ANONYMOUS_LIMIT` (default 300) from one IP without a valid access token, in `THROTTLE_TTL` (60) seconds (D-135) | 429 | `THROTTLE_ERROR` | `429001` | `Retry-After` header (seconds). No `data.reason` |
 | The request took longer than the request timeout | 408 | `REQUEST_TIMEOUT_ERROR` | `408000` | |
 | Something broke on the server (database or Redis down, a bug) | 500 | `GENERIC_ERROR` | `500000` | The message is "Internal server error" in production |
 
@@ -281,7 +281,7 @@ message "Check your email for the code.", `data: null`.
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 10 an hour from this IP | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 30 in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with reset codes | `data.reason: "emails"`, `Retry-After` |
 
 Every accepted request counts, whether or not the address has an account.
@@ -314,7 +314,7 @@ signed-in routes answer `403 ACCOUNT_INCOMPLETE` ([the gate](#the-gate)).
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 30 wrong codes in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-fail-email`: 10 wrong codes an hour for this address, across its codes (D-134) | `data.reason: "codes"`, `Retry-After` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code sent, a newer code replaced it, or another request used it first | |
 | 400 | `AUTH_CODE_EXPIRED` | `400103` | The code is older than 10 minutes, or this was its 5th wrong try | |
@@ -392,7 +392,7 @@ message "Login successful", `data`: [the token answer](#token-answer).
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-email`: 5 failed sign-ins for this address in 15 minutes | `data.reason: "sign_ins"`, `Retry-After` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-ip`: 10 failed sign-ins from this IP in 15 minutes, any addresses | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-ip`: 30 failed sign-ins from this IP in 5 minutes, any addresses | `data.reason: "network"`, `Retry-After` |
 | 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made by a code or with Google, and not completed). One error for all three, on purpose | |
 
 Only failures count against the two limits. A right password clears the
@@ -473,7 +473,7 @@ message "If that address has an account, an email is on its way.", `data: null`.
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 10 an hour from this IP | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 30 in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with sign-in codes | `data.reason: "emails"`, `Retry-After` |
 
 ### Reset password
@@ -498,7 +498,7 @@ are signed in.", `data`: [the token answer](#token-answer).
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 20 wrong codes an hour from this IP | `data.reason: "network"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 30 wrong codes in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-fail-email`: 10 wrong codes an hour for this address (D-134) | `data.reason: "codes"`, `Retry-After` |
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule that needs only the address. Checked before the code, so it does not use a try | `data.rules` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code pending, or no such account | |
@@ -674,17 +674,18 @@ message "User fetched successfully".
 
 Auth limits answer `429 RATE_LIMIT_EXCEEDED` with `data.reason` and
 `Retry-After`. On top of them, every route has the global throttler
-(`429 THROTTLE_ERROR`, per IP per route). Details and tuning:
+(`429 THROTTLE_ERROR`, per route, per user when signed in and per IP
+otherwise). Details and tuning:
 [rate-limits.md](./rate-limits.md).
 
 | Limit | Allows | Counted per | `data.reason` | Routes | What counts |
 |---|---|---|---|---|---|
 | `login-fail-email` | 5 per 15 min | address | `sign_ins` | login | Failed sign-ins; cleared by a right password |
-| `login-fail-ip` | 10 per 15 min | IP | `network` | login | Failed sign-ins |
+| `login-fail-ip` | 30 per 5 min | IP | `network` | login | Failed sign-ins |
 | `code-email-min` | 1 per minute | address | `emails` | email-code, forgot-password | Emails asked for |
 | `code-email-hour` | 5 per hour | address | `emails` | email-code, forgot-password | Emails asked for |
-| `code-email-ip` | 10 per hour | IP | `network` | email-code, forgot-password | Requests |
-| `code-try-ip` | 20 per hour | IP | `network` | email-code/verify, reset-password | Wrong codes only |
+| `code-email-ip` | 30 per 5 min | IP | `network` | email-code, forgot-password | Requests |
+| `code-try-ip` | 30 per 5 min | IP | `network` | email-code/verify, reset-password | Wrong codes only |
 | `code-fail-email` | 10 per hour | address | `codes` | email-code/verify, reset-password | Wrong codes only, across the address's codes (D-134) |
 | `change-pw-fail` | 5 per 15 min | account | `wrong_password` | change-password, account/delete | Wrong passwords; cleared on success |
 
@@ -795,7 +796,7 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `409 ACCOUNT_ALREADY_COMPLETE` | Already done (another tab, a double click): read `GET /users/me` and go into the app |
 | `409 USERNAME_CONFLICT` on complete-account | Mark the username field "taken" and let them pick another; keep the other fields |
 | `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later) |
-| `429 THROTTLE_ERROR` | Too many requests from this IP to this route: wait `Retry-After` seconds |
+| `429 THROTTLE_ERROR` | Too many requests to this route from this user, or from this IP when not signed in: wait `Retry-After` seconds |
 | `?error=` on the callback page | Show a message per reason (`cancelled` needs none). Keep `redirect` for the next attempt |
 | `500 GENERIC_ERROR` | "Something went wrong", with `meta.request_id` for support |
 

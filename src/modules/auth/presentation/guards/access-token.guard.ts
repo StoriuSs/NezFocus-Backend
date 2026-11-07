@@ -61,7 +61,8 @@ export class AccessTokenGuard implements CanActivate {
     }
 }
 
-function bearerToken(header: string | undefined): string | undefined {
+/** The token of an `Authorization: Bearer <token>` header; also read by the throttler (throttle-by-user.ts). */
+export function bearerToken(header: string | undefined): string | undefined {
     const [scheme, token] = header?.split(' ') ?? []
     return scheme?.toLowerCase() === 'bearer' && token ? token : undefined
 }

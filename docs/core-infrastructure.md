@@ -328,7 +328,7 @@ tick or a second instance starting mid-run must not do damage.
 ```
 AppModule
 ├── ConfigModule (global)
-├── ThrottlerModule ───────────► Redis (the global per-IP limit)
+├── ThrottlerModule ───────────► Redis (the global limit, per user or per IP)
 ├── LoggerModule (nestjs-pino)
 ├── PrismaModule (global) ─────► PostgreSQL
 ├── CacheModule (global) ──────► Redis (also provides REDIS_CLIENT and RateLimiter)

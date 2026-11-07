@@ -1,7 +1,7 @@
 import { InvalidCredentialsError, RateLimitedError, RefreshFailedError } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
 import { LogoutEverywhereCommand, RefreshCommand } from '..'
-import { setup, signIn } from './auth-test-world.shared-spec'
+import { IP, setup, signIn } from './auth-test-world.shared-spec'
 
 describe('Signing in', () => {
     it('gives a wrong password and an unknown address the same error, and hashes for both', async () => {
@@ -41,11 +41,24 @@ describe('Signing in', () => {
         await expect(signIn(w)).rejects.toThrow(RateLimitedError)
     })
 
-    it('refuses an IP after ten failures across any addresses', async () => {
+    it('refuses an IP after thirty failures across any addresses, for five minutes (D-135)', async () => {
         const w = setup()
         w.account()
-        for (let i = 0; i < 10; i++) await expect(signIn(w, `n${i}@example.test`)).rejects.toThrow()
-        await expect(signIn(w)).rejects.toThrow(RateLimitedError)
+        for (let i = 0; i < 30; i++) {
+            await expect(signIn(w, `n${i}@example.test`)).rejects.toThrow(InvalidCredentialsError)
+        }
+        const refused = await signIn(w).catch((e: unknown) => e)
+        expect(refused).toBeInstanceOf(RateLimitedError)
+        expect((refused as RateLimitedError).details).toEqual({ reason: 'network' })
+        expect((refused as RateLimitedError).retryAfterSeconds).toBe(5 * 60)
+    })
+
+    it('does not count a right password against the IP', async () => {
+        const w = setup()
+        w.account()
+        for (let i = 0; i < 29; i++) await expect(signIn(w, `n${i}@example.test`)).rejects.toThrow()
+        for (let i = 0; i < 3; i++) await expect(signIn(w)).resolves.toBeDefined()
+        expect(w.limiter.count(AUTH_RATE_LIMITS.loginFailuresPerIp, IP)).toBe(29)
     })
 })
 

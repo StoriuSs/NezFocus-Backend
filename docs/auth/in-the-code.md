@@ -113,7 +113,10 @@ the cookie routes, through [auth-cookies.ts](../../src/modules/auth/presentation
 **Guards on every request.** [app.module.ts](../../src/app.module.ts)
 registers the global guards in this order: request context, the throttler,
 `AccessTokenGuard`, `RolesGuard`. The throttler comes before the auth guard so
-anonymous floods are limited before any token work.
+anonymous floods are limited before any session lookup. To count a signed-in
+user per user, not per IP, it checks the access token's signature and expiry
+itself, nothing more (D-135;
+[throttle-by-user.ts](../../src/modules/auth/presentation/rate-limit/throttle-by-user.ts)).
 [access-token.guard.ts](../../src/modules/auth/presentation/guards/access-token.guard.ts):
 
 1. `@Public()` on the route: let it through.
@@ -325,7 +328,7 @@ and [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts
 | `auth:replaced:<sha256 of old refresh token>` | The replacement refresh token, for a second tab | 10 s | Refresh | The second tab's refresh fails; it signs in again |
 | `auth:oauth:<state>` | The Google attempt: provider, PKCE verifier, nonce, return path | 600 s, taken once (GETDEL) | Start a provider sign-in | Google sign-in fails (`?error=failed` or a 500 on start) |
 | `rl:<limit name>:<sha256 of lower-cased subject>` | An auth limit's counter (subject = address, IP or user id; never stored in clear) | the limit's window | `RateLimiter` | Limits fail **open**: nothing is limited |
-| `throttle:relaxed:<hash>`, `throttle:block:relaxed:<hash>` | The global throttler (per IP per route) | `THROTTLE_TTL` | `@nestjs/throttler` | Fails open |
+| `throttle:relaxed:<hash>`, `throttle:block:relaxed:<hash>` | The global throttler, per route; the hash covers the tracker, `user:<id>` with a valid access token, `ip:<network>` without (D-135) | `THROTTLE_TTL` | `@nestjs/throttler` | Fails open |
 | `bull:auth:*` | The `auth` queue's email jobs | per job options | BullMQ | Emails cannot be queued: routes that send one fail |
 
 To reset the auth limits on a development machine:

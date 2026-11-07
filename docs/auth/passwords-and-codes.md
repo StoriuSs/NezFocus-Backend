@@ -203,8 +203,8 @@ The 10 minutes and 5 attempts are hard-coded in
 
 - code emails to one address: 1 a minute and 5 an hour, shared by sign-in
   and reset codes;
-- code emails requested from one IP: 10 an hour;
-- wrong codes from one IP, across addresses: 20 an hour. Only wrong codes
+- code emails requested from one IP: 30 in 5 minutes (D-135);
+- wrong codes from one IP, across addresses: 30 in 5 minutes. Only wrong codes
   count. This stops someone spreading guesses over many addresses, five at
   a time;
 - wrong codes for one address, across its codes: 10 an hour (D-134). Without

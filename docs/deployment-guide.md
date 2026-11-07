@@ -164,8 +164,8 @@ reference for every variable.
 
 **Decisions to make deliberately rather than inherit:**
 
-- [ ] `THROTTLE_LIMIT` and `THROTTLE_TTL` — a number you chose. If you raised
-      it for a load test, put it back
+- [ ] `THROTTLE_LIMIT`, `THROTTLE_ANONYMOUS_LIMIT` and `THROTTLE_TTL` — numbers
+      you chose. If you raised one for a load test, put it back
 - [ ] `MONITORING` — `local` (Prometheus, Grafana, Loki, Alertmanager and
       Alloy on the server: four more containers than `grafana-cloud`, which
       runs only Alloy) or `grafana-cloud`. Cloud needs five `GRAFANA_CLOUD_*`
