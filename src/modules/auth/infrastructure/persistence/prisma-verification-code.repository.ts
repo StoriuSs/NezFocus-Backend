@@ -28,6 +28,10 @@ export class PrismaVerificationCodeRepository implements VerificationCodeReposit
      * The try is counted in the same statement that reads the code, so
      * guesses made at the same moment each use one up — a read, then a
      * separate increment, would let a burst of guesses through at try 1.
+     * Only a wrong guess uses one: a right code checked again — a reset that
+     * refused the password and kept the code — is not worn out by its owner
+     * (Kiểm 2 review). For a right guess `attempts` is then the count before
+     * it, so the code was dead already if that reached the maximum.
      */
     async check(
         email: string,
@@ -37,13 +41,16 @@ export class PrismaVerificationCodeRepository implements VerificationCodeReposit
         maxAttempts: number
     ): Promise<CodeCheck> {
         const [code] = await this.prisma.$queryRaw<CountedCode[]>`
-            UPDATE "VerificationCode" SET "attempts" = "attempts" + 1
+            UPDATE "VerificationCode"
+            SET "attempts" = "attempts" + CASE WHEN "codeHash" = ${codeHash} THEN 0 ELSE 1 END
             WHERE "email" = ${email} AND "purpose" = ${purpose} AND "consumedAt" IS NULL
             RETURNING "codeHash", "attempts", "expiresAt"`
         // Never sent, or already used.
         if (!code) return 'wrong'
+        if (sameHash(code.codeHash, codeHash)) {
+            return code.expiresAt <= now || code.attempts >= maxAttempts ? 'expired' : 'right'
+        }
         if (code.expiresAt <= now || code.attempts > maxAttempts) return 'expired'
-        if (sameHash(code.codeHash, codeHash)) return 'right'
         // That was the last try: say so now, not on the next one.
         return code.attempts >= maxAttempts ? 'expired' : 'wrong'
     }

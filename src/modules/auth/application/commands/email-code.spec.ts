@@ -141,6 +141,18 @@ describe('Codes by email (REQ-AUTH-01, REQ-AUTH-02)', () => {
         expect((hour as RateLimitedError).details).toEqual({ reason: 'emails' })
     })
 
+    it('answers "forgot password" the same for an account whose email cannot be queued (NFR-SEC-05)', async () => {
+        const w = setup()
+        w.account()
+        w.mailer.sendCode = () => Promise.reject(new Error('queue unreachable'))
+
+        // Only an address with an account has an email to queue: failing it must not show.
+        await expect(w.forgot.execute(new ForgotPasswordCommand(ADA, IP, 'vi'))).resolves.toBeUndefined()
+        await expect(
+            w.forgot.execute(new ForgotPasswordCommand('nobody@example.test', IP, 'vi'))
+        ).resolves.toBeUndefined()
+    })
+
     it('stops guesses at ten wrong codes an hour per address, across codes, for an address with no account too (D-134)', async () => {
         for (const hasAccount of [true, false]) {
             const w = setup()

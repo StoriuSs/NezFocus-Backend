@@ -19,7 +19,8 @@ import { enforce } from '../../services/limits'
  * account" — and only the inbox's owner reads it.
  *
  * Limits come first, and count every address: one code email a minute and
- * five an hour per address, shared with reset codes; ten an hour per IP.
+ * five an hour per address, shared with reset codes; thirty in five minutes
+ * per IP (D-135).
  */
 @CommandHandler(SendEmailCodeCommand)
 export class SendEmailCodeHandler implements ICommandHandler<SendEmailCodeCommand> {

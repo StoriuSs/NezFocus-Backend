@@ -27,6 +27,12 @@ export interface AccountCompletionInput {
     displayName: string
     /** Already normalised and matching USERNAME_PATTERN. */
     username: string
+    /**
+     * The new password's hash, written with the rest or not at all: a
+     * completion that loses (another tab first, the username taken) leaves
+     * the password as it was (Kiểm 2 review).
+     */
+    passwordHash: string
     /** From canonicalTimeZone. */
     timezone: string
     language: string
@@ -51,7 +57,8 @@ export interface UserDirectoryPort {
 
     /**
      * Finish an account: name, username, Terms, first settings — at once,
-     * and only if it is not completed yet.
+     * and only if it is not completed yet, with the password in the same
+     * transaction.
      * @throws UsernameTakenError (USERNAME_CONFLICT) when a live account has
      *   the username, decided as it is written
      * @returns null if the account is gone or was already completed

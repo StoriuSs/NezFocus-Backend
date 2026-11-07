@@ -27,12 +27,26 @@ export class CodeIssuer {
      *   nothing — a reset asked for an address with no account still gets a
      *   code nobody knows, so guesses at it run out exactly as for any other
      *   address (D-121)
+     * @param whenMailFails given: an email that cannot be queued is handed to
+     *   it instead of failing the request (the code is stored either way)
      */
-    async issue(address: string, purpose: CodePurpose, now: Date, email: CodeEmail | null): Promise<void> {
+    async issue(
+        address: string,
+        purpose: CodePurpose,
+        now: Date,
+        email: CodeEmail | null,
+        whenMailFails?: (error: unknown) => void
+    ): Promise<void> {
         const code = generateVerificationCode(6)
         const expiresAt = new Date(now.getTime() + this.settings.codeTtlMinutes * 60_000)
         await this.codes.replace(address, purpose, this.hash(code, address, purpose), expiresAt)
-        if (email) await this.mailer.sendCode(address, code, purpose, this.settings.codeTtlMinutes, email)
+        if (!email) return
+        try {
+            await this.mailer.sendCode(address, code, purpose, this.settings.codeTtlMinutes, email)
+        } catch (error) {
+            if (!whenMailFails) throw error
+            whenMailFails(error)
+        }
     }
 
     /** Check a guess, counting it as one of the code's tries. A right one is not used up yet. */

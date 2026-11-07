@@ -67,7 +67,7 @@ export class PrismaUserRepository implements UserRepositoryPort {
      * always has one.
      */
     async complete(id: string, completion: AccountCompletion): Promise<UserEntity | null> {
-        const { displayName, username, timezone, language, completedAt } = completion
+        const { displayName, username, passwordHash, timezone, language, completedAt } = completion
         try {
             return await this.prisma.$transaction(async (tx) => {
                 const result = await tx.user.updateMany({
@@ -75,6 +75,17 @@ export class PrismaUserRepository implements UserRepositoryPort {
                     data: { displayName, username, completedAt, termsAcceptedAt: completedAt }
                 })
                 if (result.count === 0) return null
+
+                // The password goes in the same transaction: a completion that
+                // lost (completed meanwhile, username taken) writes no password,
+                // and a completed account always has one (D-130). The table is
+                // auth's; the one write across the module line, kept here so it
+                // cannot happen apart from the completion.
+                await tx.credential.upsert({
+                    where: { userId: id },
+                    create: { userId: id, passwordHash },
+                    update: { passwordHash, passwordUpdatedAt: completedAt }
+                })
 
                 // An upsert, so a username clash is the only unique violation here.
                 await tx.userSettings.upsert({

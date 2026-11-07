@@ -178,6 +178,22 @@ describe('Auth persistence and sessions (integration)', () => {
             expect(answers.filter(Boolean)).toHaveLength(1)
         })
 
+        it('spends a try only on a wrong guess: a right one checked again and again still works', async () => {
+            // Reset checks the code, then may refuse the password (it is the username) and keep the code.
+            const email = newAddress()
+            await codes.replace(email, 'sign-in', hashOf('123456', email), inTenMinutes())
+            for (let i = 0; i < 6; i++) {
+                expect(await codes.check(email, 'sign-in', hashOf('123456', email), new Date(), 5)).toBe('right')
+            }
+            // Five wrong ones still kill it.
+            const wrong = []
+            for (let i = 0; i < 5; i++) {
+                wrong.push(await codes.check(email, 'sign-in', hashOf(String(900000 + i), email), new Date(), 5))
+            }
+            expect(wrong).toEqual(['wrong', 'wrong', 'wrong', 'wrong', 'expired'])
+            expect(await codes.check(email, 'sign-in', hashOf('123456', email), new Date(), 5)).toBe('expired')
+        })
+
         it('does not let an older code use up the newer one that replaced it', async () => {
             // A guess at the old code passes its check, then a new code is sent before it is used.
             const email = newAddress()

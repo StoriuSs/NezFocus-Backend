@@ -82,6 +82,8 @@ class FakeDirectory implements UserDirectoryPort {
     users = new Map<string, DirectoryUser>()
     /** What each completed account chose. */
     settings = new Map<string, { timezone: string; language: string }>()
+    /** The credentials' hashes: completing writes the password with the rest. */
+    passwords?: Map<string, string>
     private next = 1
 
     add(overrides: Partial<DirectoryUser> = {}): DirectoryUser {
@@ -116,6 +118,8 @@ class FakeDirectory implements UserDirectoryPort {
         if (!user || user.deletedAt || user.completedAt) return null
         const holder = [...this.users.values()].find((u) => u.username === input.username && !u.deletedAt)
         if (holder) throw new UsernameTakenError(input.username)
+        // One write, like the repository's transaction.
+        this.passwords?.set(id, input.passwordHash)
         Object.assign(user, {
             displayName: input.displayName,
             username: input.username,
@@ -136,6 +140,11 @@ class FakeCredentials implements CredentialRepositoryPort {
     }
     async setHash(userId: string, hash: string) {
         this.hashes.set(userId, hash)
+    }
+    async replaceHash(userId: string, expected: string, hash: string) {
+        if (this.hashes.get(userId) !== expected) return false
+        this.hashes.set(userId, hash)
+        return true
     }
     async delete(userId: string) {
         this.hashes.delete(userId)
@@ -297,9 +306,10 @@ class FakeCodes implements VerificationCodeRepositoryPort {
     async check(email: string, purpose: CodePurpose, codeHash: string, now: Date, max: number): Promise<CodeCheck> {
         const code = this.codes.get(`${email}:${purpose}`)
         if (!code || code.used) return 'wrong'
+        // Like the repository: only a wrong guess uses a try.
+        if (code.hash === codeHash) return code.expiresAt <= now || code.attempts >= max ? 'expired' : 'right'
         code.attempts++
         if (code.expiresAt <= now || code.attempts > max) return 'expired'
-        if (code.hash === codeHash) return 'right'
         return code.attempts >= max ? 'expired' : 'wrong'
     }
     async use(email: string, purpose: CodePurpose, codeHash: string) {
@@ -431,6 +441,7 @@ const settings: AuthSettings = {
 export function setup() {
     const directory = new FakeDirectory()
     const credentials = new FakeCredentials()
+    directory.passwords = credentials.hashes
     const hasher = new FakeHasher()
     const limiter = new FakeLimiter()
     const tokens = new FakeTokens()

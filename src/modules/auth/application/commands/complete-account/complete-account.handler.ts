@@ -1,5 +1,5 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { CompleteAccountCommand } from './complete-account.command'
 import { normaliseUsername, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
@@ -18,6 +18,7 @@ import {
     SESSION_CACHE,
     SessionCachePort
 } from '../../ports'
+import { afterCommit } from '../../services/after-commit'
 
 /**
  * The "complete your account" step (REQ-AUTH-01, D-61): display name,
@@ -25,14 +26,18 @@ import {
  * made by a code or by Google. Until it is done, every other signed-in route
  * answers ACCOUNT_INCOMPLETE (AccessTokenGuard, D-128).
  *
- * The password is stored before the account is marked complete, so a
- * completed account always has one (D-130): if completing then fails — the
- * username was taken a moment ago — the account is still incomplete, and the
- * next try replaces the password. The other order could leave a completed
- * account with no password. The cost: two submissions with different
- * passwords at the same moment (two tabs) can leave the password of the one
- * answered ACCOUNT_ALREADY_COMPLETE. Both came from the owner's own sessions,
- * and "forgot password" sets it straight.
+ * The password is written in the same transaction that marks the account
+ * complete (UserDirectoryPort.complete), so a completed account always has
+ * one (D-130), and a submission that loses — another tab completed it first,
+ * the username was taken a moment ago — changes no password. Written apart,
+ * the loser of two tabs could leave its password on the completed account,
+ * and a taken username could replace a password chosen through "forgot
+ * password" without its owner being told (Kiểm 2 review).
+ *
+ * Once that transaction has committed, the account is complete: dropping the
+ * cached copy and the "password changed" email are logged if they fail, not
+ * answered as a failure the next try would contradict (ACCOUNT_ALREADY_COMPLETE).
+ * A cached copy left behind expires within minutes (D-128).
  *
  * The username is free or not at the moment it is written: the availability
  * check the page makes while typing is only a hint (REQ-AUTH-01).
@@ -43,6 +48,8 @@ import {
  */
 @CommandHandler(CompleteAccountCommand)
 export class CompleteAccountHandler implements ICommandHandler<CompleteAccountCommand> {
+    private readonly logger = new Logger(CompleteAccountHandler.name)
+
     constructor(
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
@@ -64,10 +71,12 @@ export class CompleteAccountHandler implements ICommandHandler<CompleteAccountCo
         // Usually none yet; one chosen through "forgot password" before this
         // step is replaced with only a session, so its owner hears of it.
         const hadPassword = (await this.credentials.findHash(user.id)) !== null
-        await this.credentials.setHash(user.id, await this.hasher.hash(form.password))
+        // Written with the completion, in one transaction: a submission that
+        // loses changes no password.
         const completed = await this.directory.complete(user.id, {
             displayName: form.displayName,
             username,
+            passwordHash: await this.hasher.hash(form.password),
             timezone: form.timezone,
             language: form.language,
             completedAt: new Date()
@@ -75,7 +84,12 @@ export class CompleteAccountHandler implements ICommandHandler<CompleteAccountCo
         // Another submission completed it first.
         if (!completed) throw new AccountAlreadyCompleteError()
 
-        await this.cache.invalidateUser(user.id)
-        if (hadPassword && user.email) await this.mailer.sendPasswordChanged(user.email, form.language)
+        const email = user.email
+        await afterCommit(this.logger, 'Account completion', [
+            () => this.cache.invalidateUser(user.id),
+            async () => {
+                if (hadPassword && email) await this.mailer.sendPasswordChanged(email, form.language)
+            }
+        ])
     }
 }

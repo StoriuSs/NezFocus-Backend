@@ -16,12 +16,19 @@ function refuseOver(checks: Checks, states: RateLimitState[]): void {
 /**
  * Refuse if any rule is used up; otherwise count a hit against each. A
  * refused request counts against nothing: pressing "send" again during the
- * one-minute wait must not use up the five an hour. (Two requests racing past
- * the check are still caught by the count.)
+ * one-minute wait must not use up the five an hour. Requests racing past the
+ * check are caught by the count, and give their hits back: six sent at once
+ * send one email and use one of the five, not six (Kiểm 2 review).
  */
 export async function enforce(limiter: RateLimitPort, checks: Checks): Promise<void> {
     await refuseIfLimited(limiter, checks)
-    refuseOver(checks, await Promise.all(checks.map(([rule, subject]) => limiter.hit(rule, subject))))
+    const states = await Promise.all(checks.map(([rule, subject]) => limiter.hit(rule, subject)))
+    try {
+        refuseOver(checks, states)
+    } catch (refused) {
+        await Promise.all(checks.map(([rule, subject]) => limiter.release(rule, subject)))
+        throw refused
+    }
 }
 
 /** Refuse, without counting, if any rule is already used up. */

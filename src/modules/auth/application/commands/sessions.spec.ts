@@ -21,6 +21,34 @@ describe('Signing in', () => {
         expect(w.sessions.sessions).toHaveLength(0)
     })
 
+    it('opens no session when the password changed while it was being checked (a reset racing it)', async () => {
+        const w = setup()
+        const user = w.account()
+        const verify = w.hasher.verify.bind(w.hasher)
+        w.hasher.verify = async (hash, password) => {
+            // The owner resets the password, ending every session, while this old one is hashed.
+            w.credentials.hashes.set(user.id, 'hash:Quartz-Meadow-Otter-9')
+            return verify(hash, password)
+        }
+
+        await expect(signIn(w)).rejects.toThrow(InvalidCredentialsError)
+        expect(w.sessions.sessions).toHaveLength(0)
+    })
+
+    it('does not put the old password back when re-hashing races a reset', async () => {
+        const w = setup()
+        const user = w.account()
+        w.hasher.needsRehash = () => true
+        const verify = w.hasher.verify.bind(w.hasher)
+        w.hasher.verify = async (hash, password) => {
+            w.credentials.hashes.set(user.id, 'hash:Quartz-Meadow-Otter-9')
+            return verify(hash, password)
+        }
+
+        await expect(signIn(w)).rejects.toThrow(InvalidCredentialsError)
+        expect(w.credentials.hashes.get(user.id)).toBe('hash:Quartz-Meadow-Otter-9')
+    })
+
     it('refuses the sixth attempt after five failures for an address, even with the right password', async () => {
         const w = setup()
         w.account()

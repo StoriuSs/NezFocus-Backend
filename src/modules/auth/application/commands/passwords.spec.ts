@@ -26,6 +26,21 @@ describe('Passwords', () => {
         expect(issued.accessToken).toBe(`access:${user.id}:session-3`)
     })
 
+    it('still signs in after a reset whose email or cache step fails: the password has changed', async () => {
+        const w = setup()
+        const user = w.account()
+        await signIn(w)
+        await w.forgot.execute(new ForgotPasswordCommand('ada@example.test', IP))
+        const code = w.mailer.lastCode('ada@example.test', 'password-reset')!
+        w.mailer.sendPasswordChanged = () => Promise.reject(new Error('queue unreachable'))
+        w.cache.invalidateSessions = () => Promise.reject(new Error('redis unreachable'))
+
+        const issued = await w.reset.execute(new ResetPasswordCommand('ada@example.test', code, NEW_PASSWORD, CLIENT))
+
+        expect(issued.accessToken).toBe(`access:${user.id}:session-2`)
+        expect(w.sessions.live(user.id)).toEqual(['session-2'])
+    })
+
     it('refuses a change after five wrong current passwords, even with the right one', async () => {
         const w = setup()
         const user = w.account()

@@ -101,16 +101,52 @@ describe('Completing an account (REQ-AUTH-01, D-61)', () => {
         expect(w.credentials.hashes.get(user.id)).toBe(`hash:${PASSWORD}`)
     })
 
-    it('never leaves a completed account without a password (D-130): no password stored, not completed', async () => {
+    it('never leaves a completed account without a password (D-130): one write stores both, or neither', async () => {
         const w = setup()
         const user = newAccount(w)
-        w.credentials.setHash = async () => {
+        w.directory.complete = async () => {
             throw new Error('database unreachable')
         }
 
         await expect(complete(w, user.id)).rejects.toThrow('database unreachable')
 
         expect((await w.directory.findById(user.id))!.completedAt).toBeNull()
+        expect(w.credentials.hashes.has(user.id)).toBe(false)
+    })
+
+    it('keeps the password of the tab that won when two complete at once, and the loser changes nothing', async () => {
+        const w = setup()
+        const user = newAccount(w)
+
+        const outcomes = await Promise.allSettled([
+            complete(w, user.id, { password: PASSWORD }),
+            complete(w, user.id, { password: NEW_PASSWORD })
+        ])
+
+        expect(outcomes.map((o) => o.status)).toEqual(['fulfilled', 'rejected'])
+        expect((outcomes[1] as PromiseRejectedResult).reason).toBeInstanceOf(AccountAlreadyCompleteError)
+        expect(w.credentials.hashes.get(user.id)).toBe(`hash:${PASSWORD}`)
+    })
+
+    it('keeps a password chosen through "forgot password" when the username was taken meanwhile, and says nothing', async () => {
+        const w = setup()
+        const user = w.account({ email: 'an.nguyen@example.test' })
+        w.directory.add({ email: 'other@example.test', username: 'an.nguyen', completedAt: new Date() })
+
+        await expect(complete(w, user.id, { password: NEW_PASSWORD })).rejects.toThrow(UsernameTakenError)
+
+        expect(w.credentials.hashes.get(user.id)).toBe(`hash:${PASSWORD}`)
+        expect(w.mailer.notices).toEqual([])
+    })
+
+    it('answers success once completed, even if the cache or the email step then fails', async () => {
+        const w = setup()
+        const user = w.account({ email: 'an.nguyen@example.test' })
+        w.cache.invalidateUser = () => Promise.reject(new Error('redis unreachable'))
+        w.mailer.sendPasswordChanged = () => Promise.reject(new Error('queue unreachable'))
+
+        await expect(complete(w, user.id, { password: NEW_PASSWORD })).resolves.toBeUndefined()
+        expect((await w.directory.findById(user.id))!.completedAt).toEqual(expect.any(Date))
     })
 
     it('refuses a deleted account', async () => {

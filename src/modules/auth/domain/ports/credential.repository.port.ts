@@ -8,6 +8,12 @@ export interface CredentialRepositoryPort {
     /** Create or replace. */
     setHash(userId: string, hash: string): Promise<void>
 
+    /**
+     * Replace the hash only if it is still `expected`: re-hashing an old
+     * password must not undo a change made meanwhile. @returns whether it did
+     */
+    replaceHash(userId: string, expected: string, hash: string): Promise<boolean>
+
     /** Remove the password, if there is one. */
     delete(userId: string): Promise<void>
 

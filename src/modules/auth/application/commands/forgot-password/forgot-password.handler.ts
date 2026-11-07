@@ -1,5 +1,5 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { ForgotPasswordCommand } from './forgot-password.command'
 import { normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { CREDENTIAL_REPOSITORY, CredentialRepositoryPort } from '@/modules/auth/domain'
@@ -18,10 +18,14 @@ import { enforce } from '../../services/limits'
  *   real one (D-121). Otherwise "the fifth guess says expired" would tell
  *   which addresses have accounts.
  * - The email is queued, so a mail server that is down cannot turn "no
- *   account" and "account" into different answers.
+ *   account" and "account" into different answers. Nor can a queue that is
+ *   down: only an address with an account has an email to queue, so failing
+ *   to queue one is logged, not answered (Kiểm 2 review).
  */
 @CommandHandler(ForgotPasswordCommand)
 export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordCommand> {
+    private readonly logger = new Logger(ForgotPasswordHandler.name)
+
     constructor(
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
@@ -47,10 +51,12 @@ export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordComm
         // No password yet (the account was never completed, or was made with
         // Google): the email offers to choose one, rather than to reset one.
         const firstPassword = (await this.credentials.findHash(user.id)) === null
-        await this.codeIssuer.issue(address, 'password-reset', now, {
-            language,
-            firstPassword,
-            name: user.displayName ?? undefined
-        })
+        await this.codeIssuer.issue(
+            address,
+            'password-reset',
+            now,
+            { language, firstPassword, name: user.displayName ?? undefined },
+            (error) => this.logger.error(`Could not queue a password reset email: ${(error as Error)?.message}`)
+        )
     }
 }

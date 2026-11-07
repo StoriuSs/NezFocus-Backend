@@ -1,5 +1,5 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { ResetPasswordCommand } from './reset-password.command'
 import { normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
@@ -29,6 +29,7 @@ import { CodeIssuer } from '../../services/code-issuer'
 import { IssuedSession } from '../../services/session-issuer'
 import { SignInGate } from '../../services/sign-in-gate'
 import { withGuess } from '../../services/limits'
+import { afterCommit } from '../../services/after-commit'
 
 /**
  * Choose a new password with the code from "forgot password", and sign in
@@ -54,6 +55,8 @@ import { withGuess } from '../../services/limits'
  */
 @CommandHandler(ResetPasswordCommand)
 export class ResetPasswordHandler implements ICommandHandler<ResetPasswordCommand> {
+    private readonly logger = new Logger(ResetPasswordHandler.name)
+
     constructor(
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
@@ -101,10 +104,17 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
         const hadPassword = (await this.credentials.findHash(user.id)) !== null
         await this.credentials.setHash(user.id, await this.hasher.hash(command.newPassword))
         const ended = await this.sessions.revokeAllForUser(user.id, 'password-reset', now)
-        await this.cache.invalidateSessions(ended)
-        await this.cache.invalidateUser(user.id)
-        if (hadPassword) await this.mailer.sendPasswordChanged(address, command.language)
-        else await this.mailer.sendPasswordAdded(address, command.language)
+        // The password has changed and the sessions are revoked: what is left
+        // is logged if it fails, and the reset still signs in. A cached
+        // session left behind expires on its own, as it would have anyway.
+        await afterCommit(this.logger, 'Password reset', [
+            () => this.cache.invalidateSessions(ended),
+            () => this.cache.invalidateUser(user.id),
+            () =>
+                hadPassword
+                    ? this.mailer.sendPasswordChanged(address, command.language)
+                    : this.mailer.sendPasswordAdded(address, command.language)
+        ])
         this.events.record('password_reset')
         return this.gate.pass(user.id, command.client, now)
     }

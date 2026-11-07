@@ -1,7 +1,7 @@
 import { RateLimitedError } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS, RateLimitRule, RateLimitState } from '../rate-limits'
 import { RateLimitPort } from '../ports'
-import { withGuess } from './limits'
+import { enforce, withGuess } from './limits'
 
 /** Counts in memory like the shared RateLimiter. */
 class Limiter implements RateLimitPort {
@@ -61,5 +61,33 @@ describe('withGuess', () => {
             50 - perUser.limit
         )
         expect(limiter.counts.get(`${perUser.name}:ada`)).toBe(perUser.limit)
+    })
+})
+
+describe('enforce', () => {
+    const { codeEmailsPerEmailMinute: minute, codeEmailsPerEmailHour: hour } = AUTH_RATE_LIMITS
+
+    it('counts only the requests it lets through when a burst races past the check', async () => {
+        const limiter = new Limiter()
+        const checks: [RateLimitRule, string][] = [
+            [minute, 'ada'],
+            [hour, 'ada']
+        ]
+
+        // A double click, or six at once: one email goes out.
+        const outcomes = await Promise.all(
+            Array.from({ length: 6 }, () =>
+                enforce(limiter, checks).then(
+                    () => 'sent',
+                    (e: unknown) => e
+                )
+            )
+        )
+
+        expect(outcomes.filter((o) => o === 'sent')).toHaveLength(1)
+        expect(outcomes.filter((o) => o instanceof RateLimitedError)).toHaveLength(5)
+        // The hour still has four emails left, as for one email sent.
+        expect(limiter.counts.get(`${hour.name}:ada`)).toBe(1)
+        expect(limiter.counts.get(`${minute.name}:ada`)).toBe(1)
     })
 })

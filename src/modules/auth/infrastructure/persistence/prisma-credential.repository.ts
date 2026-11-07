@@ -19,6 +19,14 @@ export class PrismaCredentialRepository implements CredentialRepositoryPort {
         })
     }
 
+    async replaceHash(userId: string, expected: string, hash: string): Promise<boolean> {
+        const replaced = await this.prisma.credential.updateMany({
+            where: { userId, passwordHash: expected },
+            data: { passwordHash: hash, passwordUpdatedAt: new Date() }
+        })
+        return replaced.count === 1
+    }
+
     async delete(userId: string): Promise<void> {
         await this.prisma.credential.deleteMany({ where: { userId } })
     }

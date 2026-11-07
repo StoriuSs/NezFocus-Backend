@@ -66,13 +66,16 @@ describe('Account lifecycle (integration)', () => {
     })
 
     describe('complete', () => {
-        const completion = (username: string) => ({
+        const completion = (username: string, passwordHash = 'argon2id$new') => ({
             displayName: 'Ada',
             username,
+            passwordHash,
             timezone: 'Asia/Ho_Chi_Minh',
             language: 'vi',
             completedAt: new Date()
         })
+        const passwordOf = async (id: string) =>
+            (await prisma.credential.findUnique({ where: { userId: id } }))?.passwordHash ?? null
         const freshName = () => `itest_${randomUUID().slice(0, 8)}`
 
         it('completes an account once when it is sent twice at once, with its settings row', async () => {
@@ -117,6 +120,32 @@ describe('Account lifecycle (integration)', () => {
         it('leaves a deleted account alone', async () => {
             const user = await newUser({ deletedAt: new Date() })
             expect(await users.complete(user.id, completion(freshName()))).toBeNull()
+            expect(await passwordOf(user.id)).toBeNull()
+        })
+
+        it('stores the password of the completion that won, and none of the one that lost', async () => {
+            // Two tabs, two passwords: the account must end with the one its owner was told worked.
+            const user = await newUser()
+            const name = freshName()
+
+            const results = await Promise.all([
+                users.complete(user.id, completion(name, 'argon2id$tab-a')),
+                users.complete(user.id, completion(name, 'argon2id$tab-b'))
+            ])
+
+            const winner = results[0] !== null ? 'argon2id$tab-a' : 'argon2id$tab-b'
+            expect(await passwordOf(user.id)).toBe(winner)
+        })
+
+        it('keeps the password chosen before when the username was taken meanwhile', async () => {
+            const taken = freshName()
+            await newUser({ username: taken })
+            const user = await newUser()
+            await prisma.credential.create({ data: { userId: user.id, passwordHash: 'argon2id$from-forgot' } })
+
+            await expect(users.complete(user.id, completion(taken))).rejects.toBeInstanceOf(UsernameTakenError)
+
+            expect(await passwordOf(user.id)).toBe('argon2id$from-forgot')
         })
     })
 

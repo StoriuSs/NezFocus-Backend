@@ -14,4 +14,11 @@ describe('canonicalTimeZone', () => {
             expect(canonicalTimeZone(value)).toBeNull()
         }
     })
+
+    it('refuses an offset in any letter case, and stores ICU spelling for a name sent in another case', () => {
+        // ICU matches names in any case: etc/gmt+7 is the offset Etc/GMT+7 all the same.
+        expect(canonicalTimeZone('etc/gmt+7')).toBeNull()
+        expect(canonicalTimeZone('ETC/GMT-14')).toBeNull()
+        expect(canonicalTimeZone('asia/tokyo')).toBe('Asia/Tokyo')
+    })
 })

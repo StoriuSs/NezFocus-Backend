@@ -77,10 +77,17 @@ export class LoginHandler implements ICommandHandler<LoginCommand> {
 
         await this.limiter.reset(AUTH_RATE_LIMITS.loginFailuresPerEmail, email)
 
-        // Raising the hashing cost reaches existing accounts as they sign in.
+        // The password may have changed while it was hashed — a reset, which
+        // ends every session, racing this sign-in. Re-hashing replaces only
+        // the hash that was checked, and a session opens only while it is
+        // still the password: otherwise the old password would outlive the
+        // reset (Kiểm 2 review). Not counted as a wrong guess.
+        let current = hash
         if (this.hasher.needsRehash(hash)) {
-            await this.credentials.setHash(user.id, await this.hasher.hash(command.password))
+            const rehashed = await this.hasher.hash(command.password)
+            if (await this.credentials.replaceHash(user.id, hash, rehashed)) current = rehashed
         }
+        if ((await this.credentials.findHash(user.id)) !== current) throw new InvalidCredentialsError()
 
         this.events.record('login_succeeded')
         return this.gate.pass(user.id, command.client, new Date())

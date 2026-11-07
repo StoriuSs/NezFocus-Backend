@@ -5,6 +5,8 @@ export interface AccountCompletion {
     displayName: string
     /** Normalised: lower case, trimmed. */
     username: string
+    /** Stored with the completion or not at all (the Credential row of auth). */
+    passwordHash: string
     /** An IANA zone name (canonicalTimeZone). */
     timezone: string
     language: string
