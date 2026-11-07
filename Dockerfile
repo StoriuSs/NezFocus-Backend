@@ -18,8 +18,12 @@
 # Shared base with system-level dependencies needed by native modules (sharp, prisma)
 FROM node:22.23.2-alpine AS base
 
+# Alpine's security fixes first: the node image is built from the packages of
+# its day, so a fix published since (musl, zlib…) is missing until the next
+# node release, and CI's Trivy scan fails on it. Every stage, prod included,
+# starts from here.
 # Required by sharp (image processing) and Prisma
-RUN apk add --no-cache \
+RUN apk upgrade --no-cache && apk add --no-cache \
     libc6-compat \
     openssl
 
