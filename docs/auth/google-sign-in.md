@@ -156,7 +156,7 @@ The rules, in order ([finish-oauth.handler.ts](../../src/modules/auth/applicatio
 | This Google person (`sub`) is already linked to an account | Sign in to that account | none |
 | ...but that account is deleted | Refused: `?error=account_deleted` | none |
 | Not linked, and Google did not say the email is verified (or sent none) | Refused: `?error=email_unverified` | none |
-| Not linked, no live account has the address | A new account: **no password**, not completed, display name from Google (trimmed, cut to 32 characters). Linked. It goes through "complete your account" like any other (D-61, D-130) | none |
+| Not linked, no live account has the address | A new account: **no password**, not completed, display name from Google (composed, trimmed, cut to 32 characters without splitting an emoji; none if nothing visible is left, D-139). Linked. It goes through "complete your account" like any other (D-61, D-130) | none |
 | Not linked, an account has the address | Linked to it, then signed in. Its password, if it has one, keeps working | "Google sign-in was added to your {app} account" |
 
 Notes on the table:

@@ -349,21 +349,16 @@ The options are silently ignored. This keeps the interface uniform — controlle
         storage: memoryStorage(),
         // Checked by multer while the body streams in: an oversized file is
         // refused before it is buffered into memory.
-        limits: { fileSize: UPLOAD_LIMITS.maxFileSizeBytes, files: 1 }
+        // Over the limit: 413 UPLOAD_FILE_TOO_LARGE (GlobalExceptionFilter).
+        limits: { fileSize: AVATAR_MAX_BYTES, files: 1 } // 8 MB, users/domain/avatar.rules.ts
     })
 )
 async uploadAvatar(
     @CurrentUser() user: AuthenticatedUser,
-    @UploadedFile(
-        new ParseFilePipe({
-            fileIsRequired: true,
-            validators: [
-                new MaxFileSizeValidator({ maxSize: UPLOAD_LIMITS.maxFileSizeBytes + 1 }),
-                // The declared type is the client's claim; sharp checks the real format later.
-                new FileTypeValidator({ fileType: /^image\/(jpeg|jpg|png|webp|gif)$/ })
-            ]
-        })
-    )
+    // A file is required, and its declared type must be JPG, PNG or WEBP
+    // (else 415 UPLOAD_INVALID_TYPE). The declared type is the client's claim;
+    // sharp checks the real format later (inputFormats in the adapter).
+    @UploadedFile(AvatarFilePipe)
     file: Express.Multer.File
 ) {
     const result: UploadAvatarResult = await this.commandBus.execute(
@@ -548,7 +543,7 @@ Four sources of orphaned objects:
 
 1. **Direct upload abandoned.** Browser PUT to S3 succeeded but `/confirm` never called. Mitigation: lifecycle rule expires `uploads/temp/*` after 24 hours; the `/confirm` endpoint moves confirmed objects to a permanent prefix. (Not relevant to the starter, which ships no direct upload.)
 2. **DB write failed after upload.** Backend uploaded to S3 then the Postgres update failed. The starter's `UploadAvatarHandler` handles this: when `replaceAvatar` throws, or finds no account (deleted while the image was processed), it deletes the file it just uploaded (step 2 above).
-3. **A new avatar replaced an old one.** `AvatarUploadedEvent` carries the old key; `CleanupOldAvatarHandler` queues its deletion on the `file-cleanup` queue, which retries if storage is briefly down.
+3. **A new avatar replaced an old one, or the avatar was removed.** `AvatarUploadedEvent` (upload) and `AvatarRemovedEvent` (`DELETE /api/v1/users/me/avatar`, which swaps the key to `null` with the same `replaceAvatar`) carry the old key; `CleanupOldAvatarHandler` queues its deletion on the `file-cleanup` queue, which retries if storage is briefly down.
 4. **User deleted their account.** Handled, through events:
 
    ```

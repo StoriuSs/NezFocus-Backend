@@ -272,7 +272,8 @@ users/
 │   ├── entities/user.entity.ts
 │   ├── errors/                 # UsernameTakenError, and friends
 │   ├── ports/user.repository.port.ts
-│   └── username.rules.ts       # The pattern and why it is that narrow
+│   ├── username.rules.ts       # The pattern and why it is that narrow
+│   └── profile-text.rules.ts   # Display name and bio, counted in characters, not UTF-16 units
 ├── application/                # What the app can do
 │   ├── commands/               # One folder per operation
 │   ├── queries/

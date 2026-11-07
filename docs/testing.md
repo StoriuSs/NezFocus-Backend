@@ -347,8 +347,8 @@ without type-checking (`isolatedModules` in `test/esm-transform.js`):
 |---|---|
 | Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `email-code` (sign-up and sign-in by code), `sessions` (sign-in limits, refresh, the list of devices and signing them out), `passwords`, `google`, `delete-account` |
 | Auth building blocks | `limits.spec.ts` (guesses counted before they are checked), `password-policy.spec.ts`, `device.spec.ts` (browser, system and device kind from a user agent), `masked-ip.spec.ts` (IPv4, IPv6 and `::ffff:` addresses masked), `route-helpers.spec.ts` (the user agent cut to 512), `jose-token-service.adapter.spec.ts` (a token for another audience, issuer, or past its lifetime is refused) |
-| Users | `upload-avatar` (no orphaned file), `sweep-deleted-accounts` |
-| Shared | the roles guard, 5xx answers that leak nothing, URL redaction in logs, the queue failure reporter (no job data), image-processing limits, S3 errors kept out of answers, stored file extensions, IPv6 /64, the verification code generator, unique error codes |
+| Users | `upload-avatar` (no orphaned file), `remove-avatar` (the file goes; no avatar answers the same), `sweep-deleted-accounts`, `profile-text.rules.spec.ts` (NFC, code points, a name that looks empty), `update-profile.request.dto.spec.ts` (`null` refused, empty bio clears), `avatar-file.pipe.spec.ts` (declared type, 415), `user-directory.adapter.spec.ts` (a Google name cut without splitting an emoji) |
+| Shared | the roles guard, 5xx answers that leak nothing, a 413 file named `UPLOAD_FILE_TOO_LARGE` and a 413 JSON body `PAYLOAD_TOO_LARGE_ERROR`, URL redaction in logs, the queue failure reporter (no job data), image-processing limits, S3 errors kept out of answers, stored file extensions, IPv6 /64, the verification code generator, unique error codes |
 | Configuration | env validation (production refusals) and `env:check` (files in step), pino and Sentry redaction, image versions, compose healthchecks, monitoring files |
 
 ### E2E tests
@@ -391,6 +391,7 @@ share the services.
 | `auth-http` | Postgres, Redis, Mailpit | the whole app over HTTP: an account made with an emailed code and signed in to with the next one, a first password through forgot-password, sign-in, refresh from the web app only, sign-out; an IPv6 client counted by its /64 |
 | `oauth-http` | Postgres, Redis, Mailpit | Google sign-in against the fake OpenID Connect provider (`fake-oidc-issuer.ts`): a valid ID token signs in; one for another sign-in, another app, or signed with an unknown key is refused |
 | `account-lifecycle` | Postgres, Redis | concurrent avatar swaps and deletions; two accounts made for one address at once become one |
+| `profile-http` | Postgres, Redis, Mailpit | `PATCH /users/me` and the avatar routes over HTTP: names counted in characters (decomposed Vietnamese, emoji), a name that would look empty or `null` refused; a JPG, PNG or WEBP avatar taken and removed (twice answers the same); a GIF refused by declared type or by its bytes (415); a file over 8 MB refused with `UPLOAD_FILE_TOO_LARGE` (413) |
 | `rate-limiter` | Redis | exactly `limit` hits pass when many arrive at once |
 | `s3-storage` | RustFS | a private bucket refuses an unsigned URL and serves a signed one |
 

@@ -68,12 +68,20 @@ const result = await this.uploadService.uploadFile(file, {
 ### Processed images
 
 Decode, resize and re-encode with sharp, then store. What the image is for is
-the caller's to say: the users module's avatar settings (512x512 max, WebP,
-quality 85) live in its adapter, `upload-storage.adapter.ts`.
+the caller's to say: the users module's avatar settings (JPG, PNG or WEBP by
+decoded content, 512x512 max, WebP, quality 85) live in its adapter,
+`upload-storage.adapter.ts`.
 
 ```typescript
 const avatar = await this.uploadService.uploadImage(buffer, {
-    processing: { convertToWebp: true, quality: 85, stripMetadata: true, maxWidth: 512, maxHeight: 512 },
+    processing: {
+        inputFormats: ['jpeg', 'png', 'webp'], // AVATAR_FORMATS: no GIF
+        convertToWebp: true,
+        quality: 85,
+        stripMetadata: true,
+        maxWidth: 512,
+        maxHeight: 512
+    },
     subDirectory: 'avatars',
     filenamePrefix: `avatar-${userId}`,
     baseName: 'avatar'
@@ -115,6 +123,7 @@ interface ImageProcessingOptions {
     stripMetadata?: boolean // Default: true
     maxWidth?: number // Default: 2048
     maxHeight?: number // Default: 2048
+    inputFormats?: readonly string[] // Decoded formats taken, narrower than the default list; else UPLOAD_INVALID_TYPE
 }
 ```
 
@@ -143,7 +152,7 @@ STORAGE_TYPE=local
 
 # Local storage
 UPLOAD_DEST=./uploads
-MAX_FILE_SIZE=5242880  # 5MB in bytes
+MAX_FILE_SIZE=5242880  # 5MB in bytes: the storage layer's general ceiling (an avatar has its own 8 MB)
 
 # Image processing (defaults shown; see "Limits" below)
 MAX_IMAGE_PIXELS=40000000
@@ -220,7 +229,7 @@ A small file can be a very large image. Every image is bounded before and while 
 
 | Limit | Setting | Default | On breach |
 |---|---|---|---|
-| Upload size | `MAX_FILE_SIZE` | 5MB | 413 |
+| Upload size | the route's multer `fileSize` (an avatar: `AVATAR_MAX_BYTES`, 8MB); `MAX_FILE_SIZE` for a stored file | 8MB / 5MB | 413 |
 | Decoded pixels | `MAX_IMAGE_PIXELS` | 40MP | 422 |
 | Time per image | `IMAGE_PROCESSING_TIMEOUT_MS` | 15s | 422 |
 | Images processed at once, per app instance | `IMAGE_PROCESSING_CONCURRENCY` | 2 | the rest wait |
@@ -265,14 +274,15 @@ s3://your-bucket/avatars/avatar-user123-1702567890-abc123.webp
 When replacing or removing files (such as an Avatar), the deletion process handles potential network delays via the `file-cleanup` BullMQ queue. 
 Instead of blocking the HTTP request waiting for S3 to delete the file, the application pushes the storage `key` to the queue, and a background processor (`FileCleanupConsumer`) safely executes the deletion with automatic exponential backoff retries.
 
-Two events queue a deletion:
+Three events queue a deletion:
 
 | Event | Handler | When |
 |---|---|---|
 | `AvatarUploadedEvent` | `CleanupOldAvatarHandler` | a new avatar replaced an old one: the old file goes |
+| `AvatarRemovedEvent` | `CleanupOldAvatarHandler` | the avatar was removed (`DELETE /api/v1/users/me/avatar`): its file goes |
 | `AccountDeletedEvent` | `CleanupAccountAvatarHandler` | the account was deleted (`POST /api/v1/auth/account/delete`): its avatar goes |
 
-Both are in `src/modules/users/application/events/handlers/`. The job id is
+Both handlers are in `src/modules/users/application/events/handlers/`. The job id is
 derived from the key, so the same file queued twice (two deletions at once)
 is one job. The full deletion path is in
 [file-uploads-and-s3.md](./file-uploads-and-s3.md#orphaned-objects-and-cleanup)
@@ -284,8 +294,8 @@ The module throws `CustomException` with specific error codes:
 
 | Error Code | Type                    | Description              |
 | ---------- | ----------------------- | ------------------------ |
-| `413001`   | `UPLOAD_FILE_TOO_LARGE` | File exceeds max size    |
-| `415001`   | `UPLOAD_INVALID_TYPE`   | MIME type not allowed    |
+| `413001`   | `UPLOAD_FILE_TOO_LARGE` | File exceeds max size (multer's limit is mapped to it by `GlobalExceptionFilter`) |
+| `415001`   | `UPLOAD_INVALID_TYPE`   | MIME type or decoded format not allowed |
 | `422001`   | `IMAGE_PROCESSING_FAILED` | Image could not be decoded, too many pixels, or took too long |
 | `503000`   | `SERVICE_UNAVAILABLE_ERROR` | Too many images being processed; try again |
 | `400002`   | `UPLOAD_INVALID_FILE`   | Invalid file object      |

@@ -166,9 +166,9 @@ filter at the edge turns the kind into an HTTP status ([FAQ 9](#faq)).
 **Location:** `modules/users/application/`
 
 This layer orchestrates the business logic using CQRS (Commands, Queries, Events). It contains:
-- **Commands:** "Change something" (e.g., `UpdateProfileCommand`, `UploadAvatarCommand`, `DeleteAccountCommand`).
+- **Commands:** "Change something" (e.g., `UpdateProfileCommand`, `UploadAvatarCommand`, `RemoveAvatarCommand`, `DeleteAccountCommand`).
 - **Queries:** "Read something" (e.g., `CheckUsernameQuery`).
-- **Events:** "Something happened" (e.g., `UserProfileUpdatedEvent`, `AvatarUploadedEvent`, `AccountDeletedEvent`).
+- **Events:** "Something happened" (e.g., `UserProfileUpdatedEvent`, `AvatarUploadedEvent`, `AvatarRemovedEvent`, `AccountDeletedEvent`).
 - **Handlers:** The actual logic for each Command, Query, and Event.
 - **Application Ports:** Interfaces for outside capabilities (`StoragePort`, `BackgroundJobsPort`), and the one this module offers other modules (`UserDirectoryPort`).
 
@@ -559,8 +559,8 @@ The `UsersController` then creates an `UploadAvatarCommand` and hands it to the 
 // Presentation Layer — UsersController
 @Post('me/avatar')
 @Idempotent('10m')
-@UseInterceptors(FileInterceptor('avatar', { storage: memoryStorage(), limits: { fileSize: UPLOAD_LIMITS.maxFileSizeBytes, files: 1 } }))
-async uploadAvatar(@CurrentUser() user: AuthenticatedUser, @UploadedFile(/* ParseFilePipe: size and type */) file: Express.Multer.File) {
+@UseInterceptors(FileInterceptor('avatar', { storage: memoryStorage(), limits: { fileSize: AVATAR_MAX_BYTES, files: 1 } }))
+async uploadAvatar(@CurrentUser() user: AuthenticatedUser, @UploadedFile(AvatarFilePipe /* required, declared type */) file: Express.Multer.File) {
     const result: UploadAvatarResult = await this.commandBus.execute(
         new UploadAvatarCommand(user.id, file.buffer, file.originalname)
     )
@@ -615,7 +615,7 @@ Behind the scenes, NestJS injects the real adapters:
 The handler doesn't know or care about any of this. It just calls the Port interface methods.
 
 #### Step 4: Event Handlers (Side Effects)
-- `AvatarUploadedEvent` → `CleanupOldAvatarHandler` calls `BackgroundJobsPort.deleteFileLater(oldKey)`, which queues a job on the `file-cleanup` queue; `FileCleanupConsumer` deletes the old file, with retries.
+- `AvatarUploadedEvent` → `CleanupOldAvatarHandler` (which also handles `AvatarRemovedEvent`, from `DELETE /users/me/avatar`) calls `BackgroundJobsPort.deleteFileLater(oldKey)`, which queues a job on the `file-cleanup` queue; `FileCleanupConsumer` deletes the old file, with retries.
 - `UserProfileUpdatedEvent` → `RefreshCachedUserHandler`, in the **auth** module, drops its cached copy of the user, so the next request sees the new avatar. (The users module doesn't know who listens.)
 
 #### Summary:
@@ -788,7 +788,9 @@ modules/users/
 │   │   └── username.errors.ts
 │   ├── ports/
 │   │   └── user.repository.port.ts  # Outbound port for persistence
+│   ├── avatar.rules.ts              # 8 MB, JPG / PNG / WEBP (no GIF)
 │   ├── email.rules.ts
+│   ├── profile-text.rules.ts        # display name and bio: NFC, code points, visible characters (D-139)
 │   ├── timezone.rules.ts            # IANA zone names (used by "complete your account")
 │   ├── username.rules.ts
 │   └── index.ts                     # Barrel export
@@ -797,16 +799,19 @@ modules/users/
 │   ├── commands/
 │   │   ├── update-profile/
 │   │   ├── upload-avatar/
+│   │   ├── remove-avatar/           # DELETE /users/me/avatar
 │   │   ├── delete-account/          # dispatched by the auth module after proof
 │   │   └── sweep-deleted-accounts/  # the scheduled erase / unverified clean-up
 │   ├── queries/
-│   │   └── check-username/
+│   │   ├── check-username/
+│   │   └── resolve-avatar-url/
 │   ├── events/
 │   │   ├── handlers/
 │   │   │   ├── cleanup-old-avatar.handler.ts
 │   │   │   └── cleanup-account-avatar.handler.ts
 │   │   ├── user-profile-updated.event.ts
 │   │   ├── avatar-uploaded.event.ts
+│   │   ├── avatar-removed.event.ts
 │   │   └── account-deleted.event.ts
 │   ├── ports/
 │   │   ├── storage.port.ts          # Outbound: file storage
@@ -828,7 +833,9 @@ modules/users/
 ├── presentation/                    # 🔵 The Face (HTTP, queues)
 │   ├── http/
 │   │   ├── users.controller.ts
-│   │   └── dto/                     # one class per file: *.request.dto.ts, *.response.dto.ts
+│   │   ├── avatar-file.pipe.ts      # the avatar's declared type (415 UPLOAD_INVALID_TYPE)
+│   │   └── dto/                     # one class per file: *.request.dto.ts, *.response.dto.ts;
+│   │                                # profile-text.decorators.ts: DisplayNameField, BioField
 │   └── index.ts
 │
 ├── index.ts                         # What other modules may import (the auth module does)

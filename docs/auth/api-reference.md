@@ -355,7 +355,7 @@ on it.
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
-| `display_name` | string | yes | Trimmed, 1 to 32 characters |
+| `display_name` | string | yes | Composed (NFC) and trimmed, then 1 to 32 characters counted in code points (an emoji is one), at least one visible (whitespace and invisible characters such as U+200B or U+3164 do not count), no line breaks or other control characters (D-139). The same rule as `PATCH /users/me` |
 | `username` | string | yes | Trimmed and lower-cased, then 2 to 32 of `a-z 0-9 _ .` ("username must be 2-32 lowercase letters, numbers, underscores or dots"). Permanent |
 | `password` | string | yes | 1 to 1024. The rules are checked by the handler |
 | `timezone` | string | yes | An IANA zone name such as `Asia/Ho_Chi_Minh`, stored as sent, but in ICU's letter case (`asia/tokyo` is stored `Asia/Tokyo`). An offset (`+07:00`, or `Etc/GMT+7` in any letter case) is refused |
@@ -731,7 +731,8 @@ one of these query strings:
 | `failed` | Anything else: the return does not match this browser's cookie, the attempt expired (10 minutes) or was used, Google refused the code or ID token, or the database or Redis failed. The API log says which |
 
 A new address gets a new account, not completed, with no password and the
-display name from Google cut to 32 characters; an existing account is linked,
+display name from Google cut to 32 characters (never inside an emoji; dropped
+when nothing visible is left); an existing account is linked,
 and its owner is emailed that a sign-in method was added, in the account's
 language (English if it has none yet). The web app must check `redirect` again before
 following it. The only JSON this route answers is `404 NOT_FOUND_ERROR` for an

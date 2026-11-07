@@ -262,10 +262,13 @@ Details: [auth/rate-limits.md](auth/rate-limits.md).
 
 ## The web app's side
 
-In the React starter (`React-Starter-No-Keycloak`):
+In the React starter (`React-Starter-No-Keycloak`) and NezFocus-Frontend:
 
-- **`src/features/auth/components/DeleteAccountDialog.tsx`**, shown on the profile
-  page (`src/features/users/pages/Profile.tsx`) as the "Delete account" button.
+- **`src/features/auth/components/DeleteAccountDialog.tsx`**, shown as the
+  "Delete account" button: on the profile page
+  (`src/features/users/pages/Profile.tsx`) in the starter, on the Account
+  settings page (`/settings/account`, `src/features/auth/pages/Settings.tsx`)
+  in NezFocus.
   It needs the password field only. For an account without a password
   (`GET /auth/sign-in-methods` says `password: false`) it should point to
   "forgot password" instead.

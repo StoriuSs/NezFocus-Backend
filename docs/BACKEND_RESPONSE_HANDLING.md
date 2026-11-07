@@ -176,10 +176,10 @@ were dropped; no `2xxxxx` code is sent any more.
 | `409000` | `CONFLICT_ERROR` | A 409 with no code of its own |
 | `409100` | `ACCOUNT_ALREADY_COMPLETE` | "Complete your account" sent for an account already completed |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
-| `413000` | `PAYLOAD_TOO_LARGE_ERROR` | The body is too large |
-| `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over `MAX_FILE_SIZE` |
+| `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
+| `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |
 | `415000` | `UNSUPPORTED_MEDIA_TYPE_ERROR` | A body encoding the server does not take |
-| `415001` | `UPLOAD_INVALID_TYPE` | A file type that is not accepted |
+| `415001` | `UPLOAD_INVALID_TYPE` | A file type that is not accepted, declared or decoded (an avatar: JPG, PNG or WEBP) |
 | `422000` | `VALIDATION_ERROR` | The body does not match the DTO (`data.details`) |
 | `422001` | `IMAGE_PROCESSING_FAILED` | The image could not be processed |
 | `422003` | `IDEMPOTENCY_KEY_MISMATCH` | An `Idempotency-Key` reused with a different body |

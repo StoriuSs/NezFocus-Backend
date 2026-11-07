@@ -181,7 +181,7 @@ The template also:
 
 - blocks `/api/v1/metrics` and `/admin/queues` from the internet (they answer
   `403` from outside; reach them over SSH);
-- limits request bodies to 6 MB (the 5 MB avatar limit plus room);
+- limits request bodies to 9 MB (the 8 MB avatar limit plus room);
 - passes the visitor's real IP to the API, also behind Cloudflare's proxy
   ([below](#optional-cloudflares-proxy-orange-cloud)).
 

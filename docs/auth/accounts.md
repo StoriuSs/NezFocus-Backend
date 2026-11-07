@@ -61,7 +61,8 @@ There are two ways in:
   `account: { created, completed }`.
 - **"Continue with Google"** for an address with no account: the account is
   created with no password, not completed, and the display name from Google,
-  cut to 32 characters (D-130). See [google-sign-in.md](google-sign-in.md).
+  cut to 32 characters without splitting an emoji, or none when nothing
+  visible is left (D-130, D-139). See [google-sign-in.md](google-sign-in.md).
 
 - The code is 6 digits, valid 10 minutes, 5 tries; only the newest one works.
 - Asking again is the same call (at most one a minute and five an hour per
@@ -177,7 +178,8 @@ deletion) shows on the next request.
 
 ## Deleting an account
 
-People delete their own account from the web app's profile page. A session
+People delete their own account from the web app's Account settings page
+(`/settings/account`). A session
 alone is not enough: the API wants proof it is the owner, so that someone at an
 unlocked computer cannot do it.
 

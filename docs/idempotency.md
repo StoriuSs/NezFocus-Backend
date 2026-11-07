@@ -108,7 +108,9 @@ Two routes, both on the users module
 | `PATCH /api/v1/users/me` | `'10m'` | apply the profile change twice |
 | `POST /api/v1/users/me/avatar` | `'10m'` | process and store a second copy of the image, and replace the first |
 
-Each of these requires the header: without it the answer is `400`. The auth
+Each of these requires the header: without it the answer is `400`.
+`DELETE /api/v1/users/me/avatar` does not use it: removing twice already
+answers the same. The auth
 routes (`/api/v1/auth/...`) do not use it, and must not; see
 [Never on routes that set cookies or issue tokens](#never-on-routes-that-set-cookies-or-issue-tokens).
 

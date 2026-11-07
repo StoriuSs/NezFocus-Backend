@@ -454,7 +454,7 @@ sequenceDiagram
     participant R as Redis
     participant G as Google
     participant P as Postgres
-    B->>A: GET /auth/google?redirect=/profile (a navigation)
+    B->>A: GET /auth/google?redirect=/settings/profile (a navigation)
     A->>R: store the attempt: state, nonce, PKCE verifier, redirect, 10 min
     A-->>B: 302 to Google, Set-Cookie oauth_state
     B->>G: the person picks an account and agrees
@@ -466,7 +466,7 @@ sequenceDiagram
     G-->>A: ID token (checked: signature, issuer, audience, expiry, nonce)
     A->>P: which account? (linked, or by verified address)
     A->>P: create session and refresh token
-    A-->>B: 302 to FRONTEND_URL/auth/callback?redirect=/profile, Set-Cookie refresh_token
+    A-->>B: 302 to FRONTEND_URL/auth/callback?redirect=/settings/profile, Set-Cookie refresh_token
     B->>A: POST /auth/refresh (the callback page, with credentials)
     A-->>B: 200 access token
 ```

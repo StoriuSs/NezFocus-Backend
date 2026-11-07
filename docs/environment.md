@@ -256,7 +256,7 @@ Set up: [setup/storage-s3-r2.md](./setup/storage-s3-r2.md) (AWS S3 or Cloudflare
 | --- | --- | --- | --- | --- | --- |
 | `STORAGE_TYPE` | | `local` | `local` (the server's disk) or `s3` | app | [file-uploads-and-s3.md](./file-uploads-and-s3.md) |
 | `UPLOAD_DEST` | | `./uploads` | Local mode only: the folder | app | |
-| `MAX_FILE_SIZE` | | `5242880` | Bytes. Enforced while streaming, so a larger file is cut off, not read whole | app | |
+| `MAX_FILE_SIZE` | | `5242880` | Bytes. The storage layer's general ceiling on a stored file. An avatar has its own limit (8 MB, `AVATAR_MAX_BYTES` in `src/modules/users/domain/avatar.rules.ts`), enforced by multer while streaming | app | |
 | `MAX_IMAGE_PIXELS` | | `40000000` | Decoded pixels per image, against decompression bombs | app | |
 | `IMAGE_PROCESSING_TIMEOUT_MS` | | `15000` | Per image, at most an hour | app | |
 | `IMAGE_PROCESSING_CONCURRENCY` | | `2` | Images resized at once per instance. Each holds a decoded image in memory | app | |
