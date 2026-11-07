@@ -48,8 +48,10 @@ export const AUTH_RATE_LIMITS = {
      * Emails with a code, per address: one a minute, five an hour, shared by
      * sign-in and reset codes (REQ-AUTH-02). Stops mail-bombing. There is no
      * separate limit on new accounts: each one needs a code from these.
+     * The minute's refusal has its own reason (D-136): one code went out a
+     * moment ago, from another tab or flow, and "several emails" would be wrong.
      */
-    codeEmailsPerEmailMinute: { name: 'code-email-min', limit: 1, windowMs: MINUTE, reason: 'emails' },
+    codeEmailsPerEmailMinute: { name: 'code-email-min', limit: 1, windowMs: MINUTE, reason: 'recent_email' },
     codeEmailsPerEmailHour: { name: 'code-email-hour', limit: 5, windowMs: HOUR, reason: 'emails' },
     /** Emails with a code requested from one IP, for any addresses. */
     codeEmailsPerIp: { name: 'code-email-ip', limit: 30, windowMs: IP_WINDOW, reason: 'network' },

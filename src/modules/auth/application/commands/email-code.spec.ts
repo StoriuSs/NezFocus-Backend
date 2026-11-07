@@ -122,6 +122,25 @@ describe('Codes by email (REQ-AUTH-01, REQ-AUTH-02)', () => {
         }
     })
 
+    it('says a code was just sent when the minute refuses, and several when the hour does (D-136)', async () => {
+        const w = setup()
+        await w.forgot.execute(new ForgotPasswordCommand(ADA, IP, 'vi'))
+        // Another tab, another browser or another flow: a reset code went out a moment ago.
+        const minute = await send(w).catch((e: unknown) => e)
+        for (let i = 0; i < 4; i++) {
+            await nextMinute(w)
+            await send(w)
+        }
+        await nextMinute(w)
+        const hour = await send(w).catch((e: unknown) => e)
+
+        expect(minute).toBeInstanceOf(RateLimitedError)
+        expect((minute as RateLimitedError).details).toEqual({ reason: 'recent_email' })
+        expect((minute as RateLimitedError).retryAfterSeconds).toBeLessThanOrEqual(60)
+        expect(hour).toBeInstanceOf(RateLimitedError)
+        expect((hour as RateLimitedError).details).toEqual({ reason: 'emails' })
+    })
+
     it('stops guesses at ten wrong codes an hour per address, across codes, for an address with no account too (D-134)', async () => {
         for (const hasAccount of [true, false]) {
             const w = setup()

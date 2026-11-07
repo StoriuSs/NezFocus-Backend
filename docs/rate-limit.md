@@ -229,7 +229,8 @@ What the two layers mean in practice:
 - A request can be refused by either. Both answer `meta.code` `429001` and
   send `Retry-After`. The throttler's has `meta.type` `THROTTLE_ERROR`. An
   auth limit's has `meta.type` `RATE_LIMIT_EXCEEDED` and a `data.reason`
-  (`sign_ins`, `network`, `emails`, `wrong_password`) that
+  (`sign_ins`, `network`, `recent_email`, `emails`, `wrong_password`,
+  `codes`) that
   says which kind of limit it was, so the web app can show the right message.
 - **Many people behind one IP** (a lab, a lecture hall) share the throttler's
   bucket for each route only while not signed in; once signed in, each has

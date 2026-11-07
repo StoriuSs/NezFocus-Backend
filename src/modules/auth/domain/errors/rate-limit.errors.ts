@@ -3,15 +3,18 @@ import { DomainError } from '@/shared/domain/domain-error'
 /**
  * Why a limit refused, as the auth module's rules name it (rate-limits.ts):
  * - `network`: counted per IP;
- * - `emails`: emails to this address;
+ * - `recent_email`: an email with a code went to this address under a minute
+ *   ago, from another tab, browser or flow (D-136);
+ * - `emails`: several emails to this address in the past hour;
  * - `sign_ins`: failed sign-ins for this address;
  * - `wrong_password`: wrong current passwords on this account;
  * - `codes`: wrong codes for this address (D-134).
  */
-export type RateLimitReason = 'network' | 'emails' | 'sign_ins' | 'wrong_password' | 'codes'
+export type RateLimitReason = 'network' | 'recent_email' | 'emails' | 'sign_ins' | 'wrong_password' | 'codes'
 
 const RATE_LIMIT_MESSAGES: Record<RateLimitReason, string> = {
     network: 'Too many requests from your network.',
+    recent_email: 'We have just sent an email with a code to this address.',
     emails: 'We have already sent several emails to this address.',
     sign_ins: 'Too many failed sign-ins for this address.',
     wrong_password: 'Too many wrong passwords.',

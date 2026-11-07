@@ -86,7 +86,7 @@ All in one file, [rate-limits.ts](../../src/modules/auth/application/rate-limits
 |---|---|---|---|---|---|---|
 | `login-fail-email` | 5 per 15 min | the email address | `sign_ins` | `login` | failed sign-ins only | when the right password is given for that address |
 | `login-fail-ip` | 30 per 5 min | IP | `network` | `login` | failed sign-ins only, any address | never early: the window runs out |
-| `code-email-min` | 1 per minute | the email address | `emails` | `email-code`, `forgot-password` | every accepted request | — |
+| `code-email-min` | 1 per minute | the email address | `recent_email` | `email-code`, `forgot-password` | every accepted request | — |
 | `code-email-hour` | 5 per hour | the email address | `emails` | `email-code`, `forgot-password` | every accepted request | — |
 | `code-email-ip` | 30 per 5 min | IP | `network` | `email-code`, `forgot-password` | every accepted request, any address | — |
 | `code-try-ip` | 30 per 5 min | IP | `network` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, any address | — |
@@ -188,6 +188,7 @@ Retry-After: 712
 |---|---|---|
 | `sign_ins` | "Too many failed sign-ins for this address." | Wait, or reset the password |
 | `network` | "Too many requests from your network." | Wait. Everyone on this connection (an office, a school) shares this one. |
+| `recent_email` | "We have just sent an email with a code to this address." | Under a minute ago, from another tab, browser or flow (D-136): check the inbox; wait the few seconds left |
 | `emails` | "We have already sent several emails to this address." | Check the inbox (and spam) for the last email; wait before asking again |
 | `wrong_password` | "Too many wrong passwords." | Wait, or reset the password |
 | `codes` | "Too many wrong codes for this address." | Wait, then ask for a new code |

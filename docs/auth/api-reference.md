@@ -282,7 +282,7 @@ message "Check your email for the code.", `data: null`.
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 30 in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with reset codes | `data.reason: "emails"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with reset codes | `data.reason: "recent_email"` (the minute) or `"emails"` (the hour), `Retry-After` |
 
 Every accepted request counts, whether or not the address has an account.
 
@@ -474,7 +474,7 @@ message "If that address has an account, an email is on its way.", `data: null`.
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-ip`: 30 in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
-| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with sign-in codes | `data.reason: "emails"`, `Retry-After` |
+| 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-email-min` (1 a minute) or `code-email-hour` (5 an hour) for this address, shared with sign-in codes | `data.reason: "recent_email"` (the minute) or `"emails"` (the hour), `Retry-After` |
 
 ### Reset password
 
@@ -682,7 +682,7 @@ otherwise). Details and tuning:
 |---|---|---|---|---|---|
 | `login-fail-email` | 5 per 15 min | address | `sign_ins` | login | Failed sign-ins; cleared by a right password |
 | `login-fail-ip` | 30 per 5 min | IP | `network` | login | Failed sign-ins |
-| `code-email-min` | 1 per minute | address | `emails` | email-code, forgot-password | Emails asked for |
+| `code-email-min` | 1 per minute | address | `recent_email` | email-code, forgot-password | Emails asked for |
 | `code-email-hour` | 5 per hour | address | `emails` | email-code, forgot-password | Emails asked for |
 | `code-email-ip` | 30 per 5 min | IP | `network` | email-code, forgot-password | Requests |
 | `code-try-ip` | 30 per 5 min | IP | `network` | email-code/verify, reset-password | Wrong codes only |
@@ -729,6 +729,7 @@ The `RATE_LIMIT_EXCEEDED` sentence per `data.reason`:
 | `data.reason` | Sentence | Counted per |
 |---|---|---|
 | `network` | Too many requests from your network. | IP (everyone behind one office or school connection shares it) |
+| `recent_email` | We have just sent an email with a code to this address. | address |
 | `emails` | We have already sent several emails to this address. | address |
 | `sign_ins` | Too many failed sign-ins for this address. | address |
 | `wrong_password` | Too many wrong passwords. | account |
@@ -795,7 +796,7 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `403 ACCOUNT_INCOMPLETE` | Not signed out: go to the "complete your account" step. Keep the session |
 | `409 ACCOUNT_ALREADY_COMPLETE` | Already done (another tab, a double click): read `GET /users/me` and go into the app |
 | `409 USERNAME_CONFLICT` on complete-account | Mark the username field "taken" and let them pick another; keep the other fields |
-| `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later) |
+| `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`recent_email`: the last email is on its way, from another tab or flow; `emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later) |
 | `429 THROTTLE_ERROR` | Too many requests to this route from this user, or from this IP when not signed in: wait `Retry-After` seconds |
 | `?error=` on the callback page | Show a message per reason (`cancelled` needs none). Keep `redirect` for the next attempt |
 | `500 GENERIC_ERROR` | "Something went wrong", with `meta.request_id` for support |

@@ -94,7 +94,7 @@ describe('Signing up again after deleting the account (integration)', () => {
         // Limits on an address count whether or not it has an account: deleting
         // one does not buy a second code email within the minute.
         const tooSoon = await post('auth/email-code', { email })
-        expect([tooSoon.status, tooSoon.body.data.reason]).toEqual([429, 'emails'])
+        expect([tooSoon.status, tooSoon.body.data.reason]).toEqual([429, 'recent_email'])
         // A minute later it would pass; this test is not about the wait.
         await nextMinute(email)
 

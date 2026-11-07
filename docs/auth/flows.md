@@ -77,7 +77,8 @@ sequenceDiagram
 1. The address is trimmed and lower-cased.
 2. The limits: code emails per IP (30 in 5 minutes), per address (1 a minute,
    5 an hour, shared with reset codes). Used up: `429 RATE_LIMIT_EXCEEDED`
-   with `data.reason` `network` or `emails` and a `Retry-After` header.
+   with `data.reason` `network`, `recent_email` (the minute) or `emails`
+   (the hour) and a `Retry-After` header.
    Otherwise each is counted (two requests racing past the check are still
    caught by the count). There is no separate limit on new accounts: each one
    needs a code from these.
@@ -323,7 +324,7 @@ sequenceDiagram
 
 1. Limits checked and counted: code emails per IP (30 in 5 minutes), per
    address (1 a minute, 5 an hour, shared with sign-in codes). Used up:
-   `429`, `data.reason` `network` or `emails`. Counted for every address,
+   `429`, `data.reason` `network`, `recent_email` or `emails`. Counted for every address,
    account or not.
 2. No account: a `password-reset` code is still stored, and sent to nobody.
    Guesses at it are counted and wear it out after five exactly as for a real
