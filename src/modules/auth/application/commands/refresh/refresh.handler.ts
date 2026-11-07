@@ -45,6 +45,7 @@ export class RefreshHandler implements ICommandHandler<RefreshCommand> {
             newTokenHash: next.hash,
             now: new Date(),
             graceMs: this.settings.refreshGraceMs,
+            client: command.client,
             beforeCommit: async () => {
                 try {
                     await this.cache.rememberReplacement(tokenHash, next.token, this.settings.refreshGraceMs)

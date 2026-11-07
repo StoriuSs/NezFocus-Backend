@@ -264,4 +264,73 @@ describe('Auth persistence and sessions (integration)', () => {
             await expect(cache.resolve(claims)).rejects.toThrow(SessionRevokedError)
         })
     })
+
+    describe('the list of sessions', () => {
+        it('lists only the live sessions of the user, and ends one only for its owner', async () => {
+            const ada = await signedIn()
+            const second = await sessions.create({
+                userId: ada.user.id,
+                expiresAt: new Date(Date.now() + 30 * DAY),
+                refreshTokenHash: tokens.newRefreshToken().hash,
+                userAgent: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0',
+                ip: '203.162.5.6'
+            })
+            const lapsed = await sessions.create({
+                userId: ada.user.id,
+                expiresAt: new Date(Date.now() - 1000),
+                refreshTokenHash: tokens.newRefreshToken().hash
+            })
+            const grace = await signedIn()
+
+            // Someone else's session: not ended, and not reported as theirs.
+            expect(await sessions.revokeOne(ada.user.id, grace.session.id, 'revoked', new Date())).toBe(false)
+            expect(await sessions.findActive(grace.session.id, new Date())).not.toBeNull()
+
+            const listed = await sessions.listActive(ada.user.id, new Date())
+            expect(listed.map((s) => s.id).sort()).toEqual([ada.session.id, second.id].sort())
+            expect(listed.find((s) => s.id === second.id)).toMatchObject({
+                ip: '203.162.5.6',
+                userAgent: expect.stringContaining('Firefox/144.0')
+            })
+            expect(listed.map((s) => s.id)).not.toContain(lapsed.id)
+
+            // Their own: ended with the reason, and still theirs when asked again.
+            expect(await sessions.revokeOne(ada.user.id, second.id, 'revoked', new Date())).toBe(true)
+            expect(await sessions.findEnded(second.id, new Date())).toBe('revoked')
+            expect(await sessions.revokeOne(ada.user.id, second.id, 'logout', new Date())).toBe(true)
+            expect(await sessions.findEnded(second.id, new Date())).toBe('revoked')
+            expect((await sessions.listActive(ada.user.id, new Date())).map((s) => s.id)).toEqual([ada.session.id])
+
+            // "Sign out the other devices" counts what the list showed: not the lapsed session.
+            expect(await sessions.revokeAllForUser(ada.user.id, 'logout-all', new Date(), ada.session.id)).toEqual([])
+        })
+
+        it('records where and in what a session was last used when its token rotates, and keeps them when not told', async () => {
+            const { session, cookie } = await signedIn()
+            const rotate = (tokenHash: string, client?: { ip?: string; userAgent?: string }) => {
+                const next = tokens.newRefreshToken()
+                return sessions
+                    .rotate({
+                        tokenHash,
+                        newTokenHash: next.hash,
+                        now: new Date(),
+                        graceMs: 0,
+                        client,
+                        beforeCommit: async () => undefined
+                    })
+                    .then(() => next.token)
+            }
+
+            const before = new Date()
+            const second = await rotate(tokens.hashRefreshToken(cookie), {
+                ip: '2405:4802::7',
+                userAgent: 'Firefox/144.0'
+            })
+            await rotate(tokens.hashRefreshToken(second))
+
+            const [listed] = await sessions.listActive(session.userId, new Date())
+            expect(listed).toMatchObject({ ip: '2405:4802::7', userAgent: 'Firefox/144.0' })
+            expect(listed.lastUsedAt.getTime()).toBeGreaterThanOrEqual(before.getTime())
+        })
+    })
 })

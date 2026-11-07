@@ -4,10 +4,15 @@ import { ConfigService } from '@nestjs/config'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import request from 'supertest'
 import { AUTH_CONTROLLERS, AuthCookies, OAuthController } from '@/modules/auth/presentation'
-import { GetAuthOptionsQuery, GetSignInMethodsQuery, StartOAuthCommand } from '@/modules/auth/application'
+import {
+    GetAuthOptionsQuery,
+    GetSignInMethodsQuery,
+    ListSessionsQuery,
+    StartOAuthCommand
+} from '@/modules/auth/application'
 
 /**
- * The /auth routes live in four controllers, and one of them,
+ * The /auth routes live in five controllers, and one of them,
  * OAuthController, has `GET auth/:provider`, which matches any
  * `GET auth/<word>`. Express takes the first route that matches, in the order
  * the controllers are registered, so AUTH_CONTROLLERS keeps OAuthController
@@ -15,7 +20,8 @@ import { GetAuthOptionsQuery, GetSignInMethodsQuery, StartOAuthCommand } from '@
  */
 const STATIC_GETS: [path: string, query: Type][] = [
     ['/api/v1/auth/sign-in-methods', GetSignInMethodsQuery],
-    ['/api/v1/auth/options', GetAuthOptionsQuery]
+    ['/api/v1/auth/options', GetAuthOptionsQuery],
+    ['/api/v1/auth/sessions', ListSessionsQuery]
 ]
 
 describe('The /auth routes across their controllers (e2e)', () => {

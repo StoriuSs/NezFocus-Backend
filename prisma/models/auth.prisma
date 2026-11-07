@@ -20,7 +20,9 @@ model Session {
   // Absolute: a session ends here however often it is refreshed.
   expiresAt     DateTime       @db.Timestamptz(6)
   revokedAt     DateTime?      @db.Timestamptz(6)
-  revokedReason String? // logout | logout-all | password-changed | password-reset | reuse-detected | account-deleted
+  // logout | logout-all ("Sign out the other devices", D-75) | revoked (one row of the list of
+  // sessions) | password-changed | password-reset | reuse-detected | account-deleted
+  revokedReason String?
   userAgent     String?
   ip            String?
   refreshTokens RefreshToken[]

@@ -17,5 +17,7 @@ export { VerifyEmailCodeRequestDto } from './verify-email-code.request.dto'
 // Responses
 export { AuthOptionsResponseDto } from './auth-options.response.dto'
 export { EmailCodeSignInResponseDto } from './email-code-sign-in.response.dto'
+export { RevokedSessionsResponseDto } from './revoked-sessions.response.dto'
+export { SessionListResponseDto, SessionResponseDto } from './session-list.response.dto'
 export { SignInMethodsResponseDto } from './sign-in-methods.response.dto'
 export { TokenResponseDto } from './token.response.dto'

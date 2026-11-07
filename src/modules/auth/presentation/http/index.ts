@@ -2,8 +2,9 @@ import { AccountDeletionController } from './account-deletion.controller'
 import { AuthController } from './auth.controller'
 import { OAuthController } from './oauth.controller'
 import { PasswordController } from './password.controller'
+import { SessionsController } from './sessions.controller'
 
-export { AccountDeletionController, AuthController, OAuthController, PasswordController }
+export { AccountDeletionController, AuthController, OAuthController, PasswordController, SessionsController }
 export { AuthCookies } from './auth-cookies'
 
 /**
@@ -15,4 +16,10 @@ export { AuthCookies } from './auth-cookies'
  * "options": a 404.
  * test/e2e/auth-routes.e2e-spec.ts fails if it moves.
  */
-export const AUTH_CONTROLLERS = [AuthController, PasswordController, AccountDeletionController, OAuthController]
+export const AUTH_CONTROLLERS = [
+    AuthController,
+    SessionsController,
+    PasswordController,
+    AccountDeletionController,
+    OAuthController
+]

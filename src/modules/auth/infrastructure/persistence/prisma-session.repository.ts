@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
+    ActiveSession,
     RevokeReason,
     RotateInput,
     RotationOutcome,
@@ -69,6 +70,13 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
         return session ? toRecord(session) : null
     }
 
+    listActive(userId: string, now: Date): Promise<ActiveSession[]> {
+        return this.prisma.session.findMany({
+            where: { userId, revokedAt: null, expiresAt: { gt: now } },
+            select: { id: true, createdAt: true, lastUsedAt: true, userAgent: true, ip: true }
+        })
+    }
+
     async findEnded(id: string, now: Date): Promise<SessionEnd | null> {
         const session = await this.prisma.session.findUnique({
             where: { id },
@@ -83,7 +91,7 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
      * waits for this one to commit, then sees the token as used — and whatever
      * `beforeCommit` stored for it.
      */
-    rotate({ tokenHash, newTokenHash, now, graceMs, beforeCommit }: RotateInput): Promise<RotationOutcome> {
+    rotate({ tokenHash, newTokenHash, now, graceMs, client, beforeCommit }: RotateInput): Promise<RotationOutcome> {
         return this.prisma.$transaction(async (tx) => {
             const [token] = await tx.$queryRaw<LockedToken[]>`
                 SELECT "id", "sessionId", "expiresAt", "usedAt", "replacedById"
@@ -110,7 +118,11 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
                     where: { id: token.id },
                     data: { usedAt: now, replacedById: replacement.id }
                 })
-                await tx.session.update({ where: { id: session.id }, data: { lastUsedAt: now } })
+                // Where and in what it was last used, with when (D-138); undefined leaves a column as it was.
+                await tx.session.update({
+                    where: { id: session.id },
+                    data: { lastUsedAt: now, ip: client?.ip, userAgent: client?.userAgent }
+                })
                 await beforeCommit()
                 return { kind: 'rotated', session: toRecord(session) }
             }
@@ -140,6 +152,16 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
         return result.count > 0 ? token.sessionId : null
     }
 
+    async revokeOne(userId: string, sessionId: string, reason: RevokeReason, now: Date): Promise<boolean> {
+        const session = await this.prisma.session.findFirst({ where: { id: sessionId, userId }, select: { id: true } })
+        if (!session) return false
+        await this.prisma.session.updateMany({
+            where: { id: sessionId, revokedAt: null },
+            data: { revokedAt: now, revokedReason: reason }
+        })
+        return true
+    }
+
     async revokeAllForUser(
         userId: string,
         reason: RevokeReason,
@@ -147,7 +169,14 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
         exceptSessionId?: string
     ): Promise<string[]> {
         const revoked = await this.prisma.session.updateManyAndReturn({
-            where: { userId, revokedAt: null, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
+            // Live ones only: a lapsed session has nothing to end, and counting it
+            // would sign out more devices than the list showed.
+            where: {
+                userId,
+                revokedAt: null,
+                expiresAt: { gt: now },
+                ...(exceptSessionId ? { id: { not: exceptSessionId } } : {})
+            },
             data: { revokedAt: now, revokedReason: reason },
             select: { id: true }
         })

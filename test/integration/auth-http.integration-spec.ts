@@ -8,11 +8,13 @@ import { AUTH_RATE_LIMITS } from '@/modules/auth/application/rate-limits'
 import {
     bootApp,
     closeApp,
+    completeAccount,
     cookieOf,
     FRONTEND,
     latestEmail,
     newCodeIn,
     pair,
+    Post,
     setFirstPassword,
     signInWithCode
 } from './helpers'
@@ -164,6 +166,73 @@ describe('Auth over HTTP (integration)', () => {
         const after = await me(refreshed.body.data.access_token)
         expect([after.status, after.body.meta.type]).toEqual([401, 'AUTH_TOKEN_REVOKED'])
         expect((await post('auth/refresh').set('Cookie', cookie)).status).toBe(401)
+    })
+
+    it('lists the devices signed in, ends one by its next request, and signs out all but this one (D-75, D-138)', async () => {
+        const email = `itest-http-${randomUUID()}@example.test`
+        const CHROME_WINDOWS =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+        const SAFARI_IPHONE =
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1'
+        const [laptopIp, phoneIp, phoneLaterIp] = [testClientIp(), testClientIp(), testIPv6Network()()]
+        const masked = (ip: string) => `${ip.split('.').slice(0, 2).join('.')}.x.x`
+        const withToken: Post = (path, body = {}, accessToken) =>
+            post(path, body).set('Authorization', `Bearer ${accessToken}`)
+        const from = (ip: string, userAgent: string) => (req: request.Test) =>
+            req.set('X-Forwarded-For', ip).set('User-Agent', userAgent).set('Origin', FRONTEND)
+        const laptop = from(laptopIp, CHROME_WINDOWS)
+        const phone = from(phoneIp, SAFARI_IPHONE)
+
+        const first = await signInWithCode(post, email) // a third device: supertest's own user agent
+        await completeAccount(withToken, first.accessToken, PASSWORD)
+        const onPhone = await phone(api().post('/api/v1/auth/login')).send({ email, password: PASSWORD })
+        const onLaptop = await laptop(api().post('/api/v1/auth/login')).send({ email, password: PASSWORD })
+        const asLaptop = (req: request.Test) =>
+            laptop(req).set('Authorization', `Bearer ${onLaptop.body.data.access_token}`)
+        // The phone refreshes later from another network: the list shows where it was last.
+        const phoneCookie = pair(cookieOf(onPhone, 'refresh_token'))
+        const refreshed = await from(
+            phoneLaterIp,
+            SAFARI_IPHONE
+        )(api().post('/api/v1/auth/refresh')).set('Cookie', phoneCookie)
+        expect(refreshed.status).toBe(200)
+
+        const listed = await asLaptop(api().get('/api/v1/auth/sessions'))
+        expect(listed.status).toBe(200)
+        const sessions = listed.body.data.sessions as Record<string, unknown>[]
+        expect(sessions).toHaveLength(3)
+        expect(sessions[0]).toMatchObject({ browser: 'Chrome', os: 'Windows', device: 'desktop', current: true })
+        expect(sessions[0].ip).toBe(masked(laptopIp))
+        expect(sessions[1]).toMatchObject({ browser: 'Safari', os: 'iOS', device: 'mobile', current: false })
+        expect(sessions[1].ip).toBe(`${phoneLaterIp.split(':').slice(0, 2).join(':')}:x:x…`)
+        expect(sessions[2]).toMatchObject({ browser: null, current: false })
+        expect(Date.parse(sessions[1].last_active_at as string)).toBeGreaterThan(
+            Date.parse(sessions[1].signed_in_at as string)
+        )
+        // Only the network leaves the server.
+        for (const ip of [laptopIp, phoneIp, phoneLaterIp]) expect(JSON.stringify(listed.body)).not.toContain(ip)
+
+        // Ending the phone's session: its next request is refused, and its cookie says why.
+        const ended = await asLaptop(api().delete(`/api/v1/auth/sessions/${sessions[1].id as string}`))
+        expect(ended.status).toBe(200)
+        const onPhoneAfter = await me(refreshed.body.data.access_token)
+        expect([onPhoneAfter.status, onPhoneAfter.body.meta.type]).toEqual([401, 'AUTH_TOKEN_REVOKED'])
+        const phoneRefresh = await phone(api().post('/api/v1/auth/refresh')).set(
+            'Cookie',
+            pair(cookieOf(refreshed, 'refresh_token'))
+        )
+        expect([phoneRefresh.status, phoneRefresh.body.data?.reason]).toEqual([401, 'revoked'])
+        // Again, or a session that is not there: the same answer.
+        expect((await asLaptop(api().delete(`/api/v1/auth/sessions/${sessions[1].id as string}`))).status).toBe(200)
+        expect((await asLaptop(api().delete(`/api/v1/auth/sessions/${randomUUID()}`))).status).toBe(200)
+
+        // "Sign out the other devices": the first device goes, this one stays.
+        const others = await asLaptop(api().delete('/api/v1/auth/sessions'))
+        expect([others.status, others.body.data]).toEqual([200, { revoked: 1 }])
+        expect((await me(first.accessToken)).status).toBe(401)
+        expect((await me(onLaptop.body.data.access_token)).status).toBe(200)
+        const left = await asLaptop(api().get('/api/v1/auth/sessions'))
+        expect(left.body.data.sessions).toEqual([expect.objectContaining({ current: true })])
     })
 
     it('counts an IPv6 client by its /64, not by the address it picked for each request', async () => {

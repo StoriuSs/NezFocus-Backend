@@ -26,7 +26,7 @@ import {
     FinishOAuthHandler,
     ForgotPasswordHandler,
     LoginHandler,
-    LogoutEverywhereHandler,
+    ListSessionsHandler,
     LogoutHandler,
     OAUTH_PROVIDERS,
     OAUTH_SETTINGS,
@@ -39,6 +39,8 @@ import {
     RefreshCachedUserHandler,
     RefreshHandler,
     ResetPasswordHandler,
+    RevokeOtherSessionsHandler,
+    RevokeSessionHandler,
     SESSION_CACHE,
     SessionIssuer,
     StartOAuthHandler,
@@ -79,7 +81,8 @@ const CommandHandlers = [
     LoginHandler,
     RefreshHandler,
     LogoutHandler,
-    LogoutEverywhereHandler,
+    RevokeSessionHandler,
+    RevokeOtherSessionsHandler,
     ForgotPasswordHandler,
     ResetPasswordHandler,
     ChangePasswordHandler,
@@ -90,7 +93,7 @@ const CommandHandlers = [
     DeleteOwnAccountHandler
 ]
 
-const QueryHandlers = [GetSignInMethodsHandler, GetAuthOptionsHandler]
+const QueryHandlers = [GetSignInMethodsHandler, GetAuthOptionsHandler, ListSessionsHandler]
 
 const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHandler]
 

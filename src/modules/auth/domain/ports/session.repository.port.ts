@@ -4,9 +4,15 @@ export interface SessionRecord {
     expiresAt: Date
 }
 
+/**
+ * Why a session was ended. `logout-all` is "Sign out the other devices"
+ * (D-75; the value predates the button keeping this device); `revoked` is
+ * one row of the list of sessions.
+ */
 export type RevokeReason =
     | 'logout'
     | 'logout-all'
+    | 'revoked'
     | 'password-changed'
     | 'password-reset'
     | 'reuse-detected'
@@ -32,11 +38,28 @@ export type RotationOutcome =
     | { kind: 'reused'; session: SessionRecord }
     | { kind: 'invalid'; ended?: SessionEnd }
 
+/** A session as the list of sessions reads it: the stored user agent and IP, unread and unmasked. */
+export interface ActiveSession {
+    id: string
+    createdAt: Date
+    lastUsedAt: Date
+    userAgent: string | null
+    ip: string | null
+}
+
+/** Where a request came from: kept on its session (D-138). */
+export interface SessionClient {
+    ip?: string
+    userAgent?: string
+}
+
 export interface RotateInput {
     tokenHash: string
     newTokenHash: string
     now: Date
     graceMs: number
+    /** Recorded on the session with its last use when the token rotates; what is missing stays as it was. */
+    client?: SessionClient
     /**
      * Runs after the rotation is decided and before it is committed, while the
      * old token's row is still locked. A second refresh with the same token
@@ -60,6 +83,9 @@ export interface SessionRepositoryPort {
     /** A session that has not been revoked and has not expired. */
     findActive(id: string, now: Date): Promise<SessionRecord | null>
 
+    /** The user's sessions that have not been revoked and have not expired, in no order. */
+    listActive(userId: string, now: Date): Promise<ActiveSession[]>
+
     /**
      * How a session that is not active ended; null for one that does not
      * exist, or is still active. A deleted account's sessions say so, even
@@ -72,7 +98,14 @@ export interface SessionRepositoryPort {
     /** @returns the id of the session the token belonged to, if it was active */
     revokeByTokenHash(tokenHash: string, reason: RevokeReason, now: Date): Promise<string | null>
 
-    /** @returns the ids of the sessions revoked */
+    /**
+     * End one session, if it is the user's. @returns whether it is theirs,
+     * whether or not it was still active: a retry after a failure must reach
+     * the cache again.
+     */
+    revokeOne(userId: string, sessionId: string, reason: RevokeReason, now: Date): Promise<boolean>
+
+    /** End the user's live sessions, all or all but one. @returns the ids of those it ended */
     revokeAllForUser(userId: string, reason: RevokeReason, now: Date, exceptSessionId?: string): Promise<string[]>
 
     /** Remove sessions that ended long enough ago that nothing can use them. */

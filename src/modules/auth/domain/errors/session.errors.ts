@@ -5,7 +5,8 @@ import { DomainError } from '@/shared/domain/domain-error'
  * 401. Only the holder of that session's token is told, and it no longer
  * works, so it gives nothing away.
  * - `signed_out`: signed out (this session)
- * - `signed_out_everywhere`: "sign out everywhere", on any device
+ * - `signed_out_everywhere`: "Sign out the other devices", chosen on another device (D-75)
+ * - `revoked`: signed out from the list of sessions, on another device
  * - `password_changed`: the password was changed or reset
  * - `security`: its refresh token was used twice, so presumed stolen
  * - `account_deleted`: the account was deleted
@@ -14,6 +15,7 @@ import { DomainError } from '@/shared/domain/domain-error'
 export type SessionEndReason =
     | 'signed_out'
     | 'signed_out_everywhere'
+    | 'revoked'
     | 'password_changed'
     | 'security'
     | 'account_deleted'

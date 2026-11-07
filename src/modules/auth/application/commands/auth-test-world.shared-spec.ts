@@ -26,6 +26,7 @@ import {
     RateLimitPort
 } from '../ports'
 import {
+    ActiveSession,
     CodeCheck,
     CodePurpose,
     CredentialRepositoryPort,
@@ -49,10 +50,12 @@ import {
     FinishOAuthHandler,
     ForgotPasswordHandler,
     LoginCommand,
+    ListSessionsHandler,
     LoginHandler,
-    LogoutEverywhereHandler,
     RefreshHandler,
     ResetPasswordHandler,
+    RevokeOtherSessionsHandler,
+    RevokeSessionHandler,
     SendEmailCodeHandler,
     StartOAuthHandler,
     VerifyEmailCodeHandler
@@ -228,6 +231,10 @@ interface StoredSession extends SessionRecord {
     tokenHash: string
     usedTokens: Map<string, Date>
     revoked?: RevokeReason
+    createdAt: Date
+    lastUsedAt: Date
+    userAgent: string | null
+    ip: string | null
 }
 
 /** The rotation rules of PrismaSessionRepository, without the row lock. */
@@ -236,12 +243,17 @@ class FakeSessions implements SessionRepositoryPort {
     private next = 1
 
     async create(input: Parameters<SessionRepositoryPort['create']>[0]) {
+        const now = new Date()
         const session: StoredSession = {
             id: `session-${this.next++}`,
             userId: input.userId,
             expiresAt: input.expiresAt,
             tokenHash: input.refreshTokenHash,
-            usedTokens: new Map()
+            usedTokens: new Map(),
+            createdAt: now,
+            lastUsedAt: now,
+            userAgent: input.userAgent ?? null,
+            ip: input.ip ?? null
         }
         this.sessions.push(session)
         return { id: session.id, userId: session.userId, expiresAt: session.expiresAt }
@@ -256,6 +268,11 @@ class FakeSessions implements SessionRepositoryPort {
         const s = this.sessions.find((x) => x.id === id && !x.revoked && x.expiresAt > now)
         return s ? { id: s.id, userId: s.userId, expiresAt: s.expiresAt } : null
     }
+    async listActive(userId: string, now: Date): Promise<ActiveSession[]> {
+        return this.sessions
+            .filter((s) => s.userId === userId && !s.revoked && s.expiresAt > now)
+            .map(({ id, createdAt, lastUsedAt, userAgent, ip }) => ({ id, createdAt, lastUsedAt, userAgent, ip }))
+    }
     async rotate(input: RotateInput): Promise<RotationOutcome> {
         const current = this.sessions.find((s) => s.tokenHash === input.tokenHash)
         const used = this.sessions.find((s) => s.usedTokens.has(input.tokenHash))
@@ -268,6 +285,9 @@ class FakeSessions implements SessionRepositoryPort {
             await input.beforeCommit()
             session.usedTokens.set(session.tokenHash, input.now)
             session.tokenHash = input.newTokenHash
+            session.lastUsedAt = input.now
+            session.ip = input.client?.ip ?? session.ip
+            session.userAgent = input.client?.userAgent ?? session.userAgent
             return { kind: 'rotated', session: record }
         }
         const usedAt = session.usedTokens.get(input.tokenHash)!
@@ -281,8 +301,16 @@ class FakeSessions implements SessionRepositoryPort {
         s.revoked = reason
         return s.id
     }
-    async revokeAllForUser(userId: string, reason: RevokeReason, _now: Date, exceptSessionId?: string) {
-        const ended = this.sessions.filter((s) => s.userId === userId && !s.revoked && s.id !== exceptSessionId)
+    async revokeOne(userId: string, sessionId: string, reason: RevokeReason) {
+        const s = this.sessions.find((x) => x.id === sessionId && x.userId === userId)
+        if (!s) return false
+        s.revoked ??= reason
+        return true
+    }
+    async revokeAllForUser(userId: string, reason: RevokeReason, now: Date, exceptSessionId?: string) {
+        const ended = this.sessions.filter(
+            (s) => s.userId === userId && !s.revoked && s.expiresAt > now && s.id !== exceptSessionId
+        )
         ended.forEach((s) => (s.revoked = reason))
         return ended.map((s) => s.id)
     }
@@ -489,7 +517,9 @@ export function setup() {
         verifyCode: new VerifyEmailCodeHandler(directory, limiter, events, codeIssuer, gate),
         login: new LoginHandler(directory, credentials, hasher, limiter, events, gate),
         refresh: new RefreshHandler(sessions, tokens, cache, events, settings),
-        logoutEverywhere: new LogoutEverywhereHandler(sessions, cache),
+        listSessions: new ListSessionsHandler(sessions),
+        revokeSession: new RevokeSessionHandler(sessions, cache),
+        revokeOtherSessions: new RevokeOtherSessionsHandler(sessions, cache),
         forgot: new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer),
         deleteAccount: new DeleteOwnAccountHandler(directory, credentials, hasher, limiter, mailer, events, usersBus),
         reset: new ResetPasswordHandler(

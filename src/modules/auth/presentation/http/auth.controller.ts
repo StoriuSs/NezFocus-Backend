@@ -15,7 +15,6 @@ import {
     IssuedSession,
     LoginCommand,
     LogoutCommand,
-    LogoutEverywhereCommand,
     RefreshCommand,
     SendEmailCodeCommand,
     VerifyEmailCodeCommand
@@ -122,7 +121,7 @@ export class AuthController {
         this.cookies.assertAllowedOrigin(req)
         try {
             const session: IssuedSession = await this.commandBus.execute(
-                new RefreshCommand(this.cookies.readRefresh(req))
+                new RefreshCommand(this.cookies.readRefresh(req), client(req))
             )
             return this.cookies.signedIn(res, session, MESSAGES.AUTH.TOKEN_REFRESHED)
         } catch (error) {
@@ -164,20 +163,6 @@ export class AuthController {
             new CompleteAccountCommand(user.id, { displayName, username, password, timezone, language })
         )
         return createResponse(MESSAGES.AUTH.ACCOUNT_COMPLETED, null)
-    }
-
-    /** End every session of the signed-in user, this one included. */
-    @Post('logout-all')
-    @HttpCode(HttpStatus.OK)
-    @ApiBearerAuth('bearer')
-    @ApiEnvelopeResponse(null)
-    async logoutEverywhere(
-        @CurrentUser() user: AuthenticatedUser,
-        @Res({ passthrough: true }) res: Response
-    ): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new LogoutEverywhereCommand(user.id))
-        this.cookies.clearRefresh(res)
-        return createResponse(MESSAGES.AUTH.LOGOUT_EVERYWHERE_SUCCESS, null)
     }
 
     /**

@@ -6,8 +6,14 @@ import { MESSAGES } from '@/shared/constants'
 
 export const clientIp = (req: Request) => req.ip ?? 'unknown'
 
-/** Who is starting a session: kept on the session row. */
-export const client = (req: Request) => ({ ip: clientIp(req), userAgent: req.get('user-agent') })
+/** Longer than any browser sends; the header itself can be kilobytes. */
+const USER_AGENT_MAX_LENGTH = 512
+
+/** Who is using a session: kept on its row at sign-in and at each refresh (D-138). */
+export const client = (req: Request) => ({
+    ip: clientIp(req),
+    userAgent: req.get('user-agent')?.slice(0, USER_AGENT_MAX_LENGTH)
+})
 
 export const ok = <T>(data: T) => createResponse(MESSAGES.SUCCESS.OPERATION_SUCCESSFUL, data)
 

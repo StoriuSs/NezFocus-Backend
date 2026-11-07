@@ -8,6 +8,8 @@ export function sessionEndReason(ended: SessionEnd): SessionEndReason {
             return 'signed_out'
         case 'logout-all':
             return 'signed_out_everywhere'
+        case 'revoked':
+            return 'revoked'
         case 'password-changed':
         case 'password-reset':
             return 'password_changed'

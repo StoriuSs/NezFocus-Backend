@@ -260,45 +260,6 @@
         ]
       }
     },
-    "/api/v1/auth/logout-all": {
-      "post": {
-        "operationId": "AuthController_logoutEverywhere_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "type": "null"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "End every session of the signed-in user, this one included.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/options": {
       "get": {
         "operationId": "AuthController_authOptions_v1",
@@ -328,6 +289,130 @@
           }
         },
         "summary": "What the sign-in pages need to know: the other providers configured\n(`google`).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "SessionsController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SessionListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The live sessions: this device first, then by latest use.",
+        "tags": [
+          "auth"
+        ]
+      },
+      "delete": {
+        "operationId": "SessionsController_revokeOthers_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RevokedSessionsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "\"Sign out the other devices\": every session but this one ends; they\nlearn why at their next request (`signed_out_everywhere`).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{id}": {
+      "delete": {
+        "operationId": "SessionsController_revoke_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Sign out one session (`revoked` at its next request). The same answer\nwhen it already ended, or is not one of yours.",
         "tags": [
           "auth"
         ]
@@ -1414,6 +1499,88 @@
         },
         "required": [
           "providers"
+        ]
+      },
+      "SessionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "End it with `DELETE /auth/sessions/{id}`."
+          },
+          "browser": {
+            "type": "string",
+            "nullable": true,
+            "description": "Chrome, Edge, Firefox, Safari, Opera, Cốc Cốc, Samsung Internet, Chromium; null when not one of these."
+          },
+          "os": {
+            "type": "string",
+            "nullable": true,
+            "description": "Windows, macOS, iOS, iPadOS, Android, Ubuntu, Linux, ChromeOS; null when not one of these."
+          },
+          "device": {
+            "type": "string",
+            "description": "For the icon.",
+            "enum": [
+              "desktop",
+              "tablet",
+              "mobile"
+            ]
+          },
+          "ip": {
+            "type": "string",
+            "nullable": true,
+            "description": "The network of the last use, the rest masked: `14.231.x.x`,\n`2405:4802:x:x…` (D-138). Null when it is not known."
+          },
+          "last_active_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The last refresh, or the sign-in before any."
+          },
+          "signed_in_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "The session of this request: \"This device\". Always first."
+          }
+        },
+        "required": [
+          "id",
+          "browser",
+          "os",
+          "device",
+          "ip",
+          "last_active_at",
+          "signed_in_at",
+          "current"
+        ]
+      },
+      "SessionListResponseDto": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ]
+      },
+      "RevokedSessionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "number",
+            "description": "How many sessions ended: \"Signed out 2 other devices\"."
+          }
+        },
+        "required": [
+          "revoked"
         ]
       },
       "ForgotPasswordRequestDto": {
