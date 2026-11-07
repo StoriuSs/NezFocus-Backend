@@ -5,6 +5,7 @@ import { REDIS_CLIENT } from '../cache/redis-client.provider'
 import { REPEATED_ERROR_LOG_INTERVAL_MS, throttledLog } from '@/shared/utils/log-throttle.util'
 import { ipNetwork } from '@/shared/utils/ip-network.util'
 import { RateLimitRule, RateLimitState } from '@/shared/types/rate-limit.type'
+import { LimitsUnavailableError } from '@/shared/domain'
 
 /**
  * INCR, and start the window on the first hit, as one step. Two separate calls
@@ -39,10 +40,14 @@ return 0
  * sits in Redis in clear. A subject that is an IPv6 address counts per /64
  * (ipNetwork): a client can use a new address of its /64 for every request.
  *
- * **Fails open.** If Redis cannot be reached, every check allows the request
- * and the failure is logged (once a minute). A Redis outage already degrades
- * the app; refusing every sign-in on top would turn it into a total one. The
- * RedisDown alert covers the gap.
+ * **Fails closed** (D-137). If Redis cannot be reached, `hit` and `check`
+ * throw LimitsUnavailableError (503) and the failure is logged (once a
+ * minute). These limits are what stops guessing at codes and passwords, and
+ * letting requests through uncounted during an outage would open exactly
+ * that: a new code every request, five guesses each. Signing in stops until
+ * Redis is back (the RedisDown alert covers it); signed-in sessions go on.
+ * `release` and `reset` only log: failing them lets nothing extra through.
+ * The global throttler, which counts every route, still fails open.
  */
 @Injectable()
 export class RateLimiter {
@@ -65,7 +70,7 @@ export class RateLimiter {
             })) as [number, number]
             return { count, limited: count > rule.limit, retryAfterSeconds: Math.ceil(ttlMs / 1000) }
         } catch (error) {
-            return this.failOpen(error)
+            throw this.unavailable(error)
         }
     }
 
@@ -81,7 +86,7 @@ export class RateLimiter {
                 retryAfterSeconds: ttlMs > 0 ? Math.ceil(ttlMs / 1000) : 0
             }
         } catch (error) {
-            return this.failOpen(error)
+            throw this.unavailable(error)
         }
     }
 
@@ -90,7 +95,7 @@ export class RateLimiter {
         try {
             await this.redis.eval(RELEASE, { keys: [RateLimiter.key(rule, subject)] })
         } catch (error) {
-            this.failOpen(error)
+            this.logFailure(`Rate limiting unavailable: ${(error as Error)?.message}`)
         }
     }
 
@@ -99,12 +104,12 @@ export class RateLimiter {
         try {
             await this.redis.del(RateLimiter.key(rule, subject))
         } catch (error) {
-            this.failOpen(error)
+            this.logFailure(`Rate limiting unavailable: ${(error as Error)?.message}`)
         }
     }
 
-    private failOpen(error: unknown): RateLimitState {
-        this.logFailure(`Rate limiting unavailable, allowing the request: ${(error as Error)?.message}`)
-        return { count: 0, limited: false, retryAfterSeconds: 0 }
+    private unavailable(error: unknown): LimitsUnavailableError {
+        this.logFailure(`Rate limiting unavailable, refusing the request: ${(error as Error)?.message}`)
+        return new LimitsUnavailableError()
     }
 }
