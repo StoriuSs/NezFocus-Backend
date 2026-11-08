@@ -166,7 +166,7 @@ sent, and how to edit them.
 | Password changed | The password was changed or reset |
 | Password added | A password was added to an account that had none |
 | Sign-in method added | Google sign-in was linked to the account |
-| Account deleted | The account was deleted, and when its data goes |
+| Deletion scheduled | Its owner asked to delete the account: the date it goes (14 days later), and how to restore it |
 
 ### Configuration
 
@@ -310,8 +310,9 @@ the list, or renamed, has its old schedule removed from Redis at the next
 start.
 
 Two ship with the starter. The deleted-accounts sweep (users'
-`SweepDeletedAccountsCommand`), every 15 minutes, erases the personal data of
-long-deleted accounts and deletes accounts nobody confirmed
+`SweepDeletedAccountsCommand`), every 15 minutes, deletes the accounts whose
+owner asked 14 days ago and the ones left incomplete 14 days after they were
+made, erasing their personal data at once
 ([account-deletion.md](./account-deletion.md)). The auth clean-up (auth's
 `CleanUpAuthCommand`), every hour, removes sessions that ended more than a week ago and codes more
 than a day old, and finishes what a lost `AccountDeletedEvent` left behind:

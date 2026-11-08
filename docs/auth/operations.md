@@ -68,8 +68,8 @@ openssl rand -hex 32   # JWT_SECRET
       redirect URI `https://api.example.com/api/v1/auth/google/callback`
       registered exactly, and the consent screen published (In production),
       **not checked** ([../setup/google-sign-in.md](../setup/google-sign-in.md)).
-- [ ] `SUPPORT_EMAIL` (optional): named in the "account deleted" email,
-      where only a person can help.
+- [ ] `SUPPORT_EMAIL` (optional): named in the "account will be deleted"
+      email, where only a person can help.
 - [ ] `APP_NAME`: in every email subject.
 
 **The server.**
@@ -113,7 +113,6 @@ is in [environment.md](../environment.md#authentication). Where they are used:
 | `CORS_CREDENTIALS` | `true` | Must be true | |
 | `APP_NAME` | `Test App` | Your product's name | New emails only |
 | `SUPPORT_EMAIL` | empty | Recommended | |
-| `DELETED_ACCOUNT_RETENTION_DAYS` | `30` | At least 0 | |
 | `THROTTLE_TTL`, `THROTTLE_LIMIT`, `THROTTLE_ANONYMOUS_LIMIT` | `60`, `100`, `300` | | The global per-route throttler: `THROTTLE_LIMIT` per signed-in user, `THROTTLE_ANONYMOUS_LIMIT` per IP for requests without a valid access token (D-135, [rate-limits.md](./rate-limits.md)) |
 | `EMAIL_*` | Mailpit in development | `EMAIL_HOST` required | |
 

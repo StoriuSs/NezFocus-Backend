@@ -258,9 +258,10 @@ application/queries/check-username/check-username.handler.ts
 
 **Commands** change data, **queries** read it, and **events** are how one
 thing that happened causes others without the first one knowing. Deleting an
-account publishes `AccountDeletedEvent`; a handler in the users module queues
-the avatar clean-up, and one in the auth module ends every session. The delete
-handler knows about neither.
+account (by the users module's sweep, 14 days after its owner asks, D-141)
+publishes `AccountDeletedEvent`; a handler in the users module queues the
+avatar clean-up, and one in the auth module ends every session. The sweep
+knows about neither.
 
 ### The two modules
 
@@ -316,7 +317,7 @@ auth/
 
 The auth module imports only what the users module publishes in its
 `index.ts` — the `USER_DIRECTORY` port, the events it reacts to, the
-deletion command: the way two modules talk without importing each other's
+deletion rule `deletesAt`: the way two modules talk without importing each other's
 insides, and an ESLint rule keeps it that way. [docs/auth/in-the-code.md](./docs/auth/in-the-code.md) maps
 it file by file.
 
@@ -333,7 +334,7 @@ own module. You inherit these without writing anything.
 
 | | What it does for you | Where |
 | --- | --- | --- |
-| **Authentication** | Sign-up and sign-in by an emailed code (one flow), a "complete your account" step (username, password, time zone, language, Terms) that gates every other signed-in route (`ACCOUNT_INCOMPLETE`, `@AllowIncomplete()`), sign-in with a password, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with the password (`POST /auth/account/delete`). Emails in Vietnamese or English. `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
+| **Authentication** | Sign-up and sign-in by an emailed code (one flow), a "complete your account" step (username, password, time zone, language, Terms) that gates every other signed-in route (`ACCOUNT_INCOMPLETE`, `@AllowIncomplete()`), sign-in with a password, password reset and change. Short access tokens, a rotating refresh cookie that notices when it was stolen, revocation on the next request. Google sign-in, account deletion with the password (`POST /auth/account/delete`), which waits 14 days and can be taken back (`POST /auth/account/restore`, `ACCOUNT_PENDING_DELETION`, `@AllowPendingDeletion()`; D-141). Emails in Vietnamese or English. `@Public()`, `@Roles()`, `@CurrentUser()`. CLI: `pnpm user:promote` | `src/modules/auth/` · [docs/auth/](./docs/auth/README.md) |
 | **Rate limiting** | A per-route limit on every route, per user when the request has a valid access token and per IP otherwise (D-135), counted in Redis so the limit is the limit across every instance. On top, the sign-in routes count per address, per IP and per account (`rl:*` keys) | [rate-limit.md](./docs/rate-limit.md) · [auth/rate-limits.md](./docs/auth/rate-limits.md) |
 | **Idempotency** | A retried payment or a double-tapped button does the work once. `@Idempotent('1h')` on the route | [idempotency.md](./docs/idempotency.md) |
 | **Caching** | Two layers, memory in front of Redis, with a clear rule about which state may use which | [cache.md](./docs/cache.md) |

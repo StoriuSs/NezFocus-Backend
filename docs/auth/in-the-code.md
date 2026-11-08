@@ -79,7 +79,7 @@ Outside the folder, auth also owns:
 users publishes in [src/modules/users/index.ts](../../src/modules/users/index.ts)
 (an ESLint rule refuses anything deeper): the `USER_DIRECTORY` port
 ([user-directory.port.ts](../../src/modules/users/application/ports/user-directory.port.ts)),
-the events it reacts to, `DeleteAccountCommand`, and `normaliseEmail`.
+the events it reacts to, `deletesAt` (the 14-day rule, D-141), and `normaliseEmail`.
 
 ## How a request travels
 
@@ -128,14 +128,19 @@ itself, nothing more (D-135;
 4. `PRINCIPAL.resolve()` (`RedisSessionCache`): one Redis round trip for the
    session and the user, Postgres on a miss. Ended session: 401; deleted
    account: 403.
-5. The account's `completedAt` is empty and the route has no
+5. The account is waiting to be deleted (`deletionRequestedAt` set) and the
+   route has no `@AllowPendingDeletion()`
+   ([allow-pending-deletion.decorator.ts](../../src/shared/presentation/decorators/allow-pending-deletion.decorator.ts)):
+   `403 ACCOUNT_PENDING_DELETION` with `data.deletes_at` (D-141). Marked:
+   `GET /users/me`, `POST /auth/account/restore`.
+6. The account's `completedAt` is empty and the route has no
    `@AllowIncomplete()`
    ([allow-incomplete.decorator.ts](../../src/shared/presentation/decorators/allow-incomplete.decorator.ts)):
    `403 ACCOUNT_INCOMPLETE` (D-61). Read from the account step 4 loaded, not
    from a token claim (D-128). Marked: `POST /auth/complete-account`,
    `GET /users/me`, `GET /users/username-available/:username`.
-6. Put the user on `request.user` (with `completed`): what `@CurrentUser()`
-   returns and what `@Roles()` checks.
+7. Put the user on `request.user` (with `completed` and `deletesAt`): what
+   `@CurrentUser()` returns and what `@Roles()` checks.
 
 [sessions-and-tokens.md](./sessions-and-tokens.md) explains why step 4 makes
 sign-out immediate.
@@ -152,7 +157,7 @@ answer.
 | [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `complete-account`, `options` |
 | [sessions.controller.ts](../../src/modules/auth/presentation/http/sessions.controller.ts) | `GET sessions`, `DELETE sessions`, `DELETE sessions/:id` (the list of signed-in devices, D-75) |
 | [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password`, `sign-in-methods` |
-| [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete` |
+| [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete`, `account/restore` |
 | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) | `:provider`, `:provider/callback` (Google) |
 
 What they share is beside them: [auth-cookies.ts](../../src/modules/auth/presentation/http/auth-cookies.ts)
@@ -197,7 +202,8 @@ others in [application/ports/](../../src/modules/auth/application/ports/).
 | `AUTH_EVENTS` | Count an event | [prometheus-auth-events.adapter.ts](../../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts) | prom-client |
 | `PRINCIPAL` and `SESSION_CACHE` | The per-request session check; invalidation; the refresh grace replacement | [redis-session-cache.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-session-cache.adapter.ts) (one instance answers both) | Redis, Postgres fallback |
 | `RATE_LIMIT` | `hit`, `check`, `release`, `reset` a fixed-window counter; `hit` and `check` throw `LimitsUnavailableError` (503) when Redis is down (D-137) | the shared [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) | Redis (Lua) |
-| `USER_DIRECTORY` | The user row, owned by the users module: find, create, `complete` (the "complete your account" write, the password included, in one transaction), `languageOf` (for emails nobody asked for) | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
+| `SERVER_OWNERSHIP` | The servers an account owns that have other members, which block deleting it (D-76) | [no-servers-yet.adapter.ts](../../src/modules/auth/infrastructure/adapters/no-servers-yet.adapter.ts): none, until the servers module answers it in M1 | none |
+| `USER_DIRECTORY` | The user row, owned by the users module: find, create, `complete` (the "complete your account" write, the password included, in one transaction), `languageOf` (for emails nobody asked for), `timeZoneOf` (the date in the deletion email), `requestDeletion` and `cancelDeletion` (D-141) | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
 
 Settings, also provided by `auth.module.ts` from config:
 
@@ -229,6 +235,7 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 | `POST /auth/change-password` | `ChangePasswordCommand` | [change-password/](../../src/modules/auth/application/commands/change-password/) |
 | `GET /auth/sign-in-methods` | `GetSignInMethodsQuery` | [get-sign-in-methods/](../../src/modules/auth/application/queries/get-sign-in-methods/) |
 | `POST /auth/account/delete` | `DeleteOwnAccountCommand` | [delete-own-account/](../../src/modules/auth/application/commands/delete-own-account/) |
+| `POST /auth/account/restore` | `RestoreAccountCommand` | [restore-account/](../../src/modules/auth/application/commands/restore-account/) |
 | `GET /auth/{provider}` | `StartOAuthCommand` | [start-oauth/](../../src/modules/auth/application/commands/start-oauth/) |
 | `GET /auth/{provider}/callback` | `FinishOAuthCommand` | [finish-oauth/](../../src/modules/auth/application/commands/finish-oauth/) |
 | `GET /auth/options` | `GetAuthOptionsQuery`: reads `OAUTH_PROVIDERS` | [get-auth-options/](../../src/modules/auth/application/queries/get-auth-options/) |
@@ -240,10 +247,14 @@ account). Read it next to its tests in the scenario specs in `commands/`
 (`email-code.spec.ts`, `complete-account.spec.ts`, `sessions.spec.ts`,
 `passwords.spec.ts`, `google.spec.ts`, `delete-account.spec.ts`).
 
-`DeleteOwnAccountHandler` proves who is asking, then dispatches the **users**
-module's `DeleteAccountCommand`
-([delete-account.handler.ts](../../src/modules/users/application/commands/delete-account/delete-account.handler.ts))
-through the `CommandBus`: users owns deletion; auth only owns the proof.
+`DeleteOwnAccountHandler` proves who is asking, checks `SERVER_OWNERSHIP`
+(servers with other members block it, D-76; `NoServersYet` answers none until
+M1), then records the request through `USER_DIRECTORY.requestDeletion` and
+ends every session. Nothing is deleted then (D-141): the **users** module's
+15-minute sweep deletes the account 14 days later and publishes
+`AccountDeletedEvent`. `RestoreAccountHandler` takes the request back through
+`USER_DIRECTORY.cancelDeletion`. Users owns deletion; auth owns the proof and
+the sessions. Details: [../account-deletion.md](../account-deletion.md).
 
 ## Application services
 
@@ -282,8 +293,8 @@ in [events/handlers/](../../src/modules/auth/application/events/handlers/):
 | `UserProfileUpdatedEvent` | `RefreshCachedUserHandler` | Drops the cached user, so the next request sees the new profile and roles |
 
 In the other direction, auth calls into users through `USER_DIRECTORY`
-(`findByEmail`, `findById`, `create(email, displayName)`) and the
-`DeleteAccountCommand`, both from the users index. One write crosses the line
+(`findByEmail`, `findById`, `create(email, displayName)`, `timeZoneOf`,
+`requestDeletion`, `cancelDeletion`), from the users index. One write crosses the line
 the other way: the users repository's `complete` upserts auth's `Credential`
 row inside its own transaction, so a completion that loses changes no
 password ([accounts.md](./accounts.md)). The users module also
@@ -303,7 +314,7 @@ runs them.
 | Job name | What it does |
 |---|---|
 | `send-code` | An emailed code: `sign-in` or `password-reset`. A job with a retired purpose (queued before an upgrade) is dropped with a warning |
-| `password-changed`, `password-added`, `sign-in-method-added`, `account-deleted` | One notice email each ([emails.md](./emails.md)) |
+| `password-changed`, `password-added`, `sign-in-method-added`, `account-deletion-scheduled` | One notice email each ([emails.md](./emails.md)) |
 
 Every job carries `language` (`vi` or `en`); a job without it, queued before
 emails had a language, is sent in English.
@@ -326,7 +337,7 @@ one job however many app instances run.
 | Queue / scheduler id | Every | Handler | What |
 |---|---|---|---|
 | `maintenance` / `auth-clean-up` | 1 hour | [clean-up-auth.handler.ts](../../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts) | 1. Revokes open sessions of deleted accounts and deletes their passwords and provider links (only left behind if an `AccountDeletedEvent` was lost; logs a warning when it finds any). 2. Deletes sessions ended or expired more than **7 days** ago, with their refresh tokens: a stolen token presented that week is still recognised as reuse. 3. Deletes codes expired or used more than **1 day** ago |
-| `maintenance` / `deleted-accounts-sweep` (users module) | 15 minutes | users' `SweepDeletedAccountsHandler` | Erases personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago. There is no sweep of unconfirmed accounts: an account is only made once its address is confirmed (D-133) |
+| `maintenance` / `deleted-accounts-sweep` (users module) | 15 minutes | users' `SweepDeletedAccountsHandler` | Deletes accounts whose owner asked 14 days ago, and accounts still incomplete 14 days after they were made (D-141): marks them deleted and erases their personal data and settings at once, at most 200 a run, then publishes `AccountDeletedEvent` for each. There is no sweep of unconfirmed accounts: an account is only made once its address is confirmed (D-133) |
 
 ## Redis keys
 
@@ -363,7 +374,7 @@ row is deleted. Migrations: `20260923000000_self_hosted_auth`,
 | Table | One row per | Key columns | Notes |
 |---|---|---|---|
 | `Credential` | user with a password | `userId` (primary key), `passwordHash` (argon2id, parameters in the string), `passwordUpdatedAt` | No row = no password (an account made with Google) |
-| `Session` | sign-in | `id` (the access token's `sid`), `userId`, `createdAt`, `lastUsedAt`, `expiresAt` (absolute), `revokedAt`, `revokedReason`, `userAgent` (≤ 512), `ip` | `revokedReason`: `logout`, `logout-all` ("Sign out the other devices"; the value predates the button keeping this device), `revoked` (one device from the list), `password-changed`, `password-reset`, `reuse-detected`, `account-deleted`. `lastUsedAt`, `ip` and `userAgent` are rewritten on each refresh (D-138). Indexes `(userId, revokedAt)`, `(expiresAt)` |
+| `Session` | sign-in | `id` (the access token's `sid`), `userId`, `createdAt`, `lastUsedAt`, `expiresAt` (absolute), `revokedAt`, `revokedReason`, `userAgent` (≤ 512), `ip` | `revokedReason`: `logout`, `logout-all` ("Sign out the other devices"; the value predates the button keeping this device), `revoked` (one device from the list), `password-changed`, `password-reset`, `reuse-detected`, `deletion-requested` (the owner asked to delete the account, D-141), `account-deleted`. `lastUsedAt`, `ip` and `userAgent` are rewritten on each refresh (D-138). Indexes `(userId, revokedAt)`, `(expiresAt)` |
 | `RefreshToken` | refresh token ever issued | `tokenHash` (SHA-256, unique), `sessionId`, `expiresAt`, `usedAt`, `replacedById` | Used tokens are kept with their session: presenting one again is how theft is noticed |
 | `VerificationCode` | address and purpose | `email` (normalised: trimmed, lower case), `purpose` (`sign-in`, `password-reset`), `codeHash` (HMAC of `purpose:email:code`, keyed with `JWT_SECRET`), `expiresAt`, `attempts`, `consumedAt` | Unique `(email, purpose)`: a new code replaces the old. Keyed by address, not by account (D-129): a sign-in code goes to an address that may have no account, and an address without one still gets a reset row (D-121) |
 | `OAuthAccount` | provider link | `provider` (`google`), `providerAccountId` (the provider's `sub`), `userId` | Unique `(provider, providerAccountId)`. Stores the `sub`, never the address |
@@ -391,7 +402,8 @@ can alert. The list is `AUTH_EVENT_NAMES` in
 | `password_reset` | A password reset with a code (or a first one added that way) |
 | `oauth_login_succeeded`, `oauth_login_failed` | A Google return finished, or failed with an `?error=` reason |
 | `oauth_account_linked` | Google linked to an existing account |
-| `account_deleted` | `POST /auth/account/delete` succeeded |
+| `account_deleted` | `POST /auth/account/delete` succeeded: counted at the request, though the account goes 14 days later (D-141) |
+| `account_restored` | `POST /auth/account/restore` took a request back (not counted when there was nothing to take back) |
 
 Nothing is recorded for change-password, logout, or signing out devices from
 the list (`DELETE /auth/sessions`, `DELETE /auth/sessions/{id}`).
@@ -484,8 +496,8 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 | [auth.integration-spec.ts](../../test/integration/auth.integration-spec.ts) | The adapters under concurrency: the row lock decides one rotation; reuse after the replacement was used ends the session; ten simultaneous wrong codes all count, and one of five right ones wins; an older code cannot use up the newer one that replaced it; a sign-in code and a reset code for one address stay apart; a revoked session or deleted account is refused at once even when cached, and a session revoked mid-read is not cached |
 | [auth-http.integration-spec.ts](../../test/integration/auth-http.integration-spec.ts) | The whole app over HTTP: an account made with an emailed code and signed in to with the next one, in the page's language; a first password through forgot-password, sign-in with it, refresh from the web app only, sign-out; an IPv6 client counted by its /64, by the sign-in limit and the global throttler |
 | [oauth-http.integration-spec.ts](../../test/integration/oauth-http.integration-spec.ts) | Google sign-in against the fake issuer: a valid ID token signs in; one for another sign-in, another app, or signed with an unpublished key is refused |
-| [account-reuse.integration-spec.ts](../../test/integration/account-reuse.integration-spec.ts) | A deleted account's address signs up again, by code or by Google: a new account with a new id, both rows kept until the sweep; the old password refused |
-| [account-lifecycle.integration-spec.ts](../../test/integration/account-lifecycle.integration-spec.ts) | (users) concurrent avatar swaps and deletions; two accounts made for one address at once become one; a deleted account's address gets a new account |
+| [account-deletion.integration-spec.ts](../../test/integration/account-deletion.integration-spec.ts) | Deleting over HTTP (D-141): the answer's `deletes_at` and every session ended; another device told `account_deleted` with the date; signing in again by password, code or Google reaches the same account, which can only restore itself; restoring opens every route again and the old device reads `revoked`; the username held while waiting; after 14 days the address gets a new account and the old password is refused |
+| [account-lifecycle.integration-spec.ts](../../test/integration/account-lifecycle.integration-spec.ts) | (users) concurrent avatar swaps; one of several deletion requests recorded, none for an incomplete account; the sweep deletes only accounts whose 14 days are over and erases their data and settings at once; a restore or a completion against the sweep, never both winning; two accounts made for one address at once become one; a deleted account's address gets a new account |
 | [rate-limiter.integration-spec.ts](../../test/integration/rate-limiter.integration-spec.ts) | Exactly `limit` hits pass when many arrive at once |
 
 **The fake OIDC issuer.**

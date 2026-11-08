@@ -124,6 +124,9 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | `429 RATE_LIMIT_EXCEEDED` (the time zone, `PATCH /users/me/settings`) | `reason`: `timezone`, and `changeable_at`: when the zone may change again (it changes once every 24 hours) |
 | `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password`) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |
+| `401 AUTH_REFRESH_FAILED` | `reason`: why the session ended; with `account_deleted` while the account waits to be deleted, `deletes_at` |
+| `403 ACCOUNT_PENDING_DELETION` | `deletes_at`: when the account is deleted unless restored |
+| `409 OWNERSHIP_TRANSFER_REQUIRED` | `servers`: `[{ id, name, member_count }]`, the servers to hand over before deleting the account |
 
 A password the policy refuses:
 
@@ -170,12 +173,14 @@ were dropped; no `2xxxxx` code is sent any more.
 | `403003` | `AUTH_ACCOUNT_DISABLED` | The account was deleted |
 | `403004` | `AUTH_FORBIDDEN` | Not allowed: a missing role, or a cookie route called from an origin not in `CORS_ORIGINS` |
 | `403100` | `ACCOUNT_INCOMPLETE` | The account has not done "complete your account"; only routes marked `@AllowIncomplete()` answer. Not a 401: do not sign out |
+| `403101` | `ACCOUNT_PENDING_DELETION` | The account is waiting to be deleted (D-141); only routes marked `@AllowPendingDeletion()` answer (`GET /users/me`, `POST /auth/account/restore`). Not a 401: do not sign out, offer to restore |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
 | `404001` | `USER_NOT_FOUND` | No such user |
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |
 | `408000` | `REQUEST_TIMEOUT_ERROR` | The request ran past `REQUEST_TIMEOUT_MS` |
 | `409000` | `CONFLICT_ERROR` | A 409 with no code of its own |
 | `409100` | `ACCOUNT_ALREADY_COMPLETE` | "Complete your account" sent for an account already completed |
+| `409101` | `OWNERSHIP_TRANSFER_REQUIRED` | Deleting an account that owns servers with other members (D-76): hand them over first |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |

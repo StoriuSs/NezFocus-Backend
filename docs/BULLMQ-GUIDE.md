@@ -11,10 +11,12 @@ Imagine what happens when a user clicks **"Delete Account"**, if everything
 happened inside the request:
 
 1. The React app sends `POST /api/v1/auth/account/delete` with the password.
-2. NestJS checks the password, marks the row deleted in PostgreSQL and ends
-   every session.
-3. NestJS then makes a network request to **S3** to delete the account's avatar,
-   and another to the **SMTP server** to send "your account was deleted".
+2. NestJS checks the password, records the request in PostgreSQL and ends
+   every session. (In NezFocus the account is deleted 14 days later, by a
+   sweep, unless its owner restores it: [account-deletion.md](./account-deletion.md).)
+3. NestJS then makes a network request to the **SMTP server** to send "your
+   account will be deleted on ...". When the sweep deletes the account, it
+   makes another to **S3** to delete the avatar.
 4. Finally, NestJS responds to the React app with `200 OK`.
 
 **The Problem:**
@@ -55,17 +57,19 @@ Here is the flow for deleting an account:
 
 1. The user clicks **"Delete Account"**; the app sends
    `POST /api/v1/auth/account/delete`.
-2. `DeleteOwnAccountHandler` (auth module) checks the proof (the password or an
-   emailed code), then runs the users module's `DeleteAccountCommand`.
-3. `DeleteAccountHandler` (users module) sets `deletedAt = now()` in PostgreSQL
-   and publishes an `AccountDeletedEvent`.
-4. Two event handlers react. `EndSessionsOfDeletedAccountHandler` (auth) ends
-   every session and removes the password and Google links.
-   `CleanupAccountAvatarHandler` (users) drops a small note, a job, into Redis:
+2. `DeleteOwnAccountHandler` (auth module) checks the password, records
+   `deletionRequestedAt` in PostgreSQL and ends every session.
+3. It drops a small note, a job, into Redis: the "account will be deleted on
+   ..." email, on the `auth` queue.
+4. NestJS immediately replies to the React app: `200 OK`.
+5. Fourteen days later, the `deleted-accounts-sweep` job (itself a scheduled
+   job, below) runs `SweepDeletedAccountsHandler` (users module). It marks the
+   account deleted, erases its personal data and publishes an
+   `AccountDeletedEvent`.
+6. Two event handlers react. `EndSessionsOfDeletedAccountHandler` (auth) ends
+   the sessions and removes the password and Google links.
+   `CleanupAccountAvatarHandler` (users) drops another job into Redis:
    > *"Delete this stored file. If it fails, keep trying for an hour and a half."*
-5. `DeleteOwnAccountHandler` queues one more job, the "account deleted" email,
-   on the `auth` queue.
-6. NestJS immediately replies to the React app: `200 OK`.
 
 ### Step B: the consumer
 
@@ -103,7 +107,7 @@ are defined in `src/modules/auth/infrastructure/email/auth-email-jobs.ts`):
 | `password-changed` | The password was changed or reset |
 | `password-added` | A password was added to an account that had none |
 | `sign-in-method-added` | Google was linked to an existing account |
-| `account-deleted` | The account was deleted |
+| `account-deletion-scheduled` | Its owner asked to delete the account: the date it goes, and how to restore it |
 
 Each job carries the email's `language` (`vi` or `en`); a job queued before
 emails had one is sent in English.
@@ -119,7 +123,7 @@ What each email says, and how to change one: [auth/emails.md](./auth/emails.md).
 ## What about work that really is on a schedule?
 
 Some things genuinely have to happen every so often rather than in response to
-a click: erasing the personal data of long-deleted accounts, removing sessions
+a click: deleting accounts whose 14 days of waiting are over, removing sessions
 that ended a week ago. The objection above was to *polling*, not to schedules.
 
 BullMQ has a **job scheduler**, which is a cron whose schedule lives in Redis
@@ -144,7 +148,7 @@ Two schedules ship with the starter:
 
 | Queue | Scheduler | Every | What it does |
 | --- | --- | --- | --- |
-| `maintenance` | `deleted-accounts-sweep` (users) | 15 min | Erases the personal data of accounts deleted more than `DELETED_ACCOUNT_RETENTION_DAYS` ago |
+| `maintenance` | `deleted-accounts-sweep` (users) | 15 min | Deletes the accounts whose 14 days are over (asked to be deleted, or left incomplete) and erases their personal data at once (D-141) |
 | `maintenance` | `auth-clean-up` (auth) | 1 h | Removes sessions that ended a week ago and codes a day old; ends what a lost `AccountDeletedEvent` left behind (sessions, passwords and Google links of deleted accounts) |
 
 ## Code map

@@ -180,8 +180,6 @@ reference for every variable.
       sign-up through it before launch ([setup/email.md](./setup/email.md))
 - [ ] `SENTRY_DSN` — a project of its own, not shared with staging. Empty
       turns error tracking off
-- [ ] `DELETED_ACCOUNT_RETENTION_DAYS` — how long a deleted account's personal
-      data survives. It is a policy decision, and possibly a legal one
 - [ ] `LOG_LEVEL` — `info` unless you have a reason
 
 **Alerts and backups, which are only useful if configured before you need them:**
@@ -234,7 +232,7 @@ does not: [auth/operations.md](./auth/operations.md).
       (SPF and DKIM records), or codes land in spam
       ([setup/email.md](./setup/email.md))
 - [ ] `SUPPORT_EMAIL` — an address people can write to. It is named in the
-      "account deleted" email, the one where only a person can help. Empty, it
+      "account will be deleted" email, the one where only a person can help. Empty, it
       names none
 - [ ] A real sign-up went through: the code arrived, in the inbox
 

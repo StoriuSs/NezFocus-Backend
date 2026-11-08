@@ -264,7 +264,7 @@ All in the **API's** `.env.production` ([validation.ts](../../src/config/validat
 | `EMAIL_FROM_NAME` | | The name people see, e.g. your app's name |
 | `EMAIL_FROM_ADDRESS` | | An address on the authenticated domain |
 | `FRONTEND_URL` | **Yes, in production** | `https://app.example.com`: the links in the emails point at the web app's pages |
-| `SUPPORT_EMAIL` | | Optional. An address named in the account-deleted email, where only a person can help |
+| `SUPPORT_EMAIL` | | Optional. An address named in the "account will be deleted" email, where only a person can help |
 
 Apply them with the next `./deploy.sh` ([../deploy.md](../deploy.md)). Check
 the file first: `pnpm env:check .env.production` reports every problem without

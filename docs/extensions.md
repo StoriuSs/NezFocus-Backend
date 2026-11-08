@@ -51,7 +51,7 @@ the auth module:
   use it. It says how many, not who
   ([monitoring.md](./monitoring.md#auth-metrics)).
 - **The owner is told.** Every security change emails the account's owner:
-  password changed or added, a sign-in method added, account deleted (the
+  password changed or added, a sign-in method added, account deletion asked (the
   `AUTH_JOBS` in
   [`auth-email-jobs.ts`](../src/modules/auth/infrastructure/email/auth-email-jobs.ts);
   see [emails.md](./auth/emails.md)). That lets a person notice a change they
@@ -164,23 +164,22 @@ change; a separate process reads that table and publishes.
 current best-effort approach is no longer acceptable — an order that was paid
 for and never reached fulfilment, for instance.
 
-**Where the starter stands.** A user deletes their account with
-`POST /auth/account/delete`. The auth module checks their proof
-([`delete-own-account.handler.ts`](../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts)),
-then sends the users module's `DeleteAccountCommand`. Its handler
-([`delete-account.handler.ts`](../src/modules/users/application/commands/delete-account/delete-account.handler.ts))
-commits the soft delete and *then* publishes `AccountDeletedEvent`. A crash in
-between loses the event. The system is built to tolerate that: the guard and
-refresh read the user on every request and refuse a deleted one, whether or
-not the sessions were ended; the hourly auth clean-up ends any session and
-deletes any password or Google link a deleted account still has; and the maintenance
-sweep erases the personal data on its own schedule, from the row, not the
-event ([account-deletion.md](./account-deletion.md)). **Designing the reads
-so a lost event does no harm is the poor man's outbox**, and for most
-applications it is the better trade — much less machinery.
+**Where the project stands.** A user asks to delete their account with
+`POST /auth/account/delete`; 14 days later the users module's sweep
+([`sweep-deleted-accounts.handler.ts`](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts))
+commits the deletion, erasing the personal data in the same statement, and
+*then* publishes `AccountDeletedEvent`. A crash in between loses the event.
+The system is built to tolerate that: the guard and refresh read the user on
+every request and refuse a deleted one, whether or not the sessions were
+ended; and the hourly auth clean-up ends any session and deletes any password
+or Google link a deleted account still has
+([account-deletion.md](./account-deletion.md)). **Designing the reads so a
+lost event does no harm is the poor man's outbox**, and for most applications
+it is the better trade (much less machinery).
 
 One gap it leaves: an avatar whose cleanup event was lost stays in storage.
-The sweep clears the key from the row, but not the file.
+The sweep clears the key from the row in the same statement, so nothing points
+to the file any more.
 
 **How it fits, if you need the real thing.**
 

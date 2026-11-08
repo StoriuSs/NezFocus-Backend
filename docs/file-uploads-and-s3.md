@@ -547,14 +547,15 @@ Four sources of orphaned objects:
 4. **User deleted their account.** Handled, through events:
 
    ```
-   POST /api/v1/auth/account/delete            (auth module: checks the proof)
-     → DeleteAccountCommand                    (users module: soft-deletes the row, in one statement)
+   POST /api/v1/auth/account/delete            (auth module: checks the proof, records the request)
+     ... 14 days later (D-141)
+     SweepDeletedAccountsCommand               (users module: deletes the row and erases it, in one statement)
        → AccountDeletedEvent(userId, avatarUrl)
          → CleanupAccountAvatarHandler         (queues the avatar's deletion)
            → file-cleanup job                  (deletes the file from S3 or local disk)
    ```
 
-   The handlers are in [`src/modules/users/application/events/handlers/`](../src/modules/users/application/events/handlers/). One gap remains: the event is published after the soft delete commits, so a crash in between loses it, and the file stays. The later retention sweep clears the key from the row, not the file ([extensions.md](./extensions.md#transactional-outbox), [account-deletion.md](./account-deletion.md)). With local storage the gap matters more, because `/uploads` is served without auth.
+   The handlers are in [`src/modules/users/application/events/handlers/`](../src/modules/users/application/events/handlers/). One gap remains: the event is published after the sweep commits, so a crash in between loses it, and the file stays. The same statement already cleared the key from the row, so nothing points to the file any more ([extensions.md](./extensions.md#transactional-outbox), [account-deletion.md](./account-deletion.md)). With local storage the gap matters more, because `/uploads` is served without auth.
 
 ---
 

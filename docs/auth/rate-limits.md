@@ -91,7 +91,7 @@ All in one file, [rate-limits.ts](../../src/modules/auth/application/rate-limits
 | `code-email-ip` | 30 per 5 min | IP | `network` | `email-code`, `forgot-password` | every accepted request, any address | — |
 | `code-try-ip` | 30 per 5 min | IP | `network` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, any address | — |
 | `code-fail-email` | 10 per hour | the email address | `codes` | `email-code/verify`, `reset-password` | **wrong** emailed codes only, across the address's codes | — |
-| `change-pw-fail` | 5 per 15 min | the user | `wrong_password` | `change-password`, `account/delete` | wrong current passwords only | on a successful change or deletion |
+| `change-pw-fail` | 5 per 15 min | the user | `wrong_password` | `change-password`, `account/delete` | wrong current passwords only | on a successful change or deletion request |
 
 All routes are under `/api/v1/auth/`. Why each exists:
 
@@ -210,7 +210,7 @@ Compare with the [global throttler](#the-global-throttler)'s 429: its
 | `POST /auth/reset-password` | `code-try-ip`, `code-fail-email` |
 | `POST /auth/change-password` | `change-pw-fail` |
 | `POST /auth/account/delete` | `change-pw-fail` |
-| `POST /auth/refresh`, `logout`, `DELETE /auth/sessions` and `sessions/{id}`, `GET` routes, Google | none beyond the global throttler |
+| `POST /auth/refresh`, `logout`, `account/restore`, `DELETE /auth/sessions` and `sessions/{id}`, `GET` routes, Google | none beyond the global throttler |
 
 [api-reference.md](api-reference.md) has every route's full error list.
 

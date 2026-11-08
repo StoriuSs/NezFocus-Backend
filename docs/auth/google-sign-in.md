@@ -153,7 +153,7 @@ The rules, in order ([finish-oauth.handler.ts](../../src/modules/auth/applicatio
 
 | Situation | What happens | Email sent |
 |---|---|---|
-| This Google person (`sub`) is already linked to an account | Sign in to that account | none |
+| This Google person (`sub`) is already linked to an account | Sign in to that account, also when it is waiting to be deleted (it can then only be restored, D-141) | none |
 | ...but that account is deleted | Refused: `?error=account_deleted` | none |
 | Not linked, and Google did not say the email is verified (or sent none) | Refused: `?error=email_unverified` | none |
 | Not linked, no live account has the address | A new account: **no password**, not completed, display name from Google (composed, trimmed, cut to 32 characters without splitting an emoji; none if nothing visible is left, D-139). Linked. It goes through "complete your account" like any other (D-61, D-130) | none |
@@ -175,11 +175,13 @@ Notes on the table:
   email is how they find out. It links to `/forgot-password`. Nobody asked for
   it from a page, so it is in the account's language (`UserSettings.language`,
   chosen when it was completed), English if it has none yet (D-132).
-- **Deleted accounts.** Deleting an account removes its Google link, so the same
-  Google person signing in again later starts afresh with a new account (the
-  deleted account's address is no longer live). `account_deleted` appears only
-  if a link still points to a deleted account, which happens only if the
-  deletion's clean-up has not run yet. See [accounts.md](accounts.md).
+- **Deleted accounts.** Asking to delete an account keeps its Google link for
+  the 14 days it waits, so Google signs in to the same account, which the
+  person can then restore (D-141). When the sweep deletes it, the link goes
+  too, so the same Google person signing in later starts afresh with a new
+  account (the address was erased). `account_deleted` appears only if a link
+  still points to a deleted account, which happens only if the deletion's
+  clean-up has not run yet. See [../account-deletion.md](../account-deletion.md).
 - **Races.** Two returns for the same person at once, or a sign-up with the same
   address at the same moment, both end in one account: the second one signs in
   to whichever won.

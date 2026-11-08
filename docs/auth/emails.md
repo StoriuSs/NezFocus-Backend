@@ -59,7 +59,7 @@ below are the English ones.
 | Password changed (`password-changed`) | Change password; reset password on an account that had one | Your {app} password was changed |
 | Password added (`password-added`) | A reset on an account that had no password | Your {app} account now has a password |
 | Sign-in method added (`sign-in-method-added`) | Google linked to an existing account | Google sign-in was added to your {app} account |
-| Account deleted (`account-deleted`) | `POST /auth/account/delete` | Your {app} account was deleted |
+| Deletion scheduled (`account-deletion-scheduled`) | `POST /auth/account/delete` (the account waits 14 days, D-141) | Your {app} account will be deleted on dd/mm/yyyy |
 
 The code emails are the ones a person waits for. The rest are **security
 notices**: each is the one email the owner needs if it was not them, and each
@@ -158,12 +158,18 @@ the same for every address (D-59, D-60).
 - **Not sent** when the account was created by this Google sign-in.
 - In the account's language, English if it has none yet (D-132).
 
-### Account deleted
+### Deletion scheduled
 
-- **Says:** the account was deleted and every session has ended; its personal
-  details are erased for good after N days (`DELETED_ACCOUNT_RETENTION_DAYS`,
-  default 30). If not them: contact `SUPPORT_EMAIL` now, or reply to the
-  email when it is not set.
+- **Says:** a request to delete the account was received and every session has
+  ended; it is deleted for good on a date, written dd/mm/yyyy in the account's
+  time zone (UTC if it has none). Until then, signing in and choosing "Restore
+  account" keeps it. If not them: sign in, restore the account and change the
+  password, or contact `SUPPORT_EMAIL` when it is set.
+- **Button:** "Sign in", to `FRONTEND_URL/login`, where restoring starts.
+- The only deletion email (D-141): nothing is sent when the account is
+  restored (that needs signing in), when the sweep deletes it 14 days later,
+  or when it deletes an account left incomplete.
+- In the request's `language`.
 
 ## How an email is sent
 
@@ -337,8 +343,7 @@ Deploy the worker change before, or with, the code that queues the new job.
 | `EMAIL_FROM_ADDRESS` | `noreply@testapp.com` | The sender's address. Use your authenticated domain |
 | `APP_NAME` | `Test App` | In every subject and email body |
 | `FRONTEND_URL` | `http://localhost:3001` | The web app; the base of every link. **Required in production** |
-| `SUPPORT_EMAIL` | empty | Named in the account-deleted email. Empty: it says "contact {app} support" without an address. Set it in production |
-| `DELETED_ACCOUNT_RETENTION_DAYS` | `30` | The "erased within N days" in the account-deleted email |
+| `SUPPORT_EMAIL` | empty | Named in the deletion-scheduled email ("or contact ..."). Empty: that part is left out. Set it in production |
 | `BULL_BOARD_USER`, `BULL_BOARD_PASSWORD` | `admin` / `admin` | The queue dashboard's login. Production refuses the defaults |
 
 In development the dev compose file overrides `EMAIL_HOST`, `EMAIL_PORT` and

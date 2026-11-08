@@ -189,6 +189,7 @@ repeated in every route below.
 | The token is genuine but its session has ended | 401 | `AUTH_TOKEN_REVOKED` | `401006` | `data.reason` (see [session end reasons](#session-end-reasons)) |
 | The account was deleted | 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | |
 | The account has not done "complete your account", and the route is not one of the [three that allow it](#the-gate) | 403 | `ACCOUNT_INCOMPLETE` | `403100` | |
+| The account is [waiting to be deleted](#while-the-account-waits), and the route is not `GET /users/me` or `POST /auth/account/restore` | 403 | `ACCOUNT_PENDING_DELETION` | `403101` | `data.deletes_at` |
 | A body field fails its check, or an unknown field is sent | 422 | `VALIDATION_ERROR` | `422000` | `data.details[]` |
 | Malformed JSON | 400 | `BAD_REQUEST_ERROR` | `400000` | |
 | The global throttler: more than `THROTTLE_LIMIT` (default 100) requests to **this route** from one signed-in user, or `THROTTLE_ANONYMOUS_LIMIT` (default 300) from one IP without a valid access token, in `THROTTLE_TTL` (60) seconds (D-135) | 429 | `THROTTLE_ERROR` | `429001` | `Retry-After` header (seconds). No `data.reason` |
@@ -207,12 +208,13 @@ session ended. Only the holder of that dead session is told.
 | `revoked` | Signed out from the [list of devices](#sign-out-one-device), on another device. The frontend shows the generic "your session has ended" sentence |
 | `password_changed` | The password was changed (other devices) or reset (every device) |
 | `security` | Its refresh token was used twice, so it is presumed stolen |
-| `account_deleted` | The account was deleted (on refresh only: signed-in routes answer `403 AUTH_ACCOUNT_DISABLED` instead) |
+| `account_deleted` | Its owner asked to delete the account (D-141). On refresh, `data.deletes_at` says when it goes, so the page can say so; someone who did not ask can still sign in and restore it. Also on refresh for an account already deleted (then without `deletes_at`) |
 | `expired` | It reached its absolute end |
 | (absent) | Unknown token, no cookie, or nothing more to say |
 
 A deleted account gets `403 AUTH_ACCOUNT_DISABLED` on signed-in routes rather
-than a 401.
+than a 401. A session ended by a deletion request that was then taken back
+reads `revoked`: nothing is being deleted any more.
 
 ## Routes at a glance
 
@@ -234,6 +236,7 @@ than a 401.
 | `POST /auth/change-password` | Signed in | 200 | [Change password](#change-password) |
 | `GET /auth/sign-in-methods` | Signed in | 200 | [Sign-in methods](#sign-in-methods) |
 | `POST /auth/account/delete` | Signed in | 200 | [Delete the account](#delete-the-account) |
+| `POST /auth/account/restore` | Signed in, waiting to be deleted | 200 | [Restore the account](#restore-the-account) |
 | `GET /auth/options` | Public | 200 | [Sign-in options](#sign-in-options) |
 | `GET /auth/{provider}` | Browser navigation | 302 | [Start a provider sign-in](#start-a-provider-sign-in) |
 | `GET /auth/{provider}/callback` | Browser navigation (from Google) | 302 | [Provider callback](#provider-callback) |
@@ -376,7 +379,7 @@ it is logged and the answer is still `200`: the account is completed.
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
-| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The account was deleted a moment ago | |
+| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The account was deleted a moment ago, including by the sweep of accounts left incomplete 14 days (D-141) while this was being sent | |
 | 409 | `ACCOUNT_ALREADY_COMPLETE` | `409100` | The account is already completed, including by another submission at the same moment | |
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The password breaks a rule, or is the email, the part before `@`, or this username (D-66) | `data.rules` |
 | 409 | `USERNAME_CONFLICT` | `409200` | A live account has the username. Decided as it is written: [username-available](#the-gate) is only a hint | |
@@ -429,7 +432,7 @@ message "Token refreshed successfully", `data`: [the token answer](#token-answer
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 403 | `AUTH_FORBIDDEN` | `403004` | The request has an `Origin` header that is not in `CORS_ORIGINS`. The cookie is left alone. A request with no `Origin` (curl, a mobile app) is allowed | |
-| 401 | `AUTH_REFRESH_FAILED` | `401008` | No cookie, an unknown or expired token, a token presented twice (theft), or its session has ended. **The cookie is cleared** | `data.reason` (optional): `expired`, `signed_out`, `signed_out_everywhere`, `revoked`, `password_changed`, `security`, `account_deleted` ([reasons](#session-end-reasons)) |
+| 401 | `AUTH_REFRESH_FAILED` | `401008` | No cookie, an unknown or expired token, a token presented twice (theft), or its session has ended. **The cookie is cleared** | `data.reason` (optional): `expired`, `signed_out`, `signed_out_everywhere`, `revoked`, `password_changed`, `security`, `account_deleted` ([reasons](#session-end-reasons)); `data.deletes_at` with `account_deleted` while the account waits to be deleted |
 
 No auth limit applies, only the global throttler. A refresh does not extend
 the session: it ends `AUTH_SESSION_TTL_DAYS` after sign-in whatever happens.
@@ -645,34 +648,63 @@ An account without a password chooses its first one with
 
 ## Deleting the account
 
-[accounts.md](./accounts.md) explains what deletion removes, and when.
+[../account-deletion.md](../account-deletion.md) explains the whole lifecycle:
+the 14-day wait, restoring, and what is removed when (D-141).
 
 ### Delete the account
 
-`POST /api/v1/auth/account/delete` · Signed in · clears `refresh_token`
+`POST /api/v1/auth/account/delete` · Signed in, completed · clears `refresh_token`
 
-Deletes the signed-in user's own account, with the password as proof it is
-them. Every session ends, this one included. The owner is emailed. An account
-without a password chooses one with [forgot password](#forgot-password) first.
+Asks to delete the signed-in user's own account, with the password as proof it
+is them. Nothing is deleted yet: the account waits 14 days, still live, and is
+deleted then unless its owner signs in and [restores it](#restore-the-account).
+Every session ends now, this one included (reason `account_deleted`). The owner
+is emailed the date. An account without a password chooses one with
+[forgot password](#forgot-password) first.
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
 | `password` | string | no, but without it the answer is `AUTH_CONFIRMATION_REQUIRED` | 1 to 1024 |
-| `language` | string | no | `vi` or `en`, for the "account deleted" email ([the `language` field](#language-field)) |
+| `language` | string | no | `vi` or `en`, for the "account will be deleted" email ([the `language` field](#language-field)) |
 
-**Success:** `200`,
-message "Account deleted successfully", `data: null`. Send it with
+**Success:** `200`, message "Account will be deleted",
+`data: { "deletes_at": "<ISO date>" }`, 14 days after the request. Send it with
 credentials so the cookie is cleared.
 
-**Errors**, in the order they are checked, besides the guard errors:
+**Errors**, in the order they are checked, besides the guard errors (an
+account already waiting gets `403 ACCOUNT_PENDING_DELETION` from the guard):
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
+| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Already deleted | |
 | 400 | `AUTH_CONFIRMATION_REQUIRED` | `400108` | No password was sent, or the account has none (it chooses one with [forgot password](#forgot-password) first) | `data.needs`: `["password"]` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `change-pw-fail`: 5 wrong passwords in 15 minutes | `data.reason: "wrong_password"`, `Retry-After` |
 | 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | Wrong password | |
-| 404 | `USER_NOT_FOUND` | `404001` | Two deletions of the same account raced and this one lost | |
-| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Already deleted | |
+| 409 | `OWNERSHIP_TRANSFER_REQUIRED` | `409101` | The account owns servers with other members: hand them over first (D-76). None until servers exist (M1) | `data.servers`: `[{ id, name, member_count }]` |
+| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Another request recorded the deletion a moment earlier | |
+
+<a id="while-the-account-waits"></a>
+**While the account waits**, signing in by password, code or Google reaches
+the same account. Every signed-in route then answers
+`403 ACCOUNT_PENDING_DELETION` (`403101`, `data.deletes_at`) except
+[`GET /users/me`](#the-current-user) (which carries `deletes_at`) and
+[restore](#restore-the-account). Public routes are not affected.
+
+### Restore the account
+
+`POST /api/v1/auth/account/restore` · Signed in, completed · no cookies · no body
+
+Takes back a request to delete the account. Signing in was the proof. The
+sessions the request ended stay ended. No email is sent.
+
+**Success:** `200`, message "Account restored", `data: null`. Also when the
+account was not waiting (another tab restored it first): nothing changes.
+
+**Errors**, besides the guard errors:
+
+| Status | `meta.type` | `meta.code` | When | Extras |
+|---|---|---|---|---|
+| 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | The 14 days were over and the sweep deleted it first | |
 
 ## Google and other providers
 
@@ -743,11 +775,12 @@ unknown provider.
 
 ## The current user
 
-`GET /api/v1/users/me` · Signed in, completed or not
+`GET /api/v1/users/me` · Signed in, completed or not, waiting to be deleted or not
 
 Not an auth route, but where a client learns who is signed in. It is read
 through the same per-request session check, so it reflects the account as it
-is now. It answers before the account is completed too ([the gate](#the-gate)).
+is now. It answers before the account is completed too ([the gate](#the-gate)),
+and while it waits to be deleted ([`@AllowPendingDeletion()`](#while-the-account-waits)).
 
 **Success:** `200`,
 message "User fetched successfully".
@@ -758,6 +791,7 @@ message "User fetched successfully".
 | `email` | string | The sign-in address, lower-case |
 | `roles` | string[] | `["user"]` by default; `admin` and others are given with `pnpm user:promote` ([accounts.md](./accounts.md)). Not in the token: read them here |
 | `completed` | boolean | The account has done [complete your account](#complete-your-account). While `false`, open that step: other signed-in routes answer `403 ACCOUNT_INCOMPLETE` |
+| `deletes_at` | string or null | When the account is deleted, if its owner asked to delete it (D-141). While set, show the restore dialog: other signed-in routes answer `403 ACCOUNT_PENDING_DELETION` |
 | `username`, `display_name`, `avatar_url`, `bio` | | The profile, owned by the users module. `username` is absent until the account is completed |
 
 **Errors:** the guard errors.
@@ -809,7 +843,7 @@ otherwise). Details and tuning:
 | `code-email-ip` | 30 per 5 min | IP | `network` | email-code, forgot-password | Requests |
 | `code-try-ip` | 30 per 5 min | IP | `network` | email-code/verify, reset-password | Wrong codes only |
 | `code-fail-email` | 10 per hour | address | `codes` | email-code/verify, reset-password | Wrong codes only, across the address's codes (D-134) |
-| `change-pw-fail` | 5 per 15 min | account | `wrong_password` | change-password, account/delete | Wrong passwords; cleared on success |
+| `change-pw-fail` | 5 per 15 min | account | `wrong_password` | change-password, account/delete | Wrong passwords; cleared on success (for account/delete: once the password is right and the request is recorded) |
 
 With Redis down, these limits cannot be counted and every route listed here
 answers `503 SERVICE_UNAVAILABLE_ERROR` (D-137); the global throttler lets
@@ -833,7 +867,7 @@ kind; `meta.code` and `meta.type` come from
 | `AUTH_TOKEN_EXPIRED` | 401 | `401004` | Your access token has expired. | |
 | `AUTH_TOKEN_INVALID` | 401 | `401005` | Your access token is not valid. | |
 | `AUTH_TOKEN_REVOKED` | 401 | `401006` | This session has ended. Sign in again. | `reason` (optional) |
-| `AUTH_REFRESH_FAILED` | 401 | `401008` | Your session has ended. Sign in again. | `reason` (optional) |
+| `AUTH_REFRESH_FAILED` | 401 | `401008` | Your session has ended. Sign in again. | `reason` (optional), `deletes_at` (with `account_deleted`, while the account waits) |
 | `AUTH_CODE_INVALID` | 400 | `400102` | That code is not right. If you asked for more than one, only the newest works. | |
 | `AUTH_CODE_EXPIRED` | 400 | `400103` | This code no longer works: it expired, or had too many wrong tries. Ask for a new one. | |
 | `AUTH_CURRENT_PASSWORD_INVALID` | 400 | `400104` | Your current password is not right. | |
@@ -841,9 +875,11 @@ kind; `meta.code` and `meta.type` come from
 | `AUTH_ACCOUNT_DISABLED` | 403 | `403003` | This account has been deleted. | |
 | `AUTH_FORBIDDEN` | 403 | `403004` | This request did not come from an allowed site. | |
 | `ACCOUNT_INCOMPLETE` | 403 | `403100` | Complete your account first. | |
+| `ACCOUNT_PENDING_DELETION` | 403 | `403101` | This account is waiting to be deleted. Restore it first. | `deletes_at` |
 | `NOT_FOUND_ERROR` | 404 | `404000` | There is no sign-in with that provider here. | |
 | `USER_NOT_FOUND` | 404 | `404001` | (from the users module) | |
 | `ACCOUNT_ALREADY_COMPLETE` | 409 | `409100` | This account is already complete. | |
+| `OWNERSHIP_TRANSFER_REQUIRED` | 409 | `409101` | Hand over the servers you own first. | `servers` |
 | `USERNAME_CONFLICT` | 409 | `409200` | Username already taken: {username} (from the users module) | |
 | `AUTH_PASSWORD_REJECTED` | 422 | `422004` | One sentence per broken rule, joined | `rules` |
 | `VALIDATION_ERROR` | 422 | `422000` | Validation failed | `details[]` |
@@ -896,7 +932,8 @@ for logs; react to the status and `data`.
 | DELETE sessions | 200 | Signed out the other devices |
 | reset-password | 200 | Your password has been changed. You are signed in. |
 | change-password | 200 | Password has been changed successfully |
-| account/delete | 200 | Account deleted successfully |
+| account/delete | 200 | Account will be deleted |
+| account/restore | 200 | Account restored |
 | sign-in-methods, options, GET sessions | 200 | Operation completed successfully |
 | users/me | 200 | User fetched successfully |
 | GET users/me/settings | 200 | Settings fetched |
@@ -914,6 +951,9 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `401 AUTH_TOKEN_MISSING` | You forgot the header, or nobody is signed in: go to sign-in |
 | `401 AUTH_REFRESH_FAILED` | Signed out (the cookie is already cleared). Go to sign-in; `data.reason` says why. On page load this just means "no session": show the signed-out page quietly |
 | `403 AUTH_ACCOUNT_DISABLED` | The account was deleted. Clear everything, go to the signed-out page |
+| `403 ACCOUNT_PENDING_DELETION`, or `deletes_at` set in `GET /users/me` | Not signed out: show the restore dialog with the date from `deletes_at` (restore, or sign out). Keep the session |
+| `401 AUTH_REFRESH_FAILED` with `data.reason: "account_deleted"` and `deletes_at` | Signed out because someone asked to delete the account: say it is deleted on that date unless they sign in and restore it |
+| `409 OWNERSHIP_TRANSFER_REQUIRED` | List `data.servers` and ask them to hand those servers over first |
 | `403 AUTH_FORBIDDEN` on refresh or logout | A configuration problem, not the user's: the page's origin is not in `CORS_ORIGINS`. Log it; the user can only try again later |
 | `401 AUTH_INVALID_CREDENTIALS` | "Incorrect email or password", nothing more specific |
 | `422 AUTH_PASSWORD_REJECTED` | Mark each rule in `data.rules` under the password field. Keep what they typed in other fields |

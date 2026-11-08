@@ -131,6 +131,7 @@ export class UserEntity {
     updatedAt: Date
     deletedAt: Date | null        // set when the account is deleted (a "soft delete")
     deletedBy: string | null
+    deletionRequestedAt: Date | null  // when its owner asked to delete it; deleted 14 days later (D-141)
 
     constructor(props: { id: string; username?: string | null /* ...every field, optional */ }) {
         // ...defaults: roles ['user'], completedAt null, and so on
@@ -166,7 +167,7 @@ filter at the edge turns the kind into an HTTP status ([FAQ 9](#faq)).
 **Location:** `modules/users/application/`
 
 This layer orchestrates the business logic using CQRS (Commands, Queries, Events). It contains:
-- **Commands:** "Change something" (e.g., `UpdateProfileCommand`, `UploadAvatarCommand`, `RemoveAvatarCommand`, `DeleteAccountCommand`).
+- **Commands:** "Change something" (e.g., `UpdateProfileCommand`, `UploadAvatarCommand`, `RemoveAvatarCommand`, `SweepDeletedAccountsCommand`).
 - **Queries:** "Read something" (e.g., `CheckUsernameQuery`).
 - **Events:** "Something happened" (e.g., `UserProfileUpdatedEvent`, `AvatarUploadedEvent`, `AvatarRemovedEvent`, `AccountDeletedEvent`).
 - **Handlers:** The actual logic for each Command, Query, and Event.
@@ -715,20 +716,18 @@ pointing from auth to users:
 ```mermaid
 flowchart LR
     subgraph AUTH["auth module"]
-        H["Auth handlers\n(register, login, Google, delete...)"]
-        DOH["DeleteOwnAccountHandler"]
+        H["Auth handlers\n(sign-in, Google, delete, restore...)"]
         EH["Event handlers:\nEndSessionsOfDeletedAccountHandler\nRefreshCachedUserHandler"]
     end
     subgraph USERS["users module"]
         UDP["UserDirectoryPort\n(exported as USER_DIRECTORY)"]
         UDA["UserDirectory"]
-        DAC["DeleteAccountCommand\n→ DeleteAccountHandler"]
+        SW["SweepDeletedAccountsHandler\n(every 15 minutes)"]
         EV["AccountDeletedEvent\nUserProfileUpdatedEvent"]
     end
     H -->|"1. inject USER_DIRECTORY"| UDP
     UDP --- UDA
-    DOH -->|"2. CommandBus.execute"| DAC
-    DAC -->|publishes| EV
+    SW -->|"2. publishes"| EV
     EV -->|"3. EventBus"| EH
 ```
 
@@ -736,8 +735,9 @@ flowchart LR
    The users module publishes the few operations auth needs: find a user by
    email or id, create an account, complete it ("complete your account":
    name, username, Terms, first settings and the password hash in one
-   transaction), and read the
-   account's language for emails nobody asked for. It speaks in a small `DirectoryUser` record, not the
+   transaction), read the account's language and time zone for emails, and
+   record or take back a request to delete the account (`requestDeletion`,
+   `cancelDeletion`, D-141). It speaks in a small `DirectoryUser` record, not the
    `UserEntity`, so auth never depends on the entity's shape. `UsersModule`
    binds it to `UserDirectory` and exports only that token
    (`exports: [USER_DIRECTORY]`); `AuthModule` imports `UsersModule` and
@@ -745,20 +745,16 @@ flowchart LR
    table itself. The reverse has one exception: `complete` writes auth's
    `Credential` row in its transaction, so a completion that loses (another
    tab first, the username taken) changes no password.
-2. **Dispatching users' `DeleteAccountCommand`.** `POST /api/v1/auth/account/delete`
-   is an auth route, because deleting needs proof (the password or an emailed
-   code). Once
+2. **Deleting an account.** `POST /api/v1/auth/account/delete` is an auth
+   route, because deleting needs proof (the password). Once
    [`DeleteOwnAccountHandler`](../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts)
-   has checked it, it does not delete the row itself. It sends the users
-   module's command through the bus:
-
-   ```typescript
-   await this.commandBus.execute(new DeleteAccountCommand(userId, userId))
-   ```
-
-   The users module's handler does the soft delete and publishes
-   `AccountDeletedEvent`. Auth never calls the users handler directly
-   ([FAQ 12](#faq)).
+   has checked it, it does not touch the row itself: it records the request
+   through `USER_DIRECTORY.requestDeletion`. Nothing is deleted then (D-141).
+   Fourteen days later the users module's own sweep,
+   [`SweepDeletedAccountsHandler`](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts),
+   deletes the account and publishes `AccountDeletedEvent`
+   ([account-deletion.md](./account-deletion.md)). The starter, which deletes
+   at once, sends a users command through the bus here instead ([FAQ 12](#faq)).
 3. **Listening to users' events.** Auth's
    [`events/handlers/`](../src/modules/auth/application/events/handlers/)
    reacts to `AccountDeletedEvent` (end every session, delete the password and
@@ -788,6 +784,7 @@ modules/users/
 │   │   └── username.errors.ts
 │   ├── ports/
 │   │   └── user.repository.port.ts  # Outbound port for persistence
+│   ├── account-deletion.rules.ts    # the 14 days: wait after a request, incomplete accounts (D-141)
 │   ├── avatar.rules.ts              # 8 MB, JPG / PNG / WEBP (no GIF)
 │   ├── email.rules.ts
 │   ├── profile-text.rules.ts        # display name and bio: NFC, code points, visible characters (D-139)
@@ -800,8 +797,7 @@ modules/users/
 │   │   ├── update-profile/
 │   │   ├── upload-avatar/
 │   │   ├── remove-avatar/           # DELETE /users/me/avatar
-│   │   ├── delete-account/          # dispatched by the auth module after proof
-│   │   └── sweep-deleted-accounts/  # the scheduled erase / unverified clean-up
+│   │   └── sweep-deleted-accounts/  # deletes accounts whose 14 days are over (D-141)
 │   ├── queries/
 │   │   ├── check-username/
 │   │   └── resolve-avatar-url/
@@ -978,9 +974,9 @@ They are extremely similar and often used interchangeably. Both enforce the same
 In practice, if you understand one, you understand the other. Our codebase uses Hexagonal terminology.
 
 **12. Can a Command Handler from one module call another module's Command Handler?**
-It can, but it shouldn't do it directly. Instead, it should dispatch a Command through the `CommandBus`. This maintains loose coupling. The starter does exactly this when a user deletes their account: the auth module checks the proof, then dispatches the users module's command:
+It can, but it shouldn't do it directly. Instead, it should dispatch a Command through the `CommandBus`. This maintains loose coupling. The starter does exactly this when a user deletes their account: the auth module checks the proof, then dispatches the users module's command. (NezFocus no longer has that command: since deletion waits 14 days, auth records the request through `USER_DIRECTORY` and the users module's sweep deletes, D-141. The pattern still holds for the next cross-module command.)
 ```typescript
-// ✅ Correct: Dispatch through the bus (DeleteOwnAccountHandler, auth module)
+// ✅ Correct: Dispatch through the bus (the starter's DeleteOwnAccountHandler, auth module)
 await this.commandBus.execute(new DeleteAccountCommand(userId, userId))
 
 // ❌ Wrong: Directly importing and calling another module's handler

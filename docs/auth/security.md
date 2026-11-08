@@ -80,8 +80,8 @@ Not secret, and stored in clear: email addresses, names and other profile
 fields, and each session's IP address and user agent of its last refresh (512
 characters at most). The list of devices (`GET /auth/sessions`) shows the user
 only the network part of the IP (`14.231.x.x`): the full address and the user
-agent never leave the server (D-138). A deleted account's personal fields are erased after
-`DELETED_ACCOUNT_RETENTION_DAYS` ([../account-deletion.md](../account-deletion.md)).
+agent never leave the server (D-138). A deleted account's personal fields are erased at the moment
+it is deleted, 14 days after its owner asks (D-141, [../account-deletion.md](../account-deletion.md)).
 
 ## What is kept out of logs and Sentry
 

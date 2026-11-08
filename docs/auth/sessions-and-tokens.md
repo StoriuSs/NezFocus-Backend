@@ -224,7 +224,7 @@ lock until the first has committed:
 | No cookie | | `401 AUTH_REFRESH_FAILED`, no reason |
 | Unknown | `invalid` | `401 AUTH_REFRESH_FAILED`, no reason |
 | Past its `expiresAt` | `invalid` | `401 AUTH_REFRESH_FAILED`, `data.reason: "expired"` |
-| Its session ended (account deleted, revoked, or expired) | `invalid` | `401 AUTH_REFRESH_FAILED`, `data.reason` says why ([table](#what-ends-a-session)) |
+| Its session ended (account deleted, deletion requested, revoked, or expired) | `invalid` | `401 AUTH_REFRESH_FAILED`, `data.reason` says why ([table](#what-ends-a-session)); with a deletion request still waiting, `data.deletes_at` too |
 | Never used | `rotated`: a new token is created, the old one marked used and pointed at it, `lastUsedAt`, `ip` and `userAgent` updated | `200`, new access token, new cookie |
 | Used at most 10 seconds ago, and its replacement not used yet | `grace` | `200`, the **same** replacement as the first request got |
 | Used earlier than that, or its replacement already used | `reused`: the session is revoked (`reuse-detected`) | `401 AUTH_REFRESH_FAILED`, `data.reason: "security"` |
@@ -292,11 +292,16 @@ more than 10 seconds later. That is indistinguishable from theft by design.
 | `POST /auth/change-password` | All except the one that made the change | `password-changed` | `password_changed` |
 | `POST /auth/reset-password` | All that existed; then one new session starts for the device that reset | `password-reset` | `password_changed` |
 | A used refresh token comes back | That one | `reuse-detected` | `security` |
-| The account is deleted | All | `account-deleted` | `account_deleted` on refresh; `403 AUTH_ACCOUNT_DISABLED` on other routes |
+| `POST /auth/account/delete` (the account waits 14 days, D-141) | All | `deletion-requested` | `account_deleted`, with `deletes_at` on refresh. After a restore it reads `revoked` |
+| The sweep deletes the account, 14 days later | All still open (those signed in during the wait) | `account-deleted` | `account_deleted` on refresh; `403 AUTH_ACCOUNT_DISABLED` on other routes |
 | `expiresAt` passes | That one | (none) | `expired` |
 
 The mapping is in [session-end.ts](../../src/modules/auth/domain/session-end.ts).
-A session with `revokedAt` set but no reason reads as `logout`.
+A session with `revokedAt` set but no reason reads as `logout`. Any session of
+a deleted account reads `account-deleted`, whatever ended it. One ended by
+`deletion-requested` whose account is no longer waiting (restored) reads
+`revoked`: nothing is being deleted any more. Both rules are in `endOf` in
+[prisma-session.repository.ts](../../src/modules/auth/infrastructure/persistence/prisma-session.repository.ts).
 
 **Not ended by**: linking Google, or a role change
 (roles are read on every request, so they apply at once without ending
@@ -306,7 +311,9 @@ anything).
 
 - any signed-in route answers `401 AUTH_TOKEN_REVOKED` with `data.reason`,
   or `403 AUTH_ACCOUNT_DISABLED` if the account was deleted;
-- `POST /auth/refresh` answers `401 AUTH_REFRESH_FAILED` with `data.reason`.
+- `POST /auth/refresh` answers `401 AUTH_REFRESH_FAILED` with `data.reason`,
+  and `data.deletes_at` when the session ended because its owner asked to
+  delete the account, so the device can say until when it can be restored.
 
 Only the holder of that session's token is told the reason, and the token no
 longer works, so it gives nothing away. A web app can turn the reason into a
@@ -333,7 +340,11 @@ flowchart TD
     F -->|yes| G[User from Redis, or Postgres on a miss]
     G -->|missing| X4
     G -->|deleted| X1
-    G -->|live| OK[request.user set, route runs]
+    G -->|live| P{Waiting to be deleted?}
+    P -->|yes, route not marked AllowPendingDeletion| X5[403 ACCOUNT_PENDING_DELETION]
+    P -->|no| Q{Completed?}
+    Q -->|no, route not marked AllowIncomplete| X6[403 ACCOUNT_INCOMPLETE]
+    Q -->|yes| OK[request.user set, route runs]
 ```
 
 1. **One Redis round trip** (`MGET`) reads `auth:session:<sid>`,
@@ -343,7 +354,10 @@ flowchart TD
    is not revoked and not expired; if there is none, a second query finds out
    why, so the device can be told.
 3. **User.** A hit is used as is; a miss reads the user through the users
-   module. A deleted account is refused.
+   module. A deleted account is refused. Then `AccessTokenGuard` holds back an
+   account waiting to be deleted (`deletionRequestedAt` set) on every route
+   not marked `@AllowPendingDeletion()`, and an incomplete one on every route
+   not marked `@AllowIncomplete()`.
 4. **`request.user`** is built from the user record: id, session id, email,
    username, name, roles and the profile. That is what
    `@CurrentUser()` returns and what `@Roles()` checks.

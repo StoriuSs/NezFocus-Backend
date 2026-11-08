@@ -172,9 +172,8 @@ Set up: the domain and its addresses, [setup/domain-dns-tls.md](./setup/domain-d
 | `APP_NAME` | | `Test App` | Shown on `/api-docs` and in email subjects and texts | app | |
 | `BASE_URL` | prod | `http://localhost:<PORT>` | The API's public address. Builds the links to locally stored uploads, is the issuer and audience of every access token, and the base of the Google redirect URI: `<BASE_URL>/api/v1/auth/google/callback`. Changing it signs every access token out (sessions refresh) and changes that URI | app | [setup/google-sign-in.md](./setup/google-sign-in.md) |
 | `FRONTEND_URL` | prod | `http://localhost:3001` | The web app's address. Email links ("reset your password") and the Google sign-in return (`/auth/callback`) point there | app | |
-| `SUPPORT_EMAIL` | | empty | An address people can write to. Named in the "account deleted" email; empty, it says "contact support" without one | app | |
+| `SUPPORT_EMAIL` | | empty | An address people can write to. Named in the "account will be deleted" email; empty, that sentence is left out | app | |
 | `GRACEFUL_SHUTDOWN_TIMEOUT_MS` | | `5000` | How long cache clean-up may take during shutdown before it carries on ([graceful-shutdown.md](./graceful-shutdown.md)) | app | |
-| `DELETED_ACCOUNT_RETENTION_DAYS` | | `30` | Days a deleted account keeps its personal data before the sweep erases it. Also stated in the "account deleted" email ([account-deletion.md](./account-deletion.md)) | app | |
 
 ### Browsers and CORS
 

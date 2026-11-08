@@ -31,8 +31,8 @@ in five minutes.
 | Sign in with Google | OpenID Connect with PKCE; optional, on when its two settings are set | [google-sign-in.md](./google-sign-in.md) |
 | Rate limits | Per address, per IP and per user, on every operation an attacker would repeat | [rate-limits.md](./rate-limits.md) |
 | No account enumeration | Asking for a code, sign-in and "forgot password" answer the same whether or not an address has an account | [security.md](./security.md) |
-| Security emails | The owner is told when the password or sign-in methods change, and when the account is deleted. Every email in Vietnamese or English, the page's language (D-132) | [emails.md](./emails.md) |
-| Account deletion | Needs the password; personal details erased after 30 days | [accounts.md](./accounts.md) |
+| Security emails | The owner is told when the password or sign-in methods change, and when someone asks to delete the account. Every email in Vietnamese or English, the page's language (D-132) | [emails.md](./emails.md) |
+| Account deletion | Needs the password; the account waits 14 days and signing in can restore it, then everything personal is erased at once (D-141) | [../account-deletion.md](../account-deletion.md) |
 | Roles | `["user"]` by default; `pnpm user:promote` makes an administrator; `@Roles('admin')` on a route | [accounts.md](./accounts.md) |
 | Monitoring | Sign-in events counted (`auth_events_total`), a dashboard row, alerts on failed-login spikes and token reuse | [operations.md](./operations.md) |
 
@@ -143,14 +143,14 @@ The interactive API docs are at `http://localhost:8888/api-docs`
 | Page | Read it for |
 |---|---|
 | [concepts.md](./concepts.md) | Auth in plain words, and a glossary tied to the code. Start here if the words are new |
-| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up or in with a code, sign in with a password, refresh, sign out (this device or others), reset, change, Google, deletion |
+| [flows.md](./flows.md) | Every flow step by step, with diagrams: sign up or in with a code, sign in with a password, refresh, sign out (this device or others), reset, change, Google, deletion and restore |
 | [sessions-and-tokens.md](./sessions-and-tokens.md) | Access token, refresh cookie, sessions, rotation, what ends a session, the per-request check, Redis down, cross-site setups |
 | [passwords-and-codes.md](./passwords-and-codes.md) | The password rules, Argon2id, the six-digit emailed codes |
 | [emails.md](./emails.md) | Every email, its two languages, the queue that sends them, Mailpit, editing the words and the layout |
 | [google-sign-in.md](./google-sign-in.md) | How "Continue with Google" works, which account it lands in, adding another provider |
 | [rate-limits.md](./rate-limits.md) | Every limit, and how to tune them |
 | [security.md](./security.md) | The threats, how each is handled, what is not covered, production must-dos |
-| [accounts.md](./accounts.md) | Account lifecycle: not completed, completed, deleted; roles |
+| [accounts.md](./accounts.md) | Account lifecycle: not completed, completed, waiting to be deleted, deleted; roles |
 | [api-reference.md](./api-reference.md) | Every route, body, answer and error code |
 | [in-the-code.md](./in-the-code.md) | Module layout, ports and adapters, jobs, Redis keys, tables, tests, how to extend |
 | [operations.md](./operations.md) | Production checklist, key rotation, command-line tools, monitoring, troubleshooting, FAQ |
@@ -175,4 +175,3 @@ with a comment. Full list: [environment.md](../environment.md).
 | `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_SECURE` | rarely | Only for a web app and API on different sites ([cross-site setups](./sessions-and-tokens.md#cross-site-setups)) |
 | `JWT_ACCESS_TTL_SECONDS`, `AUTH_SESSION_TTL_DAYS` | optional | 900 seconds and 30 days by default |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional | Google sign-in, both or neither |
-| `DELETED_ACCOUNT_RETENTION_DAYS` | optional | 30 days by default |

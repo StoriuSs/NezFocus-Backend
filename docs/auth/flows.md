@@ -19,6 +19,7 @@ response shapes are in [api-reference.md](./api-reference.md).
 - [Change the password](#change-the-password)
 - [Sign in with Google](#sign-in-with-google)
 - [Delete the account](#delete-the-account)
+- [Restore the account](#restore-the-account)
 
 ## How to read this page
 
@@ -228,7 +229,9 @@ Must be sent with credentials.
 3. The token's row is locked, so a second refresh with the same token waits.
 4. The session ended: `401 AUTH_REFRESH_FAILED` with `data.reason`:
    `expired`, `signed_out`, `signed_out_everywhere`, `revoked`,
-   `password_changed`, `security` or `account_deleted`.
+   `password_changed`, `security` or `account_deleted`. With
+   `account_deleted` for an account still waiting to be deleted, also
+   `data.deletes_at`.
 5. Never used: rotated. `200`, a new access token, and a new cookie with the session's original end date.
    The session records the time, the request's IP and its user agent (cut to
    512 characters): what the list of devices shows (D-138).
@@ -543,7 +546,9 @@ So linking never has to undo anything someone else set up on the address.
 ## Delete the account
 
 Deleting needs proof it is the owner, not only a signed-in session (or anyone
-at an unlocked computer could do it). The proof is the password.
+at an unlocked computer could do it). The proof is the password. Nothing is
+deleted at once: the account waits 14 days, still live, so that signing in
+again can restore it (D-141).
 
 ```mermaid
 sequenceDiagram
@@ -553,10 +558,12 @@ sequenceDiagram
     participant Q as Email queue
     W->>A: POST /auth/account/delete with password (Bearer, credentials)
     A->>A: password sent, and the account has one? check it
-    A->>P: mark the account deleted
-    Note over A,P: an event ends every session and removes the password and Google links
-    A->>Q: account-deleted email
-    A-->>W: 200, cookie cleared
+    A->>A: servers it owns with other members? refuse
+    A->>P: record deletionRequestedAt
+    A->>P: end every session (deletion-requested)
+    A->>Q: account-deletion-scheduled email, with the date
+    A-->>W: 200 { deletes_at }, cookie cleared
+    Note over A,P: 14 days later the sweep deletes it, unless restored
 ```
 
 **`POST /auth/account/delete`** (signed in). Body: `password`, and an
@@ -565,23 +572,44 @@ cleared.
 [delete-own-account.handler.ts](../../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts)
 
 1. No password sent, or the account has none:
-   `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. An
-   account without a password (not completed, or made with Google) chooses
-   one with [forgot password](#forgot-and-reset-the-password) first.
+   `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. A
+   completed account without a password chooses one with
+   [forgot password](#forgot-and-reset-the-password) first.
 2. Wrong current passwords per user: 5 per 15 minutes (`429`,
    `wrong_password`). Wrong: `400 AUTH_CURRENT_PASSWORD_INVALID`.
-3. The users module marks the account deleted. A second deletion racing this
-   one: `404 USER_NOT_FOUND`.
-4. Straight after, an event handler ends every session (reason
-   `account-deleted`) and removes the password and the Google links. Until
-   it has run, the guard already refuses the account.
-5. The owner is emailed `account-deleted`, in the request's `language`, which
-   says when their personal details are erased
-   (`DELETED_ACCOUNT_RETENTION_DAYS`, default 30).
-6. `200`, and the cookie is cleared. Every
-   other device gets `403 AUTH_ACCOUNT_DISABLED` on its next request.
+3. The account owns servers with other members:
+   `409 OWNERSHIP_TRANSFER_REQUIRED` with `data.servers` (D-76). None until
+   servers exist (M1).
+4. The time of the request is recorded on the account. A second request
+   racing this one: `403 AUTH_ACCOUNT_DISABLED`.
+5. Every session ends (reason `deletion-requested`), and the cache entries go.
+6. The owner is emailed `account-deletion-scheduled`, in the request's
+   `language`: the date it goes, in the account's time zone, and a sign-in
+   button to restore it.
+7. `200` with `data.deletes_at`, and the cookie is cleared. Every other
+   device gets `401 AUTH_TOKEN_REVOKED` (reason `account_deleted`) on its next
+   request, and its refresh says `deletes_at` too.
 
-What is kept and erased, and when: [accounts.md](./accounts.md).
+## Restore the account
+
+Within the 14 days, signing in by password, code or Google reaches the same
+account. Every signed-in route then answers `403 ACCOUNT_PENDING_DELETION`
+except `GET /users/me` (whose `deletes_at` tells the web app to show the
+restore dialog) and the restore itself.
+
+**`POST /auth/account/restore`** (signed in, no body).
+[restore-account.handler.ts](../../src/modules/auth/application/commands/restore-account/restore-account.handler.ts)
+
+1. The request is taken back, by a conditional write: only an account still
+   waiting.
+2. The cached user goes, so the next request passes.
+3. `200`. Not waiting any more (another tab restored it): `200` too. Deleted by
+   the sweep first: `403 AUTH_ACCOUNT_DISABLED`.
+
+The devices the request signed out stay signed out; their refresh now says
+`revoked`. Once the 14 days are over, the 15-minute sweep deletes the account
+and erases its personal data at once. What is kept and erased, and when:
+[../account-deletion.md](../account-deletion.md).
 
 ## Related
 

@@ -159,7 +159,7 @@ In this starter:
   (`GET /auth/sessions`), with the browser and system of its last refresh
   and a masked IP (D-75, D-138).
 - Ended by signing out, signing it out from the list of devices, "sign out
-  the other devices", a password change or reset, a replayed refresh token, account deletion, or reaching its end date. Each
+  the other devices", a password change or reset, a replayed refresh token, a request to delete the account (or its deletion), or reaching its end date. Each
   reason is recorded and told to the device that finds out: see
   [what ends a session](./sessions-and-tokens.md#what-ends-a-session).
 

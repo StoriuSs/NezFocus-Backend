@@ -161,8 +161,9 @@ system. No identity server runs beside the app.
   account by verified email. Off until you set two keys.
 - **Rate limits** per address, per IP and per account on every sign-in route,
   with `Retry-After` and a reason the web app can show.
-- **Account deletion with proof** (password or emailed code), and a notice
-  email for every security change.
+- **Account deletion with proof** (the password), after a 14-day wait the
+  owner can take back by signing in, and a notice email for every security
+  change.
 - **Command-line tool** for operators: `pnpm user:promote` (roles).
 
 Start at **[docs/auth/README.md](docs/auth/README.md)**: it explains the
@@ -333,7 +334,7 @@ Comprehensive documentation is available in the `docs/` folder:
 | [Renovate](docs/renovate.md) | Dependency update pull requests: the weekly routine, major versions, the rules |
 | [Upload Module](docs/upload-module.md) | File storage & image processing |
 | [Idempotency](docs/idempotency.md) | Request deduplication |
-| [Account deletion](docs/account-deletion.md) | Soft delete, data retention, and what happens to the username |
+| [Account deletion](docs/account-deletion.md) | The 14-day wait, restoring, the sweep, soft delete, and what happens to the username |
 | [BullMQ Guide](docs/BULLMQ-GUIDE.md) | Background job processing |
 | [Lessons](docs/LESSONS.md) | What broke on the first production deploy, and what changed |
 

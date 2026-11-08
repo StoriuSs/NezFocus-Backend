@@ -24,26 +24,30 @@ stateDiagram-v2
     [*] --> NotCompleted: right emailed code for a new address
     [*] --> NotCompleted: first Continue with Google
     NotCompleted --> Completed: POST /auth/complete-account
-    Completed --> Deleted: POST /auth/account/delete with the password
-    Deleted --> Erased: after 30 days, personal data erased
-    Erased --> [*]
+    NotCompleted --> Deleted: 14 days after it was made, by the sweep
+    Completed --> Waiting: POST /auth/account/delete with the password
+    Waiting --> Completed: POST /auth/account/restore
+    Waiting --> Deleted: 14 days later, by the sweep
+    Deleted --> [*]
 ```
 
 | State | Can sign in? | Stored | Ends when |
 |---|---|---|---|
-| **Not completed** | Yes, with a code or Google (and a password, if one was added by reset). Every signed-in route but three answers 403 `ACCOUNT_INCOMPLETE` | `User` row with `completedAt` empty; no username; usually no password; no `UserSettings` row | the owner completes it |
-| **Completed** | Yes | `User` row with `completedAt` and `termsAcceptedAt` set, a username, a password (and maybe a Google link), a `UserSettings` row, sessions. Accounts marked completed by the migration below may have no password, `termsAcceptedAt` or settings row | the owner deletes it |
-| **Deleted** | No: 403 `AUTH_ACCOUNT_DISABLED` | `User` row with `deletedAt` set; sign-in data already removed | after `DELETED_ACCOUNT_RETENTION_DAYS` (30) its personal data is erased |
-| **Erased** | No | the `User` row without personal data: id, roles, flags and dates | never: the row stays so that other data pointing to it keeps working |
+| **Not completed** | Yes, with a code or Google (and a password, if one was added by reset). Every signed-in route but three answers 403 `ACCOUNT_INCOMPLETE` | `User` row with `completedAt` empty; no username; usually no password; no `UserSettings` row | the owner completes it, or 14 days after it was made the sweep deletes it (D-141) |
+| **Completed** | Yes | `User` row with `completedAt` and `termsAcceptedAt` set, a username, a password (and maybe a Google link), a `UserSettings` row, sessions. Accounts marked completed by the migration below may have no password, `termsAcceptedAt` or settings row | the owner asks to delete it |
+| **Waiting to be deleted** | Yes, by any method, to the same account. Every signed-in route but `GET /users/me` and `POST /auth/account/restore` answers 403 `ACCOUNT_PENDING_DELETION` | as Completed, plus `deletionRequestedAt`; every session that existed at the request has ended | the owner restores it, or 14 days after the request the sweep deletes it |
+| **Deleted** | No: 403 `AUTH_ACCOUNT_DISABLED` | the `User` row without personal data: id, roles, flags, dates, `deletedAt`, `deletedBy`. Email, username, names, bio, avatar, settings, password and Google links are gone | never: the row stays so that other data pointing to it keeps working |
 
 There is no "unconfirmed" state (D-133). An account is only made once its
 owner has proved they read the inbox: the code sent to the address was right,
 or Google verified the address. So every account's address is confirmed, and
-nothing has to sweep away sign-ups that never confirmed.
+nothing has to sweep away sign-ups that never confirmed. Sign-ups that never
+*completed* are swept, 14 days after they were made (D-141).
 
 Addresses are stored lower-case and are unique among live accounts, ignoring
-case. A deleted account's address is free again at once: the same person can
-sign up afresh.
+case. An account waiting to be deleted still holds its address. A deleted
+account's address is free again at once (the sweep erases it): the same person
+can sign up afresh.
 
 ## Creating an account
 
@@ -93,7 +97,9 @@ The [handler](../../src/modules/auth/application/commands/complete-account/compl
    the `UserSettings` row (time zone, language, every other setting at its
    default). The `UPDATE` has `completedAt: null` in its `WHERE`, so two
    submissions at once complete the account once; the loser gets 409
-   `ACCOUNT_ALREADY_COMPLETE`. Whether the username is free is decided by the
+   `ACCOUNT_ALREADY_COMPLETE`. If the sweep deleted the account meanwhile
+   (left incomplete 14 days, D-141), the answer is 403
+   `AUTH_ACCOUNT_DISABLED` instead. Whether the username is free is decided by the
    unique index at that moment (409 `USERNAME_CONFLICT`); the availability
    check the page makes while typing is only a hint.
 4. Drops the cached copy of the user, so the access token already in use
@@ -173,8 +179,12 @@ Details: [passwords-and-codes.md](passwords-and-codes.md),
 before the account is completed too, so a client calls it after any sign-in
 (or a refresh on page load) and opens the step when `completed` is `false`.
 
+It also carries `deletes_at`: null, or the date an account waiting to be
+deleted goes. It answers while the account waits too, so the client opens the
+restore dialog when `deletes_at` is set.
+
 It comes from the per-request session check, so a change (a new role, a
-deletion) shows on the next request.
+deletion request) shows on the next request.
 
 ## Deleting an account
 
@@ -194,19 +204,27 @@ If the password is missing, or the account has none, the answer is 400
 `AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. Wrong passwords
 count against the same limit as when changing the password.
 
-On success (200):
+An Owner of servers with other members is refused with 409
+`OWNERSHIP_TRANSFER_REQUIRED` (the servers in `data.servers`) until they hand
+them over (D-76). Until servers exist (M1) nobody is blocked.
 
-1. The account is marked deleted at once and the refresh cookie is cleared.
-2. Within moments, every session ends and the password and the Google link
-   are deleted.
-3. The owner is emailed "Your {app} account was deleted", saying when their
-   details will be erased and, if `SUPPORT_EMAIL` is set, who to contact.
-4. After `DELETED_ACCOUNT_RETENTION_DAYS` (30) the email, username, display
-   name, bio and avatar are erased from the row.
+On success (200, `data.deletes_at`), nothing is deleted yet (D-141):
 
-There is no "undelete" route. The full mechanics (the proof, every
-error, what is removed when, the safety net if a step fails, and the web app's
-dialog) are on [../account-deletion.md](../account-deletion.md).
+1. The time of the request is recorded, every session ends (reason
+   `account_deleted`, with `deletes_at`, on the other devices' refresh) and the
+   refresh cookie is cleared.
+2. The owner is emailed "Your {app} account will be deleted on dd/mm/yyyy",
+   the date in the account's time zone, with a sign-in button to restore it.
+3. For 14 days the account stays live. Signing in by password, code or Google
+   reaches it; it can then only read its profile or restore itself with
+   `POST /api/v1/auth/account/restore`.
+4. After 14 days the 15-minute sweep deletes it: the email, username, display
+   name, bio, avatar and settings are erased at once, and the sessions,
+   password and Google links go.
+
+After the sweep there is no undo. The full mechanics (the proof, the wait,
+restoring, every error, what is removed when, the safety net if a step fails,
+and the web app's dialogs) are on [../account-deletion.md](../account-deletion.md).
 
 ## Roles
 
@@ -269,8 +287,11 @@ the API's check is the one that counts.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DELETED_ACCOUNT_RETENTION_DAYS` | 30 (0 or more) | Deleted accounts' personal data is erased after this; also stated in the account-deleted email |
-| `SUPPORT_EMAIL` | empty | Named in the account-deleted email |
+| `SUPPORT_EMAIL` | empty | Named in the "account will be deleted" email |
 | `APP_NAME` | `Test App` in code, `YourAppName` in `.env.example` | In every email subject |
+
+The two 14-day periods (the wait after a deletion request, and how long an
+account may stay incomplete) are product rules, not settings: they live in
+[account-deletion.rules.ts](../../src/modules/users/domain/account-deletion.rules.ts).
 
 All environment variables: [../environment.md](../environment.md).

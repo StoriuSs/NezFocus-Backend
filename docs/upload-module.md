@@ -280,7 +280,7 @@ Three events queue a deletion:
 |---|---|---|
 | `AvatarUploadedEvent` | `CleanupOldAvatarHandler` | a new avatar replaced an old one: the old file goes |
 | `AvatarRemovedEvent` | `CleanupOldAvatarHandler` | the avatar was removed (`DELETE /api/v1/users/me/avatar`): its file goes |
-| `AccountDeletedEvent` | `CleanupAccountAvatarHandler` | the account was deleted (`POST /api/v1/auth/account/delete`): its avatar goes |
+| `AccountDeletedEvent` | `CleanupAccountAvatarHandler` | the account was deleted (by the sweep, 14 days after `POST /api/v1/auth/account/delete`, D-141): its avatar goes |
 
 Both handlers are in `src/modules/users/application/events/handlers/`. The job id is
 derived from the key, so the same file queued twice (two deletions at once)
