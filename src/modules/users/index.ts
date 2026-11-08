@@ -31,3 +31,5 @@ export { USERNAME_PATTERN, normaliseUsername } from './domain/username.rules'
 export { canonicalTimeZone } from './domain/timezone.rules'
 // What a display name may be (D-139), for the same step and the profile page.
 export { DisplayNameField } from './presentation/http/dto/profile-text.decorators'
+// What a time zone may be (REQ-AUTH-08), for the same step and the settings.
+export { TimeZoneField } from './presentation/http/dto/settings.decorators'

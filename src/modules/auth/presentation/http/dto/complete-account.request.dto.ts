@@ -1,20 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
-import { Equals, IsIn, IsString, Matches, MaxLength, MinLength, ValidateBy } from 'class-validator'
-import { trimString } from '@/shared/utils/transform.util'
-import { canonicalTimeZone, DisplayNameField, normaliseUsername, USERNAME_PATTERN } from '@/modules/users'
+import { Equals, IsIn, IsString, Matches, MaxLength, MinLength } from 'class-validator'
+import { DisplayNameField, normaliseUsername, TimeZoneField, USERNAME_PATTERN } from '@/modules/users'
 import { EMAIL_LANGUAGES, type EmailLanguage } from '@/modules/auth/application/ports'
 import { PASSWORD_INPUT_MAX } from './shared/fields.dto'
-
-/** An IANA zone name ICU knows; not an offset (timezone.rules.ts). */
-const IsTimeZoneName = () =>
-    ValidateBy({
-        name: 'isTimeZoneName',
-        validator: {
-            validate: (value: unknown) => typeof value === 'string' && canonicalTimeZone(value) !== null,
-            defaultMessage: () => 'timezone must be an IANA time zone name, such as Asia/Ho_Chi_Minh'
-        }
-    })
 
 /**
  * The "complete your account" page (S-ONB-01, REQ-AUTH-01, D-61). Every
@@ -45,8 +34,7 @@ export class CompleteAccountRequestDto {
     password: string
 
     /** An IANA time zone name, e.g. `Asia/Ho_Chi_Minh`. Does not count as the day's change (D-61). */
-    @Transform(trimString)
-    @IsTimeZoneName()
+    @TimeZoneField()
     timezone: string
 
     /** The account's language: the switch at the foot of the page (D-64). */

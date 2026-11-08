@@ -4,7 +4,7 @@ import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 
 // Domain
-import { USER_REPOSITORY } from './domain'
+import { USER_REPOSITORY, USER_SETTINGS_REPOSITORY } from './domain'
 
 // Application
 import {
@@ -14,16 +14,24 @@ import {
     UpdateProfileHandler,
     UploadAvatarHandler,
     RemoveAvatarHandler,
+    UpdateSettingsHandler,
     DeleteAccountHandler,
     SweepDeletedAccountsHandler,
     CheckUsernameHandler,
     ResolveAvatarUrlHandler,
+    GetSettingsHandler,
     CleanupOldAvatarHandler,
     CleanupAccountAvatarHandler
 } from './application'
 
 // Infrastructure
-import { BullMqBackgroundJobs, PrismaUserRepository, UploadStorage, UserDirectory } from './infrastructure'
+import {
+    BullMqBackgroundJobs,
+    PrismaUserRepository,
+    PrismaUserSettingsRepository,
+    UploadStorage,
+    UserDirectory
+} from './infrastructure'
 
 // Presentation (Inbound Adapters)
 import { UsersController } from './presentation'
@@ -32,11 +40,12 @@ const CommandHandlers = [
     UpdateProfileHandler,
     UploadAvatarHandler,
     RemoveAvatarHandler,
+    UpdateSettingsHandler,
     DeleteAccountHandler,
     SweepDeletedAccountsHandler
 ]
 
-const QueryHandlers = [CheckUsernameHandler, ResolveAvatarUrlHandler]
+const QueryHandlers = [CheckUsernameHandler, ResolveAvatarUrlHandler, GetSettingsHandler]
 
 const EventHandlers = [CleanupOldAvatarHandler, CleanupAccountAvatarHandler]
 
@@ -47,6 +56,7 @@ const EventHandlers = [CleanupOldAvatarHandler, CleanupAccountAvatarHandler]
     providers: [
         // Port → Adapter bindings (Hexagonal Architecture wiring)
         { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
+        { provide: USER_SETTINGS_REPOSITORY, useClass: PrismaUserSettingsRepository },
         { provide: STORAGE, useClass: UploadStorage },
         { provide: BACKGROUND_JOBS, useClass: BullMqBackgroundJobs },
         // Published for other modules: what the auth module needs from users.

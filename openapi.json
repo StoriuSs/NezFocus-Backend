@@ -947,6 +947,92 @@
         ]
       }
     },
+    "/api/v1/users/me/settings": {
+      "get": {
+        "operationId": "UsersController_getSettings_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UserSettingsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What a browser applies once signed in: theme, language, time zone… the same everywhere (REQ-AUTH-08).",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateSettings_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UserSettingsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save the settings sent, each on its own (S-ME-04 → S-ME-06). Naturally\nidempotent, so no Idempotency-Key: a retry sets the same values, and a\nretried zone change finds the zone already in use, which is no change.",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "HealthController_check_v1",
@@ -1487,6 +1573,11 @@
             "minLength": 1,
             "maxLength": 32
           },
+          "timezone": {
+            "type": "string",
+            "description": "An IANA time zone name, e.g. `Asia/Ho_Chi_Minh`. Does not count as the day's change (D-61).",
+            "example": "Asia/Ho_Chi_Minh"
+          },
           "language": {
             "description": "The account's language: the switch at the foot of the page (D-64).",
             "enum": [
@@ -1505,10 +1596,6 @@
             "minLength": 1,
             "maxLength": 1024
           },
-          "timezone": {
-            "type": "string",
-            "description": "An IANA time zone name, e.g. `Asia/Ho_Chi_Minh`. Does not count as the day's change (D-61)."
-          },
           "terms_accepted": {
             "type": "boolean",
             "description": "\"I agree to the Terms of Service and the Privacy Policy\": must be true.\nThe value as sent: the global pipe's implicit conversion would make\nthe string \"false\" true, recording consent nobody gave."
@@ -1516,10 +1603,10 @@
         },
         "required": [
           "display_name",
+          "timezone",
           "language",
           "username",
           "password",
-          "timezone",
           "terms_accepted"
         ]
       },
@@ -1872,6 +1959,134 @@
           "avatar_url",
           "uploaded_at"
         ]
+      },
+      "UserSettingsResponseDto": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string"
+          },
+          "theme": {
+            "enum": [
+              "light",
+              "dark",
+              "system"
+            ],
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "An IANA zone name, in ICU's letter case (asia/tokyo is stored as Asia/Tokyo)."
+          },
+          "timezone_changeable_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When the zone may change again (once every 24 hours); null if it may\nnow. Worked out by the server, so the device's clock does not matter."
+          },
+          "phase_sound": {
+            "type": "boolean"
+          },
+          "browser_notifications": {
+            "type": "boolean"
+          },
+          "notify_mentions": {
+            "type": "boolean"
+          },
+          "notify_direct_messages": {
+            "type": "boolean"
+          },
+          "notify_incoming_calls": {
+            "type": "boolean"
+          },
+          "notify_phase_changes": {
+            "type": "boolean"
+          },
+          "notification_prompt_dismissed": {
+            "type": "boolean"
+          },
+          "allow_server_member_messages": {
+            "type": "boolean"
+          },
+          "show_study_activity": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "language",
+          "theme",
+          "timezone",
+          "timezone_changeable_at",
+          "phase_sound",
+          "browser_notifications",
+          "notify_mentions",
+          "notify_direct_messages",
+          "notify_incoming_calls",
+          "notify_phase_changes",
+          "notification_prompt_dismissed",
+          "allow_server_member_messages",
+          "show_study_activity"
+        ]
+      },
+      "UpdateSettingsRequestDto": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "example": "Asia/Ho_Chi_Minh"
+          },
+          "language": {
+            "enum": [
+              "vi",
+              "en"
+            ],
+            "type": "string"
+          },
+          "theme": {
+            "enum": [
+              "light",
+              "dark",
+              "system"
+            ],
+            "type": "string"
+          },
+          "phase_sound": {
+            "type": "boolean",
+            "description": "The sound when a study phase ends (REQ-STUDY-06)."
+          },
+          "browser_notifications": {
+            "type": "boolean",
+            "description": "Browser notifications (REQ-NOTIF-04): the main switch, then one per kind."
+          },
+          "notify_mentions": {
+            "type": "boolean"
+          },
+          "notify_direct_messages": {
+            "type": "boolean"
+          },
+          "notify_incoming_calls": {
+            "type": "boolean"
+          },
+          "notify_phase_changes": {
+            "type": "boolean"
+          },
+          "notification_prompt_dismissed": {
+            "type": "boolean",
+            "description": "\"Not now\" on the prompt to turn browser notifications on (D-100)."
+          },
+          "allow_server_member_messages": {
+            "type": "boolean",
+            "description": "Direct messages from people who share a server (REQ-SOCIAL-04)."
+          },
+          "show_study_activity": {
+            "type": "boolean",
+            "description": "\"Show study activity\" (D-79)."
+          }
+        }
       }
     }
   }

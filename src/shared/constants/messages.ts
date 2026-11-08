@@ -37,6 +37,8 @@ export const MESSAGES = {
         ACCOUNT_DELETED: 'Account deleted successfully',
         PROFILE_UPDATED: 'Profile updated successfully',
         AVATAR_REMOVED: 'Avatar removed',
+        SETTINGS_FETCHED: 'Settings fetched',
+        SETTINGS_UPDATED: 'Settings saved',
         USERNAME_AVAILABLE: 'Username is available',
         USERNAME_TAKEN: 'Username is taken'
     },

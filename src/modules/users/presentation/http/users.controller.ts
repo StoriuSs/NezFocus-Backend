@@ -23,19 +23,23 @@ import {
     UserProfileResponseDto,
     UpdateProfileResponseDto,
     UploadAvatarResponseDto,
-    UsernameAvailabilityResponseDto
+    UsernameAvailabilityResponseDto,
+    UpdateSettingsRequestDto,
+    UserSettingsResponseDto
 } from './dto'
 
 // Application
 import {
     CheckUsernameQuery,
+    GetSettingsQuery,
     ResolveAvatarUrlQuery,
     RemoveAvatarCommand,
     UpdateProfileCommand,
+    UpdateSettingsCommand,
     UploadAvatarCommand,
     UploadAvatarResult
 } from '@/modules/users/application'
-import { AVATAR_MAX_BYTES, UserEntity } from '@/modules/users/domain'
+import { AVATAR_MAX_BYTES, SettingsView, UserEntity } from '@/modules/users/domain'
 import { AvatarFilePipe } from './avatar-file.pipe'
 
 // Shared
@@ -162,5 +166,30 @@ export class UsersController {
     async removeAvatar(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<null>> {
         await this.commandBus.execute(new RemoveAvatarCommand(user.id))
         return createResponse(MESSAGES.USER.AVATAR_REMOVED, null)
+    }
+
+    /** What a browser applies once signed in: theme, language, time zone… the same everywhere (REQ-AUTH-08). */
+    @Get('me/settings')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(UserSettingsResponseDto)
+    async getSettings(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<UserSettingsResponseDto>> {
+        const view: SettingsView = await this.queryBus.execute(new GetSettingsQuery(user.id))
+        return createResponse(MESSAGES.USER.SETTINGS_FETCHED, validateAndTransform(UserSettingsResponseDto, view))
+    }
+
+    /**
+     * Save the settings sent, each on its own (S-ME-04 → S-ME-06). Naturally
+     * idempotent, so no Idempotency-Key: a retry sets the same values, and a
+     * retried zone change finds the zone already in use, which is no change.
+     */
+    @Patch('me/settings')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(UserSettingsResponseDto)
+    async updateSettings(
+        @CurrentUser() user: AuthenticatedUser,
+        @Body() dto: UpdateSettingsRequestDto
+    ): Promise<ServiceResponse<UserSettingsResponseDto>> {
+        const view: SettingsView = await this.commandBus.execute(new UpdateSettingsCommand(user.id, { ...dto }))
+        return createResponse(MESSAGES.USER.SETTINGS_UPDATED, validateAndTransform(UserSettingsResponseDto, view))
     }
 }
