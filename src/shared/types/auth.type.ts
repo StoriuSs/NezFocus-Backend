@@ -19,4 +19,6 @@ export interface AuthenticatedUser {
     bio: string | null
     /** Whether the "complete your account" step is done (D-61). */
     completed: boolean
+    /** When the account is deleted, if its owner asked to delete it; null otherwise (D-141). */
+    deletesAt: Date | null
 }

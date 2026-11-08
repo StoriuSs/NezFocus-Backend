@@ -50,7 +50,17 @@ export interface EmailCopy {
     passwordChanged(v: LinkVars): EmailContent
     passwordAdded(v: LinkVars): EmailContent
     signInMethodAdded(v: LinkVars & { provider: string }): EmailContent
-    accountDeleted(v: { app: string; days: number; support: string | null }): EmailContent
+    /** The owner asked to delete the account (D-141): when it goes, and how to restore it. */
+    deletionScheduled(v: DeletionVars): EmailContent
+}
+
+interface DeletionVars {
+    app: string
+    /** When it goes: dd/mm/yyyy in the account's time zone. */
+    date: string
+    /** The sign-in page, where restoring starts. */
+    signInUrl: string
+    support: string | null
 }
 
 const vi: EmailCopy = (() => {
@@ -149,20 +159,20 @@ const vi: EmailCopy = (() => {
             action: resetAction(resetUrl),
             footer: noticeFooter(app)
         }),
-        accountDeleted: ({ app, days, support }) => ({
-            subject: `Tài khoản ${app} của bạn đã bị xóa`,
-            preheader: `Mọi phiên đăng nhập đã kết thúc.`,
-            heading: 'Tài khoản đã bị xóa',
+        deletionScheduled: ({ app, date, signInUrl, support }) => ({
+            subject: `Tài khoản ${app} của bạn sẽ bị xóa vào ${date}`,
+            preheader: 'Đăng nhập trước ngày đó để khôi phục.',
+            heading: 'Tài khoản đang chờ xóa',
             before: [
-                `Tài khoản ${app} gắn với email này đã bị xóa và mọi phiên đăng nhập đã kết thúc.`,
-                `Thông tin cá nhân của tài khoản sẽ được xóa hẳn sau ${days} ngày.`,
+                `Mình đã nhận yêu cầu xóa tài khoản ${app} gắn với email này. Mọi phiên đăng nhập đã kết thúc.`,
+                `Tài khoản sẽ bị xóa vĩnh viễn vào ${date}. Trước ngày đó, đăng nhập lại rồi chọn "Khôi phục tài khoản" để dùng tiếp: server, tin nhắn và chuỗi ngày học vẫn còn nguyên.`,
                 support
-                    ? `Nếu không phải bạn, hãy liên hệ ${support} ngay.`
-                    : 'Nếu không phải bạn, hãy trả lời email này ngay.'
+                    ? `Nếu không phải bạn, hãy đăng nhập, khôi phục tài khoản rồi đổi mật khẩu, hoặc liên hệ ${support}.`
+                    : 'Nếu không phải bạn, hãy đăng nhập, khôi phục tài khoản rồi đổi mật khẩu.'
             ],
             code: null,
             after: [],
-            action: null,
+            action: { url: signInUrl, label: 'Đăng nhập' },
             footer: noticeFooter(app)
         })
     }
@@ -264,18 +274,20 @@ const en: EmailCopy = (() => {
             action: resetAction(resetUrl),
             footer: noticeFooter(app)
         }),
-        accountDeleted: ({ app, days, support }) => ({
-            subject: `Your ${app} account was deleted`,
-            preheader: 'Every session has ended.',
-            heading: 'Your account was deleted',
+        deletionScheduled: ({ app, date, signInUrl, support }) => ({
+            subject: `Your ${app} account will be deleted on ${date}`,
+            preheader: 'Sign in before then to restore it.',
+            heading: 'Your account is waiting to be deleted',
             before: [
-                `The ${app} account with this email was deleted, and every session has ended.`,
-                `Its personal details are erased for good after ${days} days.`,
-                support ? `If this wasn’t you, contact ${support} now.` : 'If this wasn’t you, reply to this email now.'
+                `We received a request to delete the ${app} account with this email. Every session has ended.`,
+                `It will be deleted for good on ${date}. Until then, sign in and choose “Restore account” to keep using it: your servers, messages and study streak are all still there.`,
+                support
+                    ? `If this wasn’t you, sign in, restore the account and change your password, or contact ${support}.`
+                    : 'If this wasn’t you, sign in, restore the account and change your password.'
             ],
             code: null,
             after: [],
-            action: null,
+            action: { url: signInUrl, label: 'Sign in' },
             footer: noticeFooter(app)
         })
     }

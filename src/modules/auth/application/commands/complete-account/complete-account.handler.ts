@@ -81,8 +81,13 @@ export class CompleteAccountHandler implements ICommandHandler<CompleteAccountCo
             language: form.language,
             completedAt: new Date()
         })
-        // Another submission completed it first.
-        if (!completed) throw new AccountAlreadyCompleteError()
+        if (!completed) {
+            // Another submission completed it first, or the sweep deleted it
+            // meanwhile (left incomplete 14 days, D-141): say which.
+            const now = await this.directory.findById(user.id)
+            if (!now || now.deletedAt) throw new AccountDisabledError()
+            throw new AccountAlreadyCompleteError()
+        }
 
         const email = user.email
         await afterCommit(this.logger, 'Account completion', [

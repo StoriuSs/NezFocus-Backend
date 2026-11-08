@@ -15,7 +15,7 @@ export const AUTH_JOBS = {
     PASSWORD_CHANGED: 'password-changed',
     PASSWORD_ADDED: 'password-added',
     SIGN_IN_METHOD_ADDED: 'sign-in-method-added',
-    ACCOUNT_DELETED: 'account-deleted'
+    DELETION_SCHEDULED: 'account-deletion-scheduled'
 } as const
 
 interface Localised {
@@ -43,7 +43,12 @@ export interface SignInMethodAddedJob extends Localised {
     providerName: string
 }
 
-export type AccountDeletedJob = Localised
+export interface DeletionScheduledJob extends Localised {
+    /** ISO 8601: when the account goes. */
+    deletesAt: string
+    /** The account's IANA time zone, to write that date in. */
+    timeZone: string
+}
 
 /**
  * Overrides the queue defaults, which suit work that can wait an hour and a

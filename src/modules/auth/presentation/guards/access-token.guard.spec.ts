@@ -1,9 +1,9 @@
 import { ExecutionContext } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { DirectoryUser } from '@/modules/users'
-import { AllowIncomplete, Public } from '@/shared/presentation/decorators'
+import { AllowIncomplete, AllowPendingDeletion, Public } from '@/shared/presentation/decorators'
 import { AuthenticatedUser } from '@/shared/types'
-import { AccountIncompleteError } from '@/modules/auth/domain'
+import { AccountIncompleteError, AccountPendingDeletionError } from '@/modules/auth/domain'
 import { PrincipalPort, TokenServicePort } from '@/modules/auth/application/ports'
 import { AccessTokenGuard } from './access-token.guard'
 
@@ -12,6 +12,9 @@ class Routes {
     completeAccount() {}
 
     appRoute() {}
+
+    @AllowPendingDeletion()
+    restoreAccount() {}
 
     @Public()
     signIn() {}
@@ -39,6 +42,7 @@ function guardFor(account: Partial<DirectoryUser>) {
         bio: null,
         completedAt: null,
         deletedAt: null,
+        deletionRequestedAt: null,
         ...account
     }
     const principals = { resolve: async () => ({ user, sessionId: 'session-1' }) }
@@ -77,5 +81,37 @@ describe('AccessTokenGuard and incomplete accounts (D-61, D-128)', () => {
 
     it('does not look at public routes', async () => {
         await expect(guardFor({}).canActivate(contextFor('signIn', { headers: {} }))).resolves.toBe(true)
+    })
+})
+
+describe('AccessTokenGuard and accounts waiting to be deleted (D-141)', () => {
+    const waiting = {
+        completedAt: new Date('2026-09-01T00:00:00Z'),
+        deletionRequestedAt: new Date('2026-10-15T14:47:00Z')
+    }
+
+    it('refuses them everywhere but the routes marked @AllowPendingDeletion, saying when they go', async () => {
+        const request = signedIn()
+
+        const refused = await guardFor(waiting)
+            .canActivate(contextFor('appRoute', request))
+            .catch((error: unknown) => error)
+        expect(refused).toBeInstanceOf(AccountPendingDeletionError)
+        expect((refused as AccountPendingDeletionError).details).toEqual({ deletesAt: '2026-10-29T14:47:00.000Z' })
+        expect(request.user).toBeUndefined()
+    })
+
+    it('lets them restore the account, and tells the route when it goes', async () => {
+        const request = signedIn()
+
+        await expect(guardFor(waiting).canActivate(contextFor('restoreAccount', request))).resolves.toBe(true)
+        expect(request.user).toMatchObject({ deletesAt: new Date('2026-10-29T14:47:00Z') })
+    })
+
+    it('gives everyone else no date', async () => {
+        const request = signedIn()
+
+        await guardFor({ completedAt: new Date() }).canActivate(contextFor('appRoute', request))
+        expect(request.user).toMatchObject({ deletesAt: null })
     })
 })

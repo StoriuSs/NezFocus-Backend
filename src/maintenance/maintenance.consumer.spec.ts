@@ -13,9 +13,8 @@ describe('MaintenanceConsumer', () => {
             removeJobScheduler: jest.fn().mockResolvedValue(true)
         }
         const commandBus = { execute: jest.fn().mockResolvedValue({}) }
-        const config = {
-            get: (key: string) => ({ 'app.deletedAccountRetentionDays': 30 })[key]
-        }
+        // No task reads a setting now; the consumer still passes the config to each.
+        const config = { get: () => undefined }
         const consumer = new MaintenanceConsumer(
             commandBus as unknown as CommandBus,
             config as unknown as ConfigService,
@@ -50,7 +49,6 @@ describe('MaintenanceConsumer', () => {
 
         const [sweep, cleanUp] = commandBus.execute.mock.calls.map(([command]) => command)
         expect(sweep).toBeInstanceOf(SweepDeletedAccountsCommand)
-        expect(sweep).toMatchObject({ retentionDays: 30 })
         expect(cleanUp).toBeInstanceOf(CleanUpAuthCommand)
     })
 

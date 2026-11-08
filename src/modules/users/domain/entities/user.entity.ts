@@ -23,6 +23,8 @@ export class UserEntity {
     updatedAt: Date
     deletedAt: Date | null
     deletedBy: string | null
+    /** When the owner asked to delete it; null when they have not (REQ-AUTH-09, D-141). */
+    deletionRequestedAt: Date | null
 
     constructor(props: {
         id: string
@@ -38,6 +40,7 @@ export class UserEntity {
         updatedAt?: Date
         deletedAt?: Date | null
         deletedBy?: string | null
+        deletionRequestedAt?: Date | null
     }) {
         this.id = props.id
         this.username = props.username ?? null
@@ -52,6 +55,7 @@ export class UserEntity {
         this.updatedAt = props.updatedAt ?? new Date()
         this.deletedAt = props.deletedAt ?? null
         this.deletedBy = props.deletedBy ?? null
+        this.deletionRequestedAt = props.deletionRequestedAt ?? null
     }
 
     get isDeleted(): boolean {

@@ -7,7 +7,7 @@ import {
     PasswordAddedJob,
     AUTH_JOBS,
     PasswordChangedJob,
-    AccountDeletedJob,
+    DeletionScheduledJob,
     SendCodeJob,
     SignInMethodAddedJob
 } from '@/modules/auth/infrastructure/email/auth-email-jobs'
@@ -77,8 +77,9 @@ export class AuthJobsConsumer extends WorkerHost implements OnApplicationBootstr
                 await this.emails.sendSignInMethodAdded(to, providerName, languageOf(job))
                 return
             }
-            case AUTH_JOBS.ACCOUNT_DELETED: {
-                await this.emails.sendAccountDeleted((job.data as AccountDeletedJob).to, languageOf(job))
+            case AUTH_JOBS.DELETION_SCHEDULED: {
+                const { to, deletesAt, timeZone } = job.data as DeletionScheduledJob
+                await this.emails.sendDeletionScheduled(to, new Date(deletesAt), timeZone, languageOf(job))
                 return
             }
             default:

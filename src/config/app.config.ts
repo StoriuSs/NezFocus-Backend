@@ -21,8 +21,5 @@ export default registerAs('app', () => ({
     // queue to anyone who reaches it: a waiting or failed email job holds the
     // sign-in code it sends, and a job can be retried or removed from there.
     bullBoardUser: process.env.BULL_BOARD_USER || 'admin',
-    bullBoardPassword: process.env.BULL_BOARD_PASSWORD || 'admin',
-    // Days a deleted account keeps its personal data before the maintenance
-    // sweep erases it.
-    deletedAccountRetentionDays: parseIntSafe(process.env.DELETED_ACCOUNT_RETENTION_DAYS, 30)
+    bullBoardPassword: process.env.BULL_BOARD_PASSWORD || 'admin'
 }))

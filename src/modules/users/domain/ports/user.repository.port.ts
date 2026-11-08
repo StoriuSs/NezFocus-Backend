@@ -14,6 +14,12 @@ export interface AccountCompletion {
     completedAt: Date
 }
 
+/** An account the sweep deleted, and the avatar file it leaves behind. */
+export interface DeletedAccount {
+    id: string
+    avatarKey: string | null
+}
+
 /**
  * User Repository Port (Outbound)
  *
@@ -54,6 +60,9 @@ export interface UserRepositoryPort {
     /** The language chosen in the settings, or null before there are any. */
     findLanguage(id: string): Promise<string | null>
 
+    /** The time zone chosen in the settings, or null before there are any. */
+    findTimeZone(id: string): Promise<string | null>
+
     /**
      * Point a live user at a new avatar, or at none (null), returning the key it replaced.
      *
@@ -70,21 +79,32 @@ export interface UserRepositoryPort {
     ): Promise<{ user: UserEntity; previousAvatarKey: string | null } | null>
 
     /**
-     * Soft-delete a live user. The returned entity reflects the row as it was
-     * deleted, including the avatar it held at that moment.
+     * Record that the owner of a live, completed account asked to delete it
+     * (REQ-AUTH-09, D-141). Conditional in the statement itself: of two
+     * requests at once, one records it.
      *
-     * @returns null if the user was already deleted — so two concurrent
-     *   deletions trigger the follow-up work once
+     * @returns null if the account is gone, deleted, incomplete, or already
+     *   waiting to be deleted
      */
-    softDelete(id: string, deletedBy: string): Promise<UserEntity | null>
+    requestDeletion(id: string, at: Date): Promise<UserEntity | null>
 
     /**
-     * Erase personal data from users soft-deleted before `deletedBefore`,
-     * keeping the row so the account stays recognised and refused.
+     * Take back a request to delete a live account. Conditional, like the
+     * sweep's deletion, so the two cannot both win.
      *
-     * @returns how many rows were erased
+     * @returns false if the account was not waiting to be deleted, or is gone
      */
-    erasePersonalDataDeletedBefore(deletedBefore: Date): Promise<number>
+    cancelDeletion(id: string): Promise<boolean>
+
+    /**
+     * Delete the accounts whose time has come (dueForDeletion): mark them
+     * deleted and erase their personal data and settings, in one statement per
+     * account, re-checked under the row lock so a restore or a completion that
+     * lands first wins. The row stays, empty, so what points to it still works.
+     *
+     * @returns each account deleted, with the avatar it held then
+     */
+    deleteDue(due: { requestedBy: Date; incompleteSince: Date }, now: Date): Promise<DeletedAccount[]>
 
     /** A user by id, soft-deleted or not. */
     findAnyById(id: string): Promise<UserEntity | null>

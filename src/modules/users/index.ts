@@ -19,8 +19,6 @@ export { UsernameTakenError } from './domain/errors/username.errors'
 export { AccountDeletedEvent } from './application/events/account-deleted.event'
 export { UserProfileUpdatedEvent } from './application/events/user-profile-updated.event'
 
-// Commands other modules may send: auth sends this one once the owner has proved it is them.
-export { DeleteAccountCommand } from './application/commands/delete-account/delete-account.command'
 // Run on a schedule by src/maintenance.
 export { SweepDeletedAccountsCommand } from './application/commands/sweep-deleted-accounts/sweep-deleted-accounts.command'
 
@@ -29,6 +27,8 @@ export { normaliseEmail } from './domain/email.rules'
 // What a username and a time zone may be, for the "complete your account" step.
 export { USERNAME_PATTERN, normaliseUsername } from './domain/username.rules'
 export { canonicalTimeZone } from './domain/timezone.rules'
+// When an account its owner asked to delete goes (REQ-AUTH-09, D-141).
+export { deletesAt } from './domain/account-deletion.rules'
 // What a display name may be (D-139), for the same step and the profile page.
 export { DisplayNameField } from './presentation/http/dto/profile-text.decorators'
 // What a time zone may be (REQ-AUTH-08), for the same step and the settings.

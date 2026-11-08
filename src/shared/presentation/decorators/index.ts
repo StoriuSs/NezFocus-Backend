@@ -2,6 +2,7 @@
 export { CurrentUser } from './current-user.decorator'
 export { Public, IS_PUBLIC_KEY } from './public.decorator'
 export { AllowIncomplete, ALLOW_INCOMPLETE_KEY } from './allow-incomplete.decorator'
+export { AllowPendingDeletion, ALLOW_PENDING_DELETION_KEY } from './allow-pending-deletion.decorator'
 export { Roles, ROLES_KEY } from './roles.decorator'
 
 // Other decorators

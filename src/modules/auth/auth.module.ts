@@ -15,6 +15,8 @@ import {
     ChangePasswordHandler,
     CompleteAccountHandler,
     DeleteOwnAccountHandler,
+    RestoreAccountHandler,
+    SERVER_OWNERSHIP,
     GetAuthOptionsHandler,
     GetSignInMethodsHandler,
     SendEmailCodeHandler,
@@ -60,6 +62,7 @@ import {
     AuthEmails,
     BullMqAuthMailer,
     JoseTokenService,
+    NoServersYet,
     OpenIdConnectProvider,
     PrismaCredentialRepository,
     PrismaOAuthAccountRepository,
@@ -90,7 +93,8 @@ const CommandHandlers = [
     CleanUpAuthHandler,
     StartOAuthHandler,
     FinishOAuthHandler,
-    DeleteOwnAccountHandler
+    DeleteOwnAccountHandler,
+    RestoreAccountHandler
 ]
 
 const QueryHandlers = [GetSignInMethodsHandler, GetAuthOptionsHandler, ListSessionsHandler]
@@ -172,6 +176,8 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         { provide: OAUTH_STATE, useClass: RedisOAuthState },
         { provide: AUTH_MAILER, useClass: BullMqAuthMailer },
         { provide: AUTH_EVENTS, useClass: PrometheusAuthEvents },
+        // Until the servers module (M1) answers it from its tables.
+        { provide: SERVER_OWNERSHIP, useClass: NoServersYet },
         // One class answers both: the guard's lookup and the handlers' invalidations.
         RedisSessionCache,
         { provide: PRINCIPAL, useExisting: RedisSessionCache },

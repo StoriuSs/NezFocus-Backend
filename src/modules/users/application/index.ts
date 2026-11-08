@@ -10,8 +10,6 @@ export * from './commands/remove-avatar/remove-avatar.command'
 export * from './commands/remove-avatar/remove-avatar.handler'
 export * from './commands/update-settings/update-settings.command'
 export * from './commands/update-settings/update-settings.handler'
-export * from './commands/delete-account/delete-account.command'
-export * from './commands/delete-account/delete-account.handler'
 export * from './commands/sweep-deleted-accounts/sweep-deleted-accounts.command'
 export * from './commands/sweep-deleted-accounts/sweep-deleted-accounts.handler'
 

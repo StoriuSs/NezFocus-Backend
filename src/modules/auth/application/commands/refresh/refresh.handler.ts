@@ -79,7 +79,10 @@ export class RefreshHandler implements ICommandHandler<RefreshCommand> {
                 throw new RefreshFailedError('security')
 
             case 'invalid':
-                throw new RefreshFailedError(outcome.ended ? sessionEndReason(outcome.ended) : undefined)
+                throw new RefreshFailedError(
+                    outcome.ended ? sessionEndReason(outcome.ended) : undefined,
+                    outcome.deletesAt
+                )
         }
     }
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
     AccountCompletion,
+    DeletedAccount,
     normaliseEmail,
     UserEntity,
     UsernameTakenError,
@@ -111,6 +112,14 @@ export class PrismaUserRepository implements UserRepositoryPort {
         return settings?.language ?? null
     }
 
+    async findTimeZone(id: string): Promise<string | null> {
+        const settings = await this.prisma.userSettings.findUnique({
+            where: { userId: id },
+            select: { timezone: true }
+        })
+        return settings?.timezone ?? null
+    }
+
     async replaceAvatar(
         id: string,
         avatarKey: string | null
@@ -131,15 +140,11 @@ export class PrismaUserRepository implements UserRepositoryPort {
         return { user: UserMapper.toDomain(user), previousAvatarKey: rows[0].previous }
     }
 
-    async softDelete(id: string, deletedBy: string): Promise<UserEntity | null> {
+    async requestDeletion(id: string, at: Date): Promise<UserEntity | null> {
         try {
-            // One UPDATE ... WHERE "deletedAt" IS NULL ... RETURNING: the row
-            // comes back as it was deleted, with the avatar it held at that
-            // instant — an upload finishing just before is included, one just
-            // after finds the row deleted and removes its own file.
             const user = await this.prisma.user.update({
-                where: { id, deletedAt: null },
-                data: { deletedAt: new Date(), deletedBy }
+                where: { id, deletedAt: null, completedAt: { not: null }, deletionRequestedAt: null },
+                data: { deletionRequestedAt: at }
             })
             return UserMapper.toDomain(user)
         } catch (error: unknown) {
@@ -148,21 +153,46 @@ export class PrismaUserRepository implements UserRepositoryPort {
         }
     }
 
-    async erasePersonalDataDeletedBefore(deletedBefore: Date): Promise<number> {
+    async cancelDeletion(id: string): Promise<boolean> {
         const result = await this.prisma.user.updateMany({
-            where: {
-                deletedAt: { lt: deletedBefore },
-                OR: [
-                    { email: { not: null } },
-                    { username: { not: null } },
-                    { displayName: { not: null } },
-                    { bio: { not: null } },
-                    { avatarUrl: { not: null } }
-                ]
-            },
-            data: { email: null, username: null, displayName: null, bio: null, avatarUrl: null }
+            where: { id, deletedAt: null, deletionRequestedAt: { not: null } },
+            data: { deletionRequestedAt: null }
         })
-        return result.count
+        return result.count > 0
+    }
+
+    async deleteDue(due: { requestedBy: Date; incompleteSince: Date }, now: Date): Promise<DeletedAccount[]> {
+        return this.prisma.$transaction(async (tx) => {
+            // The subquery's FOR UPDATE locks each row and, when it had to wait
+            // (a restore, a completion), reads it again and skips it if it no
+            // longer matches. The outer UPDATE returns the avatar key as it
+            // was, so its file can be removed. A person who asked is recorded
+            // as the one who deleted it; an abandoned sign-up, nobody.
+            // At most 200 a run: the next sweep, 15 minutes later, takes the rest.
+            const rows = await tx.$queryRaw<DeletedAccount[]>`
+                UPDATE "User" AS u
+                SET "deletedAt" = ${now},
+                    "deletedBy" = CASE WHEN old."deletionRequestedAt" IS NULL THEN NULL ELSE u."id" END,
+                    "email" = NULL, "username" = NULL, "displayName" = NULL, "bio" = NULL, "avatarUrl" = NULL,
+                    "updatedAt" = ${now}
+                FROM (
+                    SELECT "id", "avatarUrl", "deletionRequestedAt" FROM "User"
+                    WHERE "deletedAt" IS NULL
+                      AND ("deletionRequestedAt" <= ${due.requestedBy}
+                           OR ("completedAt" IS NULL AND "createdAt" <= ${due.incompleteSince}))
+                    ORDER BY "id"
+                    LIMIT 200
+                    FOR UPDATE
+                ) AS old
+                WHERE u."id" = old."id"
+                RETURNING u."id" AS id, old."avatarUrl" AS "avatarKey"
+            `
+            // The settings are personal too (time zone, language).
+            if (rows.length > 0) {
+                await tx.userSettings.deleteMany({ where: { userId: { in: rows.map((row) => row.id) } } })
+            }
+            return rows
+        })
     }
 
     async findAnyById(id: string): Promise<UserEntity | null> {

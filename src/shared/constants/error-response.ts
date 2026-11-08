@@ -30,6 +30,10 @@ export const ERROR_TYPES = {
     // that step sent again once it is done. Named as in SRS section 8.
     ACCOUNT_INCOMPLETE: 'ACCOUNT_INCOMPLETE',
     ACCOUNT_ALREADY_COMPLETE: 'ACCOUNT_ALREADY_COMPLETE',
+    // A signed-in route used by an account waiting to be deleted (D-141).
+    ACCOUNT_PENDING_DELETION: 'ACCOUNT_PENDING_DELETION',
+    // Deleting an account that owns servers with other members (D-76).
+    OWNERSHIP_TRANSFER_REQUIRED: 'OWNERSHIP_TRANSFER_REQUIRED',
 
     // User errors
     USER_NOT_FOUND: 'USER_NOT_FOUND',
@@ -101,12 +105,14 @@ export const ERROR_CODES = {
     AUTH_ACCOUNT_DISABLED: '403003',
     AUTH_FORBIDDEN: '403004',
     ACCOUNT_INCOMPLETE: '403100',
+    ACCOUNT_PENDING_DELETION: '403101',
 
     // Not found error codes (404)
     USER_NOT_FOUND: '404001',
 
     // Conflict error codes (409)
     ACCOUNT_ALREADY_COMPLETE: '409100',
+    OWNERSHIP_TRANSFER_REQUIRED: '409101',
     USERNAME_CONFLICT: '409200',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)

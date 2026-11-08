@@ -19,6 +19,11 @@ export interface DirectoryUser {
     /** When the "complete your account" step was done; null until then (D-61). */
     completedAt: Date | null
     deletedAt: Date | null
+    /**
+     * When the owner asked to delete the account; null when they have not.
+     * Such an account is still live until the 14 days are over (D-141).
+     */
+    deletionRequestedAt: Date | null
 }
 
 /** The "complete your account" step, checked by the caller (D-61). */
@@ -70,6 +75,22 @@ export interface UserDirectoryPort {
      * Null before the account is completed.
      */
     languageOf(id: string): Promise<string | null>
+
+    /** The time zone the account chose, to write dates in its emails. Null before it is completed. */
+    timeZoneOf(id: string): Promise<string | null>
+
+    /**
+     * Record that the owner asked to delete the account (REQ-AUTH-09, D-141);
+     * the users module's sweep deletes it 14 days later.
+     * @returns null if the account is gone, incomplete or already waiting
+     */
+    requestDeletion(id: string, at: Date): Promise<DirectoryUser | null>
+
+    /**
+     * Take the request back: the owner signed in and chose to restore it.
+     * @returns false if it was not waiting to be deleted, or is gone
+     */
+    cancelDeletion(id: string): Promise<boolean>
 }
 
 export const USER_DIRECTORY = Symbol('UserDirectoryPort')

@@ -1,5 +1,5 @@
 import { Expose } from 'class-transformer'
-import { IsArray, IsBoolean, IsEmail, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsArray, IsBoolean, IsDate, IsEmail, IsOptional, IsString, MaxLength } from 'class-validator'
 import { USERNAME_MAX_LENGTH } from '@/modules/users/domain'
 
 /**
@@ -53,4 +53,14 @@ export class UserProfileResponseDto {
     @Expose()
     @IsBoolean()
     completed: boolean
+
+    /**
+     * When the account is deleted, if its owner asked to delete it; null
+     * otherwise (D-141). While it is set, every other signed-in route answers
+     * ACCOUNT_PENDING_DELETION: the client offers to restore it.
+     */
+    @Expose()
+    @IsOptional()
+    @IsDate()
+    deletesAt: Date | null
 }

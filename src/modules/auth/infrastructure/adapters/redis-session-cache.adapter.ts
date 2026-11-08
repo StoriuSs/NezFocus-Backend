@@ -34,9 +34,11 @@ interface CachedSession {
 }
 
 /** Dates as ISO strings: JSON has no dates. */
-type CachedUser = Omit<DirectoryUser, 'deletedAt' | 'completedAt'> & {
+type CachedUser = Omit<DirectoryUser, 'deletedAt' | 'completedAt' | 'deletionRequestedAt'> & {
     deletedAt: string | null
     completedAt: string | null
+    /** Absent in an entry written before L14: read as not asked. */
+    deletionRequestedAt?: string | null
 }
 
 type CachedPair = [VersionedRead<CachedSession>, VersionedRead<CachedUser>]
@@ -133,7 +135,8 @@ export class RedisSessionCache implements PrincipalPort, SessionCachePort {
             const entry: CachedUser = {
                 ...user,
                 deletedAt: user.deletedAt?.toISOString() ?? null,
-                completedAt: user.completedAt?.toISOString() ?? null
+                completedAt: user.completedAt?.toISOString() ?? null,
+                deletionRequestedAt: user.deletionRequestedAt?.toISOString() ?? null
             }
             await this.quietly(() => writeIfUnchanged(this.redis, userKey(userId), entry, ENTRY_TTL_MS, read.version))
         }
@@ -157,5 +160,6 @@ export class RedisSessionCache implements PrincipalPort, SessionCachePort {
 const revive = (user: CachedUser): DirectoryUser => ({
     ...user,
     deletedAt: user.deletedAt ? new Date(user.deletedAt) : null,
-    completedAt: user.completedAt ? new Date(user.completedAt) : null
+    completedAt: user.completedAt ? new Date(user.completedAt) : null,
+    deletionRequestedAt: user.deletionRequestedAt ? new Date(user.deletionRequestedAt) : null
 })

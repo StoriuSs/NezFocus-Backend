@@ -22,8 +22,7 @@ describe('AuthEmails', () => {
     const settings: Record<string, unknown> = {
         'app.name': 'NezFocus',
         'app.frontendUrl': 'https://app.example.test',
-        'app.supportEmail': 'help@example.test',
-        'app.deletedAccountRetentionDays': 30
+        'app.supportEmail': 'help@example.test'
     }
     const config = { get: (key: string) => settings[key] }
 
@@ -40,7 +39,11 @@ describe('AuthEmails', () => {
             ['password-changed', (e) => e.sendPasswordChanged(to, language)],
             ['password-added', (e) => e.sendPasswordAdded(to, language)],
             ['sign-in-method-added', (e) => e.sendSignInMethodAdded(to, 'Google', language)],
-            ['account-deleted', (e) => e.sendAccountDeleted(to, language)]
+            [
+                'deletion-scheduled',
+                // 23:30 on the 28th in UTC is already the 29th in Ho Chi Minh City.
+                (e) => e.sendDeletionScheduled(to, new Date('2026-10-28T23:30:00Z'), 'Asia/Ho_Chi_Minh', language)
+            ]
         ]
         for (const [kind, send] of kinds) {
             const email = {
@@ -85,6 +88,13 @@ describe('AuthEmails', () => {
     it('words a reset for an account with no password as choosing one', () => {
         expect(subjectOf('en', 'reset')).toBe('Reset your NezFocus password')
         expect(subjectOf('en', 'first-password')).toBe('Choose a password for your NezFocus account')
+    })
+
+    it('dates the deletion in the time zone of the account, and links to the sign-in page to restore it (D-141)', () => {
+        expect(subjectOf('vi', 'deletion-scheduled')).toBe('Tài khoản NezFocus của bạn sẽ bị xóa vào 29/10/2026')
+        expect(subjectOf('en', 'deletion-scheduled')).toBe('Your NezFocus account will be deleted on 29/10/2026')
+        const html = sent.find((s) => s.kind === 'deletion-scheduled')!.html
+        expect(html).toContain('https://app.example.test/login')
     })
 
     it('shows the app tile from the web app in every email, with the N as its fallback', () => {

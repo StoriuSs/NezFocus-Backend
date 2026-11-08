@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { deletesAt } from '@/modules/users'
 import {
     ActiveSession,
     RevokeReason,
@@ -11,19 +12,32 @@ import {
 } from '@/modules/auth/domain'
 
 /** How a session ended, or null while it is active. */
-function endOf(
-    session: {
-        revokedAt: Date | null
-        revokedReason: string | null
-        expiresAt: Date
-        user: { deletedAt: Date | null }
-    },
-    now: Date
-): SessionEnd | null {
+interface EndingSession {
+    revokedAt: Date | null
+    revokedReason: string | null
+    expiresAt: Date
+    user: { deletedAt: Date | null; deletionRequestedAt: Date | null }
+}
+
+const USER_STATE = { select: { deletedAt: true, deletionRequestedAt: true } } as const
+
+function endOf(session: EndingSession, now: Date): SessionEnd | null {
     if (session.user.deletedAt) return 'account-deleted'
-    if (session.revokedAt) return (session.revokedReason as RevokeReason | null) ?? 'logout'
+    if (session.revokedAt) {
+        const reason = (session.revokedReason as RevokeReason | null) ?? 'logout'
+        // Ended by a request to delete the account that its owner then took
+        // back by signing in elsewhere: nothing is being deleted any more.
+        if (reason === 'deletion-requested' && !session.user.deletionRequestedAt) return 'revoked'
+        return reason
+    }
     if (session.expiresAt <= now) return 'expired'
     return null
+}
+
+/** When the account of a session ended by a request to delete it goes (D-141). */
+function deletesAtOf(session: EndingSession, ended: SessionEnd): Date | undefined {
+    const requestedAt = session.user.deletionRequestedAt
+    return ended === 'deletion-requested' && requestedAt ? deletesAt(requestedAt) : undefined
 }
 
 const toRecord = (session: { id: string; userId: string; expiresAt: Date }): SessionRecord => ({
@@ -80,7 +94,7 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
     async findEnded(id: string, now: Date): Promise<SessionEnd | null> {
         const session = await this.prisma.session.findUnique({
             where: { id },
-            select: { revokedAt: true, revokedReason: true, expiresAt: true, user: { select: { deletedAt: true } } }
+            select: { revokedAt: true, revokedReason: true, expiresAt: true, user: USER_STATE }
         })
         return session ? endOf(session, now) : null
     }
@@ -104,11 +118,11 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
             // just after a deletion, and a refresh in between must not succeed.
             const session = await tx.session.findUnique({
                 where: { id: token.sessionId },
-                include: { user: { select: { deletedAt: true } } }
+                include: { user: USER_STATE }
             })
             if (!session) return { kind: 'invalid' }
             const ended = endOf(session, now)
-            if (ended) return { kind: 'invalid', ended }
+            if (ended) return { kind: 'invalid', ended, deletesAt: deletesAtOf(session, ended) }
 
             if (!token.usedAt) {
                 const replacement = await tx.refreshToken.create({

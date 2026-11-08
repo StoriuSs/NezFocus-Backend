@@ -12,6 +12,13 @@ import { EMAIL_COPY, EmailContent } from './email-copy'
  */
 const LAYOUT = path.join(__dirname, 'templates', 'email')
 
+/** dd/mm/yyyy in `timeZone`, as the app writes dates in both languages. */
+export function calendarDate(when: Date, timeZone: string): string {
+    return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone }).format(
+        when
+    )
+}
+
 /**
  * Every email auth sends: its words (email-copy.ts, in the language asked
  * for) in the shared layout. Shared's EmailService only delivers them; a
@@ -65,11 +72,15 @@ export class AuthEmails {
         await this.send(to, language, EMAIL_COPY[language].signInMethodAdded({ ...this.links, provider: providerName }))
     }
 
-    /** The account was deleted: when its personal details go, and who to contact if it was not them. */
-    async sendAccountDeleted(to: string, language: EmailLanguage): Promise<void> {
-        const content = EMAIL_COPY[language].accountDeleted({
+    /**
+     * The owner asked to delete the account (D-141): the day it goes, as the
+     * account's clock shows it, and the sign-in page where restoring starts.
+     */
+    async sendDeletionScheduled(to: string, deletesAt: Date, timeZone: string, language: EmailLanguage): Promise<void> {
+        const content = EMAIL_COPY[language].deletionScheduled({
             app: this.appName,
-            days: this.config.get<number>('app.deletedAccountRetentionDays') ?? 30,
+            date: calendarDate(deletesAt, timeZone),
+            signInUrl: `${this.frontendUrl}/login`,
             support: this.config.get<string | null>('app.supportEmail') || null
         })
         await this.send(to, language, content)

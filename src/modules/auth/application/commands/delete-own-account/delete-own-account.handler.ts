@@ -1,13 +1,16 @@
-import { CommandBus, CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { Inject, Logger } from '@nestjs/common'
 import { DeleteOwnAccountCommand } from './delete-own-account.command'
-import { DeleteAccountCommand, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
+import { deletesAt, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
     AccountDisabledError,
     ConfirmationRequiredError,
     CREDENTIAL_REPOSITORY,
     CredentialRepositoryPort,
-    CurrentPasswordInvalidError
+    CurrentPasswordInvalidError,
+    OwnershipTransferRequiredError,
+    SESSION_REPOSITORY,
+    SessionRepositoryPort
 } from '@/modules/auth/domain'
 import {
     AUTH_EVENTS,
@@ -17,35 +20,52 @@ import {
     PASSWORD_HASHER,
     PasswordHasherPort,
     RATE_LIMIT,
-    RateLimitPort
+    RateLimitPort,
+    SERVER_OWNERSHIP,
+    ServerOwnershipPort,
+    SESSION_CACHE,
+    SessionCachePort
 } from '../../ports'
 import { AUTH_RATE_LIMITS } from '../../rate-limits'
 import { withGuess } from '../../services/limits'
+import { afterCommit } from '../../services/after-commit'
+
+/** For an account with no settings row, which a completed one always has. */
+const FALLBACK_TIME_ZONE = 'UTC'
 
 /**
- * Delete your own account, proving it is you first with the password: a
- * signed-in session alone is not enough, or anyone at an unlocked computer
- * could do it (REQ-AUTH-09).
+ * Ask to delete your own account (REQ-AUTH-09, D-141), proving it is you
+ * first with the password: a signed-in session alone is not enough, or anyone
+ * at an unlocked computer could do it. Wrong passwords count as when changing
+ * it.
  *
- * Only the password: every account sets one when it is completed (D-61,
- * D-130). An account without one (made with Google before that rule) chooses
- * one with "forgot password" first. Wrong passwords count as when changing it.
- * Then the users module deletes the account (and its sessions, by its event),
- * and the owner is emailed.
+ * Nothing is deleted yet. The account waits 14 days, still live: every
+ * session ends now (reason `deletion-requested`, so other devices can say
+ * when it goes), and signing in again within the 14 days offers to restore
+ * it. The users module's sweep deletes it once they are over. The owner is
+ * emailed the date, in the account's time zone.
+ *
+ * An Owner of servers with other members hands them over first (D-76).
+ *
+ * @returns when the account is deleted
  */
 @CommandHandler(DeleteOwnAccountCommand)
 export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccountCommand> {
+    private readonly logger = new Logger(DeleteOwnAccountHandler.name)
+
     constructor(
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
+        @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
+        @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
         @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort,
+        @Inject(SERVER_OWNERSHIP) private readonly servers: ServerOwnershipPort,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
-        @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
-        private readonly commandBus: CommandBus
+        @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort
     ) {}
 
-    async execute({ userId, proof, language }: DeleteOwnAccountCommand): Promise<void> {
+    async execute({ userId, proof, language }: DeleteOwnAccountCommand): Promise<Date> {
         const user = await this.directory.findById(userId)
         if (!user || user.deletedAt) throw new AccountDisabledError()
 
@@ -53,10 +73,30 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         if (hash === null || !proof.password) throw new ConfirmationRequiredError(['password'])
         await this.checkPassword(userId, hash, proof.password)
 
-        await this.commandBus.execute(new DeleteAccountCommand(userId, userId))
+        const blocking = await this.servers.serversBlockingDeletion(userId)
+        if (blocking.length > 0) throw new OwnershipTransferRequiredError(blocking)
+
+        const now = new Date()
+        const requested = await this.directory.requestDeletion(userId, now)
+        // Deleted meanwhile, or asked already from another tab (which ended
+        // this session too, a moment ago).
+        if (!requested?.deletionRequestedAt) throw new AccountDisabledError()
+        const deletionDate = deletesAt(requested.deletionRequestedAt)
+
         await this.limiter.reset(AUTH_RATE_LIMITS.currentPasswordFailuresPerUser, userId)
-        if (user.email) await this.mailer.sendAccountDeleted(user.email, language)
+        const ended = await this.sessions.revokeAllForUser(userId, 'deletion-requested', now)
+        const email = user.email
+        await afterCommit(this.logger, 'Account deletion request', [
+            () => this.cache.invalidateSessions(ended),
+            () => this.cache.invalidateUser(userId),
+            async () => {
+                if (!email) return
+                const timeZone = (await this.directory.timeZoneOf(userId)) ?? FALLBACK_TIME_ZONE
+                await this.mailer.sendDeletionScheduled(email, deletionDate, timeZone, language)
+            }
+        ])
         this.events.record('account_deleted')
+        return deletionDate
     }
 
     /** As when changing it: wrong ones count against the user. */

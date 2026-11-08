@@ -2,6 +2,7 @@
 export * from './adapters/argon2-password-hasher.adapter'
 export * from './adapters/bullmq-auth-mailer.adapter'
 export * from './adapters/jose-token-service.adapter'
+export * from './adapters/no-servers-yet.adapter'
 export * from './adapters/openid-connect-provider.adapter'
 export * from './adapters/prometheus-auth-events.adapter'
 export * from './adapters/redis-oauth-state.adapter'

@@ -10,7 +10,7 @@ import {
     PasswordChangedJob,
     PasswordAddedJob,
     SignInMethodAddedJob,
-    AccountDeletedJob,
+    DeletionScheduledJob,
     EMAIL_JOB_OPTIONS
 } from '../email/auth-email-jobs'
 
@@ -54,8 +54,8 @@ export class BullMqAuthMailer implements AuthMailerPort {
         await this.queue.add(AUTH_JOBS.SIGN_IN_METHOD_ADDED, job, EMAIL_JOB_OPTIONS)
     }
 
-    async sendAccountDeleted(to: string, language: EmailLanguage): Promise<void> {
-        const job: AccountDeletedJob = { to, language }
-        await this.queue.add(AUTH_JOBS.ACCOUNT_DELETED, job, EMAIL_JOB_OPTIONS)
+    async sendDeletionScheduled(to: string, deletesAt: Date, timeZone: string, language: EmailLanguage): Promise<void> {
+        const job: DeletionScheduledJob = { to, deletesAt: deletesAt.toISOString(), timeZone, language }
+        await this.queue.add(AUTH_JOBS.DELETION_SCHEDULED, job, EMAIL_JOB_OPTIONS)
     }
 }

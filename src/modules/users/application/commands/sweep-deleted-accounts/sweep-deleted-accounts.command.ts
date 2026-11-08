@@ -1,7 +1,4 @@
+/** The sweep at `now`: deletes the accounts whose 14 days are over (dueForDeletion). */
 export class SweepDeletedAccountsCommand {
-    constructor(
-        public readonly now: Date,
-        /** Personal data of accounts deleted longer ago than this is erased. */
-        public readonly retentionDays: number
-    ) {}
+    constructor(public readonly now: Date) {}
 }

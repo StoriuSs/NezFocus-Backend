@@ -5,13 +5,14 @@ import { PrismaClient } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { PrismaUserRepository } from '@/modules/users/infrastructure/persistence/prisma-user.repository'
 import { UsernameTakenError } from '@/modules/users'
+import { dueForDeletion } from '@/modules/users/domain'
 import { databaseTarget } from './targets'
 
 /**
  * Account writes that race in real use — double-clicked uploads, two deletion
- * requests — against a real Postgres, where the row locks and conditional
- * writes actually decide the outcome; and the sweep of sign-ups never
- * confirmed.
+ * requests, a restore or a completion meeting the sweep — against a real
+ * Postgres, where the row locks and conditional writes actually decide the
+ * outcome.
  *
  * Requires Postgres: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -53,15 +54,126 @@ describe('Account lifecycle (integration)', () => {
         })
     })
 
-    describe('softDelete', () => {
-        it('lets exactly one of several concurrent deletions through', async () => {
-            const user = await newUser({ avatarUrl: 'avatars/a.webp' })
+    // REQ-AUTH-09, REQ-AUTH-01, D-141
+    describe('deleting an account, 14 days later', () => {
+        const DAY_MS = 24 * 60 * 60 * 1000
+        const daysAgo = (days: number, from = new Date()) => new Date(from.getTime() - days * DAY_MS)
+        const completed = { completedAt: daysAgo(100), username: () => `itest_${randomUUID().slice(0, 8)}` }
+        const completedUser = (overrides: Record<string, unknown> = {}) =>
+            newUser({ completedAt: completed.completedAt, username: completed.username(), ...overrides })
+        const sweep = (now = new Date()) => users.deleteDue(dueForDeletion(now), now)
 
-            const results = await Promise.all(Array.from({ length: 5 }, () => users.softDelete(user.id, user.id)))
+        it('records one of several requests at once, and none for an incomplete account', async () => {
+            const user = await completedUser()
+            const incomplete = await newUser()
 
-            const winners = results.filter(Boolean)
-            expect(winners).toHaveLength(1)
-            expect(winners[0]!.avatarUrl).toBe('avatars/a.webp')
+            const results = await Promise.all(
+                Array.from({ length: 5 }, () => users.requestDeletion(user.id, new Date()))
+            )
+
+            expect(results.filter(Boolean)).toHaveLength(1)
+            expect(await users.requestDeletion(incomplete.id, new Date())).toBeNull()
+        })
+
+        it('deletes the accounts whose 14 days are over and leaves the rest', async () => {
+            const now = new Date()
+            const asked = await completedUser({
+                deletionRequestedAt: daysAgo(14, now),
+                avatarUrl: 'avatars/asked.webp'
+            })
+            const askedLately = await completedUser({ deletionRequestedAt: daysAgo(13, now) })
+            const abandoned = await newUser({ createdAt: daysAgo(14, now) })
+            const abandonedLately = await newUser({ createdAt: daysAgo(13, now) })
+            const oldButCompleted = await completedUser({ createdAt: daysAgo(300, now) })
+
+            const deleted = (await sweep(now)).filter((row) => row.id.startsWith('itest-'))
+
+            expect(deleted.map((row) => row.id).sort()).toEqual([asked.id, abandoned.id].sort())
+            expect(deleted.find((row) => row.id === asked.id)?.avatarKey).toBe('avatars/asked.webp')
+            const rows = await prisma.user.findMany({
+                where: { id: { in: [asked.id, askedLately.id, abandoned.id, abandonedLately.id, oldButCompleted.id] } }
+            })
+            const deletedAt = Object.fromEntries(rows.map((row) => [row.id, row.deletedAt !== null]))
+            expect(deletedAt).toEqual({
+                [asked.id]: true,
+                [askedLately.id]: false,
+                [abandoned.id]: true,
+                [abandonedLately.id]: false,
+                [oldButCompleted.id]: false
+            })
+            // Who asked is recorded as the one who deleted it; an abandoned sign-up, nobody.
+            expect(rows.find((row) => row.id === asked.id)?.deletedBy).toBe(asked.id)
+            expect(rows.find((row) => row.id === abandoned.id)?.deletedBy).toBeNull()
+        })
+
+        it('erases the personal data and the settings at once, which frees the address and the username', async () => {
+            const user = await completedUser({
+                deletionRequestedAt: daysAgo(15),
+                displayName: 'Ada',
+                bio: 'Hi',
+                avatarUrl: 'avatars/a.webp'
+            })
+            await prisma.userSettings.create({
+                data: { userId: user.id, timezone: 'Asia/Ho_Chi_Minh', language: 'vi' }
+            })
+
+            await sweep()
+
+            expect(
+                await prisma.user.findUniqueOrThrow({ where: { id: user.id }, include: { settings: true } })
+            ).toMatchObject({
+                email: null,
+                username: null,
+                displayName: null,
+                bio: null,
+                avatarUrl: null,
+                settings: null
+            })
+            const again = await users.createWithEmail(user.email!)
+            expect(again?.id).not.toBe(user.id)
+            await prisma.user.update({ where: { id: again!.id }, data: { username: user.username } })
+            await prisma.user.deleteMany({ where: { id: again!.id } })
+        })
+
+        it('holds the address and the username while the account waits', async () => {
+            const user = await completedUser({ deletionRequestedAt: daysAgo(3) })
+
+            expect(await users.createWithEmail(user.email!)).toBeNull()
+            expect(await users.findByUsername(user.username!)).not.toBeNull()
+        })
+
+        it('lets a restore or the sweep win, never both', async () => {
+            for (let round = 0; round < 5; round++) {
+                const user = await completedUser({ deletionRequestedAt: daysAgo(14) })
+
+                const [restored, deleted] = await Promise.all([users.cancelDeletion(user.id), sweep()])
+
+                const swept = deleted.some((row) => row.id === user.id)
+                expect([restored, swept].filter(Boolean)).toHaveLength(1)
+                const row = await prisma.user.findUniqueOrThrow({ where: { id: user.id } })
+                expect(row.deletedAt !== null).toBe(swept)
+            }
+        })
+
+        it('lets a completion or the sweep of an abandoned sign-up win, never both', async () => {
+            for (let round = 0; round < 5; round++) {
+                const user = await newUser({ createdAt: daysAgo(14) })
+
+                const [made, deleted] = await Promise.all([
+                    users.complete(user.id, {
+                        displayName: 'Ada',
+                        username: completed.username(),
+                        passwordHash: 'argon2id$x',
+                        timezone: 'Asia/Ho_Chi_Minh',
+                        language: 'vi',
+                        completedAt: new Date()
+                    }),
+                    sweep()
+                ])
+
+                const swept = deleted.some((row) => row.id === user.id)
+                expect([made !== null, swept].filter(Boolean)).toHaveLength(1)
+            }
         })
     })
 

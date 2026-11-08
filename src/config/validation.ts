@@ -72,7 +72,6 @@ export const validationSchema = Joi.object({
     // by someone else). Optional.
     SUPPORT_EMAIL: Joi.string().email().allow('').optional(),
     GRACEFUL_SHUTDOWN_TIMEOUT_MS: Joi.number().default(5000),
-    DELETED_ACCOUNT_RETENTION_DAYS: Joi.number().integer().min(0).default(30),
 
     // cors.config.ts
     CORS_ORIGINS: Joi.string().default('http://localhost:3001'),

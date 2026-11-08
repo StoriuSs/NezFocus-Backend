@@ -15,7 +15,6 @@ import {
     UploadAvatarHandler,
     RemoveAvatarHandler,
     UpdateSettingsHandler,
-    DeleteAccountHandler,
     SweepDeletedAccountsHandler,
     CheckUsernameHandler,
     ResolveAvatarUrlHandler,
@@ -41,7 +40,6 @@ const CommandHandlers = [
     UploadAvatarHandler,
     RemoveAvatarHandler,
     UpdateSettingsHandler,
-    DeleteAccountHandler,
     SweepDeletedAccountsHandler
 ]
 

@@ -7,7 +7,9 @@ export interface SessionRecord {
 /**
  * Why a session was ended. `logout-all` is "Sign out the other devices"
  * (D-75; the value predates the button keeping this device); `revoked` is
- * one row of the list of sessions.
+ * one row of the list of sessions. `deletion-requested`: the owner asked to
+ * delete the account, which waits 14 days (D-141); `account-deleted`: it is
+ * deleted.
  */
 export type RevokeReason =
     | 'logout'
@@ -16,6 +18,7 @@ export type RevokeReason =
     | 'password-changed'
     | 'password-reset'
     | 'reuse-detected'
+    | 'deletion-requested'
     | 'account-deleted'
 
 /** How a session that no longer works came to an end. */
@@ -30,13 +33,14 @@ export type SessionEnd = RevokeReason | 'expired'
  * - reused  — it was used earlier than that: presumed stolen. The session has
  *             been revoked
  * - invalid — unknown, expired, or its session has ended (`ended`: how,
- *             when the token was known)
+ *             when the token was known; `deletesAt`: when the account goes,
+ *             when it ended because its owner asked to delete it)
  */
 export type RotationOutcome =
     | { kind: 'rotated'; session: SessionRecord }
     | { kind: 'grace'; session: SessionRecord }
     | { kind: 'reused'; session: SessionRecord }
-    | { kind: 'invalid'; ended?: SessionEnd }
+    | { kind: 'invalid'; ended?: SessionEnd; deletesAt?: Date }
 
 /** A session as the list of sessions reads it: the stored user agent and IP, unread and unmasked. */
 export interface ActiveSession {
@@ -89,7 +93,8 @@ export interface SessionRepositoryPort {
     /**
      * How a session that is not active ended; null for one that does not
      * exist, or is still active. A deleted account's sessions say so, even
-     * before the event that revokes them has run.
+     * before the event that revokes them has run. One ended by a request to
+     * delete the account that was then taken back reads `revoked`.
      */
     findEnded(id: string, now: Date): Promise<SessionEnd | null>
 

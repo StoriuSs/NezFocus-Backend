@@ -25,7 +25,8 @@ export class UserMapper {
             createdAt: prismaUser.createdAt,
             updatedAt: prismaUser.updatedAt,
             deletedAt: prismaUser.deletedAt,
-            deletedBy: prismaUser.deletedBy
+            deletedBy: prismaUser.deletedBy,
+            deletionRequestedAt: prismaUser.deletionRequestedAt
         })
     }
 

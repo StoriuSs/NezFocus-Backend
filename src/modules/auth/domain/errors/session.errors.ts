@@ -9,7 +9,8 @@ import { DomainError } from '@/shared/domain/domain-error'
  * - `revoked`: signed out from the list of sessions, on another device
  * - `password_changed`: the password was changed or reset
  * - `security`: its refresh token was used twice, so presumed stolen
- * - `account_deleted`: the account was deleted
+ * - `account_deleted`: the account was deleted, or its owner asked to delete
+ *   it; then `deletes_at` says when it goes (D-141)
  * - `expired`: it reached the end of its life
  */
 export type SessionEndReason =
@@ -25,10 +26,10 @@ export type SessionEndReason =
 export class RefreshFailedError extends DomainError {
     readonly kind = 'unauthenticated'
     readonly errorKey = 'AUTH_REFRESH_FAILED'
-    readonly details?: { reason: SessionEndReason }
-    constructor(reason?: SessionEndReason) {
+    readonly details?: { reason: SessionEndReason; deletesAt?: string }
+    constructor(reason?: SessionEndReason, deletesAt?: Date) {
         super('Your session has ended. Sign in again.')
-        if (reason) this.details = { reason }
+        if (reason) this.details = deletesAt ? { reason, deletesAt: deletesAt.toISOString() } : { reason }
     }
 }
 

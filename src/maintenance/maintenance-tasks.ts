@@ -26,11 +26,11 @@ export interface MaintenanceTask {
  */
 export const MAINTENANCE_TASKS: MaintenanceTask[] = [
     {
-        // Erases the personal data of accounts deleted long enough ago.
+        // Deletes the accounts whose 14 days are over: asked to be deleted,
+        // or left incomplete (D-141).
         id: 'deleted-accounts-sweep',
         everyMs: 15 * MINUTE_MS,
-        command: (now, config) =>
-            new SweepDeletedAccountsCommand(now, config.get<number>('app.deletedAccountRetentionDays')!)
+        command: (now) => new SweepDeletedAccountsCommand(now)
     },
     {
         // Removes ended sessions and old codes, and finishes a deletion whose

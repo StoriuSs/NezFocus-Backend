@@ -43,7 +43,13 @@ import { AVATAR_MAX_BYTES, SettingsView, UserEntity } from '@/modules/users/doma
 import { AvatarFilePipe } from './avatar-file.pipe'
 
 // Shared
-import { AllowIncomplete, ApiEnvelopeResponse, CurrentUser, Idempotent } from '@/shared/presentation/decorators'
+import {
+    AllowIncomplete,
+    AllowPendingDeletion,
+    ApiEnvelopeResponse,
+    CurrentUser,
+    Idempotent
+} from '@/shared/presentation/decorators'
 import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/types'
 import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
@@ -62,9 +68,13 @@ export class UsersController {
         return this.queryBus.execute(new ResolveAvatarUrlQuery(key))
     }
 
-    /** Also before the account is completed: the client reads `completed` to know where to go. */
+    /**
+     * Also before the account is completed, and while it waits to be deleted:
+     * the client reads `completed` and `deletes_at` to know where to go.
+     */
     @Get('me')
     @AllowIncomplete()
+    @AllowPendingDeletion()
     @HttpCode(HttpStatus.OK)
     @ApiEnvelopeResponse(UserProfileResponseDto)
     async getProfile(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<UserProfileResponseDto>> {
@@ -76,7 +86,8 @@ export class UsersController {
             avatarUrl: await this.toAvatarUrl(user.avatarUrl),
             roles: user.roles,
             bio: user.bio ?? undefined,
-            completed: user.completed
+            completed: user.completed,
+            deletesAt: user.deletesAt
         })
 
         return createResponse(MESSAGES.USER.FETCHED, profile)

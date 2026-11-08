@@ -139,7 +139,8 @@ describe('OpenAPI contract: users routes (e2e)', () => {
         displayName: null,
         avatarUrl: null,
         bio: null,
-        completed: false
+        completed: false,
+        deletesAt: null
     }
     const fullUser: AuthenticatedUser = {
         id: 'user-1',
@@ -150,7 +151,8 @@ describe('OpenAPI contract: users routes (e2e)', () => {
         displayName: 'Jane',
         avatarUrl: 'avatars/1.webp',
         bio: 'Hi',
-        completed: true
+        completed: true,
+        deletesAt: null
     }
     const key = '6f9619ff-8b86-4d11-b42d-00c04fc964ff'
 

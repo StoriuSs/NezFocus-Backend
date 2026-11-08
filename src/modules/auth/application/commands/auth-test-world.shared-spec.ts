@@ -1,11 +1,4 @@
-import { CommandBus } from '@nestjs/cqrs'
-import {
-    AccountCompletionInput,
-    DeleteAccountCommand,
-    DirectoryUser,
-    UserDirectoryPort,
-    UsernameTakenError
-} from '@/modules/users'
+import { AccountCompletionInput, DirectoryUser, UserDirectoryPort, UsernameTakenError } from '@/modules/users'
 import { AuthSettings } from '../auth-settings'
 import { OAuthSettings } from '../oauth-settings'
 import {
@@ -23,10 +16,12 @@ import {
     PasswordHasherPort,
     SessionCachePort,
     TokenServicePort,
-    RateLimitPort
+    RateLimitPort,
+    ServerOwnershipPort
 } from '../ports'
 import {
     ActiveSession,
+    BlockingServer,
     CodeCheck,
     CodePurpose,
     CredentialRepositoryPort,
@@ -54,6 +49,7 @@ import {
     LoginHandler,
     RefreshHandler,
     ResetPasswordHandler,
+    RestoreAccountHandler,
     RevokeOtherSessionsHandler,
     RevokeSessionHandler,
     SendEmailCodeHandler,
@@ -100,6 +96,7 @@ class FakeDirectory implements UserDirectoryPort {
             bio: null,
             completedAt: null,
             deletedAt: null,
+            deletionRequestedAt: null,
             ...overrides
         }
         this.users.set(user.id, user)
@@ -133,6 +130,30 @@ class FakeDirectory implements UserDirectoryPort {
     }
     async languageOf(id: string) {
         return this.settings.get(id)?.language ?? null
+    }
+    async timeZoneOf(id: string) {
+        return this.settings.get(id)?.timezone ?? null
+    }
+    // Conditional, like the repository's statements.
+    async requestDeletion(id: string, at: Date) {
+        const user = this.users.get(id)
+        if (!user || user.deletedAt || !user.completedAt || user.deletionRequestedAt) return null
+        user.deletionRequestedAt = at
+        return user
+    }
+    async cancelDeletion(id: string) {
+        const user = this.users.get(id)
+        if (!user || user.deletedAt || !user.deletionRequestedAt) return false
+        user.deletionRequestedAt = null
+        return true
+    }
+}
+
+/** The servers that stop a deletion: none until a test names some. */
+class FakeServerOwnership implements ServerOwnershipPort {
+    blocking: BlockingServer[] = []
+    async serversBlockingDeletion() {
+        return this.blocking
     }
 }
 
@@ -377,8 +398,9 @@ class FakeMailer implements AuthMailerPort {
     async sendCode(to: string, code: string, purpose: CodePurpose, _minutes: number, email: CodeEmail) {
         this.codes.push({ to, code, purpose, email })
     }
-    async sendAccountDeleted(to: string, language: EmailLanguage) {
-        this.notices.push({ to, kind: 'account-deleted', language })
+    scheduled: { to: string; deletesAt: Date; timeZone: string; language: EmailLanguage }[] = []
+    async sendDeletionScheduled(to: string, deletesAt: Date, timeZone: string, language: EmailLanguage) {
+        this.scheduled.push({ to, deletesAt, timeZone, language })
     }
     async sendPasswordChanged(to: string, language: EmailLanguage) {
         this.notices.push({ to, kind: 'password-changed', language })
@@ -484,12 +506,7 @@ export function setup() {
     const oauthState = new FakeOAuthState()
     const oauthAccounts = new FakeOAuthAccounts()
     const gate = new SignInGate(sessionIssuer)
-    // The users module's side of a deletion: what DeleteAccountHandler does.
-    const usersBus = {
-        execute: async (command: DeleteAccountCommand) => {
-            directory.users.get(command.userId)!.deletedAt = new Date()
-        }
-    } as unknown as CommandBus
+    const servers = new FakeServerOwnership()
 
     return {
         events,
@@ -502,6 +519,7 @@ export function setup() {
         mailer,
         google,
         oauthAccounts,
+        servers,
         startOAuth: new StartOAuthHandler([google], oauthState, oauthSettings),
         finishOAuth: new FinishOAuthHandler(
             [google],
@@ -521,7 +539,18 @@ export function setup() {
         revokeSession: new RevokeSessionHandler(sessions, cache),
         revokeOtherSessions: new RevokeOtherSessionsHandler(sessions, cache),
         forgot: new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer),
-        deleteAccount: new DeleteOwnAccountHandler(directory, credentials, hasher, limiter, mailer, events, usersBus),
+        deleteAccount: new DeleteOwnAccountHandler(
+            directory,
+            credentials,
+            sessions,
+            cache,
+            hasher,
+            limiter,
+            servers,
+            mailer,
+            events
+        ),
+        restore: new RestoreAccountHandler(directory, cache, events),
         reset: new ResetPasswordHandler(
             directory,
             credentials,

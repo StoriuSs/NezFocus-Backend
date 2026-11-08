@@ -36,6 +36,12 @@ model User {
   deletedAt DateTime? @db.Timestamptz(6)
   deletedBy String?
 
+  // When the owner asked to delete the account (REQ-AUTH-09, D-141). It is
+  // deleted 14 days later unless they sign in and restore it. Meanwhile the
+  // account stays live (deletedAt empty), so its address and username stay
+  // taken and every way of signing in still finds it.
+  deletionRequestedAt DateTime? @db.Timestamptz(6)
+
   // Owned by the auth module (prisma/models/auth.prisma). Declared here only
   // because Prisma needs both sides of a relation; the users module never
   // reads or writes them.
@@ -49,6 +55,7 @@ model User {
 
   @@index([username])
   @@index([deletedAt])
+  @@index([deletionRequestedAt])
 }
 
 /// What a person chose for themselves, the same in every browser (SRS 7.1,

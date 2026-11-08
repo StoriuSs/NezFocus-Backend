@@ -55,8 +55,12 @@ export interface AuthMailerPort {
      */
     sendSignInMethodAdded(to: string, providerName: string, language: EmailLanguage): Promise<void>
 
-    /** The account was deleted: the one email they need if it was not them. */
-    sendAccountDeleted(to: string, language: EmailLanguage): Promise<void>
+    /**
+     * The owner asked to delete the account (D-141): when it goes, written in
+     * `timeZone`, and how to restore it before then. The one email they need
+     * if it was not them.
+     */
+    sendDeletionScheduled(to: string, deletesAt: Date, timeZone: string, language: EmailLanguage): Promise<void>
 }
 
 export const AUTH_MAILER = Symbol('AuthMailerPort')

@@ -15,6 +15,7 @@ export { ResetPasswordRequestDto } from './reset-password.request.dto'
 export { VerifyEmailCodeRequestDto } from './verify-email-code.request.dto'
 
 // Responses
+export { AccountDeletionResponseDto } from './account-deletion.response.dto'
 export { AuthOptionsResponseDto } from './auth-options.response.dto'
 export { EmailCodeSignInResponseDto } from './email-code-sign-in.response.dto'
 export { RevokedSessionsResponseDto } from './revoked-sessions.response.dto'

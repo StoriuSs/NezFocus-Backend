@@ -624,6 +624,45 @@
                       "$ref": "#/components/schemas/ApiResponseMetaDto"
                     },
                     "data": {
+                      "$ref": "#/components/schemas/AccountDeletionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ask to delete your own account, with the password as proof it is you.\nIt is deleted 14 days later unless you sign in and restore it (D-141).\nEvery session ends, this one included; the owner is emailed the date.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/account/restore": {
+      "post": {
+        "operationId": "AccountDeletionController_restore_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
                       "type": "null"
                     }
                   }
@@ -637,7 +676,7 @@
             "bearer": []
           }
         ],
-        "summary": "Delete your own account, with the password as proof it is you. Every\nsession ends, this one included; the owner is emailed.",
+        "summary": "Restore an account waiting to be deleted: for the dialog shown after\nsigning in to one. The only route such an account may use besides\n`GET /users/me`. Restoring one that is not waiting changes nothing.",
         "tags": [
           "auth"
         ]
@@ -733,7 +772,7 @@
             "bearer": []
           }
         ],
-        "summary": "Also before the account is completed: the client reads `completed` to know where to go.",
+        "summary": "Also before the account is completed, and while it waits to be deleted:\nthe client reads `completed` and `deletes_at` to know where to go.",
         "tags": [
           "users"
         ]
@@ -1814,6 +1853,19 @@
           "providers"
         ]
       },
+      "AccountDeletionResponseDto": {
+        "type": "object",
+        "properties": {
+          "deletes_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the account is deleted: 14 days from now. Signing in before then\noffers to restore it. The sign-in page shows the date."
+          }
+        },
+        "required": [
+          "deletes_at"
+        ]
+      },
       "DeleteAccountRequestDto": {
         "type": "object",
         "properties": {
@@ -1870,13 +1922,20 @@
           "completed": {
             "type": "boolean",
             "description": "Whether the \"complete your account\" step is done (D-61). While it is\nnot, every other signed-in route answers ACCOUNT_INCOMPLETE: the client\nopens /welcome."
+          },
+          "deletes_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When the account is deleted, if its owner asked to delete it; null\notherwise (D-141). While it is set, every other signed-in route answers\nACCOUNT_PENDING_DELETION: the client offers to restore it."
           }
         },
         "required": [
           "id",
           "avatar_url",
           "roles",
-          "completed"
+          "completed",
+          "deletes_at"
         ]
       },
       "UsernameAvailabilityResponseDto": {

@@ -15,7 +15,8 @@ const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
     avatarUrl: user.avatarUrl,
     bio: user.bio,
     completedAt: user.completedAt,
-    deletedAt: user.deletedAt
+    deletedAt: user.deletedAt,
+    deletionRequestedAt: user.deletionRequestedAt
 })
 
 /**
@@ -50,5 +51,18 @@ export class UserDirectory implements UserDirectoryPort {
 
     languageOf(id: string): Promise<string | null> {
         return this.users.findLanguage(id)
+    }
+
+    timeZoneOf(id: string): Promise<string | null> {
+        return this.users.findTimeZone(id)
+    }
+
+    async requestDeletion(id: string, at: Date): Promise<DirectoryUser | null> {
+        const user = await this.users.requestDeletion(id, at)
+        return user ? toDirectoryUser(user) : null
+    }
+
+    cancelDeletion(id: string): Promise<boolean> {
+        return this.users.cancelDeletion(id)
     }
 }

@@ -1,35 +1,39 @@
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { Inject, Logger } from '@nestjs/common'
 import { SweepDeletedAccountsCommand } from './sweep-deleted-accounts.command'
-import { UserRepositoryPort, USER_REPOSITORY } from '@/modules/users/domain'
-
-const DAY_MS = 24 * 60 * 60 * 1000
+import { dueForDeletion, UserRepositoryPort, USER_REPOSITORY } from '@/modules/users/domain'
+import { AccountDeletedEvent } from '../../events/account-deleted.event'
 
 export interface SweepDeletedAccountsResult {
-    accountsErased: number
+    accountsDeleted: number
 }
 
 /**
- * Periodic housekeeping for accounts. Safe to run concurrently or repeatedly:
- * it erases personal data (email, names, bio, avatar key) from accounts
- * deleted more than `retentionDays` ago. The row itself stays, so the account
- * is still recognised and refused.
+ * Deletes the accounts whose time has come, every 15 minutes (D-141): those
+ * whose owner asked 14 days ago and did not restore them (REQ-AUTH-09), and
+ * those left incomplete 14 days after they were made (REQ-AUTH-01). Each is
+ * marked deleted with its personal data and settings erased at once; the row
+ * stays, so what points to it keeps working.
  *
- * There is no sweep of unconfirmed accounts: an account is only made once its
- * address is confirmed (D-59, D-133).
+ * Then, as for any deletion, AccountDeletedEvent: the auth module ends the
+ * sessions and removes the password and the Google links, and the avatar file
+ * is queued for removal. Safe to run concurrently or repeatedly: an account is
+ * deleted once, by the statement that locks it.
  */
 @CommandHandler(SweepDeletedAccountsCommand)
 export class SweepDeletedAccountsHandler implements ICommandHandler<SweepDeletedAccountsCommand> {
     private readonly logger = new Logger(SweepDeletedAccountsHandler.name)
 
-    constructor(@Inject(USER_REPOSITORY) private readonly userRepo: UserRepositoryPort) {}
+    constructor(
+        @Inject(USER_REPOSITORY) private readonly userRepo: UserRepositoryPort,
+        private readonly eventBus: EventBus
+    ) {}
 
-    async execute({ now, retentionDays }: SweepDeletedAccountsCommand): Promise<SweepDeletedAccountsResult> {
-        const erased = await this.userRepo.erasePersonalDataDeletedBefore(
-            new Date(now.getTime() - retentionDays * DAY_MS)
-        )
+    async execute({ now }: SweepDeletedAccountsCommand): Promise<SweepDeletedAccountsResult> {
+        const deleted = await this.userRepo.deleteDue(dueForDeletion(now), now)
+        for (const account of deleted) this.eventBus.publish(new AccountDeletedEvent(account.id, account.avatarKey))
 
-        if (erased > 0) this.logger.log(`Erased personal data of ${erased} deleted account(s)`)
-        return { accountsErased: erased }
+        if (deleted.length > 0) this.logger.log(`Deleted ${deleted.length} account(s) whose time had come`)
+        return { accountsDeleted: deleted.length }
     }
 }

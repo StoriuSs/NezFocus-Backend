@@ -15,6 +15,7 @@ export function sessionEndReason(ended: SessionEnd): SessionEndReason {
             return 'password_changed'
         case 'reuse-detected':
             return 'security'
+        case 'deletion-requested':
         case 'account-deleted':
             return 'account_deleted'
         case 'expired':
