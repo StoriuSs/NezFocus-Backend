@@ -273,7 +273,8 @@ users/
 │   ├── errors/                 # UsernameTakenError, and friends
 │   ├── ports/user.repository.port.ts
 │   ├── username.rules.ts       # The pattern and why it is that narrow
-│   └── profile-text.rules.ts   # Display name and bio, counted in characters, not UTF-16 units
+│   ├── profile-text.rules.ts   # Display name and bio, counted in characters, not UTF-16 units
+│   └── user-settings.rules.ts  # Theme, language, switches; the time zone once every 24 hours
 ├── application/                # What the app can do
 │   ├── commands/               # One folder per operation
 │   ├── queries/
@@ -399,7 +400,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── config/                 # One file per area + the Joi schema
 │   ├── health/                 # The three probes
 │   ├── modules/auth/           # Sign-in, sessions, Google, account deletion
-│   ├── modules/users/          # Profiles, usernames, avatars, deletion
+│   ├── modules/users/          # Profiles, usernames, avatars, settings, deletion
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
 ├── prisma/                     # Schema (models/auth.prisma, models/users.prisma) and migrations

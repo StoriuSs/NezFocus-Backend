@@ -26,6 +26,7 @@ they disagree with this page, the code wins: please fix the page.
 - [Deleting the account](#deleting-the-account)
 - [Google and other providers](#google-and-other-providers)
 - [The current user](#the-current-user)
+- [Settings](#settings)
 - [Rate limits by route](#rate-limits-by-route)
 - [Error catalogue](#error-catalogue)
 - [Success messages](#success-messages)
@@ -237,6 +238,8 @@ than a 401.
 | `GET /auth/{provider}` | Browser navigation | 302 | [Start a provider sign-in](#start-a-provider-sign-in) |
 | `GET /auth/{provider}/callback` | Browser navigation (from Google) | 302 | [Provider callback](#provider-callback) |
 | `GET /users/me` | Signed in | 200 | [The current user](#the-current-user) |
+| `GET /users/me/settings` | Signed in, completed | 200 | [Settings](#settings) |
+| `PATCH /users/me/settings` | Signed in, completed | 200 | [Settings](#settings) |
 
 <a id="token-answer"></a>
 **The token answer.** Every route that signs someone in answers `200` with
@@ -759,6 +762,36 @@ message "User fetched successfully".
 
 **Errors:** the guard errors.
 
+## Settings
+
+`GET /api/v1/users/me/settings` · `PATCH /api/v1/users/me/settings` · Signed in, completed
+
+Not auth routes either, but the time zone change has a limit a client must
+handle. The settings are the same in every browser the person signs in to
+(REQ-AUTH-08): read them once signed in and apply the theme and language.
+The row is made by [complete your account](#complete-your-account); before
+that both routes answer `403 ACCOUNT_INCOMPLETE`.
+
+`PATCH` takes any of the fields below, only the ones that changed; each saves
+on its own. No `Idempotency-Key`: a retry sets the same values. Both answer
+`200` with every field, messages "Settings fetched" and "Settings saved".
+
+| Field | Type | Meaning |
+|---|---|---|
+| `timezone` | string | An IANA zone name (`Asia/Ho_Chi_Minh`), the same rule as in complete-account. Changes at most once every 24 hours; sending the zone in use is no change and starts no clock |
+| `timezone_changeable_at` | string or null | Response only, worked out by the server: when the zone may change again, `null` if it may now |
+| `language` | `vi` or `en` | |
+| `theme` | `light`, `dark` or `system` | |
+| `phase_sound`, `browser_notifications`, `notify_mentions`, `notify_direct_messages`, `notify_incoming_calls`, `notify_phase_changes`, `notification_prompt_dismissed`, `allow_server_member_messages`, `show_study_activity` | boolean | Switches. A JSON boolean only: `"false"` or `null` is `422 VALIDATION_ERROR` |
+
+**Errors:** the guard errors; `422 VALIDATION_ERROR` for an unknown value or
+field; `429 RATE_LIMIT_EXCEEDED` with `data.reason: "timezone"`,
+`data.changeable_at` and `Retry-After` for a second zone change within 24
+hours. Then nothing else sent with it is saved. The check is in the `UPDATE`
+itself, so of two tabs changing the zone at once, one wins and the other gets
+this `429`. Its message is not one of the sentences below: "The time zone can
+change once every 24 hours. It can change again after <ISO time>."
+
 ## Rate limits by route
 
 Auth limits answer `429 RATE_LIMIT_EXCEEDED` with `data.reason` and
@@ -866,6 +899,8 @@ for logs; react to the status and `data`.
 | account/delete | 200 | Account deleted successfully |
 | sign-in-methods, options, GET sessions | 200 | Operation completed successfully |
 | users/me | 200 | User fetched successfully |
+| GET users/me/settings | 200 | Settings fetched |
+| PATCH users/me/settings | 200 | Settings saved |
 
 ## How a client should react
 
@@ -891,7 +926,7 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `403 ACCOUNT_INCOMPLETE` | Not signed out: go to the "complete your account" step. Keep the session |
 | `409 ACCOUNT_ALREADY_COMPLETE` | Already done (another tab, a double click): read `GET /users/me` and go into the app |
 | `409 USERNAME_CONFLICT` on complete-account | Mark the username field "taken" and let them pick another; keep the other fields |
-| `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`recent_email`: the last email is on its way, from another tab or flow; `emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later) |
+| `429 RATE_LIMIT_EXCEEDED` | Show `meta.message` (it says how long). Read `Retry-After` to disable the button until then. `data.reason` tells you what to suggest (`recent_email`: the last email is on its way, from another tab or flow; `emails`: check spam; `sign_ins`: reset the password; `codes`: ask for a new code later; `timezone`: say when, from `data.changeable_at`, and lock the zone until then) |
 | `429 THROTTLE_ERROR` | Too many requests to this route from this user, or from this IP when not signed in: wait `Retry-After` seconds |
 | `?error=` on the callback page | Show a message per reason (`cancelled` needs none). Keep `redirect` for the next attempt |
 | `500 GENERIC_ERROR` | "Something went wrong", with `meta.request_id` for support |

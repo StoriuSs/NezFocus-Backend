@@ -392,6 +392,7 @@ share the services.
 | `oauth-http` | Postgres, Redis, Mailpit | Google sign-in against the fake OpenID Connect provider (`fake-oidc-issuer.ts`): a valid ID token signs in; one for another sign-in, another app, or signed with an unknown key is refused |
 | `account-lifecycle` | Postgres, Redis | concurrent avatar swaps and deletions; two accounts made for one address at once become one |
 | `profile-http` | Postgres, Redis, Mailpit | `PATCH /users/me` and the avatar routes over HTTP: names counted in characters (decomposed Vietnamese, emoji), a name that would look empty or `null` refused; a JPG, PNG or WEBP avatar taken and removed (twice answers the same); a GIF refused by declared type or by its bytes (415); a file over 8 MB refused with `UPLOAD_FILE_TOO_LARGE` (413) |
+| `settings-http` | Postgres, Redis, Mailpit | `GET` and `PATCH /users/me/settings` over HTTP: the values from completing the account and the defaults; a choice kept for the next browser; an unknown value or a switch sent as a string refused; the time zone changed once, then `429` with `reason: "timezone"`, `changeable_at` and `Retry-After`; of two zone changes at once, one wins |
 | `rate-limiter` | Redis | exactly `limit` hits pass when many arrive at once |
 | `s3-storage` | RustFS | a private bucket refuses an unsigned URL and serves a signed one |
 

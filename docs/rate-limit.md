@@ -216,7 +216,12 @@ await this.limiter.reset(rule, email)   // forget the subject's hits
   five times at each. The global throttler still fails open.
 
 Throwing a `DomainError` of kind `rate_limited` (as `RateLimitedError` in the
-auth module does) answers `429` with a `Retry-After` header.
+auth module does) answers `429` with a `Retry-After` header. The users
+module's `TimezoneChangeTooSoonError` is one too: a second time zone change
+within 24 hours (`PATCH /users/me/settings`) answers `429 RATE_LIMIT_EXCEEDED`
+with `data.reason: "timezone"` and `data.changeable_at`. It uses no counter
+and no Redis: the rule is the settings row's `timezoneChangedAt`, checked by
+the `UPDATE` itself, so two tabs cannot both change the zone.
 
 The auth module's limits are all in [`src/modules/auth/application/rate-limits.ts`](../src/modules/auth/application/rate-limits.ts).
 

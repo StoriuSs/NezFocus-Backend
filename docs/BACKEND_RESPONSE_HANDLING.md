@@ -121,6 +121,7 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | --- | --- |
 | `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `matches_email`, ...), so a form can mark them one by one |
 | `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `recent_email`, `emails`, `sign_ins`, `wrong_password` or `codes` |
+| `429 RATE_LIMIT_EXCEEDED` (the time zone, `PATCH /users/me/settings`) | `reason`: `timezone`, and `changeable_at`: when the zone may change again (it changes once every 24 hours) |
 | `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password`) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |
 
@@ -139,7 +140,7 @@ A password the policy refuses:
 ```
 
 Every `429` also sends the standard **`Retry-After`** header, in seconds: the
-global throttler's and the sign-in limits' alike. Every auth error, with what a
+global throttler's, the sign-in limits' and the time zone's alike. Every auth error, with what a
 frontend should do about it: [auth/api-reference.md](./auth/api-reference.md).
 
 ## Error codes and types
@@ -185,7 +186,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `422003` | `IDEMPOTENCY_KEY_MISMATCH` | An `Idempotency-Key` reused with a different body |
 | `422004` | `AUTH_PASSWORD_REJECTED` | The password policy refused it (`data.rules`) |
 | `429001` | `THROTTLE_ERROR` | The global limit, per user when signed in, per IP otherwise (`Retry-After`) |
-| `429001` | `RATE_LIMIT_EXCEEDED` | A sign-in limit (`Retry-After`, `data.reason`) |
+| `429001` | `RATE_LIMIT_EXCEEDED` | A sign-in limit, or a time zone changed again within 24 hours (`Retry-After`, `data.reason`) |
 | `500000` | `GENERIC_ERROR` | An unexpected error. Logged in full, reported to error tracking |
 | `500002` | `UPLOAD_DELETE_FAILED` | Deleting a stored file failed |
 | `500003` | `UPLOAD_FAILED` | Storing a file failed |
