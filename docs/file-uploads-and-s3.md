@@ -544,18 +544,21 @@ Four sources of orphaned objects:
 1. **Direct upload abandoned.** Browser PUT to S3 succeeded but `/confirm` never called. Mitigation: lifecycle rule expires `uploads/temp/*` after 24 hours; the `/confirm` endpoint moves confirmed objects to a permanent prefix. (Not relevant to the starter, which ships no direct upload.)
 2. **DB write failed after upload.** Backend uploaded to S3 then the Postgres update failed. The starter's `UploadAvatarHandler` handles this: when `replaceAvatar` throws, or finds no account (deleted while the image was processed), it deletes the file it just uploaded (step 2 above).
 3. **A new avatar replaced an old one, or the avatar was removed.** `AvatarUploadedEvent` (upload) and `AvatarRemovedEvent` (`DELETE /api/v1/users/me/avatar`, which swaps the key to `null` with the same `replaceAvatar`) carry the old key; `CleanupOldAvatarHandler` queues its deletion on the `file-cleanup` queue, which retries if storage is briefly down.
-4. **User deleted their account.** Handled, through events:
+4. **User deleted their account.** Handled by the sweep itself, not by an event:
 
    ```
    POST /api/v1/auth/account/delete            (auth module: checks the proof, records the request)
      ... 14 days later (D-141)
-     SweepDeletedAccountsCommand               (users module: deletes the row and erases it, in one statement)
-       → AccountDeletedEvent(userId, avatarUrl)
-         → CleanupAccountAvatarHandler         (queues the avatar's deletion)
-           → file-cleanup job                  (deletes the file from S3 or local disk)
+     SweepDeletedAccountsCommand               (users module, every 15 minutes)
+       deleteDue                               (marks the row deleted and erases it, keeping only the avatar key)
+       → AccountDeletedEvent(userId, ownerAsked)   (auth ends the sessions; nothing about files)
+       findAvatarsOfDeleted                    (deleted accounts still holding a key, up to 200)
+       → deleteFilesLater                      (file-cleanup jobs, one addBulk)
+       → forgetAvatarsOfDeleted                (the keys set to null, only now)
+         → file-cleanup job                    (deletes the file from S3 or local disk)
    ```
 
-   The handlers are in [`src/modules/users/application/events/handlers/`](../src/modules/users/application/events/handlers/). One gap remains: the event is published after the sweep commits, so a crash in between loses it, and the file stays. The same statement already cleared the key from the row, so nothing points to the file any more ([extensions.md](./extensions.md#transactional-outbox), [account-deletion.md](./account-deletion.md)). With local storage the gap matters more, because `/uploads` is served without auth.
+   Queued first, forgotten after. The key on the deleted row is the proof that the file is not yet gone: if the process dies or Redis fails between the steps, the next sweep finds the key and queues the file again (the job id is the key, so it stays one job). The base did this through an in-memory event after the commit, and a crash in between lost the key and left the file for good ([account-deletion.md](./account-deletion.md)). With local storage that mattered more, because `/uploads` is served without auth.
 
 ---
 

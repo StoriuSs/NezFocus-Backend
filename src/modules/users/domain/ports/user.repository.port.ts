@@ -14,12 +14,17 @@ export interface AccountCompletion {
     completedAt: Date
 }
 
-/** An account the sweep deleted, and the avatar file it leaves behind. */
+/** An account the sweep deleted. */
 export interface DeletedAccount {
     id: string
-    avatarKey: string | null
     /** Its owner asked (D-141); false: a sign-up left incomplete. */
     ownerAsked: boolean
+}
+
+/** A deleted account whose avatar file has not been queued for removal yet. */
+export interface LeftoverAvatar {
+    id: string
+    avatarKey: string
 }
 
 /**
@@ -104,9 +109,18 @@ export interface UserRepositoryPort {
      * account, re-checked under the row lock so a restore or a completion that
      * lands first wins. The row stays, empty, so what points to it still works.
      *
-     * @returns each account deleted, with the avatar it held then
+     * The avatar key alone is kept: it is how the file is found and removed
+     * (findAvatarsOfDeleted), and is forgotten only once that removal is queued.
+     *
+     * @returns each account deleted
      */
     deleteDue(due: { requestedBy: Date; incompleteSince: Date }, now: Date): Promise<DeletedAccount[]>
+
+    /** Up to `limit` deleted accounts that still hold an avatar key. */
+    findAvatarsOfDeleted(limit: number): Promise<LeftoverAvatar[]>
+
+    /** Forget the avatar keys of these deleted accounts; live ones are left alone. */
+    forgetAvatarsOfDeleted(ids: string[]): Promise<void>
 
     /** A user by id, soft-deleted or not. */
     findAnyById(id: string): Promise<UserEntity | null>

@@ -19,8 +19,7 @@ import {
     CheckUsernameHandler,
     ResolveAvatarUrlHandler,
     GetSettingsHandler,
-    CleanupOldAvatarHandler,
-    CleanupAccountAvatarHandler
+    CleanupOldAvatarHandler
 } from './application'
 
 // Infrastructure
@@ -45,7 +44,7 @@ const CommandHandlers = [
 
 const QueryHandlers = [CheckUsernameHandler, ResolveAvatarUrlHandler, GetSettingsHandler]
 
-const EventHandlers = [CleanupOldAvatarHandler, CleanupAccountAvatarHandler]
+const EventHandlers = [CleanupOldAvatarHandler]
 
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.

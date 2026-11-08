@@ -25,8 +25,8 @@ describe('After the sweep deletes an account', () => {
     it('counts a deletion its owner asked for, not a sign-up left incomplete (Kiểm 3 review)', async () => {
         const { handler, recorded } = setup()
 
-        await handler.handle(new AccountDeletedEvent('asked', null, true))
-        await handler.handle(new AccountDeletedEvent('abandoned', null, false))
+        await handler.handle(new AccountDeletedEvent('asked', true))
+        await handler.handle(new AccountDeletedEvent('abandoned', false))
 
         expect(recorded).toEqual(['account_deleted'])
     })

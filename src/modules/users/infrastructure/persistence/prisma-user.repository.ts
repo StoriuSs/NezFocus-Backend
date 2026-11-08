@@ -3,6 +3,7 @@ import { PrismaService } from '@/shared/infrastructure/persistence/database/pris
 import {
     AccountCompletion,
     DeletedAccount,
+    LeftoverAvatar,
     normaliseEmail,
     UserEntity,
     UsernameTakenError,
@@ -165,18 +166,19 @@ export class PrismaUserRepository implements UserRepositoryPort {
         return this.prisma.$transaction(async (tx) => {
             // The subquery's FOR UPDATE locks each row and, when it had to wait
             // (a restore, a completion), reads it again and skips it if it no
-            // longer matches. The outer UPDATE returns the avatar key as it
-            // was, so its file can be removed. A person who asked is recorded
-            // as the one who deleted it; an abandoned sign-up, nobody.
+            // longer matches. A person who asked is recorded as the one who
+            // deleted it; an abandoned sign-up, nobody. The avatar key stays:
+            // it is all that leads to the file, and an event lost to a crash
+            // would lose it (findAvatarsOfDeleted).
             // At most 200 a run: the next sweep, 15 minutes later, takes the rest.
             const rows = await tx.$queryRaw<DeletedAccount[]>`
                 UPDATE "User" AS u
                 SET "deletedAt" = ${now},
                     "deletedBy" = CASE WHEN old."deletionRequestedAt" IS NULL THEN NULL ELSE u."id" END,
-                    "email" = NULL, "username" = NULL, "displayName" = NULL, "bio" = NULL, "avatarUrl" = NULL,
+                    "email" = NULL, "username" = NULL, "displayName" = NULL, "bio" = NULL,
                     "updatedAt" = ${now}
                 FROM (
-                    SELECT "id", "avatarUrl", "deletionRequestedAt" FROM "User"
+                    SELECT "id", "deletionRequestedAt" FROM "User"
                     WHERE "deletedAt" IS NULL
                       AND ("deletionRequestedAt" <= ${due.requestedBy}
                            OR ("completedAt" IS NULL AND "createdAt" <= ${due.incompleteSince}))
@@ -185,14 +187,31 @@ export class PrismaUserRepository implements UserRepositoryPort {
                     FOR UPDATE
                 ) AS old
                 WHERE u."id" = old."id"
-                RETURNING u."id" AS id, old."avatarUrl" AS "avatarKey",
-                          (old."deletionRequestedAt" IS NOT NULL) AS "ownerAsked"
+                RETURNING u."id" AS id, (old."deletionRequestedAt" IS NOT NULL) AS "ownerAsked"
             `
             // The settings are personal too (time zone, language).
             if (rows.length > 0) {
                 await tx.userSettings.deleteMany({ where: { userId: { in: rows.map((row) => row.id) } } })
             }
             return rows
+        })
+    }
+
+    async findAvatarsOfDeleted(limit: number): Promise<LeftoverAvatar[]> {
+        // By User_deletedAt_idx: deleted accounts only, a small share of the table.
+        const rows = await this.prisma.user.findMany({
+            where: { deletedAt: { not: null }, avatarUrl: { not: null } },
+            select: { id: true, avatarUrl: true },
+            orderBy: { id: 'asc' },
+            take: limit
+        })
+        return rows.flatMap((row) => (row.avatarUrl ? [{ id: row.id, avatarKey: row.avatarUrl }] : []))
+    }
+
+    async forgetAvatarsOfDeleted(ids: string[]): Promise<void> {
+        await this.prisma.user.updateMany({
+            where: { id: { in: ids }, deletedAt: { not: null } },
+            data: { avatarUrl: null }
         })
     }
 

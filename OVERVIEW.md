@@ -259,9 +259,10 @@ application/queries/check-username/check-username.handler.ts
 **Commands** change data, **queries** read it, and **events** are how one
 thing that happened causes others without the first one knowing. Deleting an
 account (by the users module's sweep, 14 days after its owner asks, D-141)
-publishes `AccountDeletedEvent`; a handler in the users module queues the
-avatar clean-up, and one in the auth module ends every session. The sweep
-knows about neither.
+publishes `AccountDeletedEvent`; a handler in the auth module ends every
+session, and the sweep does not know it exists. (The avatar file is the sweep's
+own job, not an event's: it keeps the key until the file's removal is queued,
+so a crash cannot lose it.)
 
 ### The two modules
 

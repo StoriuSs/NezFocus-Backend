@@ -90,7 +90,6 @@ describe('Account lifecycle (integration)', () => {
             const deleted = (await sweep(now)).filter((row) => row.id.startsWith('itest-'))
 
             expect(deleted.map((row) => row.id).sort()).toEqual([asked.id, abandoned.id].sort())
-            expect(deleted.find((row) => row.id === asked.id)?.avatarKey).toBe('avatars/asked.webp')
             const rows = await prisma.user.findMany({
                 where: { id: { in: [asked.id, askedLately.id, abandoned.id, abandonedLately.id, oldButCompleted.id] } }
             })
@@ -105,6 +104,8 @@ describe('Account lifecycle (integration)', () => {
             // Who asked is recorded as the one who deleted it; an abandoned sign-up, nobody.
             expect(rows.find((row) => row.id === asked.id)?.deletedBy).toBe(asked.id)
             expect(rows.find((row) => row.id === abandoned.id)?.deletedBy).toBeNull()
+            // The avatar key alone stays, until its file is queued for removal.
+            expect(rows.find((row) => row.id === asked.id)?.avatarUrl).toBe('avatars/asked.webp')
         })
 
         it('erases the personal data and the settings at once, which frees the address and the username', async () => {
@@ -127,13 +128,30 @@ describe('Account lifecycle (integration)', () => {
                 username: null,
                 displayName: null,
                 bio: null,
-                avatarUrl: null,
                 settings: null
             })
             const again = await users.createWithEmail(user.email!)
             expect(again?.id).not.toBe(user.id)
             await prisma.user.update({ where: { id: again!.id }, data: { username: user.username } })
             await prisma.user.deleteMany({ where: { id: again!.id } })
+        })
+
+        it('finds the avatar keys deleted accounts still hold, and forgets them for deleted accounts only', async () => {
+            const gone = await completedUser({ deletionRequestedAt: daysAgo(15), avatarUrl: 'avatars/gone.webp' })
+            const live = await completedUser({ avatarUrl: 'avatars/live.webp' })
+            await sweep()
+
+            const leftovers = (await users.findAvatarsOfDeleted(1000)).filter((row) => row.id.startsWith('itest-'))
+            expect(leftovers).toContainEqual({ id: gone.id, avatarKey: 'avatars/gone.webp' })
+            expect(leftovers.map((row) => row.id)).not.toContain(live.id)
+
+            // A live id slipped into the list keeps its avatar.
+            await users.forgetAvatarsOfDeleted([gone.id, live.id])
+
+            const rows = await prisma.user.findMany({ where: { id: { in: [gone.id, live.id] } } })
+            const avatars = Object.fromEntries(rows.map((row) => [row.id, row.avatarUrl]))
+            expect(avatars).toEqual({ [gone.id]: null, [live.id]: 'avatars/live.webp' })
+            expect((await users.findAvatarsOfDeleted(1000)).map((row) => row.id)).not.toContain(gone.id)
         })
 
         it('holds the address and the username while the account waits', async () => {

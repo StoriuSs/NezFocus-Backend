@@ -177,9 +177,11 @@ or Google link a deleted account still has
 lost event does no harm is the poor man's outbox**, and for most applications
 it is the better trade (much less machinery).
 
-One gap it leaves: an avatar whose cleanup event was lost stays in storage.
-The sweep clears the key from the row in the same statement, so nothing points
-to the file any more.
+The avatar file is the one piece the reads cannot cover: once its key is gone,
+nothing leads to the file. So the row itself plays the outbox for it: the sweep
+keeps the key on the deleted row, queues the file's removal, and only then
+clears the key. A crash in between leaves the key, and the next sweep queues
+the file again.
 
 **How it fits, if you need the real thing.**
 

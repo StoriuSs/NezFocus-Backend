@@ -209,9 +209,10 @@ back with a code makes a new account, so nothing is lost.
 
 1. One `UPDATE "User"` whose `FROM` is a subquery selecting the due rows with
    `FOR UPDATE`, at most 200 a run (the next run takes the rest). It sets
-   `deletedAt` and `deletedBy`, and sets `email`, `username`, `displayName`,
-   `bio` and `avatarUrl` to null, in the same statement. It returns each id
-   with the avatar key the row held.
+   `deletedAt` and `deletedBy`, and sets `email`, `username`, `displayName`
+   and `bio` to null, in the same statement. `avatarUrl` stays until the
+   avatar file is queued for removal (below). It returns each id, and whether
+   its owner asked.
 2. It deletes those accounts' `UserSettings` rows (time zone and language are
    personal too).
 
@@ -231,9 +232,18 @@ handlers, run by the event bus in the same process right after:
   When the owner asked for the deletion (the event's `ownerAsked`, false for
   a sign-up left incomplete), it counts
   `auth_events_total{event="account_deleted"}`.
-- **`CleanupAccountAvatarHandler`** (users): queues the avatar file's removal on
-  the `file-cleanup` queue. Without it, a deleted person's photo would stay
-  publicly fetchable at a stable URL (local storage is served without auth).
+
+Last, the sweep removes the avatar files itself, not through the event. The
+statement above keeps the `avatarUrl` key on the deleted row: it is all that
+leads to the file. `queueAvatarFiles` takes up to 200 deleted accounts that
+still hold a key (`findAvatarsOfDeleted`), queues their files on the
+`file-cleanup` queue in one `addBulk` (`deleteFilesLater`), and only then
+forgets the keys (`forgetAvatarsOfDeleted`). If the process dies or Redis fails
+in between, the keys are still there and the next sweep queues the files again;
+a file's job id is its key, so queuing it twice is one job. With an in-memory
+event (what the base did), a crash between the commit and the handler lost
+the key, and a deleted person's photo stayed publicly fetchable at a stable
+URL for good (local storage is served without auth).
 
 It is an event, rather than one big transaction, so that the users module does
 not depend on the auth module. If a handler fails, nothing is exposed: the
@@ -252,9 +262,9 @@ your own.
 | In the request | `User.deletionRequestedAt` set; every session ended (reason `deletion-requested`) and dropped from the cache; the refresh cookie cleared in this browser; the email queued | `DeleteOwnAccountHandler`, `AccountDeletionController` |
 | While waiting | Nothing. Email, username, password, Google links, avatar, settings all kept | |
 | On restore | `deletionRequestedAt` cleared; sessions stay ended | `RestoreAccountHandler` |
-| 14 days after the request, at the next 15-minute sweep | `deletedAt` and `deletedBy` set; `email`, `username`, `displayName`, `bio`, `avatarUrl` set to null; `UserSettings` deleted | `SweepDeletedAccountsHandler` |
+| 14 days after the request, at the next 15-minute sweep | `deletedAt` and `deletedBy` set; `email`, `username`, `displayName`, `bio` set to null; `UserSettings` deleted | `SweepDeletedAccountsHandler` |
 | Moments after the sweep | Open sessions ended (reason `account-deleted`); password and Google links deleted | `EndSessionsOfDeletedAccountHandler` |
-| Moments after the sweep | Avatar file queued for deletion | `CleanupAccountAvatarHandler` |
+| The same sweep, right after | Avatar file queued for deletion, then `avatarUrl` set to null (a crash in between: the next sweep) | `SweepDeletedAccountsHandler` |
 | Within the hour, only if the step above failed | The same session, password and link clean-up, with a warning in the log | hourly auth clean-up |
 | A day after they stop working | Emailed codes (`VerificationCode` rows, keyed by address, not by account) | hourly auth clean-up |
 | 7 days after the session ended | `Session` rows and all their refresh tokens | hourly auth clean-up |
@@ -467,9 +477,8 @@ name, say), leave the username out of `deleteDue`'s erase list and drop the
 | [server-ownership.port.ts](../src/modules/auth/application/ports/server-ownership.port.ts) | The servers that block a deletion; `NoServersYet` until M1 |
 | [access-token.guard.ts](../src/modules/auth/presentation/guards/access-token.guard.ts) | `ACCOUNT_PENDING_DELETION` on routes not marked `@AllowPendingDeletion()` |
 | [account-deletion.rules.ts](../src/modules/users/domain/account-deletion.rules.ts) | The 14 days: `DELETION_WAIT_MS`, `INCOMPLETE_ACCOUNT_MS`, `deletesAt`, `dueForDeletion` |
-| [sweep-deleted-accounts.handler.ts](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts) | Deleting the accounts whose time has come; publishes `AccountDeletedEvent` |
+| [sweep-deleted-accounts.handler.ts](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts) | Deleting the accounts whose time has come; publishes `AccountDeletedEvent`; queues the avatar files, then forgets their keys |
 | [end-sessions-of-deleted-account.handler.ts](../src/modules/auth/application/events/handlers/end-sessions-of-deleted-account.handler.ts) | `EndSessionsOfDeletedAccountHandler` |
-| [cleanup-account-avatar.handler.ts](../src/modules/users/application/events/handlers/cleanup-account-avatar.handler.ts) | Queues the avatar's removal |
 | [clean-up-auth.handler.ts](../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts) | The hourly safety net and housekeeping |
 | [maintenance-tasks.ts](../src/maintenance/maintenance-tasks.ts) | Runs the sweep every 15 minutes, and the clean-up every hour |
 | [prisma-user.repository.ts](../src/modules/users/infrastructure/persistence/prisma-user.repository.ts) | The soft-delete filtering, `requestDeletion`, `cancelDeletion`, `deleteDue` |

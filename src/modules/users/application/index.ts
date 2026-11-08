@@ -29,4 +29,3 @@ export * from './events/user-profile-updated.event'
 
 // Export all event handlers
 export * from './events/handlers/cleanup-old-avatar.handler'
-export * from './events/handlers/cleanup-account-avatar.handler'

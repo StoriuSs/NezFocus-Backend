@@ -294,9 +294,9 @@ In the other direction, auth calls into users through `USER_DIRECTORY`
 `requestDeletion`, `cancelDeletion`), from the users index. One write crosses the line
 the other way: the users repository's `complete` upserts auth's `Credential`
 row inside its own transaction, so a completion that loses changes no
-password ([accounts.md](./accounts.md)). The users module also
-deletes the avatar on `AccountDeletedEvent` (its own
-`CleanupAccountAvatarHandler`). The full deletion chain is in
+password ([accounts.md](./accounts.md)). The users module
+deletes the avatar file itself, in the sweep, from the key the deleted row
+keeps until the file's job is queued. The full deletion chain is in
 [accounts.md](./accounts.md) and [account-deletion.md](../account-deletion.md).
 
 ## Jobs and schedules

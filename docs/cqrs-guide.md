@@ -258,11 +258,11 @@ Meanwhile, in the background (concurrent):
   (no guaranteed order of completion!)
 ```
 
-- `AccountDeletedEvent` triggers both `CleanupAccountAvatarHandler` (users module) and `EndSessionsOfDeletedAccountHandler` (auth module). They are both *initiated* in sequence by the loop, but their async work runs concurrently — either one could finish first.
+- Say `AccountDeletedEvent` had a second handler next to `EndSessionsOfDeletedAccountHandler` (auth module), as it once had for the avatar file. Both are *initiated* in sequence by the loop, but their async work runs concurrently — either one could finish first.
 - You should **never** design event handlers that depend on the order of execution. Each handler must operate completely independently!
 
 **3. What happens if an event has multiple handlers, and ONE of them fails? Does the lack of try/catch fail the whole command?**
-They are completely isolated! Because they run concurrently, if `CleanupAccountAvatarHandler` crashes, it will NOT stop `EndSessionsOfDeletedAccountHandler` from succeeding. 
+They are completely isolated! Because they run concurrently, if one handler crashes, it will NOT stop the other from succeeding. The flip side: an event lives only in memory, so a process that dies before a handler runs loses that work for good. That is why the avatar file of a deleted account is no longer removed by an event handler: the sweep keeps the key on the row until the file's job is queued (see `account-deletion.md`). 
 
 More importantly, it will **NOT** fail the original Command (the User profile will still be updated) because the Command Handler did not `await` the `.publish()`.
 

@@ -8,6 +8,9 @@
 export interface BackgroundJobsPort {
     /** Delete a stored file nothing references any more. */
     deleteFileLater(storageKey: string): Promise<void>
+
+    /** The same for several files, in one round trip to the queue. */
+    deleteFilesLater(storageKeys: string[]): Promise<void>
 }
 
 export const BACKGROUND_JOBS = Symbol('BackgroundJobsPort')

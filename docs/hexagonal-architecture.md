@@ -803,8 +803,7 @@ modules/users/
 │   │   └── resolve-avatar-url/
 │   ├── events/
 │   │   ├── handlers/
-│   │   │   ├── cleanup-old-avatar.handler.ts
-│   │   │   └── cleanup-account-avatar.handler.ts
+│   │   │   └── cleanup-old-avatar.handler.ts
 │   │   ├── user-profile-updated.event.ts
 │   │   ├── avatar-uploaded.event.ts
 │   │   ├── avatar-removed.event.ts

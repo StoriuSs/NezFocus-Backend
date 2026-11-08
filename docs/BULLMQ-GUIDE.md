@@ -66,10 +66,15 @@ Here is the flow for deleting an account:
    job, below) runs `SweepDeletedAccountsHandler` (users module). It marks the
    account deleted, erases its personal data and publishes an
    `AccountDeletedEvent`.
-6. Two event handlers react. `EndSessionsOfDeletedAccountHandler` (auth) ends
+6. `EndSessionsOfDeletedAccountHandler` (auth) reacts to the event: it ends
    the sessions and removes the password and Google links.
-   `CleanupAccountAvatarHandler` (users) drops another job into Redis:
+7. The sweep then drops another job into Redis for each avatar file the
+   deleted accounts leave, and only after that forgets the files' keys:
    > *"Delete this stored file. If it fails, keep trying for an hour and a half."*
+
+   Queued first, forgotten after: if the process dies in between, the key is
+   still on the row and the next sweep queues the file again (same job id, so
+   one job).
 
 ### Step B: the consumer
 
@@ -158,7 +163,7 @@ Two schedules ship with the starter:
 | Queue names, and the retry and clean-up defaults for every job | `src/shared/infrastructure/queue/queues.ts` |
 | Connection setup | `src/app.module.ts` → `BullModule.forRootAsync(...)` |
 | Producer: the emails | `src/modules/auth/infrastructure/adapters/bullmq-auth-mailer.adapter.ts`; the jobs and `EMAIL_JOB_OPTIONS` in `src/modules/auth/infrastructure/email/auth-email-jobs.ts` |
-| Producer: avatar clean-up | `src/modules/users/application/events/handlers/cleanup-account-avatar.handler.ts`, through `bullmq-background-jobs.adapter.ts` |
+| Producer: avatar clean-up | `src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts` (deleted accounts) and `src/modules/users/application/events/handlers/cleanup-old-avatar.handler.ts` (replaced avatars), through `bullmq-background-jobs.adapter.ts` |
 | Consumers | `src/modules/auth/presentation/consumers/auth-jobs.consumer.ts` (the emails), `src/maintenance/maintenance.consumer.ts` (every periodic job), and `src/shared/infrastructure/storage/file-cleanup.consumer.ts` |
 | The periodic jobs, and how often | `src/maintenance/maintenance-tasks.ts` |
 | Queue metrics, and reporting a job that failed for good | `src/shared/infrastructure/queue/` |

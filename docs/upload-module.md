@@ -280,11 +280,14 @@ Three events queue a deletion:
 |---|---|---|
 | `AvatarUploadedEvent` | `CleanupOldAvatarHandler` | a new avatar replaced an old one: the old file goes |
 | `AvatarRemovedEvent` | `CleanupOldAvatarHandler` | the avatar was removed (`DELETE /api/v1/users/me/avatar`): its file goes |
-| `AccountDeletedEvent` | `CleanupAccountAvatarHandler` | the account was deleted (by the sweep, 14 days after `POST /api/v1/auth/account/delete`, D-141): its avatar goes |
 
-Both handlers are in `src/modules/users/application/events/handlers/`. The job id is
-derived from the key, so the same file queued twice (two deletions at once)
-is one job. The full deletion path is in
+The handler is in `src/modules/users/application/events/handlers/`. A deleted
+account's avatar is not removed by an event: the sweep
+(`SweepDeletedAccountsHandler`, 14 days after `POST /api/v1/auth/account/delete`,
+D-141) keeps the key on the deleted row, queues the file, and only then clears
+the key, so a crash in between is retried by the next sweep. The job id is
+derived from the key, so the same file queued twice (two deletions at once, or
+a sweep retrying) is one job. The full deletion path is in
 [file-uploads-and-s3.md](./file-uploads-and-s3.md#orphaned-objects-and-cleanup)
 and [account-deletion.md](./account-deletion.md).
 
