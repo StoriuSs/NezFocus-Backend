@@ -203,8 +203,11 @@ jobs:
           node-version-file: .nvmrc
       - name: Install gitleaks
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
+          # GitHub's release downloads answer 5xx now and then: retry, and
+          # only unpack a file that arrived whole.
+          curl -sSfL --retry 5 --retry-all-errors --retry-delay 5 -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C /usr/local/bin gitleaks
       - name: No suppressions, stubs, skipped or removed tests, weakened constraints
         run: node scripts/constraints/floor-guard.mjs --ci --base "${{ needs.changes.outputs.base }}"
       - name: No secrets
