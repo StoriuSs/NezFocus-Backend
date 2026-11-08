@@ -1,8 +1,9 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { RevokeOtherSessionsCommand } from './revoke-other-sessions.command'
 import { SESSION_CACHE, SessionCachePort } from '../../ports'
 import { SESSION_REPOSITORY, SessionRepositoryPort } from '@/modules/auth/domain'
+import { afterCommit } from '../../services/after-commit'
 
 /**
  * "Sign out the other devices" (D-75): every session of the user ends except
@@ -13,6 +14,8 @@ import { SESSION_REPOSITORY, SessionRepositoryPort } from '@/modules/auth/domain
  */
 @CommandHandler(RevokeOtherSessionsCommand)
 export class RevokeOtherSessionsHandler implements ICommandHandler<RevokeOtherSessionsCommand> {
+    private readonly logger = new Logger(RevokeOtherSessionsHandler.name)
+
     constructor(
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort
@@ -20,7 +23,8 @@ export class RevokeOtherSessionsHandler implements ICommandHandler<RevokeOtherSe
 
     async execute({ userId, currentSessionId }: RevokeOtherSessionsCommand): Promise<number> {
         const ended = await this.sessions.revokeAllForUser(userId, 'logout-all', new Date(), currentSessionId)
-        await this.cache.invalidateSessions(ended)
+        // Ended: a retry finds none left to end, so would not drop them either.
+        await afterCommit(this.logger, 'Signing out other devices', [() => this.cache.invalidateSessions(ended)])
         return ended.length
     }
 }

@@ -31,7 +31,8 @@ export class SweepDeletedAccountsHandler implements ICommandHandler<SweepDeleted
 
     async execute({ now }: SweepDeletedAccountsCommand): Promise<SweepDeletedAccountsResult> {
         const deleted = await this.userRepo.deleteDue(dueForDeletion(now), now)
-        for (const account of deleted) this.eventBus.publish(new AccountDeletedEvent(account.id, account.avatarKey))
+        for (const account of deleted)
+            this.eventBus.publish(new AccountDeletedEvent(account.id, account.avatarKey, account.ownerAsked))
 
         if (deleted.length > 0) this.logger.log(`Deleted ${deleted.length} account(s) whose time had come`)
         return { accountsDeleted: deleted.length }

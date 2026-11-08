@@ -83,11 +83,19 @@ export class AuthCookies {
     }
 
     /**
-     * The cookie-authenticated routes (refresh, logout) also check where the request came from. SameSite already
-     * stops another site sending the cookie; this is the second lock, and the
-     * one that holds with SameSite=None. A request with no Origin (a
-     * non-browser client) is allowed: it cannot be a page on another site
-     * acting with the user's cookie.
+     * Every route that reads or sets the refresh cookie checks where the
+     * request came from: refresh and logout, and the sign-ins that set it
+     * (email-code/verify, login, reset-password).
+     *
+     * - Reading: SameSite already stops another site sending the cookie; this
+     *   is the second lock, and the one that holds with SameSite=None.
+     * - Setting (login CSRF): SameSite does not stop a form on another site
+     *   posting to a sign-in route. The answer would replace the visitor's
+     *   cookie with a session of the attacker's account, and the app would
+     *   then sign in to it (Kiểm 3 review).
+     *
+     * A browser sends Origin with every POST. A request with no Origin (a
+     * non-browser client) is allowed: it cannot be a page on another site.
      */
     assertAllowedOrigin(req: Request): void {
         const origin = req.get('origin')

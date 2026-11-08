@@ -168,6 +168,42 @@ describe('Auth over HTTP (integration)', () => {
         expect((await post('auth/refresh').set('Cookie', cookie)).status).toBe(401)
     })
 
+    it('refuses a page on another site on every route that sets or reads the session cookie (login CSRF)', async () => {
+        const email = `itest-http-${randomUUID()}@example.test`
+        await signInWithCode(post, email)
+        await setFirstPassword(post, email, PASSWORD, () => nextMinute(email))
+        const signedIn = await post('auth/login', { email, password: PASSWORD })
+        const cookie = pair(cookieOf(signedIn, 'refresh_token'))
+        const fromElsewhere = (path: string) =>
+            api()
+                .post(`/api/v1/${path}`)
+                .set('X-Forwarded-For', CLIENT_IP)
+                .set('Origin', 'https://elsewhere.example')
+                .set('Cookie', cookie)
+
+        // A form on the attacker's page signing the visitor in to the attacker's
+        // account: right password, form-encoded, as a browser would post it.
+        // Each made when sent: supertest closes the server after a request ends.
+        const forms: [string, () => request.Test][] = [
+            ['login', () => fromElsewhere('auth/login').type('form').send({ email, password: PASSWORD })],
+            ['verify', () => fromElsewhere('auth/email-code/verify').send({ email, code: '123456' })],
+            [
+                'reset',
+                () =>
+                    fromElsewhere('auth/reset-password').send({ email, code: '123456', password: 'Another-Lantern-42' })
+            ],
+            ['refresh', () => fromElsewhere('auth/refresh')],
+            ['logout', () => fromElsewhere('auth/logout')]
+        ]
+        for (const [route, send] of forms) {
+            const refused = await send()
+            expect([route, refused.status, refused.body.meta.type]).toEqual([route, 403, 'AUTH_FORBIDDEN'])
+            expect([route, cookieOf(refused, 'refresh_token')]).toEqual([route, undefined])
+        }
+        // The session survived the foreign logout.
+        expect((await post('auth/refresh').set('Cookie', cookie)).status).toBe(200)
+    })
+
     it('lists the devices signed in, ends one by its next request, and signs out all but this one (D-75, D-138)', async () => {
         const email = `itest-http-${randomUUID()}@example.test`
         const CHROME_WINDOWS =

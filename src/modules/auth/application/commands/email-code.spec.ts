@@ -153,6 +153,23 @@ describe('Codes by email (REQ-AUTH-01, REQ-AUTH-02)', () => {
         ).resolves.toBeUndefined()
     })
 
+    it('answers "forgot password" before the work only an account has, so timing it tells nothing (Kiểm 3 review)', async () => {
+        const w = setup()
+        w.account()
+        // A password lookup and a queue that take forever: the answer waits for neither.
+        w.credentials.findHash = () => new Promise(() => undefined)
+        w.mailer.sendCode = () => new Promise(() => undefined)
+
+        const answered = await Promise.race([
+            w.forgotAnswer.execute(new ForgotPasswordCommand(ADA, IP, 'vi')).then(() => 'answered'),
+            new Promise((resolve) => setTimeout(() => resolve('waited for the account'), 50))
+        ])
+
+        expect(answered).toBe('answered')
+        // The code is stored all the same, before the answer.
+        expect(w.codes.codes.has(`${ADA}:password-reset`)).toBe(true)
+    })
+
     it('stops guesses at ten wrong codes an hour per address, across codes, for an address with no account too (D-134)', async () => {
         for (const hasAccount of [true, false]) {
             const w = setup()

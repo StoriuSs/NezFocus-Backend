@@ -119,6 +119,9 @@ describe('Deleting an account, and coming back (integration)', () => {
 
     it('waits 14 days: the answer says until when, and every session ends', async () => {
         const account = await completedAccount()
+        // The password is the proof, and required.
+        const bare = await post('auth/account/delete', {}, account.accessToken)
+        expect([bare.status, bare.body.meta.type]).toEqual([422, 'VALIDATION_ERROR'])
 
         const asked = await post('auth/account/delete', { password: PASSWORD }, account.accessToken)
 
@@ -192,6 +195,13 @@ describe('Deleting an account, and coming back (integration)', () => {
         await post('auth/account/delete', { password: PASSWORD }, account.accessToken)
 
         await fourteenDaysLater(account.id)
+
+        // A device signed out by the request, coming back after the sweep: the
+        // account is gone, with no date left to offer (Kiểm 3 review).
+        const late = await refreshWith(account.cookie)
+        expect(late.status).toBe(401)
+        expect(late.body.data).toMatchObject({ reason: 'account_deleted' })
+        expect(late.body.data).not.toHaveProperty('deletes_at')
 
         const oldLogin = await login(account.email)
         expect([oldLogin.status, oldLogin.body.meta.type]).toEqual([401, 'AUTH_INVALID_CREDENTIALS'])

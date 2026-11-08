@@ -18,9 +18,7 @@ import {
     RestoreAccountHandler,
     SERVER_OWNERSHIP,
     GetAuthOptionsHandler,
-    GetSignInMethodsHandler,
     SendEmailCodeHandler,
-    SignInMethods,
     SignInGate,
     CleanUpAuthHandler,
     CodeIssuer,
@@ -97,7 +95,7 @@ const CommandHandlers = [
     RestoreAccountHandler
 ]
 
-const QueryHandlers = [GetSignInMethodsHandler, GetAuthOptionsHandler, ListSessionsHandler]
+const QueryHandlers = [GetAuthOptionsHandler, ListSessionsHandler]
 
 const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHandler]
 
@@ -189,7 +187,6 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         SessionIssuer,
         CodeIssuer,
         SignInGate,
-        SignInMethods,
 
         // CQRS
         ...CommandHandlers,

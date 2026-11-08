@@ -1,6 +1,5 @@
 import {
     AccountDisabledError,
-    ConfirmationRequiredError,
     CurrentPasswordInvalidError,
     OwnershipTransferRequiredError
 } from '@/modules/auth/domain'
@@ -10,9 +9,8 @@ import { PASSWORD, setup, signIn, World } from './auth-test-world.shared-spec'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-const deleteWith = (w: World, userId: string, password?: string) =>
-    w.deleteAccount.execute(new DeleteOwnAccountCommand(userId, { password }, 'vi'))
-const needs = (error: unknown) => (error as ConfirmationRequiredError).details.needs
+const deleteWith = (w: World, userId: string, password: string) =>
+    w.deleteAccount.execute(new DeleteOwnAccountCommand(userId, password, 'vi'))
 /** A completed account, as the guard lets only those reach the route. */
 const completedAccount = (w: World) => {
     const user = w.account({ completedAt: new Date('2026-09-01T00:00:00Z') })
@@ -26,18 +24,27 @@ describe('Asking to delete your own account', () => {
         const w = setup()
         const user = completedAccount(w)
 
-        expect(needs(await deleteWith(w, user.id).catch((e: unknown) => e))).toEqual(['password'])
         await expect(deleteWith(w, user.id, 'Wrong-Password-1')).rejects.toThrow(CurrentPasswordInvalidError)
         expect(user.deletionRequestedAt).toBeNull()
         // Counted: a stolen session must not get unlimited password guesses here.
         expect(w.limiter.count(AUTH_RATE_LIMITS.currentPasswordFailuresPerUser, user.id)).toBe(1)
     })
 
-    it('asks an account with no password for one: there is no other proof', async () => {
+    it('forgets the wrong passwords once the request goes through', async () => {
+        const w = setup()
+        const user = completedAccount(w)
+        await expect(deleteWith(w, user.id, 'Wrong-Password-1')).rejects.toThrow(CurrentPasswordInvalidError)
+
+        await deleteWith(w, user.id, PASSWORD)
+
+        expect(w.limiter.count(AUTH_RATE_LIMITS.currentPasswordFailuresPerUser, user.id)).toBe(0)
+    })
+
+    it('refuses an account with no password like a wrong one: there is no other proof', async () => {
         const w = setup()
         const google = w.googleAccount({ completedAt: new Date() })
 
-        expect(needs(await deleteWith(w, google.id, PASSWORD).catch((e: unknown) => e))).toEqual(['password'])
+        await expect(deleteWith(w, google.id, PASSWORD)).rejects.toThrow(CurrentPasswordInvalidError)
         expect(google.deletionRequestedAt).toBeNull()
     })
 
@@ -52,6 +59,11 @@ describe('Asking to delete your own account', () => {
         expect(deletesAt.getTime() - user.deletionRequestedAt!.getTime()).toBe(14 * DAY_MS)
         // The password stays: signing in again is how it is restored.
         expect(w.credentials.hashes.has(user.id)).toBe(true)
+        // Counted as a request; `account_deleted` waits for the sweep.
+        expect(w.events.recorded).toEqual(
+            expect.arrayContaining([expect.objectContaining({ event: 'account_deletion_requested' })])
+        )
+        expect(w.events.recorded).not.toContainEqual(expect.objectContaining({ event: 'account_deleted' }))
     })
 
     it('ends every session, with a reason other devices can explain', async () => {

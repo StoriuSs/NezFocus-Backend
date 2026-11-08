@@ -4,12 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import request from 'supertest'
 import { AUTH_CONTROLLERS, AuthCookies, OAuthController } from '@/modules/auth/presentation'
-import {
-    GetAuthOptionsQuery,
-    GetSignInMethodsQuery,
-    ListSessionsQuery,
-    StartOAuthCommand
-} from '@/modules/auth/application'
+import { GetAuthOptionsQuery, ListSessionsQuery, StartOAuthCommand } from '@/modules/auth/application'
 
 /**
  * The /auth routes live in five controllers, and one of them,
@@ -19,7 +14,6 @@ import {
  * last. These GET routes are the ones it would otherwise take.
  */
 const STATIC_GETS: [path: string, query: Type][] = [
-    ['/api/v1/auth/sign-in-methods', GetSignInMethodsQuery],
     ['/api/v1/auth/options', GetAuthOptionsQuery],
     ['/api/v1/auth/sessions', ListSessionsQuery]
 ]

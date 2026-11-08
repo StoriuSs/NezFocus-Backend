@@ -60,6 +60,23 @@ describe('Passwords', () => {
         expect(w.cache.endedSessions.sort()).toEqual(['session-1', 'session-3'])
     })
 
+    it('changes the password even when its email, cache or limit step fails: a retry would be refused (Kiểm 3 review)', async () => {
+        const w = setup()
+        const user = w.account()
+        await signIn(w)
+        await signIn(w)
+        w.mailer.sendPasswordChanged = () => Promise.reject(new Error('queue unreachable'))
+        w.cache.invalidateSessions = () => Promise.reject(new Error('redis unreachable'))
+        w.limiter.reset = () => Promise.reject(new Error('redis unreachable'))
+
+        await expect(
+            w.change.execute(new ChangePasswordCommand(user.id, 'session-2', PASSWORD, NEW_PASSWORD))
+        ).resolves.toBeUndefined()
+
+        expect(w.credentials.hashes.get(user.id)).toBe(`hash:${NEW_PASSWORD}`)
+        expect(w.sessions.live(user.id)).toEqual(['session-2'])
+    })
+
     it('refuses a new password that breaks a rule, and changes nothing', async () => {
         const w = setup()
         const user = w.account({ username: 'ada_lovelace' })

@@ -38,7 +38,7 @@ export class AccountDeletionController {
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<AccountDeletionResponseDto>> {
         const deletesAt: Date = await this.commandBus.execute(
-            new DeleteOwnAccountCommand(user.id, { password: dto.password }, dto.language)
+            new DeleteOwnAccountCommand(user.id, dto.password, dto.language)
         )
         this.cookies.clearRefresh(res)
         return createResponse(

@@ -12,9 +12,11 @@ export const AUTH_EVENT_NAMES = [
     'oauth_login_succeeded',
     'oauth_login_failed',
     'oauth_account_linked',
-    // Asked to delete the account (it goes 14 days later, D-141), and taken back.
-    'account_deleted',
-    'account_restored'
+    // Asked to delete the account (D-141), taken back, and deleted by the
+    // sweep 14 days later (accounts whose owner asked; not abandoned sign-ups).
+    'account_deletion_requested',
+    'account_restored',
+    'account_deleted'
 ] as const
 
 export type AuthEvent = (typeof AUTH_EVENT_NAMES)[number]

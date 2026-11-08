@@ -4,8 +4,9 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { PrismaUserRepository } from '@/modules/users/infrastructure/persistence/prisma-user.repository'
+import { PrismaSessionRepository } from '@/modules/auth/infrastructure/persistence/prisma-session.repository'
 import { UsernameTakenError } from '@/modules/users'
-import { dueForDeletion } from '@/modules/users/domain'
+import { DeletedAccount, dueForDeletion } from '@/modules/users/domain'
 import { databaseTarget } from './targets'
 
 /**
@@ -174,6 +175,53 @@ describe('Account lifecycle (integration)', () => {
                 const swept = deleted.some((row) => row.id === user.id)
                 expect([made !== null, swept].filter(Boolean)).toHaveLength(1)
             }
+        })
+
+        it('deletes an account once: the next sweep leaves it, and says whether its owner asked', async () => {
+            const now = new Date()
+            const asked = await completedUser({ deletionRequestedAt: daysAgo(14, now) })
+            const abandoned = await newUser({ createdAt: daysAgo(14, now) })
+            const mine = (rows: DeletedAccount[]) =>
+                rows.filter((row) => row.id === asked.id || row.id === abandoned.id)
+
+            const first = mine(await sweep(now))
+            const second = mine(await sweep(new Date(now.getTime() + 15 * 60_000)))
+
+            expect(
+                first.map(({ id, ownerAsked }) => ({ id, ownerAsked })).sort((a, b) => a.id.localeCompare(b.id))
+            ).toEqual(
+                [
+                    { id: asked.id, ownerAsked: true },
+                    { id: abandoned.id, ownerAsked: false }
+                ].sort((a, b) => a.id.localeCompare(b.id))
+            )
+            // Deleted already: not deleted again, nor its event sent again.
+            expect(second).toEqual([])
+        })
+    })
+
+    // D-141, Kiểm 3: what a request to delete an account would have ended, had it crashed before.
+    describe('the auth clean-up, after a deletion request that did not finish', () => {
+        it('ends the sessions signed in before the request, and keeps those signed in since to restore it', async () => {
+            const sessions = new PrismaSessionRepository(prisma as unknown as PrismaService)
+            const DAY_MS = 24 * 60 * 60 * 1000
+            const requestedAt = new Date(Date.now() - DAY_MS)
+            const waiting = await newUser({ completedAt: new Date(0), deletionRequestedAt: requestedAt })
+            const live = await newUser({ completedAt: new Date(0) })
+            const session = (userId: string, createdAt: Date) =>
+                prisma.session.create({
+                    data: { userId, createdAt, expiresAt: new Date(Date.now() + 30 * DAY_MS) }
+                })
+            const before = await session(waiting.id, new Date(requestedAt.getTime() - DAY_MS))
+            const since = await session(waiting.id, new Date(requestedAt.getTime() + 60_000))
+            const other = await session(live.id, new Date(requestedAt.getTime() - DAY_MS))
+
+            const ended = await sessions.revokeFromBeforeDeletionRequests(new Date())
+
+            expect(ended.filter((id) => [before.id, since.id, other.id].includes(id))).toEqual([before.id])
+            const rows = await prisma.session.findMany({ where: { id: { in: [before.id, since.id, other.id] } } })
+            const reasonOf = Object.fromEntries(rows.map((row) => [row.id, row.revokedReason]))
+            expect(reasonOf).toEqual({ [before.id]: 'deletion-requested', [since.id]: null, [other.id]: null })
         })
     })
 

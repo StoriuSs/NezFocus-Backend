@@ -37,16 +37,27 @@ export class CodeIssuer {
         email: CodeEmail | null,
         whenMailFails?: (error: unknown) => void
     ): Promise<void> {
-        const code = generateVerificationCode(6)
-        const expiresAt = new Date(now.getTime() + this.settings.codeTtlMinutes * 60_000)
-        await this.codes.replace(address, purpose, this.hash(code, address, purpose), expiresAt)
+        const code = await this.store(address, purpose, now)
         if (!email) return
         try {
-            await this.mailer.sendCode(address, code, purpose, this.settings.codeTtlMinutes, email)
+            await this.send(address, code, purpose, email)
         } catch (error) {
             if (!whenMailFails) throw error
             whenMailFails(error)
         }
+    }
+
+    /** The first half of `issue`: a new code replaces any earlier one. Returns it, to `send`. */
+    async store(address: string, purpose: CodePurpose, now: Date): Promise<string> {
+        const code = generateVerificationCode(6)
+        const expiresAt = new Date(now.getTime() + this.settings.codeTtlMinutes * 60_000)
+        await this.codes.replace(address, purpose, this.hash(code, address, purpose), expiresAt)
+        return code
+    }
+
+    /** The second half of `issue`: the code goes out by email (queued). */
+    send(address: string, code: string, purpose: CodePurpose, email: CodeEmail): Promise<void> {
+        return this.mailer.sendCode(address, code, purpose, this.settings.codeTtlMinutes, email)
     }
 
     /** Check a guess, counting it as one of the code's tries. A right one is not used up yet. */

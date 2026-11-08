@@ -26,9 +26,6 @@ import { Guess, withGuess } from '../../services/limits'
  *
  * - A wrong password, an unknown address and an account with no password are
  *   one error, and take the same time: an unknown address still runs a hash.
- * - "Not confirmed yet" is only said once the password was right. By then the
- *   caller evidently owns the account, so it gives nothing away — and the
- *   client can offer to resend the code instead of a dead end.
  * - Only failures count against the limits, and a success clears the
  *   address's count. Each attempt is counted before the password is checked
  *   (withGuess), so a burst sent all at once is limited like a slow one.

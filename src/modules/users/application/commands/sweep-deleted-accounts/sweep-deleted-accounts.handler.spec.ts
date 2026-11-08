@@ -11,8 +11,8 @@ describe('SweepDeletedAccountsHandler', () => {
         const now = new Date('2026-10-29T14:47:00Z')
         const userRepo = {
             deleteDue: jest.fn().mockResolvedValue([
-                { id: 'asked', avatarKey: 'avatars/asked.webp' },
-                { id: 'abandoned', avatarKey: null }
+                { id: 'asked', avatarKey: 'avatars/asked.webp', ownerAsked: true },
+                { id: 'abandoned', avatarKey: null, ownerAsked: false }
             ])
         }
         const eventBus = { publish: jest.fn() }
@@ -29,8 +29,8 @@ describe('SweepDeletedAccountsHandler', () => {
             now
         )
         expect(eventBus.publish.mock.calls).toEqual([
-            [new AccountDeletedEvent('asked', 'avatars/asked.webp')],
-            [new AccountDeletedEvent('abandoned', null)]
+            [new AccountDeletedEvent('asked', 'avatars/asked.webp', true)],
+            [new AccountDeletedEvent('abandoned', null, false)]
         ])
         expect(result.accountsDeleted).toBe(2)
     })

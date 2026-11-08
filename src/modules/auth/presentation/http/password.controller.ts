@@ -1,38 +1,26 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common'
-import { CommandBus, QueryBus } from '@nestjs/cqrs'
+import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common'
+import { CommandBus } from '@nestjs/cqrs'
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
 import { Request, Response } from 'express'
 import { ApiEnvelopeResponse, CurrentUser, Public } from '@/shared/presentation/decorators'
 import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/types'
 import { MESSAGES } from '@/shared/constants'
-import { validateAndTransform } from '@/shared/utils'
 import {
     ChangePasswordCommand,
     ForgotPasswordCommand,
-    GetSignInMethodsQuery,
     IssuedSession,
     ResetPasswordCommand
 } from '@/modules/auth/application'
-import {
-    ChangePasswordRequestDto,
-    ForgotPasswordRequestDto,
-    ResetPasswordRequestDto,
-    SignInMethodsResponseDto,
-    TokenResponseDto
-} from './dto'
+import { ChangePasswordRequestDto, ForgotPasswordRequestDto, ResetPasswordRequestDto, TokenResponseDto } from './dto'
 import { AuthCookies } from './auth-cookies'
-import { accepted, client, clientIp, ok } from './route-helpers'
+import { accepted, client, clientIp } from './route-helpers'
 
-/**
- * Passwords: forgotten or changed; and how an account signs in
- * (docs/auth/api-reference.md).
- */
+/** Passwords: forgotten or changed (docs/auth/api-reference.md). */
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class PasswordController {
     constructor(
         private readonly commandBus: CommandBus,
-        private readonly queryBus: QueryBus,
         private readonly cookies: AuthCookies
     ) {}
 
@@ -59,6 +47,7 @@ export class PasswordController {
         @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<TokenResponseDto>> {
+        this.cookies.assertAllowedOrigin(req)
         const session: IssuedSession = await this.commandBus.execute(
             new ResetPasswordCommand(dto.email, dto.code, dto.password, client(req), dto.language)
         )
@@ -78,17 +67,5 @@ export class PasswordController {
             new ChangePasswordCommand(user.id, user.sessionId, dto.currentPassword, dto.newPassword, dto.language)
         )
         return createResponse(MESSAGES.AUTH.PASSWORD_CHANGED_SUCCESS, null)
-    }
-
-    /** How this account signs in: a password, other providers, or both. */
-    @Get('sign-in-methods')
-    @HttpCode(HttpStatus.OK)
-    @ApiBearerAuth('bearer')
-    @ApiEnvelopeResponse(SignInMethodsResponseDto)
-    async signInMethods(@CurrentUser() user: AuthenticatedUser): Promise<ServiceResponse<SignInMethodsResponseDto>> {
-        const methods: { password: boolean; providers: string[] } = await this.queryBus.execute(
-            new GetSignInMethodsQuery(user.id)
-        )
-        return ok(validateAndTransform(SignInMethodsResponseDto, methods))
     }
 }

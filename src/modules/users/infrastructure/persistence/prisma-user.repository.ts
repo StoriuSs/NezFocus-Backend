@@ -185,7 +185,8 @@ export class PrismaUserRepository implements UserRepositoryPort {
                     FOR UPDATE
                 ) AS old
                 WHERE u."id" = old."id"
-                RETURNING u."id" AS id, old."avatarUrl" AS "avatarKey"
+                RETURNING u."id" AS id, old."avatarUrl" AS "avatarKey",
+                          (old."deletionRequestedAt" IS NOT NULL) AS "ownerAsked"
             `
             // The settings are personal too (time zone, language).
             if (rows.length > 0) {
@@ -201,14 +202,20 @@ export class PrismaUserRepository implements UserRepositoryPort {
     }
 
     async findLiveByEmail(email: string): Promise<UserEntity | null> {
-        // findFirst: the uniqueness is a partial index Prisma cannot model.
-        // Addresses are stored lower case, so an equality match is enough and
-        // uses that index's column expression only through `mode` — which
-        // would bypass it; comparing the normalised value keeps it simple.
-        const user = await this.prisma.user.findFirst({
-            where: { email: normaliseEmail(email), deletedAt: null }
-        })
-        return user ? UserMapper.toDomain(user) : null
+        // Every sign-in, code and reset looks an address up here, so it must
+        // use an index. The only one on the address is the partial unique
+        // index User_email_active_key on lower("email") for live accounts, and
+        // Postgres uses it only for a query on that same expression with that
+        // same condition: `email = $1` (what Prisma writes) reads the whole
+        // table. So the id comes from raw SQL, then the row by its key.
+        const [found] = await this.prisma.$queryRaw<{ id: string }[]>`
+            SELECT "id" FROM "User"
+            WHERE lower("email") = lower(${normaliseEmail(email)})
+              AND "deletedAt" IS NULL AND "email" IS NOT NULL
+            LIMIT 1`
+        if (!found) return null
+        const user = await this.prisma.user.findUnique({ where: { id: found.id } })
+        return user && !user.deletedAt ? UserMapper.toDomain(user) : null
     }
 
     async createWithEmail(email: string, options: { displayName?: string | null } = {}): Promise<UserEntity | null> {

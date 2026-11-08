@@ -18,6 +18,8 @@ export interface AccountCompletion {
 export interface DeletedAccount {
     id: string
     avatarKey: string | null
+    /** Its owner asked (D-141); false: a sign-up left incomplete. */
+    ownerAsked: boolean
 }
 
 /**

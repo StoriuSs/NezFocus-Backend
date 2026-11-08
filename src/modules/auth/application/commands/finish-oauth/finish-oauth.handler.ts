@@ -1,5 +1,5 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { FinishOAuthCommand } from './finish-oauth.command'
 import { DirectoryUser, normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
@@ -24,6 +24,7 @@ import {
 import { OAUTH_SETTINGS, OAuthSettings, oauthRedirectUri } from '../../oauth-settings'
 import { IssuedSession } from '../../services/session-issuer'
 import { SignInGate } from '../../services/sign-in-gate'
+import { afterCommit } from '../../services/after-commit'
 
 /** A session, and the web app page to return to afterwards. */
 export interface OAuthFinished {
@@ -52,6 +53,8 @@ export interface OAuthFinished {
  */
 @CommandHandler(FinishOAuthCommand)
 export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
+    private readonly logger = new Logger(FinishOAuthHandler.name)
+
     constructor(
         @Inject(OAUTH_PROVIDERS) private readonly providers: OAuthProviderPort[],
         @Inject(OAUTH_STATE) private readonly attempts: OAuthStatePort,
@@ -169,12 +172,17 @@ export class FinishOAuthHandler implements ICommandHandler<FinishOAuthCommand> {
 
         if (!isNew) {
             this.events.record('oauth_account_linked')
-            // Nobody asked for this email from a page: in the account's
-            // language (D-132).
-            if (user.email) {
-                const language = accountEmailLanguage(await this.directory.languageOf(user.id))
-                await this.mailer.sendSignInMethodAdded(user.email, provider.displayName, language)
-            }
+            // Linked: the next try finds the link and sends no email, so a
+            // failure here must not end the sign-in on the error page.
+            await afterCommit(this.logger, 'Google link', [
+                async () => {
+                    if (!user.email) return
+                    // Nobody asked for this email from a page: in the
+                    // account's language (D-132).
+                    const language = accountEmailLanguage(await this.directory.languageOf(user.id))
+                    await this.mailer.sendSignInMethodAdded(user.email, provider.displayName, language)
+                }
+            ])
         }
         return user
     }

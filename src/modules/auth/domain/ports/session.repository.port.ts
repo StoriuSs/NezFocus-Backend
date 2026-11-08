@@ -121,6 +121,15 @@ export interface SessionRepositoryPort {
      * event was lost. @returns their ids
      */
     revokeForDeletedAccounts(now: Date): Promise<string[]>
+
+    /**
+     * End the sessions, with the reason `deletion-requested`, that were
+     * signed in before their account's owner asked to delete it and are still
+     * open: a crash between recording the request and ending them leaves
+     * them (D-141). Sessions signed in during the wait, to restore it, stay.
+     * @returns their ids
+     */
+    revokeFromBeforeDeletionRequests(now: Date): Promise<string[]>
 }
 
 export const SESSION_REPOSITORY = Symbol('SessionRepositoryPort')

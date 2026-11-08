@@ -14,7 +14,7 @@ import {
     RefreshHandler
 } from '@/modules/auth/application'
 import { AccountDeletedEvent } from '@/modules/users'
-import { AccountDisabledError, RefreshFailedError, SessionRevokedError } from '@/modules/auth/domain'
+import { AccountDisabledError, RefreshFailedError, SessionRevokedError, TokenInvalidError } from '@/modules/auth/domain'
 import { JoseTokenService } from '@/modules/auth/infrastructure/adapters/jose-token-service.adapter'
 import { PrismaSessionRepository } from '@/modules/auth/infrastructure/persistence/prisma-session.repository'
 import { PrismaCredentialRepository } from '@/modules/auth/infrastructure/persistence/prisma-credential.repository'
@@ -231,15 +231,25 @@ describe('Auth persistence and sessions (integration)', () => {
             await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } })
             await prisma.credential.create({ data: { userId: user.id, passwordHash: 'argon2-hash' } })
             await oauthAccounts.link(user.id, 'google', `sub-${user.id}`)
-            await new EndSessionsOfDeletedAccountHandler(sessions, credentials, oauthAccounts, cache).handle(
-                new AccountDeletedEvent(user.id)
-            )
+            await new EndSessionsOfDeletedAccountHandler(sessions, credentials, oauthAccounts, cache, {
+                record: () => undefined
+            }).handle(new AccountDeletedEvent(user.id))
 
             await expect(cache.resolve(claims)).rejects.toThrow(AccountDisabledError)
             expect(await prisma.session.count({ where: { userId: user.id, revokedReason: 'account-deleted' } })).toBe(1)
             // Its password and Google link go too: nothing can use them again.
             expect(await prisma.credential.count({ where: { userId: user.id } })).toBe(0)
             expect(await prisma.oAuthAccount.count({ where: { userId: user.id } })).toBe(0)
+        })
+
+        it("refuses a token that names someone else's session, read from the database or the cache", async () => {
+            const mine = await signedIn()
+            const theirs = await signedIn()
+            const crossed = { userId: mine.user.id, sessionId: theirs.session.id }
+
+            await expect(cache.resolve(crossed)).rejects.toThrow(TokenInvalidError)
+            await cache.resolve(theirs.claims) // now cached
+            await expect(cache.resolve(crossed)).rejects.toThrow(TokenInvalidError)
         })
 
         it('does not cache a session that was revoked while it was being read', async () => {

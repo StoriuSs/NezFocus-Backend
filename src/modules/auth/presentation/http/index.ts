@@ -12,7 +12,7 @@ export { AuthCookies } from './auth-cookies'
  * Express tries routes in that order and takes the first that matches, so
  * OAuthController stays last: its `GET auth/:provider` matches any
  * `GET auth/<word>`, and placed earlier it would answer `GET auth/options`
- * and `auth/sign-in-methods` itself, as a sign-in with a provider called
+ * and `auth/sessions` itself, as a sign-in with a provider called
  * "options": a 404.
  * test/e2e/auth-routes.e2e-spec.ts fails if it moves.
  */

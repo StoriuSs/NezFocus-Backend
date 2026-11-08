@@ -1,26 +1,28 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 import { Inject, Logger } from '@nestjs/common'
 import { ForgotPasswordCommand } from './forgot-password.command'
-import { normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
+import { DirectoryUser, normaliseEmail, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { CREDENTIAL_REPOSITORY, CredentialRepositoryPort } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS, RateLimitRule } from '../../rate-limits'
-import { RATE_LIMIT, RateLimitPort } from '../../ports'
+import { EmailLanguage, RATE_LIMIT, RateLimitPort } from '../../ports'
 import { CodeIssuer } from '../../services/code-issuer'
 import { enforce } from '../../services/limits'
 
 /**
  * Email a code for choosing a new password (REQ-AUTH-04). Answers the same
- * whether or not the address has an account, and counts the same:
+ * whether or not the address has an account, counts the same, and takes the
+ * same time:
  *
  * - The limits come first and count every address, shared with sign-in codes.
  * - An address with no account still gets a stored code, one nobody is sent,
  *   so guesses at it are counted and wear it out after five exactly as for a
  *   real one (D-121). Otherwise "the fifth guess says expired" would tell
  *   which addresses have accounts.
- * - The email is queued, so a mail server that is down cannot turn "no
- *   account" and "account" into different answers. Nor can a queue that is
- *   down: only an address with an account has an email to queue, so failing
- *   to queue one is logged, not answered (Kiểm 2 review).
+ * - The answer waits for the same steps either way (limits, the lookup,
+ *   storing the code). What only an account has (reading whether it has a
+ *   password, queueing the email) happens after the answer, so timing it
+ *   tells nothing (Kiểm 3 review). A queue that is down is logged, not
+ *   answered (Kiểm 2 review).
  */
 @CommandHandler(ForgotPasswordCommand)
 export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordCommand> {
@@ -42,21 +44,24 @@ export class ForgotPasswordHandler implements ICommandHandler<ForgotPasswordComm
         ]
         await enforce(this.limiter, limits)
 
-        const now = new Date()
         const user = await this.directory.findByEmail(address)
-        if (!user) {
-            await this.codeIssuer.issue(address, 'password-reset', now, null)
-            return
+        const code = await this.codeIssuer.store(address, 'password-reset', new Date())
+        if (user) void this.email(user, address, code, language)
+    }
+
+    private async email(user: DirectoryUser, address: string, code: string, language: EmailLanguage): Promise<void> {
+        try {
+            // No password yet (the account was never completed, or was made
+            // with Google): the email offers to choose one, rather than to
+            // reset one.
+            const firstPassword = (await this.credentials.findHash(user.id)) === null
+            await this.codeIssuer.send(address, code, 'password-reset', {
+                language,
+                firstPassword,
+                name: user.displayName ?? undefined
+            })
+        } catch (error) {
+            this.logger.error(`Could not queue a password reset email: ${(error as Error)?.message}`)
         }
-        // No password yet (the account was never completed, or was made with
-        // Google): the email offers to choose one, rather than to reset one.
-        const firstPassword = (await this.credentials.findHash(user.id)) === null
-        await this.codeIssuer.issue(
-            address,
-            'password-reset',
-            now,
-            { language, firstPassword, name: user.displayName ?? undefined },
-            (error) => this.logger.error(`Could not queue a password reset email: ${(error as Error)?.message}`)
-        )
     }
 }

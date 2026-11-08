@@ -58,6 +58,31 @@ describe('Signing in with Google', () => {
         expect(w.mailer.notices).toEqual([{ to: 'ada@example.test', kind: 'sign-in-method-added', language: 'en' }])
     })
 
+    it('still signs in when the email about the new link cannot be queued: the link is made, and a retry would send none (Kiểm 3 review)', async () => {
+        const w = setup()
+        const owner = w.account()
+        w.mailer.sendSignInMethodAdded = () => Promise.reject(new Error('queue unreachable'))
+
+        const finished = await viaGoogle(w)
+
+        expect(sessionOf(finished).accessToken).toBe(`access:${owner.id}:session-1`)
+        expect(await w.oauthAccounts.providersOf(owner.id)).toEqual(['google'])
+    })
+
+    it('refuses a return to another provider than the one the attempt left for', async () => {
+        const w = setup()
+        const started = await w.startOAuth.execute(new StartOAuthCommand('google', '/'))
+        // An attempt begun with another provider, its state brought back to Google's callback.
+        w.oauthState.attempts.get(started.state)!.provider = 'github'
+
+        const crossed = w.finishOAuth.execute(
+            new FinishOAuthCommand('google', `code=good-code&state=${started.state}`, started.state, CLIENT)
+        )
+
+        expect((await failure(crossed)).reason).toBe('failed')
+        expect(w.sessions.sessions).toHaveLength(0)
+    })
+
     it('tells the owner in the language the account chose, as nobody asked from a page (D-132)', async () => {
         const w = setup()
         const owner = w.account({ completedAt: new Date() })
@@ -91,6 +116,10 @@ describe('Signing in with Google', () => {
         expect(safeReturnPath('/settings?tab=1#x')).toBe('/settings?tab=1#x')
         for (const offSite of ['//evil.example', '/\\evil.example', 'https://evil.example/']) {
             expect(safeReturnPath(offSite)).toBe('/')
+        }
+        // Control characters: a newline would split the Location header.
+        for (const control of ['/a\r\nSet-Cookie: x=1', '/a\tb', '/a\u007fb']) {
+            expect(safeReturnPath(control)).toBe('/')
         }
     })
 })

@@ -1,5 +1,5 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { ChangePasswordCommand } from './change-password.command'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
@@ -23,6 +23,7 @@ import {
 } from '../../ports'
 import { AUTH_RATE_LIMITS } from '../../rate-limits'
 import { withGuess } from '../../services/limits'
+import { afterCommit } from '../../services/after-commit'
 
 /**
  * Change the password, knowing the current one. Ends every other session: a
@@ -31,6 +32,8 @@ import { withGuess } from '../../services/limits'
  */
 @CommandHandler(ChangePasswordCommand)
 export class ChangePasswordHandler implements ICommandHandler<ChangePasswordCommand> {
+    private readonly logger = new Logger(ChangePasswordHandler.name)
+
     constructor(
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
@@ -58,8 +61,13 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
 
         await this.credentials.setHash(user.id, await this.hasher.hash(command.newPassword))
         const ended = await this.sessions.revokeAllForUser(user.id, 'password-changed', new Date(), command.sessionId)
-        await this.cache.invalidateSessions(ended)
-        await this.limiter.reset(rule, command.userId)
-        if (user.email) await this.mailer.sendPasswordChanged(user.email, command.language)
+        // Changed: a retry would be refused (the current password is new now).
+        await afterCommit(this.logger, 'Password change', [
+            () => this.cache.invalidateSessions(ended),
+            () => this.limiter.reset(rule, command.userId),
+            async () => {
+                if (user.email) await this.mailer.sendPasswordChanged(user.email, command.language)
+            }
+        ])
     }
 }

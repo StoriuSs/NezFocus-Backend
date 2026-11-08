@@ -7,12 +7,14 @@ import {
     RotateInput,
     RotationOutcome,
     SessionEnd,
+    SessionEnding,
+    sessionEndOf,
     SessionRecord,
     SessionRepositoryPort
 } from '@/modules/auth/domain'
 
-/** How a session ended, or null while it is active. */
-interface EndingSession {
+/** A session row with its account's state, as read here. */
+interface SessionRow {
     revokedAt: Date | null
     revokedReason: string | null
     expiresAt: Date
@@ -21,23 +23,17 @@ interface EndingSession {
 
 const USER_STATE = { select: { deletedAt: true, deletionRequestedAt: true } } as const
 
-function endOf(session: EndingSession, now: Date): SessionEnd | null {
-    if (session.user.deletedAt) return 'account-deleted'
-    if (session.revokedAt) {
-        const reason = (session.revokedReason as RevokeReason | null) ?? 'logout'
-        // Ended by a request to delete the account that its owner then took
-        // back by signing in elsewhere: nothing is being deleted any more.
-        if (reason === 'deletion-requested' && !session.user.deletionRequestedAt) return 'revoked'
-        return reason
-    }
-    if (session.expiresAt <= now) return 'expired'
-    return null
-}
-
-/** When the account of a session ended by a request to delete it goes (D-141). */
-function deletesAtOf(session: EndingSession, ended: SessionEnd): Date | undefined {
-    const requestedAt = session.user.deletionRequestedAt
-    return ended === 'deletion-requested' && requestedAt ? deletesAt(requestedAt) : undefined
+/** The domain's rules (session-end.ts) on a row. */
+function endOf(session: SessionRow, now: Date): SessionEnding | null {
+    return sessionEndOf(
+        {
+            revokedAt: session.revokedAt,
+            revokedReason: session.revokedReason as RevokeReason | null,
+            expiresAt: session.expiresAt,
+            account: session.user
+        },
+        now
+    )
 }
 
 const toRecord = (session: { id: string; userId: string; expiresAt: Date }): SessionRecord => ({
@@ -96,7 +92,7 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
             where: { id },
             select: { revokedAt: true, revokedReason: true, expiresAt: true, user: USER_STATE }
         })
-        return session ? endOf(session, now) : null
+        return session ? (endOf(session, now)?.ended ?? null) : null
     }
 
     /**
@@ -121,8 +117,12 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
                 include: { user: USER_STATE }
             })
             if (!session) return { kind: 'invalid' }
-            const ended = endOf(session, now)
-            if (ended) return { kind: 'invalid', ended, deletesAt: deletesAtOf(session, ended) }
+            const ending = endOf(session, now)
+            if (ending) {
+                const { ended, deletionRequestedAt } = ending
+                // When the account goes, by the users module's rule (D-141).
+                return { kind: 'invalid', ended, deletesAt: deletionRequestedAt && deletesAt(deletionRequestedAt) }
+            }
 
             if (!token.usedAt) {
                 const replacement = await tx.refreshToken.create({
@@ -203,6 +203,22 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
             data: { revokedAt: now, revokedReason: 'account-deleted' satisfies RevokeReason },
             select: { id: true }
         })
+        return revoked.map((session) => session.id)
+    }
+
+    async revokeFromBeforeDeletionRequests(now: Date): Promise<string[]> {
+        // A comparison across the two tables, which Prisma's where cannot write.
+        const reason: RevokeReason = 'deletion-requested'
+        const revoked = await this.prisma.$queryRaw<{ id: string }[]>`
+            UPDATE "Session" AS s
+            SET "revokedAt" = ${now}, "revokedReason" = ${reason}
+            FROM "User" AS u
+            WHERE s."userId" = u."id"
+              AND s."revokedAt" IS NULL
+              AND u."deletedAt" IS NULL
+              AND u."deletionRequestedAt" IS NOT NULL
+              AND s."createdAt" < u."deletionRequestedAt"
+            RETURNING s."id" AS id`
         return revoked.map((session) => session.id)
     }
 

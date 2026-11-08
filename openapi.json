@@ -555,45 +555,6 @@
         ]
       }
     },
-    "/api/v1/auth/sign-in-methods": {
-      "get": {
-        "operationId": "PasswordController_signInMethods_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "meta",
-                    "data"
-                  ],
-                  "properties": {
-                    "meta": {
-                      "$ref": "#/components/schemas/ApiResponseMetaDto"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/SignInMethodsResponseDto"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "How this account signs in: a password, other providers, or both.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/account/delete": {
       "post": {
         "operationId": "AccountDeletionController_delete_v1",
@@ -1833,26 +1794,6 @@
           "new_password"
         ]
       },
-      "SignInMethodsResponseDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "boolean",
-            "description": "The account has a password: email-and-password sign-in works. False for one made with Google, until a password is set."
-          },
-          "providers": {
-            "description": "Other providers linked to the account, by id (`google`).",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "password",
-          "providers"
-        ]
-      },
       "AccountDeletionResponseDto": {
         "type": "object",
         "properties": {
@@ -1884,7 +1825,10 @@
             "minLength": 1,
             "maxLength": 1024
           }
-        }
+        },
+        "required": [
+          "password"
+        ]
       },
       "UserProfileResponseDto": {
         "type": "object",

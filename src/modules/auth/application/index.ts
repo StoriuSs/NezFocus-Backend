@@ -9,7 +9,6 @@ export * from './services/session-issuer'
 export * from './services/code-issuer'
 export * from './services/limits'
 export * from './services/sign-in-gate'
-export * from './services/sign-in-methods'
 
 // Commands
 export * from './commands/change-password/change-password.command'
@@ -48,8 +47,6 @@ export * from './commands/verify-email-code/verify-email-code.handler'
 // Queries
 export * from './queries/get-auth-options/get-auth-options.query'
 export * from './queries/get-auth-options/get-auth-options.handler'
-export * from './queries/get-sign-in-methods/get-sign-in-methods.query'
-export * from './queries/get-sign-in-methods/get-sign-in-methods.handler'
 export * from './queries/list-sessions/list-sessions.query'
 export * from './queries/list-sessions/list-sessions.handler'
 

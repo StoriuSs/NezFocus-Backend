@@ -79,6 +79,7 @@ export class AuthController {
         @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<EmailCodeSignInResponseDto>> {
+        this.cookies.assertAllowedOrigin(req)
         const signedIn: EmailCodeSignIn = await this.commandBus.execute(
             new VerifyEmailCodeCommand(dto.email, dto.code, client(req))
         )
@@ -102,6 +103,7 @@ export class AuthController {
         @Req() req: Request,
         @Res({ passthrough: true }) res: Response
     ): Promise<ServiceResponse<TokenResponseDto>> {
+        this.cookies.assertAllowedOrigin(req)
         const session: IssuedSession = await this.commandBus.execute(
             new LoginCommand(dto.email, dto.password, client(req))
         )

@@ -1557,7 +1557,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (event) (increase(auth_events_total{job=\"nestjs-app\", event=~\"registration|password_reset|oauth_account_linked|account_deleted\"}[$__interval])) > 0",
+          "expr": "sum by (event) (increase(auth_events_total{job=\"nestjs-app\", event=~\"registration|password_reset|oauth_account_linked|account_deletion_requested|account_restored|account_deleted\"}[$__interval])) > 0",
           "legendFormat": "{{event}}",
           "refId": "A",
           "interval": "1m"

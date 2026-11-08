@@ -1,4 +1,10 @@
-import { AccountCompletionInput, DirectoryUser, UserDirectoryPort, UsernameTakenError } from '@/modules/users'
+import {
+    AccountCompletionInput,
+    deletesAt,
+    DirectoryUser,
+    UserDirectoryPort,
+    UsernameTakenError
+} from '@/modules/users'
 import { AuthSettings } from '../auth-settings'
 import { OAuthSettings } from '../oauth-settings'
 import {
@@ -30,6 +36,7 @@ import {
     RotateInput,
     RotationOutcome,
     SessionEnd,
+    sessionEndOf,
     SessionRecord,
     SessionRepositoryPort,
     VerificationCodeRepositoryPort
@@ -258,10 +265,32 @@ interface StoredSession extends SessionRecord {
     ip: string | null
 }
 
-/** The rotation rules of PrismaSessionRepository, without the row lock. */
+/**
+ * The rotation rules of PrismaSessionRepository, without the row lock; how a
+ * session ended by the same domain rule (sessionEndOf), reading the account
+ * from the directory.
+ */
 class FakeSessions implements SessionRepositoryPort {
     sessions: StoredSession[] = []
     private next = 1
+
+    constructor(private readonly directory: FakeDirectory) {}
+
+    private endOf(s: StoredSession, now: Date) {
+        const account = this.directory.users.get(s.userId)
+        return sessionEndOf(
+            {
+                revokedAt: s.revoked ? now : null,
+                revokedReason: s.revoked ?? null,
+                expiresAt: s.expiresAt,
+                account: {
+                    deletedAt: account?.deletedAt ?? null,
+                    deletionRequestedAt: account?.deletionRequestedAt ?? null
+                }
+            },
+            now
+        )
+    }
 
     async create(input: Parameters<SessionRepositoryPort['create']>[0]) {
         const now = new Date()
@@ -281,9 +310,7 @@ class FakeSessions implements SessionRepositoryPort {
     }
     async findEnded(id: string, now: Date): Promise<SessionEnd | null> {
         const s = this.sessions.find((x) => x.id === id)
-        if (!s) return null
-        if (s.revoked) return s.revoked
-        return s.expiresAt <= now ? 'expired' : null
+        return s ? (this.endOf(s, now)?.ended ?? null) : null
     }
     async findActive(id: string, now: Date) {
         const s = this.sessions.find((x) => x.id === id && !x.revoked && x.expiresAt > now)
@@ -299,8 +326,11 @@ class FakeSessions implements SessionRepositoryPort {
         const used = this.sessions.find((s) => s.usedTokens.has(input.tokenHash))
         const session = current ?? used
         if (!session) return { kind: 'invalid' }
-        if (session.revoked) return { kind: 'invalid', ended: session.revoked }
-        if (session.expiresAt <= input.now) return { kind: 'invalid', ended: 'expired' }
+        const ending = this.endOf(session, input.now)
+        if (ending) {
+            const { ended, deletionRequestedAt } = ending
+            return { kind: 'invalid', ended, deletesAt: deletionRequestedAt && deletesAt(deletionRequestedAt) }
+        }
         const record = { id: session.id, userId: session.userId, expiresAt: session.expiresAt }
         if (current) {
             await input.beforeCommit()
@@ -339,6 +369,9 @@ class FakeSessions implements SessionRepositoryPort {
         return 0
     }
     async revokeForDeletedAccounts(): Promise<string[]> {
+        return []
+    }
+    async revokeFromBeforeDeletionRequests(): Promise<string[]> {
         return []
     }
     live(userId: string) {
@@ -488,6 +521,20 @@ const settings: AuthSettings = {
     refreshGraceMs: 10_000
 }
 
+/**
+ * A handler that answers first and finishes some work after (forgot-password
+ * queues its email after answering): `execute` here also waits for that work,
+ * so a test can read what was sent. In-memory ports settle within one turn.
+ */
+function waitingForAfterwork<C>(handler: { execute(command: C): Promise<void> }) {
+    return {
+        async execute(command: C): Promise<void> {
+            await handler.execute(command)
+            await new Promise<void>((resolve) => setImmediate(resolve))
+        }
+    }
+}
+
 export function setup() {
     const directory = new FakeDirectory()
     const credentials = new FakeCredentials()
@@ -495,7 +542,7 @@ export function setup() {
     const hasher = new FakeHasher()
     const limiter = new FakeLimiter()
     const tokens = new FakeTokens()
-    const sessions = new FakeSessions()
+    const sessions = new FakeSessions(directory)
     const codes = new FakeCodes()
     const cache = new FakeCache()
     const mailer = new FakeMailer()
@@ -507,6 +554,7 @@ export function setup() {
     const oauthAccounts = new FakeOAuthAccounts()
     const gate = new SignInGate(sessionIssuer)
     const servers = new FakeServerOwnership()
+    const forgot = new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer)
 
     return {
         events,
@@ -515,9 +563,11 @@ export function setup() {
         hasher,
         limiter,
         sessions,
+        codes,
         cache,
         mailer,
         google,
+        oauthState,
         oauthAccounts,
         servers,
         startOAuth: new StartOAuthHandler([google], oauthState, oauthSettings),
@@ -538,7 +588,10 @@ export function setup() {
         listSessions: new ListSessionsHandler(sessions),
         revokeSession: new RevokeSessionHandler(sessions, cache),
         revokeOtherSessions: new RevokeOtherSessionsHandler(sessions, cache),
-        forgot: new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer),
+        /** Forgot password, waiting for the email it queues after answering. */
+        forgot: waitingForAfterwork(forgot),
+        /** Forgot password as the route sees it: done when it answers. */
+        forgotAnswer: forgot,
         deleteAccount: new DeleteOwnAccountHandler(
             directory,
             credentials,

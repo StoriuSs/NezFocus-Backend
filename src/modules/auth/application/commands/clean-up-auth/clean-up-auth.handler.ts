@@ -22,7 +22,14 @@ const DAY_MS = 24 * 60 * 60 * 1000
  *
  * Also finishes what an account deletion's event handler would have done, if
  * that event was lost (a crash between saving the deletion and handling it):
- * the account's sessions end, and its password and provider links go. They were refused all along — the guard and refresh read the user — so this is tidying, not a fix.
+ * the account's sessions end, and its password and provider links go. They
+ * were refused all along — the guard and refresh read the user — so this is
+ * tidying, not a fix.
+ *
+ * And what a request to delete an account would have done, had it crashed
+ * between recording the request and ending the sessions (D-141): the sessions
+ * signed in before it end, so other devices are told the account waits to be
+ * deleted rather than refused one request at a time.
  */
 @CommandHandler(CleanUpAuthCommand)
 export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
@@ -39,6 +46,13 @@ export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
     async execute({ now }: CleanUpAuthCommand): Promise<{ sessions: number; codes: number; orphans: number }> {
         const orphaned = await this.sessions.revokeForDeletedAccounts(now)
         await this.cache.invalidateSessions(orphaned)
+        const leftOpen = await this.sessions.revokeFromBeforeDeletionRequests(now)
+        await this.cache.invalidateSessions(leftOpen)
+        if (leftOpen.length > 0) {
+            this.logger.warn(
+                `Ended ${leftOpen.length} session(s) signed in before a request to delete their account: the request did not finish`
+            )
+        }
         const passwords = await this.credentials.deleteForDeletedAccounts()
         const links = await this.oauthAccounts.deleteForDeletedAccounts()
         if (orphaned.length > 0 || passwords > 0 || links > 0) {
@@ -50,6 +64,6 @@ export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
         const sessions = await this.sessions.deleteEnded(new Date(now.getTime() - 7 * DAY_MS))
         const codes = await this.codes.deleteStale(new Date(now.getTime() - DAY_MS))
         if (sessions > 0 || codes > 0) this.logger.log(`Removed ${sessions} ended session(s) and ${codes} old code(s)`)
-        return { sessions, codes, orphans: orphaned.length + passwords + links }
+        return { sessions, codes, orphans: orphaned.length + leftOpen.length + passwords + links }
     }
 }

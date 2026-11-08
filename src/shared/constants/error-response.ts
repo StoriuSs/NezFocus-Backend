@@ -23,9 +23,6 @@ export const ERROR_TYPES = {
     // The current password, given to change it, is wrong. Not a 401: the
     // session is fine, and clients sign out on any 401.
     AUTH_CURRENT_PASSWORD_INVALID: 'AUTH_CURRENT_PASSWORD_INVALID',
-    // Deleting an account without the proof it needs; asking for an emailed
-    // code when the account's password is the proof.
-    AUTH_CONFIRMATION_REQUIRED: 'AUTH_CONFIRMATION_REQUIRED',
     // A signed-in route used before the "complete your account" step (D-61);
     // that step sent again once it is done. Named as in SRS section 8.
     ACCOUNT_INCOMPLETE: 'ACCOUNT_INCOMPLETE',
@@ -77,7 +74,9 @@ export const ERROR_TYPES = {
  * AUTH_TWO_FACTOR_UNAVAILABLE. Sign-up before codes by email, and a first
  * password by code (M0 L6): 403002 AUTH_EMAIL_NOT_VERIFIED, 409004
  * AUTH_PASSWORD_ALREADY_SET, 409005 AUTH_USE_PASSWORD. A username set on its
- * own, once (M0 L7): 400200 USERNAME_ALREADY_SET.
+ * own, once (M0 L7): 400200 USERNAME_ALREADY_SET. Deleting an account with an
+ * optional proof, now a required password (Kiểm 3): 400108
+ * AUTH_CONFIRMATION_REQUIRED.
  */
 export const ERROR_CODES = {
     // Validation error codes (400, 422)
@@ -98,7 +97,6 @@ export const ERROR_CODES = {
     AUTH_CODE_INVALID: '400102',
     AUTH_CODE_EXPIRED: '400103',
     AUTH_CURRENT_PASSWORD_INVALID: '400104',
-    AUTH_CONFIRMATION_REQUIRED: '400108',
     AUTH_PASSWORD_REJECTED: '422004',
 
     // Forbidden error codes (403)

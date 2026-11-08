@@ -4,7 +4,6 @@ import { DeleteOwnAccountCommand } from './delete-own-account.command'
 import { deletesAt, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
     AccountDisabledError,
-    ConfirmationRequiredError,
     CREDENTIAL_REPOSITORY,
     CredentialRepositoryPort,
     CurrentPasswordInvalidError,
@@ -65,13 +64,13 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort
     ) {}
 
-    async execute({ userId, proof, language }: DeleteOwnAccountCommand): Promise<Date> {
+    async execute({ userId, password, language }: DeleteOwnAccountCommand): Promise<Date> {
         const user = await this.directory.findById(userId)
         if (!user || user.deletedAt) throw new AccountDisabledError()
 
-        const hash = await this.credentials.findHash(userId)
-        if (hash === null || !proof.password) throw new ConfirmationRequiredError(['password'])
-        await this.checkPassword(userId, hash, proof.password)
+        // Every completed account has a password (D-130), and only those
+        // reach this route; one without would match no password anyway.
+        await this.checkPassword(userId, await this.credentials.findHash(userId), password)
 
         const blocking = await this.servers.serversBlockingDeletion(userId)
         if (blocking.length > 0) throw new OwnershipTransferRequiredError(blocking)
@@ -95,14 +94,14 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
                 await this.mailer.sendDeletionScheduled(email, deletionDate, timeZone, language)
             }
         ])
-        this.events.record('account_deleted')
+        this.events.record('account_deletion_requested')
         return deletionDate
     }
 
     /** As when changing it: wrong ones count against the user. */
-    private async checkPassword(userId: string, hash: string, password: string): Promise<void> {
+    private async checkPassword(userId: string, hash: string | null, password: string): Promise<void> {
         await withGuess(this.limiter, [[AUTH_RATE_LIMITS.currentPasswordFailuresPerUser, userId]], async (guess) => {
-            if (!(await this.hasher.verify(hash, password))) {
+            if (hash === null || !(await this.hasher.verify(hash, password))) {
                 guess.wrong()
                 throw new CurrentPasswordInvalidError()
             }
