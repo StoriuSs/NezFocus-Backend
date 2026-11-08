@@ -122,7 +122,6 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `matches_email`, ...), so a form can mark them one by one |
 | `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `recent_email`, `emails`, `sign_ins`, `wrong_password` or `codes` |
 | `429 RATE_LIMIT_EXCEEDED` (the time zone, `PATCH /users/me/settings`) | `reason`: `timezone`, and `changeable_at`: when the zone may change again (it changes once every 24 hours) |
-| `400 AUTH_CONFIRMATION_REQUIRED` | `needs`: which proof is missing (`password`) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |
 | `401 AUTH_REFRESH_FAILED` | `reason`: why the session ended; with `account_deleted` while the account waits to be deleted, `deletes_at` |
 | `403 ACCOUNT_PENDING_DELETION` | `deletes_at`: when the account is deleted unless restored |
@@ -162,7 +161,6 @@ were dropped; no `2xxxxx` code is sent any more.
 | `400102` | `AUTH_CODE_INVALID` | The emailed code is wrong (only the newest one works) |
 | `400103` | `AUTH_CODE_EXPIRED` | The code expired or had too many wrong tries: ask for a new one |
 | `400104` | `AUTH_CURRENT_PASSWORD_INVALID` | The current password, given to change it or delete the account, is wrong. Not a 401: the session is fine |
-| `400108` | `AUTH_CONFIRMATION_REQUIRED` | Deleting the account without the proof it needs (`data.needs`) |
 | `401000` | `AUTH_UNAUTHORIZED` | A 401 with no code of its own |
 | `401001` | `AUTH_INVALID_CREDENTIALS` | Wrong email or password (the same answer for an unknown address) |
 | `401003` | `AUTH_TOKEN_MISSING` | No `Authorization: Bearer` header on a protected route |

@@ -342,8 +342,8 @@ validateAndTransform(PaymentDto, data, { throwOnError: true })
 | Admin endpoints | `false` | Allow admins to see data, log issues |
 
 **What the starter itself does:** no route passes `throwOnError: true`
-today, the auth routes included (`TokenResponseDto`, `AuthOptionsResponseDto`
-and `SignInMethodsResponseDto` use the default). Their data is not read from a user
+today, the auth routes included (`TokenResponseDto` and
+`AuthOptionsResponseDto` use the default). Their data is not read from a user
 or an outside system: it is a token the API has just signed, or settings it
 holds, so a validation failure there is a bug the integration tests catch
 rather than bad data at run time. Switch a route to `true` when it returns

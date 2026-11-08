@@ -151,7 +151,7 @@ present, types and `null`s as declared, no undeclared fields. It runs with
 that is wrong. When you add a route, add it to this test too.
 
 The **auth** routes are not in it. Their response shapes (`TokenResponseDto`,
-`AuthOptionsResponseDto`, `SignInMethodsResponseDto`) are checked only by the auth
+`AuthOptionsResponseDto`) are checked only by the auth
 integration suites, which assert on the fields they use, not against the
 spec. If you change an auth DTO, run `pnpm openapi:export` and look at the
 diff of `openapi.json` yourself; extending the contract test to the auth

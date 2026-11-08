@@ -151,9 +151,6 @@ Every account can sign in with an **emailed code**. It can also have a
 **password** (a row in `Credential`), a **Google link** (a row in
 `OAuthAccount`), or both. All work at any time; none is primary.
 
-`GET /api/v1/auth/sign-in-methods` tells the settings page what this account
-has: `{ "password": true, "providers": ["google"] }`.
-
 | To | How | Sessions |
 |---|---|---|
 | Add Google to an account | Sign in with Google once. An account with the same address is linked, and its owner emailed "Google sign-in was added". | kept |
@@ -200,9 +197,10 @@ chooses one with
 "Forgot password" first. An account that is not completed cannot delete
 itself: the route answers 403 `ACCOUNT_INCOMPLETE` until the step is done.
 
-If the password is missing, or the account has none, the answer is 400
-`AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. Wrong passwords
-count against the same limit as when changing the password.
+The password is required (422 `VALIDATION_ERROR` without it). A wrong one,
+or any one for an account that has none, is 400
+`AUTH_CURRENT_PASSWORD_INVALID`, and counts against the same limit as when
+changing the password.
 
 An Owner of servers with other members is refused with 409
 `OWNERSHIP_TRANSFER_REQUIRED` (the servers in `data.servers`) until they hand

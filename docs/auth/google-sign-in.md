@@ -245,9 +245,7 @@ Until then it differs from other accounts in three ways:
   `AUTH_INVALID_CREDENTIALS` until a password is set: the API does not reveal
   how an account signs in. A code by email always works.
 
-`GET /api/v1/auth/sign-in-methods` tells the settings page what an account has:
-`{ "password": false, "providers": ["google"] }`. There is no route to unlink
-Google. [accounts.md](accounts.md) covers sign-in methods in the account's life.
+There is no route to unlink Google. [accounts.md](accounts.md) covers sign-in methods in the account's life.
 
 ## When Redis or Google is down
 

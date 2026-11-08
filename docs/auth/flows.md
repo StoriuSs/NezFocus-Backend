@@ -571,9 +571,9 @@ optional `language` for the email. Send with credentials so the cookie is
 cleared.
 [delete-own-account.handler.ts](../../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts)
 
-1. No password sent, or the account has none:
-   `400 AUTH_CONFIRMATION_REQUIRED` with `data.needs: ["password"]`. A
-   completed account without a password chooses one with
+1. The password is required: without it the DTO answers
+   `422 VALIDATION_ERROR`. An account without a password matches none, so it
+   gets the wrong-password answer below, and chooses one with
    [forgot password](#forgot-and-reset-the-password) first.
 2. Wrong current passwords per user: 5 per 15 minutes (`429`,
    `wrong_password`). Wrong: `400 AUTH_CURRENT_PASSWORD_INVALID`.

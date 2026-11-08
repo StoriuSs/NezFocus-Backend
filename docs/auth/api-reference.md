@@ -147,7 +147,7 @@ Sending `full_name` to `/auth/email-code`:
 |---|---|
 | **Public** | No token needed. The route has `@Public()` |
 | **Signed in** | Send `Authorization: Bearer <access_token>`. The access token is the `access_token` from a sign-in or refresh. Keep it in memory, never in `localStorage` ([sessions-and-tokens.md](./sessions-and-tokens.md)) |
-| **Cookie + Origin** | Public, but the route reads a cookie, so it also checks the `Origin` header. Send the request from a page whose origin is in `CORS_ORIGINS`, with credentials (`fetch(..., { credentials: 'include' })` or axios `withCredentials: true`) |
+| **Cookie + Origin** | Public, but the route reads or sets the session cookie, so it also checks the `Origin` header (a page on another site is refused: `403 AUTH_FORBIDDEN`). Send the request from a page whose origin is in `CORS_ORIGINS`, with credentials (`fetch(..., { credentials: 'include' })` or axios `withCredentials: true`) |
 | **Browser navigation** | Not an API call. Point the browser at it (`window.location.href = ...`); it answers with a redirect |
 
 Every signed-in route can answer the [guard errors](#errors-any-route-can-return)
@@ -223,18 +223,17 @@ reads `revoked`: nothing is being deleted any more.
 | Method and path | Who | Success | Section |
 |---|---|---|---|
 | `POST /auth/email-code` | Public | 202 | [Email a sign-in code](#email-a-sign-in-code) |
-| `POST /auth/email-code/verify` | Public | 200, signs in | [Sign in with the code](#sign-in-with-the-code) |
+| `POST /auth/email-code/verify` | Cookie + Origin | 200, signs in | [Sign in with the code](#sign-in-with-the-code) |
 | `POST /auth/complete-account` | Signed in, not completed | 200 | [Complete your account](#complete-your-account) |
-| `POST /auth/login` | Public | 200, signs in | [Sign in](#sign-in) |
+| `POST /auth/login` | Cookie + Origin | 200, signs in | [Sign in](#sign-in) |
 | `POST /auth/refresh` | Cookie + Origin | 200 | [Refresh](#refresh) |
 | `POST /auth/logout` | Cookie + Origin | 200 | [Sign out](#sign-out) |
 | `GET /auth/sessions` | Signed in | 200 | [List the signed-in devices](#list-the-signed-in-devices) |
 | `DELETE /auth/sessions/{id}` | Signed in | 200 | [Sign out one device](#sign-out-one-device) |
 | `DELETE /auth/sessions` | Signed in | 200 | [Sign out the other devices](#sign-out-the-other-devices) |
 | `POST /auth/forgot-password` | Public | 202 | [Forgot password](#forgot-password) |
-| `POST /auth/reset-password` | Public | 200, signs in | [Reset password](#reset-password) |
+| `POST /auth/reset-password` | Cookie + Origin | 200, signs in | [Reset password](#reset-password) |
 | `POST /auth/change-password` | Signed in | 200 | [Change password](#change-password) |
-| `GET /auth/sign-in-methods` | Signed in | 200 | [Sign-in methods](#sign-in-methods) |
 | `POST /auth/account/delete` | Signed in | 200 | [Delete the account](#delete-the-account) |
 | `POST /auth/account/restore` | Signed in, waiting to be deleted | 200 | [Restore the account](#restore-the-account) |
 | `GET /auth/options` | Public | 200 | [Sign-in options](#sign-in-options) |
@@ -299,7 +298,7 @@ Every accepted request counts, whether or not the address has an account.
 
 ### Sign in with the code
 
-`POST /api/v1/auth/email-code/verify` · Public · sets `refresh_token`
+`POST /api/v1/auth/email-code/verify` · Cookie + Origin · sets `refresh_token`
 
 Signs in with the emailed code. If the address has no account, one is made
 now: no password, no username, not completed yet.
@@ -325,6 +324,7 @@ signed-in routes answer `403 ACCOUNT_INCOMPLETE` ([the gate](#the-gate)).
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
+| 403 | `AUTH_FORBIDDEN` | `403004` | `Origin` present and not in `CORS_ORIGINS`: a page on another site signing the visitor in to an account of its choosing (login CSRF). Checked first; nothing counts | |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 30 wrong codes in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-fail-email`: 10 wrong codes an hour for this address, across its codes (D-134) | `data.reason: "codes"`, `Retry-After` |
 | 400 | `AUTH_CODE_INVALID` | `400102` | Wrong code, no code sent, a newer code replaced it, or another request used it first | |
@@ -392,7 +392,7 @@ nothing is written, the password included: send again with another username.
 
 ### Sign in
 
-`POST /api/v1/auth/login` · Public · sets `refresh_token`
+`POST /api/v1/auth/login` · Cookie + Origin · sets `refresh_token`
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
@@ -406,6 +406,7 @@ message "Login successful", `data`: [the token answer](#token-answer).
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
+| 403 | `AUTH_FORBIDDEN` | `403004` | `Origin` present and not in `CORS_ORIGINS` (login CSRF). Checked first; nothing counts | |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-email`: 5 failed sign-ins for this address in 15 minutes | `data.reason: "sign_ins"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `login-fail-ip`: 30 failed sign-ins from this IP in 5 minutes, any addresses | `data.reason: "network"`, `Retry-After` |
 | 401 | `AUTH_INVALID_CREDENTIALS` | `401001` | Wrong password, unknown address, or an account with no password (made by a code or with Google, and not completed). One error for all three, on purpose | |
@@ -570,7 +571,7 @@ same as for an address with no account.
 
 ### Reset password
 
-`POST /api/v1/auth/reset-password` · Public · sets `refresh_token`
+`POST /api/v1/auth/reset-password` · Cookie + Origin · sets `refresh_token`
 
 Sets a new password with the emailed code, ends **every** earlier session,
 and signs in on this device. On an account with no password this adds one,
@@ -592,6 +593,7 @@ email are logged if they fail; the answer is still `200`.
 
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
+| 403 | `AUTH_FORBIDDEN` | `403004` | `Origin` present and not in `CORS_ORIGINS` (login CSRF). Checked first; nothing counts | |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-try-ip`: 30 wrong codes in 5 minutes from this IP | `data.reason: "network"`, `Retry-After` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `code-fail-email`: 10 wrong codes an hour for this address (D-134) | `data.reason: "codes"`, `Retry-After` |
 | 422 | `AUTH_PASSWORD_REJECTED` | `422004` | The new password breaks a rule that needs only the address. Checked before the code, so it does not use a try | `data.rules` |
@@ -626,26 +628,6 @@ successfully", `data: null`.
 The new password may equal the old one: there is no "different from current"
 rule.
 
-### Sign-in methods
-
-`GET /api/v1/auth/sign-in-methods` · Signed in
-
-How this account signs in, for a settings page that offers "set a password"
-only when there is none.
-
-**Success:** `200`, message
-"Operation completed successfully".
-
-| `data` field | Type | Meaning |
-|---|---|---|
-| `password` | boolean | The account has a password |
-| `providers` | string[] | Linked providers by id, sorted, for example `["google"]` |
-
-**Errors:** the guard errors only.
-
-An account without a password chooses its first one with
-[forgot password](#forgot-password) and [reset password](#reset-password).
-
 ## Deleting the account
 
 [../account-deletion.md](../account-deletion.md) explains the whole lifecycle:
@@ -664,7 +646,7 @@ is emailed the date. An account without a password chooses one with
 
 | Field | Type | Required | Checked by the DTO |
 |---|---|---|---|
-| `password` | string | no, but without it the answer is `AUTH_CONFIRMATION_REQUIRED` | 1 to 1024 |
+| `password` | string | yes | 1 to 1024 |
 | `language` | string | no | `vi` or `en`, for the "account will be deleted" email ([the `language` field](#language-field)) |
 
 **Success:** `200`, message "Account will be deleted",
@@ -677,9 +659,8 @@ account already waiting gets `403 ACCOUNT_PENDING_DELETION` from the guard):
 | Status | `meta.type` | `meta.code` | When | Extras |
 |---|---|---|---|---|
 | 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Already deleted | |
-| 400 | `AUTH_CONFIRMATION_REQUIRED` | `400108` | No password was sent, or the account has none (it chooses one with [forgot password](#forgot-password) first) | `data.needs`: `["password"]` |
 | 429 | `RATE_LIMIT_EXCEEDED` | `429001` | `change-pw-fail`: 5 wrong passwords in 15 minutes | `data.reason: "wrong_password"`, `Retry-After` |
-| 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | Wrong password | |
+| 400 | `AUTH_CURRENT_PASSWORD_INVALID` | `400104` | Wrong password, or the account has none (it chooses one with [forgot password](#forgot-password) first) | |
 | 409 | `OWNERSHIP_TRANSFER_REQUIRED` | `409101` | The account owns servers with other members: hand them over first (D-76). None until servers exist (M1) | `data.servers`: `[{ id, name, member_count }]` |
 | 403 | `AUTH_ACCOUNT_DISABLED` | `403003` | Another request recorded the deletion a moment earlier | |
 
@@ -871,7 +852,6 @@ kind; `meta.code` and `meta.type` come from
 | `AUTH_CODE_INVALID` | 400 | `400102` | That code is not right. If you asked for more than one, only the newest works. | |
 | `AUTH_CODE_EXPIRED` | 400 | `400103` | This code no longer works: it expired, or had too many wrong tries. Ask for a new one. | |
 | `AUTH_CURRENT_PASSWORD_INVALID` | 400 | `400104` | Your current password is not right. | |
-| `AUTH_CONFIRMATION_REQUIRED` | 400 | `400108` | Confirm it is you first. | `needs` |
 | `AUTH_ACCOUNT_DISABLED` | 403 | `403003` | This account has been deleted. | |
 | `AUTH_FORBIDDEN` | 403 | `403004` | This request did not come from an allowed site. | |
 | `ACCOUNT_INCOMPLETE` | 403 | `403100` | Complete your account first. | |
@@ -934,7 +914,7 @@ for logs; react to the status and `data`.
 | change-password | 200 | Password has been changed successfully |
 | account/delete | 200 | Account will be deleted |
 | account/restore | 200 | Account restored |
-| sign-in-methods, options, GET sessions | 200 | Operation completed successfully |
+| options, GET sessions | 200 | Operation completed successfully |
 | users/me | 200 | User fetched successfully |
 | GET users/me/settings | 200 | Settings fetched |
 | PATCH users/me/settings | 200 | Settings saved |
@@ -954,14 +934,13 @@ Switch on `meta.type` (and the HTTP status for the generic cases).
 | `403 ACCOUNT_PENDING_DELETION`, or `deletes_at` set in `GET /users/me` | Not signed out: show the restore dialog with the date from `deletes_at` (restore, or sign out). Keep the session |
 | `401 AUTH_REFRESH_FAILED` with `data.reason: "account_deleted"` and `deletes_at` | Signed out because someone asked to delete the account: say it is deleted on that date unless they sign in and restore it |
 | `409 OWNERSHIP_TRANSFER_REQUIRED` | List `data.servers` and ask them to hand those servers over first |
-| `403 AUTH_FORBIDDEN` on refresh or logout | A configuration problem, not the user's: the page's origin is not in `CORS_ORIGINS`. Log it; the user can only try again later |
+| `403 AUTH_FORBIDDEN` on a sign-in, refresh or logout | A configuration problem, not the user's: the page's origin is not in `CORS_ORIGINS`. Log it; the user can only try again later |
 | `401 AUTH_INVALID_CREDENTIALS` | "Incorrect email or password", nothing more specific |
 | `422 AUTH_PASSWORD_REJECTED` | Mark each rule in `data.rules` under the password field. Keep what they typed in other fields |
 | `422 VALIDATION_ERROR` | A client bug or a malformed field: show the field from `data.details[].property` (camelCase) |
 | `400 AUTH_CODE_INVALID` | "That code is not right" and let them retry. If they asked for several, only the newest works |
 | `400 AUTH_CODE_EXPIRED` | The code is dead: offer to send a new one |
 | `400 AUTH_CURRENT_PASSWORD_INVALID` | Mark the current-password field. Do **not** sign out |
-| `400 AUTH_CONFIRMATION_REQUIRED` | Ask for the password and send again. An account with no password ([sign-in methods](#sign-in-methods) says `password: false`) chooses one with [forgot password](#forgot-password) first |
 | `200` from `email-code/verify` with `account.completed: false`, or `completed: false` from `GET /users/me` | Open the "complete your account" step ([`POST /auth/complete-account`](#complete-your-account)) |
 | `403 ACCOUNT_INCOMPLETE` | Not signed out: go to the "complete your account" step. Keep the session |
 | `409 ACCOUNT_ALREADY_COMPLETE` | Already done (another tab, a double click): read `GET /users/me` and go into the app |

@@ -198,7 +198,7 @@ deletions). All of it is `auth_events_total{event}`
 | `Session cache unavailable, reading from the database` | Redis is down; sign-in checks fall back to Postgres | Fix Redis (`RedisDown` will be firing) |
 | `Rate limiting unavailable, refusing the request` | Redis is down; the auth limits fail closed (D-137), so **nobody can sign in**, ask for a code or change a password (503) until it is back. Signed-in sessions carry on | Fix Redis (`RedisDown` will be firing) |
 | `Could not queue a password reset email` | "Forgot password" for an address with an account could not queue the email; the person was still answered 202 | Check Redis and the `auth` queue; the person can ask again |
-| `a step after the change failed` (`Password reset:` or `Account completion:`) | The change was made, but dropping a cached copy or queueing the notice email failed. The request still succeeded | Check Redis and the `auth` queue. A cached copy left behind expires within minutes |
+| `a step after the change failed` (prefixed `Password reset:`, `Password change:`, `Account completion:`, `Account deletion request:`, `Account restore:`, `Signing out other devices:` or `Google link:`) | The change was made, but dropping a cached copy or queueing the notice email failed. The request still succeeded | Check Redis and the `auth` queue. A cached copy left behind expires within minutes |
 | A failed `send-code` job (queue dashboard, or Sentry) | An email with a code could not be sent after 3 tries (about 15 seconds) | Check SMTP; the person must ask for a new code |
 
 To see auth refusals by type over the last hour, in Loki:

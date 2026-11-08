@@ -156,7 +156,7 @@ answer.
 |---|---|
 | [auth.controller.ts](../../src/modules/auth/presentation/http/auth.controller.ts) | `email-code`, `email-code/verify`, `login`, `refresh`, `logout`, `complete-account`, `options` |
 | [sessions.controller.ts](../../src/modules/auth/presentation/http/sessions.controller.ts) | `GET sessions`, `DELETE sessions`, `DELETE sessions/:id` (the list of signed-in devices, D-75) |
-| [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password`, `sign-in-methods` |
+| [password.controller.ts](../../src/modules/auth/presentation/http/password.controller.ts) | `forgot-password`, `reset-password`, `change-password` |
 | [account-deletion.controller.ts](../../src/modules/auth/presentation/http/account-deletion.controller.ts) | `account/delete`, `account/restore` |
 | [oauth.controller.ts](../../src/modules/auth/presentation/http/oauth.controller.ts) | `:provider`, `:provider/callback` (Google) |
 
@@ -168,8 +168,7 @@ the Google return sets the refresh cookie, and `refresh` reads it.
 
 **The order they are registered in matters.** `GET auth/:provider` has a
 parameter where the others have a word, so it matches any `GET auth/<word>`:
-`auth/google`, but also `auth/options`, `auth/sign-in-methods` and
-`auth/sessions`. Express tries the routes in the order they were
+`auth/google`, but also `auth/options` and `auth/sessions`. Express tries the routes in the order they were
 registered and takes the first that matches, and Nest registers them
 controller by controller, in the order of the module's `controllers`. With
 OAuthController first, `GET /auth/options` would be a sign-in with a provider
@@ -233,7 +232,6 @@ its command: `<name>.command.ts` and `<name>.handler.ts`.
 | `POST /auth/forgot-password` | `ForgotPasswordCommand` | [forgot-password/](../../src/modules/auth/application/commands/forgot-password/) |
 | `POST /auth/reset-password` | `ResetPasswordCommand` | [reset-password/](../../src/modules/auth/application/commands/reset-password/) |
 | `POST /auth/change-password` | `ChangePasswordCommand` | [change-password/](../../src/modules/auth/application/commands/change-password/) |
-| `GET /auth/sign-in-methods` | `GetSignInMethodsQuery` | [get-sign-in-methods/](../../src/modules/auth/application/queries/get-sign-in-methods/) |
 | `POST /auth/account/delete` | `DeleteOwnAccountCommand` | [delete-own-account/](../../src/modules/auth/application/commands/delete-own-account/) |
 | `POST /auth/account/restore` | `RestoreAccountCommand` | [restore-account/](../../src/modules/auth/application/commands/restore-account/) |
 | `GET /auth/{provider}` | `StartOAuthCommand` | [start-oauth/](../../src/modules/auth/application/commands/start-oauth/) |
@@ -266,7 +264,6 @@ by several handlers:
 | `SignInGate` ([sign-in-gate.ts](../../src/modules/auth/application/services/sign-in-gate.ts)) | **The only way into a session** after a first step: `pass` starts it through `SessionIssuer`, so a rule every sign-in path must follow has one place to live | login, email-code/verify, reset-password, finish-oauth |
 | `SessionIssuer` ([session-issuer.ts](../../src/modules/auth/application/services/session-issuer.ts)) | Creates the `Session` row and its first refresh token, and signs the access token | `SignInGate` |
 | `CodeIssuer` ([code-issuer.ts](../../src/modules/auth/application/services/code-issuer.ts)) | Codes by address (D-129). `issue(address, purpose, now, email, whenMailFails?)` makes a six-digit code, stores its HMAC (replacing any earlier one for the address and purpose) and queues the email, or sends nothing when `email` is null; with `whenMailFails`, an email that cannot be queued is handed to it instead of failing the request (forgot-password); `check` counts a wrong guess as one of the code's tries; `use` uses a right code up | email-code, email-code/verify, forgot-password, reset-password |
-| `SignInMethods` ([sign-in-methods.ts](../../src/modules/auth/application/services/sign-in-methods.ts)) | "Has a password? Which providers?", and a provider's display name | sign-in-methods |
 | `limits.ts` ([limits.ts](../../src/modules/auth/application/services/limits.ts)) | `refuseIfLimited` (check, count nothing), `enforce` (check, then count; requests that raced past the check and are refused by the count give their hits back), `withGuess` (count a guess while it is checked) | every limited handler |
 | `afterCommit` ([after-commit.ts](../../src/modules/auth/application/services/after-commit.ts)) | Runs the steps after a change is committed (dropping cached copies, queueing the notice email); a failing step is logged, the request still succeeds | reset-password, complete-account |
 
@@ -402,8 +399,9 @@ can alert. The list is `AUTH_EVENT_NAMES` in
 | `password_reset` | A password reset with a code (or a first one added that way) |
 | `oauth_login_succeeded`, `oauth_login_failed` | A Google return finished, or failed with an `?error=` reason |
 | `oauth_account_linked` | Google linked to an existing account |
-| `account_deleted` | `POST /auth/account/delete` succeeded: counted at the request, though the account goes 14 days later (D-141) |
+| `account_deletion_requested` | `POST /auth/account/delete` succeeded: the account goes 14 days later (D-141) |
 | `account_restored` | `POST /auth/account/restore` took a request back (not counted when there was nothing to take back) |
+| `account_deleted` | The sweep deleted an account its owner asked to delete (`EndSessionsOfDeletedAccountHandler`, on `AccountDeletedEvent` with `ownerAsked`); a sign-up left incomplete is not counted |
 
 Nothing is recorded for change-password, logout, or signing out devices from
 the list (`DELETE /auth/sessions`, `DELETE /auth/sessions/{id}`).
@@ -445,7 +443,7 @@ what to do about each.
 | warn | `... of deleted accounts: an account deletion's event was not handled` | [clean-up-auth.handler.ts](../../src/modules/auth/application/commands/clean-up-auth/clean-up-auth.handler.ts) |
 | log | `Removed N ended session(s) and N old code(s)` | clean-up-auth.handler.ts |
 | error | `Could not queue a password reset email: ...` | [forgot-password.handler.ts](../../src/modules/auth/application/commands/forgot-password/forgot-password.handler.ts) |
-| error | `Password reset: a step after the change failed: ...` / `Account completion: a step after the change failed: ...` | [after-commit.ts](../../src/modules/auth/application/services/after-commit.ts) |
+| error | `<what>: a step after the change failed: ...`, where `<what>` is `Password reset`, `Password change`, `Account completion`, `Account deletion request`, `Account restore`, `Signing out other devices` or `Google link` | [after-commit.ts](../../src/modules/auth/application/services/after-commit.ts) |
 | error | `Could not end the sessions of deleted account ...` / `Could not drop the cached copy of user ...` | [events/handlers/](../../src/modules/auth/application/events/handlers/) |
 
 What never reaches a log or Sentry: the `Authorization`, `Cookie` and
@@ -487,7 +485,7 @@ or a dependency such as `jose`, `openid-client` or `@node-rs/argon2`. More on th
 
 | Suite | What it proves |
 |---|---|
-| [auth-routes.e2e-spec.ts](../../test/e2e/auth-routes.e2e-spec.ts) | In the order the module registers the five controllers, `GET auth/sign-in-methods`, `auth/options` and `auth/sessions` reach their own handlers, not `GET auth/:provider`; with OAuthController first they would not ([the controllers](#the-controllers)) |
+| [auth-routes.e2e-spec.ts](../../test/e2e/auth-routes.e2e-spec.ts) | In the order the module registers the five controllers, `GET auth/options` and `auth/sessions` reach their own handlers, not `GET auth/:provider`; with OAuthController first they would not ([the controllers](#the-controllers)) |
 
 **Integration suites** (real Postgres, Redis and Mailpit)
 

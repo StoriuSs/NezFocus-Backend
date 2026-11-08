@@ -68,8 +68,8 @@ nothing else:
 { "password": "correct horse battery staple", "language": "vi" }
 ```
 
-If the password is missing, or the account has none, the answer is
-400 `AUTH_CONFIRMATION_REQUIRED` with `{ "needs": ["password"] }`.
+The password is required: without it the answer is 422 `VALIDATION_ERROR`.
+A wrong one is 400 `AUTH_CURRENT_PASSWORD_INVALID`, and counts.
 
 **An account that is not completed** cannot ask: like every signed-in route
 but three, this one answers 403 `ACCOUNT_INCOMPLETE` until "complete your
@@ -79,10 +79,9 @@ sets a password when it is completed (D-61, D-130).
 
 **A completed account without a password** (only one marked completed by
 migration `20261106000000_codes_by_email`, before the step existed) has no
-proof to give. It chooses a password first with "forgot password"
-(`POST /auth/forgot-password`, then `POST /auth/reset-password`), then
-deletes with it. `GET /auth/sign-in-methods` tells the page which case it is
-(`password: false`).
+proof to give: every password it sends is wrong. It chooses a password first
+with "forgot password" (`POST /auth/forgot-password`, then
+`POST /auth/reset-password`), then deletes with it.
 
 **An Owner of servers with other members** is refused with 409
 `OWNERSHIP_TRANSFER_REQUIRED` until they hand those servers over (D-76).
@@ -130,8 +129,8 @@ sequenceDiagram
    user are dropped, and the email is queued: job `account-deletion-scheduled`,
    "Your {app} account will be deleted on dd/mm/yyyy", the date written in the
    account's time zone, with a button to `FRONTEND_URL/login` where restoring
-   starts. `auth_events_total{event="account_deleted"}` is counted now, at the
-   request.
+   starts. `auth_events_total{event="account_deletion_requested"}` is counted
+   now; `account_deleted` waits for the sweep.
 6. The controller clears the refresh cookie and answers 200, "Account will be
    deleted", with `data: { "deletes_at": "<ISO date>" }` (the request time plus
    14 days, `DELETION_WAIT_MS`).
@@ -229,6 +228,9 @@ handlers, run by the event bus in the same process right after:
   user, ends every session still open (those made by signing in during the
   wait) with the reason `account-deleted` and drops their cache entries, then
   deletes the password (`Credential`) and the Google links (`OAuthAccount`).
+  When the owner asked for the deletion (the event's `ownerAsked`, false for
+  a sign-up left incomplete), it counts
+  `auth_events_total{event="account_deleted"}`.
 - **`CleanupAccountAvatarHandler`** (users): queues the avatar file's removal on
   the `file-cleanup` queue. Without it, a deleted person's photo would stay
   publicly fetchable at a stable URL (local storage is served without auth).
@@ -325,8 +327,8 @@ From `POST /api/v1/auth/account/delete`:
 
 | Status | `meta.type` | Code | When | `data` |
 |---|---|---|---|---|
-| 400 | `AUTH_CONFIRMATION_REQUIRED` | 400108 | No password sent, or the account has none | `needs`: `["password"]` |
-| 400 | `AUTH_CURRENT_PASSWORD_INVALID` | 400104 | Wrong password (400, not 401: clients treat any 401 as "signed out") | |
+| 422 | `VALIDATION_ERROR` | 422000 | No password sent | the field errors |
+| 400 | `AUTH_CURRENT_PASSWORD_INVALID` | 400104 | Wrong password, or the account has none (400, not 401: clients treat any 401 as "signed out") | |
 | 429 | `RATE_LIMIT_EXCEEDED` | 429001 | The limit below is used up | `reason`, and the `Retry-After` header |
 | 409 | `OWNERSHIP_TRANSFER_REQUIRED` | 409101 | The account owns servers with other members (D-76) | `servers`: `[{ id, name, member_count }]` |
 | 403 | `AUTH_ACCOUNT_DISABLED` | 403003 | Already deleted, or another request recorded the deletion a moment earlier | |

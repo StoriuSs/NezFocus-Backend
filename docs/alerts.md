@@ -274,8 +274,9 @@ What to do about each: [auth/operations.md](./auth/operations.md).
 `auth_events_total` counts more than the two rules use. Its `event` label also
 takes `login_succeeded`, `login_rate_limited`, `registration`,
 `password_reset`, `oauth_login_succeeded`,
-`oauth_login_failed`, `oauth_account_linked`, `account_deleted` (a deletion
-request; the account goes 14 days later) and `account_restored`
+`oauth_login_failed`, `oauth_account_linked`, `account_deletion_requested`,
+`account_restored` and `account_deleted` (the sweep deleted an account its
+owner asked to delete, 14 days later)
 (`src/modules/auth/application/ports/auth-events.port.ts`). The API
 dashboard's "Sign-in and accounts" row draws them. To alert on one, copy
 `AuthFailedLoginSpike` in `rules/app.yml` with another `event`, for example a

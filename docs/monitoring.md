@@ -160,7 +160,7 @@ The `event` label is one of a fixed list ([`auth-events.port.ts`](../src/modules
 |---|---|
 | Signing in | `login_succeeded`, `login_failed`, `login_rate_limited`, `oauth_login_succeeded`, `oauth_login_failed` |
 | Sessions | `refresh_reuse_detected` |
-| Accounts | `registration`, `password_reset`, `oauth_account_linked`, `account_deleted` (counted at the request; the account goes 14 days later), `account_restored` |
+| Accounts | `registration`, `password_reset`, `oauth_account_linked`, `account_deletion_requested`, `account_restored`, `account_deleted` (the sweep deleted an account its owner asked to delete; sign-ups left incomplete are not counted) |
 
 Every value starts at 0 when the app starts
 ([`prometheus-auth-events.adapter.ts`](../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts)).
