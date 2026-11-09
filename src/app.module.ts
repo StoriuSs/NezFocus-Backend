@@ -57,6 +57,7 @@ import { MaintenanceModule } from '@/maintenance/maintenance.module'
 // Feature modules (Hexagonal Architecture)
 import { UsersModule } from '@/modules/users/users.module'
 import { AuthModule } from '@/modules/auth/auth.module'
+import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
 // Guards
@@ -169,6 +170,7 @@ import { RolesGuard } from '@/shared/presentation'
         // Feature modules (Hexagonal Architecture)
         UsersModule,
         AuthModule,
+        PermissionsModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

@@ -1,6 +1,8 @@
-// Owned by src/modules/servers (SRS 4.2, 4.3, 7.1; ARCHITECTURE 9).
-// The permissions module reads these tables through a port of the servers
-// module, never directly (ARCHITECTURE 2.1).
+// Owned by src/modules/servers (SRS 4.2, 4.3, 7.1; ARCHITECTURE 9): only it
+// writes them. The permissions module reads the ones a permission depends on
+// (Server, Role, Channel, ChannelViewRole, Member, MemberRole) through its own
+// read-only adapter: going through a servers port instead would make the two
+// modules import each other, since servers checks permissions (ARCHITECTURE 2.1).
 //
 // Names that must not repeat (categories, channels, roles; D-84, D-87) are
 // compared through `nameKey`: the name folded to lower case by the
