@@ -36,6 +36,18 @@ export const ERROR_TYPES = {
     USER_NOT_FOUND: 'USER_NOT_FOUND',
     USERNAME_CONFLICT: 'USERNAME_CONFLICT',
 
+    // Server errors (SRS appendix A)
+    // A dead invite: expired, used up, revoked, or its server deleted.
+    INVITE_INVALID: 'INVITE_INVALID',
+    // Already in 100 servers (REQ-SRV-01).
+    MAX_SERVERS_REACHED: 'MAX_SERVERS_REACHED',
+    OWNER_CANNOT_LEAVE: 'OWNER_CANNOT_LEAVE',
+    // Acting on a role or a member ranked the same as or above oneself.
+    ROLE_HIERARCHY_VIOLATION: 'ROLE_HIERARCHY_VIOLATION',
+    BANNED_FROM_SERVER: 'BANNED_FROM_SERVER',
+    // Timed out; the response says until when.
+    MEMBER_TIMED_OUT: 'MEMBER_TIMED_OUT',
+
     // Upload errors
     UPLOAD_FILE_TOO_LARGE: 'UPLOAD_FILE_TOO_LARGE',
     UPLOAD_INVALID_TYPE: 'UPLOAD_INVALID_TYPE',
@@ -52,6 +64,9 @@ export const ERROR_TYPES = {
     GENERIC: 'GENERIC_ERROR',
     BAD_REQUEST: 'BAD_REQUEST_ERROR',
     NOT_FOUND: 'NOT_FOUND_ERROR',
+    // Lacking a permission in a server (appendix B). A resource the caller may
+    // not even know about is NOT_FOUND instead (NFR-SEC-05).
+    FORBIDDEN: 'FORBIDDEN_ERROR',
     REQUEST_TIMEOUT: 'REQUEST_TIMEOUT_ERROR',
     CONFLICT: 'CONFLICT_ERROR',
     PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE_ERROR',
@@ -104,6 +119,14 @@ export const ERROR_CODES = {
     AUTH_FORBIDDEN: '403004',
     ACCOUNT_INCOMPLETE: '403100',
     ACCOUNT_PENDING_DELETION: '403101',
+    MAX_SERVERS_REACHED: '403200',
+    OWNER_CANNOT_LEAVE: '403201',
+    ROLE_HIERARCHY_VIOLATION: '403202',
+    BANNED_FROM_SERVER: '403203',
+    MEMBER_TIMED_OUT: '403204',
+
+    // Gone (410)
+    INVITE_INVALID: '410200',
 
     // Not found error codes (404)
     USER_NOT_FOUND: '404001',
@@ -127,6 +150,7 @@ export const ERROR_CODES = {
 
     // Generic status-derived codes, used when an exception carries no code of
     // its own (e.g. a bare NotFoundException from a framework internal).
+    FORBIDDEN: '403000',
     NOT_FOUND: '404000',
     REQUEST_TIMEOUT: '408000',
     CONFLICT: '409000',

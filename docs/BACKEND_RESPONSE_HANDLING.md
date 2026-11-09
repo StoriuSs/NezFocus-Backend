@@ -168,10 +168,16 @@ were dropped; no `2xxxxx` code is sent any more.
 | `401005` | `AUTH_TOKEN_INVALID` | The access token is not one this API issued |
 | `401006` | `AUTH_TOKEN_REVOKED` | The session behind the token has ended (`data.reason`) |
 | `401008` | `AUTH_REFRESH_FAILED` | The refresh cookie is missing, expired or ended: sign in again |
+| `403000` | `FORBIDDEN_ERROR` | Missing a permission in a server (SRS appendix B). A server or channel the caller may not know about answers `NOT_FOUND_ERROR` instead |
 | `403003` | `AUTH_ACCOUNT_DISABLED` | The account was deleted |
 | `403004` | `AUTH_FORBIDDEN` | Not allowed: a missing role, or a cookie route called from an origin not in `CORS_ORIGINS` |
 | `403100` | `ACCOUNT_INCOMPLETE` | The account has not done "complete your account"; only routes marked `@AllowIncomplete()` answer. Not a 401: do not sign out |
 | `403101` | `ACCOUNT_PENDING_DELETION` | The account is waiting to be deleted (D-141); only routes marked `@AllowPendingDeletion()` answer (`GET /users/me`, `POST /auth/account/restore`). Not a 401: do not sign out, offer to restore |
+| `403200` | `MAX_SERVERS_REACHED` | Creating or joining a server when already in 100 |
+| `403201` | `OWNER_CANNOT_LEAVE` | The owner leaving a server: transfer it first |
+| `403202` | `ROLE_HIERARCHY_VIOLATION` | Acting on a role or member ranked the same as or above oneself |
+| `403203` | `BANNED_FROM_SERVER` | Joining a server one is banned from |
+| `403204` | `MEMBER_TIMED_OUT` | Doing more than viewing while timed out (`data.until`) |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
 | `404001` | `USER_NOT_FOUND` | No such user |
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |
@@ -180,6 +186,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `409100` | `ACCOUNT_ALREADY_COMPLETE` | "Complete your account" sent for an account already completed |
 | `409101` | `OWNERSHIP_TRANSFER_REQUIRED` | Deleting an account that owns servers with other members (D-76): hand them over first |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
+| `410200` | `INVITE_INVALID` | An invite that expired, ran out of uses, was revoked, or whose server was deleted |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |
 | `415000` | `UNSUPPORTED_MEDIA_TYPE_ERROR` | A body encoding the server does not take |

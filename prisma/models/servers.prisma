@@ -1,0 +1,246 @@
+// Owned by src/modules/servers (SRS 4.2, 4.3, 7.1; ARCHITECTURE 9).
+// The permissions module reads these tables through a port of the servers
+// module, never directly (ARCHITECTURE 2.1).
+//
+// Names that must not repeat (categories, channels, roles; D-84, D-87) are
+// compared through `nameKey`: the name folded to lower case by the
+// application, so "Phòng Ôn" and "phòng ôn" clash but "bàn" and "bạn" do not.
+// The key is made in code rather than by lower() in Postgres, whose folding
+// depends on the database's locale.
+
+/// A study group. Deleting one hides it at once and erases it 30 days later
+/// (REQ-SRV-05).
+model Server {
+  id      String  @id @default(uuid(7))
+  /// 2–100 characters.
+  name    String
+  /// Storage key of the square icon, as for avatars. Empty: initials.
+  iconKey String?
+
+  /// Exactly one owner; the role hierarchy does not apply to them.
+  ownerId String
+  owner   User   @relation("ServerOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  /// The text channel that gets "X joined the server" (D-83). Empty: "Do not
+  /// send", which is also what deleting that channel leaves.
+  welcomeChannelId String?  @unique
+  welcomeChannel   Channel? @relation("WelcomeChannel", fields: [welcomeChannelId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  categories Category[]
+  channels   Channel[]  @relation("ServerChannels")
+  roles      Role[]
+  members    Member[]
+  invites    Invite[]
+  bans       Ban[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+/// A titled group of channels. Deleting one moves its channels out of any
+/// category (REQ-SRV-02).
+model Category {
+  id       String @id @default(uuid(7))
+  serverId String
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name     String
+  nameKey  String
+  /// Order among the server's categories, 0 first.
+  position Int
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  channels Channel[]
+
+  @@unique([serverId, nameKey])
+}
+
+enum ChannelType {
+  text
+  voice
+}
+
+/// Who may post in a text channel (REQ-ROLE-03).
+enum ChannelSendMode {
+  everyone
+  /// Only members with MANAGE_MESSAGES.
+  managers
+}
+
+/// Who may start a session in a study room (REQ-STUDY-01).
+enum StudyStarter {
+  /// Anyone in the room.
+  anyone
+  /// Only members with MANAGE_STUDY_ROOMS.
+  managers
+}
+
+/// A text channel or a voice room. Every column is here from M1 although some
+/// only take effect later (D-144): voice rooms in M4, study rooms in M4–M5,
+/// the Task Board in M3, who may post once there are messages (M2).
+model Channel {
+  id         String      @id @default(uuid(7))
+  serverId   String
+  server     Server      @relation("ServerChannels", fields: [serverId], references: [id], onDelete: Cascade)
+  /// Empty: listed above the first category, with no heading.
+  categoryId String?
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type       ChannelType
+  /// Text channels are stored normalised (lower case, dashes; REQ-SRV-02).
+  name       String
+  nameKey    String
+  /// Order within its category (or within the channels outside any), 0 first.
+  position   Int
+
+  /// Only the owner, ADMINISTRATOR and the roles in viewRoles see it.
+  isPrivate Boolean           @default(false)
+  viewRoles ChannelViewRole[]
+  sendMode  ChannelSendMode   @default(everyone)
+
+  isStudyRoom            Boolean      @default(false)
+  studyStarter           StudyStarter @default(anyone)
+  /// The cycle a new session starts with (SRS 2): focus 5–120 minutes, short
+  /// break 1–30, and optionally a long break of 5–60 after every 2–8 focus
+  /// phases (both empty: no long break).
+  studyFocusMinutes      Int          @default(25)
+  studyShortBreakMinutes Int          @default(5)
+  studyLongBreakMinutes  Int?
+  studyLongBreakEvery    Int?
+
+  taskBoardEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  welcomeOf Server?  @relation("WelcomeChannel")
+  invites   Invite[]
+
+  // No two channels of one kind share a name in the same category, or among
+  // the channels outside any. The migration makes this index NULLS NOT
+  // DISTINCT so that "no category" counts as one group.
+  @@unique([serverId, categoryId, type, nameKey])
+  // Target of the composite keys below: a role or channel of one server can
+  // never be tied to another server's.
+  @@unique([id, serverId])
+}
+
+/// A role allowed to see a private channel.
+model ChannelViewRole {
+  channelId String
+  roleId    String
+  serverId  String
+  channel   Channel @relation(fields: [channelId, serverId], references: [id, serverId], onDelete: Cascade)
+  role      Role    @relation(fields: [roleId, serverId], references: [id, serverId], onDelete: Cascade)
+
+  @@id([channelId, roleId])
+  @@index([roleId])
+}
+
+/// A named set of permissions (SRS appendix B). Roles have no colour (D-31).
+model Role {
+  id          String  @id @default(uuid(7))
+  serverId    String
+  server      Server  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  /// 1–100 characters, not "everyone" or "here" (D-87).
+  name        String
+  nameKey     String
+  /// Bit flags, appendix B. A BigInt: the bits go past 31.
+  permissions BigInt  @default(0)
+  /// Rank: higher is more senior. @everyone is always 0, at the bottom.
+  position    Int
+  /// "Allow anyone to mention this role" (REQ-ROLE-01).
+  mentionable Boolean @default(false)
+  /// The role every member has. One per server: a partial unique index in
+  /// the migration, which Prisma cannot express.
+  isEveryone  Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  members      MemberRole[]
+  channelViews ChannelViewRole[]
+
+  @@unique([serverId, nameKey])
+  @@unique([id, serverId])
+}
+
+/// A person in a server.
+model Member {
+  serverId String
+  userId   String
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  joinedAt      DateTime  @default(now()) @db.Timestamptz(6)
+  /// Timed out until then: they can only view (appendix B, D-52). Compared
+  /// with the clock when permissions are checked, so it lapses by itself.
+  timeoutUntil  DateTime? @db.Timestamptz(6)
+  /// Shown to them on a room's preview page (D-52). At most 512 characters.
+  timeoutReason String?
+
+  roles MemberRole[]
+
+  @@id([serverId, userId])
+  @@index([userId])
+  @@index([serverId, joinedAt])
+}
+
+/// A role given to a member. Both belong to the same server: the composite
+/// keys share serverId.
+model MemberRole {
+  serverId String
+  userId   String
+  roleId   String
+  member   Member @relation(fields: [serverId, userId], references: [serverId, userId], onDelete: Cascade)
+  role     Role   @relation(fields: [roleId, serverId], references: [id, serverId], onDelete: Cascade)
+
+  @@id([serverId, userId, roleId])
+  @@index([roleId])
+}
+
+/// An invite link (REQ-SRV-03). Revoking one deletes it.
+model Invite {
+  /// 8–10 random letters and digits; the link is /invite/{code}.
+  code      String    @id
+  serverId  String
+  server    Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   User      @relation("InviteCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  /// The channel to open after joining. Not returned when it is private.
+  channelId String?
+  channel   Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  /// Empty: no limit.
+  maxUses   Int?
+  uses      Int       @default(0)
+  /// Empty: never expires.
+  expiresAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([serverId])
+  @@index([creatorId])
+  @@index([channelId])
+}
+
+/// A person who may not join again until unbanned (REQ-ROLE-04).
+model Ban {
+  serverId   String
+  userId     String
+  server     Server  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user       User    @relation("BannedUser", fields: [userId], references: [id], onDelete: Cascade)
+  /// At most 512 characters.
+  reason     String?
+  bannedById String?
+  bannedBy   User?   @relation("BannedBy", fields: [bannedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([serverId, userId])
+  @@index([serverId, createdAt])
+  @@index([userId])
+}

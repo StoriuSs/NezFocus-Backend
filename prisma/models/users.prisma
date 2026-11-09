@@ -53,6 +53,14 @@ model User {
   // its default (SRS 7.1, D-131).
   settings UserSettings?
 
+  // Owned by the servers module (prisma/models/servers.prisma); declared here
+  // only because Prisma needs both sides of a relation.
+  ownedServers   Server[] @relation("ServerOwner")
+  memberships    Member[]
+  createdInvites Invite[] @relation("InviteCreator")
+  bans           Ban[]    @relation("BannedUser")
+  bansGiven      Ban[]    @relation("BannedBy")
+
   @@index([username])
   @@index([deletedAt])
   @@index([deletionRequestedAt])
