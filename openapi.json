@@ -1383,6 +1383,226 @@
           "Health"
         ]
       }
+    },
+    "/api/v1/servers": {
+      "get": {
+        "operationId": "ServersController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every server they are in, with the channels they may see and what they\nmay do there (D-115, D-145). The rail and the channel list read this.",
+        "tags": [
+          "servers"
+        ]
+      },
+      "post": {
+        "operationId": "ServersController_create_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServerRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new server from a template (S-SRV-01). Answers with the server as the\nlist shows it, so the client adds it to the rail and opens its first\ntext channel without another request.",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/icon": {
+      "post": {
+        "operationId": "ServersController_uploadIcon_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "icon"
+                ],
+                "properties": {
+                  "icon": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerIconResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new icon, cropped square by the client (MANAGE_SERVER).",
+        "tags": [
+          "servers"
+        ]
+      },
+      "delete": {
+        "operationId": "ServersController_removeIcon_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Back to the initials (MANAGE_SERVER).",
+        "tags": [
+          "servers"
+        ]
+      }
     }
   },
   "info": {
@@ -2090,6 +2310,202 @@
             "description": "\"Show study activity\" (D-79)."
           }
         }
+      },
+      "ServerCategoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "As typed; the channel list shows it in capitals."
+          },
+          "position": {
+            "type": "number",
+            "description": "Order among the categories, 0 first."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position"
+        ]
+      },
+      "ServerChannelResponseDto": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "string",
+            "description": "What they may do in this channel (appendix B, steps 1–6).",
+            "example": "3657472"
+          },
+          "id": {
+            "type": "string"
+          },
+          "category_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null: listed above the first category."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "voice"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "position": {
+            "type": "number",
+            "description": "Order within its category, 0 first."
+          },
+          "is_private": {
+            "type": "boolean"
+          },
+          "send_mode": {
+            "type": "string",
+            "description": "`managers`: only those with MANAGE_MESSAGES may post.",
+            "enum": [
+              "everyone",
+              "managers"
+            ]
+          },
+          "is_study_room": {
+            "type": "boolean"
+          },
+          "task_board_enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "permissions",
+          "id",
+          "category_id",
+          "type",
+          "name",
+          "position",
+          "is_private",
+          "send_mode",
+          "is_study_room",
+          "task_board_enabled"
+        ]
+      },
+      "ServerResponseDto": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "string",
+            "description": "What they may do in the server as a whole: menus and settings pages.",
+            "example": "3657600"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null: show the initials."
+          },
+          "is_owner": {
+            "type": "boolean",
+            "description": "The owner outranks every role and may do everything."
+          },
+          "top_role_position": {
+            "type": "number",
+            "description": "Their highest role's position, 0 with none. Roles at or above it are locked for them, unless they are the owner."
+          },
+          "timeout_until": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Set only while they are timed out."
+          },
+          "welcome_channel_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "The text channel that gets \"X joined the server\"; null for none, or one they cannot see."
+          },
+          "categories": {
+            "description": "Only those with a channel they can see, unless they manage channels.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerCategoryResponseDto"
+            }
+          },
+          "channels": {
+            "description": "Only the ones they can see, by position; group them by category_id.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerChannelResponseDto"
+            }
+          }
+        },
+        "required": [
+          "permissions",
+          "id",
+          "name",
+          "icon_url",
+          "is_owner",
+          "top_role_position",
+          "timeout_until",
+          "welcome_channel_id",
+          "categories",
+          "channels"
+        ]
+      },
+      "ServerListResponseDto": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerResponseDto"
+            }
+          }
+        },
+        "required": [
+          "servers"
+        ]
+      },
+      "CreateServerRequestDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "2–100 characters, counted after composing and trimming.",
+            "minLength": 2,
+            "maxLength": 100
+          },
+          "template": {
+            "description": "Study Server or a plain one: only the channels it starts with differ.",
+            "enum": [
+              "study",
+              "standard"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "template"
+        ]
+      },
+      "ServerIconResponseDto": {
+        "type": "object",
+        "properties": {
+          "icon_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "icon_url"
+        ]
       }
     }
   }

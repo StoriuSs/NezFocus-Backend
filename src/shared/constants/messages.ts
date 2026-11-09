@@ -44,6 +44,14 @@ export const MESSAGES = {
         USERNAME_TAKEN: 'Username is taken'
     },
 
+    // Server messages
+    SERVER: {
+        CREATED: 'Server created',
+        LISTED: 'Servers fetched',
+        ICON_UPDATED: 'Server icon updated',
+        ICON_REMOVED: 'Server icon removed'
+    },
+
     // Health messages
     HEALTH: {
         CHECK_SUCCESS: 'Health check successful'
