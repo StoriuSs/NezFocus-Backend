@@ -35,9 +35,10 @@ const server: ServerSnapshot = {
         channel('phong-mod', { categoryId: 'staff', isPrivate: true, viewRoleIds: ['mod'] })
     ],
     roles: [
-        { id: 'everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true },
-        { id: 'helper', permissions: Permission.MANAGE_CHANNELS, position: 1, isEveryone: false },
-        { id: 'mod', permissions: Permission.MANAGE_MESSAGES, position: 2, isEveryone: false }
+        { id: 'everyone', name: '@everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true },
+        { id: 'helper', name: 'Điều phối', permissions: Permission.MANAGE_CHANNELS, position: 1, isEveryone: false },
+        { id: 'mod', name: 'Trưởng nhóm', permissions: Permission.MANAGE_MESSAGES, position: 2, isEveryone: false },
+        { id: 'admin', name: 'Quản trị', permissions: Permission.ADMINISTRATOR, position: 3, isEveryone: false }
     ]
 }
 
@@ -74,9 +75,22 @@ describe('memberView', () => {
         expect(view.permissions).toBe(EVERYONE_DEFAULT_PERMISSIONS)
     })
 
-    it('never sends who may see a private channel', () => {
-        const view = memberView(server, member('mai', ['mod']), NOW)
-        expect(view.channels.every((c) => !('viewRoleIds' in c))).toBe(true)
+    it('sends who may see a private channel only to those who may edit it', () => {
+        const seer = memberView(server, member('mai', ['mod']), NOW)
+        expect(seer.channels.every((c) => c.viewRoleIds === null)).toBe(true)
+        const editor = memberView(server, member('tuan', ['admin']), NOW)
+        expect(editor.channels.find((c) => c.id === 'phong-mod')!.viewRoleIds).toEqual(['mod'])
+        expect(editor.channels.find((c) => c.id === 'hoi-dap')!.viewRoleIds).toEqual([])
+    })
+
+    it('lists the roles but @everyone, highest first, marking the all-powerful one, and which they hold', () => {
+        const view = memberView(server, member('mai', ['mod', 'helper']), NOW)
+        expect(view.roles).toEqual([
+            { id: 'admin', name: 'Quản trị', position: 3, administrator: true },
+            { id: 'mod', name: 'Trưởng nhóm', position: 2, administrator: false },
+            { id: 'helper', name: 'Điều phối', position: 1, administrator: false }
+        ])
+        expect(view.roleIds.sort()).toEqual(['helper', 'mod'])
     })
 
     it('marks the owner, who sees and may do everything', () => {

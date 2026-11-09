@@ -7,6 +7,11 @@ import {
     serverPermissions
 } from '@/modules/permissions'
 
+/** A role as the channel list needs it: the private-channel picker lists roles by name. */
+export interface RoleSnapshot extends AccessRole {
+    name: string
+}
+
 export interface CategorySnapshot {
     id: string
     name: string
@@ -30,12 +35,26 @@ export interface ServerSnapshot {
     welcomeChannelId: string | null
     categories: CategorySnapshot[]
     channels: ChannelSnapshot[]
-    roles: AccessRole[]
+    roles: RoleSnapshot[]
 }
 
 export type ChannelView = Omit<ChannelSnapshot, 'viewRoleIds'> & {
     /** In this channel (appendix B, steps 1–6). Never 0: those are left out. */
     permissions: bigint
+    /**
+     * Who may see it when private, for those who may edit that (MANAGE_CHANNELS
+     * in this channel); null for everyone else, who has no use for it.
+     */
+    viewRoleIds: string[] | null
+}
+
+/** A role in the server's list (not @everyone), for the private-channel picker. */
+export interface RoleView {
+    id: string
+    name: string
+    position: number
+    /** Sees every channel whatever is picked: shown ticked and locked. */
+    administrator: boolean
 }
 
 /** A server as one member sees it (GET /servers, D-115, D-145). */
@@ -52,6 +71,10 @@ export interface ServerView {
      * `isOwner` first (a number cannot say "above all" in JSON).
      */
     topRolePosition: number
+    /** The roles they hold, not @everyone ("your role" in the private-channel picker). */
+    roleIds: string[]
+    /** Every role but @everyone, highest first. */
+    roles: RoleView[]
     /** Only while it lasts. */
     timeoutUntil: Date | null
     /** Null when there is none, or when it is a channel they cannot see. */
@@ -78,8 +101,9 @@ export function memberView(server: ServerSnapshot, member: AccessMember, now: Da
     for (const channel of [...server.channels].sort(byPosition)) {
         const granted = channelPermissions(access, member, channel, now)
         if (granted === 0n) continue
-        const { viewRoleIds: _hidden, ...shown } = channel
-        channels.push({ ...shown, permissions: granted })
+        const { viewRoleIds, ...shown } = channel
+        const editsViewers = (granted & Permission.MANAGE_CHANNELS) !== 0n
+        channels.push({ ...shown, permissions: granted, viewRoleIds: editsViewers ? [...viewRoleIds] : null })
     }
 
     const managesChannels = (permissions & Permission.MANAGE_CHANNELS) !== 0n
@@ -102,6 +126,16 @@ export function memberView(server: ServerSnapshot, member: AccessMember, now: Da
         isOwner: member.userId === server.ownerId,
         permissions,
         topRolePosition,
+        roleIds: server.roles.filter((role) => held.has(role.id)).map((role) => role.id),
+        roles: server.roles
+            .filter((role) => !role.isEveryone)
+            .sort((a, b) => b.position - a.position || a.id.localeCompare(b.id))
+            .map((role) => ({
+                id: role.id,
+                name: role.name,
+                position: role.position,
+                administrator: (role.permissions & Permission.ADMINISTRATOR) !== 0n
+            })),
         timeoutUntil: timedOut ? member.timeoutUntil : null,
         welcomeChannelId: channels.some((channel) => channel.id === server.welcomeChannelId)
             ? server.welcomeChannelId

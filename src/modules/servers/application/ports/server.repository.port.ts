@@ -1,5 +1,5 @@
 import { AccessMember } from '@/modules/permissions'
-import { ServerPlan, ServerSnapshot } from '../../domain'
+import { LayoutState, LayoutWrite, ServerPlan, ServerSnapshot } from '../../domain'
 
 export interface NewServer {
     ownerId: string
@@ -33,6 +33,22 @@ export interface ServerRepositoryPort {
      * file. Null when the server is gone.
      */
     replaceIcon(serverId: string, iconKey: string | null): Promise<{ previousIconKey: string | null } | null>
+
+    /**
+     * One change to the categories and channels (REQ-SRV-02). In one
+     * transaction: lock the live server's row, read it and the member as they
+     * are now, let `decide` turn that into writes (or throw), and carry the
+     * writes out. Every such change to a server waits for the one before, so
+     * none decides on a stale list.
+     *
+     * Null, with nothing written, when the server is gone or they are not in
+     * it. Otherwise the id of the row created, if a write created one.
+     */
+    changeLayout(
+        serverId: string,
+        userId: string,
+        decide: (state: LayoutState) => LayoutWrite[]
+    ): Promise<{ createdId: string | null } | null>
 }
 
 export const SERVER_REPOSITORY = Symbol('ServerRepositoryPort')

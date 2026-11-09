@@ -67,6 +67,34 @@ export class ServerChannelResponseDto {
     @Expose()
     @Matches(BITS)
     permissions: string
+
+    /** The roles that see it when private, sent only to those who may edit that; null otherwise. */
+    @ApiProperty({ type: [String], nullable: true })
+    @Expose()
+    @IsOptional()
+    @IsString({ each: true })
+    viewRoleIds: string[] | null
+}
+
+/** A role of the server, not @everyone (the private-channel picker, S-SRV-05). */
+export class ServerRoleResponseDto {
+    @Expose()
+    @IsString()
+    id: string
+
+    @Expose()
+    @IsString()
+    name: string
+
+    /** Higher is more senior. */
+    @Expose()
+    @IsInt()
+    position: number
+
+    /** Holds ADMINISTRATOR: sees every channel, so it is shown ticked and locked. */
+    @Expose()
+    @IsBoolean()
+    administrator: boolean
 }
 
 /** A server as the signed-in person sees it (D-115, D-145). */
@@ -101,6 +129,17 @@ export class ServerResponseDto {
     @IsInt()
     topRolePosition: number
 
+    /** The roles they hold, not @everyone. */
+    @Expose()
+    @IsString({ each: true })
+    roleIds: string[]
+
+    /** Every role but @everyone, highest first. */
+    @Expose()
+    @ValidateNested({ each: true })
+    @Type(() => ServerRoleResponseDto)
+    roles: ServerRoleResponseDto[]
+
     /** Set only while they are timed out. */
     @Expose()
     @IsOptional()
@@ -132,6 +171,19 @@ export class ServerListResponseDto {
     @ValidateNested({ each: true })
     @Type(() => ServerResponseDto)
     servers: ServerResponseDto[]
+}
+
+/** A category or channel just made, and the server as it now is for them. */
+export class CreatedInServerResponseDto {
+    /** The new category's or channel's id. */
+    @Expose()
+    @IsString()
+    id: string
+
+    @Expose()
+    @ValidateNested()
+    @Type(() => ServerResponseDto)
+    server: ServerResponseDto
 }
 
 export class ServerIconResponseDto {

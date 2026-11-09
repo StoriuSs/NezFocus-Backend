@@ -1603,6 +1603,446 @@
           "servers"
         ]
       }
+    },
+    "/api/v1/servers/{serverId}/categories": {
+      "post": {
+        "operationId": "ChannelLayoutController_createCategory_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNameRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatedInServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A category at the end of the list (MANAGE_CHANNELS).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/categories/{categoryId}": {
+      "patch": {
+        "operationId": "ChannelLayoutController_renameCategory_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNameRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ]
+      },
+      "delete": {
+        "operationId": "ChannelLayoutController_deleteCategory_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Its channels move above the first category (REQ-SRV-02).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/channels": {
+      "post": {
+        "operationId": "ChannelLayoutController_createChannel_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChannelRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreatedInServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A text channel or a room at the end of its group (MANAGE_CHANNELS).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/channels/order": {
+      "patch": {
+        "operationId": "ChannelLayoutController_move_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveInLayoutRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One drop (D-149). Declared before channels/:channelId, which would take \"order\" for an id.",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/channels/{channelId}": {
+      "patch": {
+        "operationId": "ChannelLayoutController_updateChannel_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChannelRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ]
+      },
+      "delete": {
+        "operationId": "ChannelLayoutController_deleteChannel_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "servers"
+        ]
+      }
     }
   },
   "info": {
@@ -2311,6 +2751,31 @@
           }
         }
       },
+      "ServerRoleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "position": {
+            "type": "number",
+            "description": "Higher is more senior."
+          },
+          "administrator": {
+            "type": "boolean",
+            "description": "Holds ADMINISTRATOR: sees every channel, so it is shown ticked and locked."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "administrator"
+        ]
+      },
       "ServerCategoryResponseDto": {
         "type": "object",
         "properties": {
@@ -2339,6 +2804,14 @@
             "type": "string",
             "description": "What they may do in this channel (appendix B, steps 1–6).",
             "example": "3657472"
+          },
+          "view_role_ids": {
+            "nullable": true,
+            "description": "The roles that see it when private, sent only to those who may edit that; null otherwise.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "id": {
             "type": "string"
@@ -2382,6 +2855,7 @@
         },
         "required": [
           "permissions",
+          "view_role_ids",
           "id",
           "category_id",
           "type",
@@ -2420,6 +2894,20 @@
             "type": "number",
             "description": "Their highest role's position, 0 with none. Roles at or above it are locked for them, unless they are the owner."
           },
+          "role_ids": {
+            "description": "The roles they hold, not @everyone.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "description": "Every role but @everyone, highest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerRoleResponseDto"
+            }
+          },
           "timeout_until": {
             "format": "date-time",
             "type": "string",
@@ -2453,6 +2941,8 @@
           "icon_url",
           "is_owner",
           "top_role_position",
+          "role_ids",
+          "roles",
           "timeout_until",
           "welcome_channel_id",
           "categories",
@@ -2506,6 +2996,138 @@
         "required": [
           "icon_url"
         ]
+      },
+      "CreatedInServerResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The new category's or channel's id."
+          },
+          "server": {
+            "$ref": "#/components/schemas/ServerResponseDto"
+          }
+        },
+        "required": [
+          "id",
+          "server"
+        ]
+      },
+      "CategoryNameRequestDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "1–100 characters, kept as typed; the list shows it in capitals.",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreateChannelRequestDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "text",
+              "voice"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "A text channel's is stored normalised: \"Hỏi Đáp Chung\" → \"hỏi-đáp-chung\".",
+            "maxLength": 100
+          },
+          "category_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Left out or null: above the first category.",
+            "format": "uuid"
+          },
+          "is_study_room": {
+            "type": "boolean",
+            "description": "Voice rooms only: a shared Pomodoro, 25/5 to start with (D-45)."
+          },
+          "is_private": {
+            "type": "boolean"
+          },
+          "view_role_ids": {
+            "description": "For a private channel: the roles that see it, not @everyone.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ]
+      },
+      "MoveInLayoutRequestDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "channel",
+              "category"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Channels only.",
+            "format": "uuid"
+          },
+          "after_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "after_id"
+        ]
+      },
+      "UpdateChannelRequestDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "send_mode": {
+            "description": "Text channels: `managers` lets only MANAGE_MESSAGES post.",
+            "enum": [
+              "everyone",
+              "managers"
+            ],
+            "type": "string"
+          },
+          "is_private": {
+            "type": "boolean",
+            "description": "Public again: its view roles are cleared."
+          },
+          "view_role_ids": {
+            "description": "Replaces the whole set.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
       }
     }
   }

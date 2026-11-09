@@ -4,6 +4,7 @@ import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import {
+    CHANNEL_LAYOUT_HANDLERS,
     CreateServerHandler,
     FILE_CLEANUP,
     ICON_STORAGE,
@@ -13,7 +14,7 @@ import {
     UploadServerIconHandler
 } from './application'
 import { BullMqFileCleanup, PrismaServerRepository, ServerIconStorage } from './infrastructure'
-import { ServersController } from './presentation'
+import { ChannelLayoutController, ServersController } from './presentation'
 
 /**
  * Servers, their categories, channels, roles, members, invites and bans
@@ -24,7 +25,7 @@ import { ServersController } from './presentation'
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.
     imports: [CqrsModule, UploadModule, PermissionsModule, registerQueues(QUEUES.FILE_CLEANUP)],
-    controllers: [ServersController],
+    controllers: [ServersController, ChannelLayoutController],
     providers: [
         { provide: SERVER_REPOSITORY, useClass: PrismaServerRepository },
         { provide: ICON_STORAGE, useClass: ServerIconStorage },
@@ -32,7 +33,8 @@ import { ServersController } from './presentation'
         CreateServerHandler,
         UploadServerIconHandler,
         RemoveServerIconHandler,
-        ListMyServersHandler
+        ListMyServersHandler,
+        ...CHANNEL_LAYOUT_HANDLERS
     ]
 })
 export class ServersModule {}

@@ -12,7 +12,15 @@ const snapshot = (id: string, iconKey: string | null): ServerSnapshot => ({
     welcomeChannelId: null,
     categories: [],
     channels: [],
-    roles: [{ id: `${id}-everyone`, permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true }]
+    roles: [
+        {
+            id: `${id}-everyone`,
+            name: '@everyone',
+            permissions: EVERYONE_DEFAULT_PERMISSIONS,
+            position: 0,
+            isEveryone: true
+        }
+    ]
 })
 
 describe('ListMyServersHandler', () => {

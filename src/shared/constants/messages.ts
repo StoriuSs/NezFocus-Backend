@@ -49,7 +49,14 @@ export const MESSAGES = {
         CREATED: 'Server created',
         LISTED: 'Servers fetched',
         ICON_UPDATED: 'Server icon updated',
-        ICON_REMOVED: 'Server icon removed'
+        ICON_REMOVED: 'Server icon removed',
+        CATEGORY_CREATED: 'Category created',
+        CATEGORY_UPDATED: 'Category saved',
+        CATEGORY_DELETED: 'Category deleted',
+        CHANNEL_CREATED: 'Channel created',
+        CHANNEL_UPDATED: 'Channel saved',
+        CHANNEL_DELETED: 'Channel deleted',
+        LAYOUT_MOVED: 'Order saved'
     },
 
     // Health messages
