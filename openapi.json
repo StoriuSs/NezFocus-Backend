@@ -1480,6 +1480,65 @@
         ]
       }
     },
+    "/api/v1/servers/{serverId}": {
+      "patch": {
+        "operationId": "ServersController_update_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServerRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Name and welcome channel (MANAGE_SERVER, S-SET-01). Answers with the\nserver as the list shows it, so the client swaps its copy in one go.",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
     "/api/v1/servers/{serverId}/icon": {
       "post": {
         "operationId": "ServersController_uploadIcon_v1",
@@ -2985,6 +3044,22 @@
           "name",
           "template"
         ]
+      },
+      "UpdateServerRequestDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2
+          },
+          "welcome_channel_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "A text channel of the server; null: \"Send none\" (D-83).",
+            "format": "uuid"
+          }
+        }
       },
       "ServerIconResponseDto": {
         "type": "object",

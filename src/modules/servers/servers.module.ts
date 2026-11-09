@@ -11,6 +11,7 @@ import {
     ListMyServersHandler,
     RemoveServerIconHandler,
     SERVER_REPOSITORY,
+    UpdateServerHandler,
     UploadServerIconHandler
 } from './application'
 import { BullMqFileCleanup, PrismaServerRepository, ServerIconStorage } from './infrastructure'
@@ -33,6 +34,7 @@ import { ChannelLayoutController, ServersController } from './presentation'
         CreateServerHandler,
         UploadServerIconHandler,
         RemoveServerIconHandler,
+        UpdateServerHandler,
         ListMyServersHandler,
         ...CHANNEL_LAYOUT_HANDLERS
     ]

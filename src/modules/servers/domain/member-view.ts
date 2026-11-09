@@ -137,9 +137,14 @@ export function memberView(server: ServerSnapshot, member: AccessMember, now: Da
                 administrator: (role.permissions & Permission.ADMINISTRATOR) !== 0n
             })),
         timeoutUntil: timedOut ? member.timeoutUntil : null,
-        welcomeChannelId: channels.some((channel) => channel.id === server.welcomeChannelId)
-            ? server.welcomeChannelId
-            : null,
+        // Those who choose it (MANAGE_SERVER) get it even when it is a private
+        // channel they do not see, so Overview does not say "Send none"; the
+        // id alone tells nothing. Everyone else only for a channel they see.
+        welcomeChannelId:
+            (permissions & Permission.MANAGE_SERVER) !== 0n ||
+            channels.some((channel) => channel.id === server.welcomeChannelId)
+                ? server.welcomeChannelId
+                : null,
         categories,
         channels
     }

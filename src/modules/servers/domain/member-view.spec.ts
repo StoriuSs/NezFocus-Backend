@@ -121,4 +121,16 @@ describe('memberView', () => {
         expect(memberView(privateWelcome, member('phong'), NOW).welcomeChannelId).toBeNull()
         expect(memberView(privateWelcome, member('mai', ['mod']), NOW).welcomeChannelId).toBe('phong-mod')
     })
+
+    it('gives the welcome channel id to who chooses it (MANAGE_SERVER), even when the channel is hidden from them', () => {
+        const manager = { id: 'manager', name: 'Quản lý', permissions: Permission.MANAGE_SERVER, position: 1 }
+        const privateWelcome = {
+            ...server,
+            welcomeChannelId: 'phong-mod',
+            roles: [...server.roles, { ...manager, isEveryone: false }]
+        }
+        const view = memberView(privateWelcome, member('tuan', ['manager']), NOW)
+        expect(view.channels.map((c) => c.id)).not.toContain('phong-mod')
+        expect(view.welcomeChannelId).toBe('phong-mod')
+    })
 })

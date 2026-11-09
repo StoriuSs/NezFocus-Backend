@@ -74,7 +74,14 @@ export interface ChannelChanges {
     viewRoleIds?: string[]
 }
 
+/** The server row itself (S-SET-01): its name, its welcome channel (null: none). */
+export interface ServerChanges {
+    name?: string
+    welcomeChannelId?: string | null
+}
+
 export type LayoutWrite =
+    | { kind: 'updateServer'; changes: ServerChanges }
     | { kind: 'createCategory'; name: string; nameKey: string; position: number }
     | { kind: 'renameCategory'; id: string; name: string; nameKey: string }
     | { kind: 'deleteCategory'; id: string }

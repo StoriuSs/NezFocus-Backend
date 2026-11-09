@@ -6,6 +6,7 @@ import {
     HttpCode,
     HttpStatus,
     Param,
+    Patch,
     Post,
     UploadedFile,
     UseInterceptors
@@ -23,15 +24,17 @@ import {
     ListMyServersQuery,
     RemoveServerIconCommand,
     ServerListItem,
+    UpdateServerCommand,
     UploadServerIconCommand
 } from '../../application'
-import { ICON_MAX_BYTES } from '../../domain'
+import { ICON_MAX_BYTES, ServerNotFoundError } from '../../domain'
 import {
     CreateServerRequestDto,
     ServerIconResponseDto,
     ServerIdParamsDto,
     ServerListResponseDto,
-    ServerResponseDto
+    ServerResponseDto,
+    UpdateServerRequestDto
 } from './dto'
 import { IconFilePipe } from './icon-file.pipe'
 import { presentServer } from './server.presenter'
@@ -78,6 +81,27 @@ export class ServersController {
         )
         const [item]: ServerListItem[] = await this.queryBus.execute(new ListMyServersQuery(user.id, serverId))
         return createResponse(MESSAGES.SERVER.CREATED, presentServer(item))
+    }
+
+    /**
+     * Name and welcome channel (MANAGE_SERVER, S-SET-01). Answers with the
+     * server as the list shows it, so the client swaps its copy in one go.
+     */
+    @Patch(':serverId')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(ServerResponseDto)
+    async update(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId }: ServerIdParamsDto,
+        @Body() dto: UpdateServerRequestDto
+    ): Promise<ServiceResponse<ServerResponseDto>> {
+        await this.commandBus.execute(
+            new UpdateServerCommand(user.id, serverId, { name: dto.name, welcomeChannelId: dto.welcomeChannelId })
+        )
+        const [item]: ServerListItem[] = await this.queryBus.execute(new ListMyServersQuery(user.id, serverId))
+        // Gone between the change and this read (deleted, or they left).
+        if (!item) throw new ServerNotFoundError(serverId)
+        return createResponse(MESSAGES.SERVER.UPDATED, presentServer(item))
     }
 
     /** A new icon, cropped square by the client (MANAGE_SERVER). */

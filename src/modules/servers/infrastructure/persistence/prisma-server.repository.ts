@@ -208,6 +208,9 @@ export class PrismaServerRepository implements ServerRepositoryPort {
 /** One write the domain decided; the id of the row it created, if any. Every id was checked to be this server's. */
 async function applyWrite(tx: Tx, serverId: string, write: LayoutWrite): Promise<string | null> {
     switch (write.kind) {
+        case 'updateServer':
+            await tx.server.update({ where: { id: serverId }, data: write.changes })
+            return null
         case 'createCategory': {
             const category = await tx.category.create({
                 data: { serverId, name: write.name, nameKey: write.nameKey, position: write.position },
