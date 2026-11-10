@@ -3327,7 +3327,7 @@
           "email"
         ]
       },
-      "SignedInAccountDto": {
+      "SignedInAccountResponseDto": {
         "type": "object",
         "properties": {
           "created": {
@@ -3348,7 +3348,7 @@
         "type": "object",
         "properties": {
           "account": {
-            "$ref": "#/components/schemas/SignedInAccountDto"
+            "$ref": "#/components/schemas/SignedInAccountResponseDto"
           },
           "access_token": {
             "type": "string",
