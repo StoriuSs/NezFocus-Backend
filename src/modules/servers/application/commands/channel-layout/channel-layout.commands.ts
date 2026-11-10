@@ -3,8 +3,8 @@ import { ChannelDraft, ChannelEdit, LayoutMove } from '../../../domain'
 /*
  * The changes to a server's categories and channels (REQ-SRV-02, S-SRV-05,
  * S-SET-05, S-SRV-06). Kept together: each is one line of intent around the
- * same transaction (ChangeLayout in channel-layout.handlers.ts), and the rules
- * all live in domain/channel-layout.ts.
+ * same transaction (services/change-layout.ts), and the rules all live in
+ * domain/channel-layout.ts.
  */
 
 export class CreateCategoryCommand {

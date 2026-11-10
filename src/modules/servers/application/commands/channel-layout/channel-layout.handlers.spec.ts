@@ -116,6 +116,15 @@ describe('channel list handlers', () => {
         ])
     })
 
+    it('leaves the cache alone when a channel edit changes nothing', async () => {
+        const { written, cache, deps } = setUp()
+        await new UpdateChannelHandler(...deps).execute(
+            new UpdateChannelCommand('an', 'ot', 'chung', { sendMode: 'everyone' })
+        )
+        expect(written).toEqual([])
+        expect(cache.serverChanged).not.toHaveBeenCalled()
+    })
+
     it('answers NOT_FOUND when the server is gone or they are not in it, telling the cache nothing', async () => {
         const { cache, deps } = setUp(false)
         await expect(

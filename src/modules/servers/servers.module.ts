@@ -5,24 +5,24 @@ import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
-    CHANNEL_LAYOUT_HANDLERS,
-    CreateServerHandler,
+    CHANNEL_LAYOUT_COMMAND_HANDLERS,
     FILE_CLEANUP,
     GUESS_LIMIT,
     ICON_STORAGE,
-    INVITE_HANDLERS,
+    INVITE_COMMAND_HANDLERS,
+    INVITE_QUERY_HANDLERS,
     INVITE_REPOSITORY,
-    ListMyServersHandler,
     MEMBER_DIRECTORY,
-    MODERATION_HANDLERS,
+    MODERATION_COMMAND_HANDLERS,
+    MODERATION_QUERY_HANDLERS,
     MODERATION_REPOSITORY,
-    RemoveServerIconHandler,
-    ROLE_HANDLERS,
+    ROLE_COMMAND_HANDLERS,
+    ROLE_QUERY_HANDLERS,
     ROLE_REPOSITORY,
+    SERVER_COMMAND_HANDLERS,
+    SERVER_QUERY_HANDLERS,
     SERVER_REPOSITORY,
-    SYSTEM_MESSAGES,
-    UpdateServerHandler,
-    UploadServerIconHandler
+    SYSTEM_MESSAGES
 } from './application'
 import {
     BullMqFileCleanup,
@@ -63,15 +63,15 @@ import {
         // RateLimiter comes from the global CacheModule.
         { provide: GUESS_LIMIT, useExisting: RateLimiter },
         { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
-        CreateServerHandler,
-        UploadServerIconHandler,
-        RemoveServerIconHandler,
-        UpdateServerHandler,
-        ListMyServersHandler,
-        ...CHANNEL_LAYOUT_HANDLERS,
-        ...INVITE_HANDLERS,
-        ...ROLE_HANDLERS,
-        ...MODERATION_HANDLERS
+        ...SERVER_COMMAND_HANDLERS,
+        ...SERVER_QUERY_HANDLERS,
+        ...CHANNEL_LAYOUT_COMMAND_HANDLERS,
+        ...INVITE_COMMAND_HANDLERS,
+        ...INVITE_QUERY_HANDLERS,
+        ...ROLE_COMMAND_HANDLERS,
+        ...ROLE_QUERY_HANDLERS,
+        ...MODERATION_COMMAND_HANDLERS,
+        ...MODERATION_QUERY_HANDLERS
     ]
 })
 export class ServersModule {}

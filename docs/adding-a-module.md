@@ -216,6 +216,33 @@ src/modules/orders/application/
 └── index.ts
 ```
 
+**A long module groups by area.** One folder per use case reads well for a
+handful. A module with many use cases that share one way of working groups
+them by area *inside* `commands/` and `queries/` instead, so reads and writes
+still stay apart:
+
+```
+src/modules/servers/application/
+├── commands/role/
+│   ├── role.commands.ts        # every command of the area
+│   ├── role.handlers.ts        # their handlers, and a ROLE_COMMAND_HANDLERS list
+│   └── role.handlers.spec.ts
+├── queries/role/
+│   ├── role.queries.ts
+│   ├── role.handlers.ts        # ROLE_QUERY_HANDLERS
+│   └── role.handlers.spec.ts
+└── services/                   # what several handlers share: a base class, a permission check
+```
+
+`servers` does this for its five areas (`server`, `channel-layout`,
+`invite`, `role`, `moderation`), each folder named like the files in it;
+`auth` and `users` keep one folder per use case. An area's handlers file has
+one spec beside it; when several specs are merged into it, each handler's
+helpers go inside its own `describe` (NezFocus D-157). Under `application/`
+go only `commands/`, `queries/`, `events/`, `ports/` and `services/`, plus
+the settings file. Grouping a module that does not have it yet is the
+owner's call: ask first.
+
 **A command** is a plain data class — the intent, nothing else:
 
 ```typescript
@@ -459,8 +486,8 @@ Both modules follow these, so a file is where you expect it:
 | Domain errors | `domain/errors/<topic>.errors.ts`, classes named `<Something>Error` (not `Exception`: in Nest that is an `HttpException`) |
 | Repository port | `domain/ports/<name>.repository.port.ts` |
 | Other ports | `application/ports/<name>.port.ts` |
-| Command | `application/commands/<name>/<name>.command.ts` and `<name>.handler.ts`, the folder named after the command: `PlaceOrderCommand` → `place-order/` |
-| Query | `application/queries/<name>/<name>.query.ts` and `<name>.handler.ts` |
+| Command | `application/commands/<name>/<name>.command.ts` and `<name>.handler.ts`, the folder named after the command: `PlaceOrderCommand` → `place-order/`. In a long module, by area: `commands/<area>/<area>.commands.ts` and `<area>.handlers.ts` ([3. The application layer](#3-the-application-layer)) |
+| Query | `application/queries/<name>/<name>.query.ts` and `<name>.handler.ts`; by area: `queries/<area>/<area>.queries.ts` and `<area>.handlers.ts` |
 | Event, event handler | `application/events/<name>.event.ts`; `application/events/handlers/<name>.handler.ts`, one per file |
 | Shared steps | `application/services/` |
 | Settings | Tunables the handlers need, read once from config: an interface and a token in `application/<module>-settings.ts` (`AuthSettings`, `AUTH_SETTINGS`), provided by the module file with `useFactory` |
