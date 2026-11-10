@@ -1,5 +1,7 @@
 import { AccessMember } from '@/modules/permissions'
-import { LayoutState, LayoutWrite, ServerPlan, ServerSnapshot } from '../../domain'
+import { LayoutState, LayoutWrite } from '../channel-layout'
+import { ServerSnapshot } from '../member-view'
+import { ServerPlan } from '../server-templates'
 
 export interface NewServer {
     ownerId: string

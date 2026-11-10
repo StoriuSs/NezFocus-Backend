@@ -1,5 +1,5 @@
 import { AccessRole } from '@/modules/permissions'
-import { InviteChannelRow, InviteRecord, JoinDecision, JoinFacts } from '../../domain'
+import { InviteChannelRow, InviteRecord, JoinDecision, JoinFacts } from '../invites'
 
 /** Who made a link, as the invites page shows them (S-SET-04). */
 export type InviteCreator =

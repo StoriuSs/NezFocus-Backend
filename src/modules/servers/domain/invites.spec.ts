@@ -11,7 +11,7 @@ import {
     JoinFacts,
     newInviteCode
 } from './invites'
-import { BannedFromServerError, InviteInvalidError, MaxServersReachedError } from './server.errors'
+import { BannedFromServerError, InviteInvalidError, MaxServersReachedError } from './errors'
 
 const NOW = new Date('2026-11-09T21:47:00Z')
 const HOUR = 60 * 60

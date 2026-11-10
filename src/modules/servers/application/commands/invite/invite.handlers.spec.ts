@@ -2,11 +2,12 @@ import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, Server
 import {
     InviteInvalidError,
     InviteRecord,
+    InviteRepositoryPort,
     JoinFacts,
     MissingPermissionError,
     ServerNotFoundError
 } from '../../../domain'
-import { GuessLimitPort, InviteRepositoryPort, SystemMessagesPort } from '../../ports'
+import { GuessLimitPort, SystemMessagesPort } from '../../ports'
 import { AcceptInviteHandler, CreateInviteHandler, RevokeInviteHandler } from './invite.handlers'
 import { AcceptInviteCommand, CreateInviteCommand, RevokeInviteCommand } from './invite.commands'
 

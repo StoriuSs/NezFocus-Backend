@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { MemberDirectoryPort, MemberListItem, MemberSearch, MemberSort, SortOrder } from '../../application/ports'
+import { MemberListItem, MemberRepositoryPort, MemberSearch, MemberSort, SortOrder } from '../../domain'
 
 interface MemberRow {
     userId: string
@@ -43,7 +43,7 @@ function orderBy(sort: MemberSort, order: SortOrder): Prisma.Sql {
 }
 
 @Injectable()
-export class PrismaMemberDirectory implements MemberDirectoryPort {
+export class PrismaMemberRepository implements MemberRepositoryPort {
     constructor(private readonly prisma: PrismaService) {}
 
     /**

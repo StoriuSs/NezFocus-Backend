@@ -1,10 +1,6 @@
 import { AccessChannel, AccessMember, AccessRole, channelPermissions, Permission } from '@/modules/permissions'
-import {
-    BannedFromServerError,
-    InviteInvalidError,
-    MAX_SERVERS_PER_USER,
-    MaxServersReachedError
-} from './server.errors'
+import { BannedFromServerError, InviteInvalidError, MaxServersReachedError } from './errors'
+import { MAX_SERVERS_PER_USER } from './server-limit.rules'
 
 /** The lifetimes a link may have, in seconds (REQ-SRV-03): 30 minutes, 1 hour, 1 day, 7 days. Null: never expires. */
 export const INVITE_MAX_AGES = [30 * 60, 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60] as const

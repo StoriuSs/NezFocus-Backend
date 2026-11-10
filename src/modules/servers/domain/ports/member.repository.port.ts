@@ -34,7 +34,7 @@ export interface MemberSearch {
     limit: number
 }
 
-export interface MemberDirectoryPort {
+export interface MemberRepositoryPort {
     /**
      * One page of the server's members in the order asked (D-89), with how
      * many match in all.
@@ -42,4 +42,4 @@ export interface MemberDirectoryPort {
     search(serverId: string, search: MemberSearch): Promise<{ items: MemberListItem[]; total: number }>
 }
 
-export const MEMBER_DIRECTORY = Symbol('MemberDirectoryPort')
+export const MEMBER_REPOSITORY = Symbol('MemberRepositoryPort')

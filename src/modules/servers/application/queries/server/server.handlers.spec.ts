@@ -1,6 +1,6 @@
 import { EVERYONE_DEFAULT_PERMISSIONS } from '@/modules/permissions'
-import { ServerSnapshot } from '../../../domain'
-import { IconStoragePort, MembershipSnapshot, ServerRepositoryPort } from '../../ports'
+import { MembershipSnapshot, ServerRepositoryPort, ServerSnapshot } from '../../../domain'
+import { IconStoragePort } from '../../ports'
 import { ListMyServersQuery } from './server.queries'
 import { ListMyServersHandler } from './server.handlers'
 

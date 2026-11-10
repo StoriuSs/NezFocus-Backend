@@ -5,17 +5,12 @@ import {
     MAX_SERVERS_PER_USER,
     MaxServersReachedError,
     planUpdateServer,
-    ServerNotFoundError,
-    serverPlan
-} from '../../../domain'
-import {
-    FILE_CLEANUP,
-    FileCleanupPort,
-    ICON_STORAGE,
-    IconStoragePort,
     SERVER_REPOSITORY,
+    ServerNotFoundError,
+    serverPlan,
     ServerRepositoryPort
-} from '../../ports'
+} from '../../../domain'
+import { FILE_CLEANUP, FileCleanupPort, ICON_STORAGE, IconStoragePort } from '../../ports'
 import { ChangeLayout } from '../../services/change-layout'
 import { forgetFile } from '../../services/forget-file'
 import { requireServerPermission } from '../../services/require-permission'

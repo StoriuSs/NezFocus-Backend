@@ -6,7 +6,7 @@ import {
     MissingPermissionError,
     ModerationRuleError,
     RoleHierarchyError
-} from './server.errors'
+} from './errors'
 
 /*
  * Kick, ban and time out (REQ-ROLE-04, D-147, D-154 → D-156). As with the

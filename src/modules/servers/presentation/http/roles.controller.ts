@@ -12,12 +12,11 @@ import {
     GrantRoleCommand,
     ListMembersQuery,
     ListRolesQuery,
-    MemberListItem,
     ReorderRolesCommand,
     RevokeRoleCommand,
-    RoleListItem,
     UpdateRoleCommand
 } from '../../application'
+import { MemberListItem, RoleListItem } from '../../domain'
 import {
     CreatedRoleResponseDto,
     CreateRoleRequestDto,

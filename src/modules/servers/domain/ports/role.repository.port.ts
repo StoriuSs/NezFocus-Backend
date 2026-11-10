@@ -1,4 +1,4 @@
-import { RoleState, RoleWrite } from '../../domain'
+import { RoleState, RoleWrite } from '../roles'
 
 /** A role as the Roles page lists it (S-SET-02), @everyone included. */
 export interface RoleListItem {

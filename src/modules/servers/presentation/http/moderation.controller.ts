@@ -6,13 +6,13 @@ import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/typ
 import { MESSAGES } from '@/shared/constants'
 import { createPaginatedResponse, validateAndTransform } from '@/shared/utils'
 import {
-    BanListItem,
     BanMemberCommand,
     KickMemberCommand,
     ListBansQuery,
     TimeoutMemberCommand,
     UnbanMemberCommand
 } from '../../application'
+import { BanListItem } from '../../domain'
 import {
     BanListQueryDto,
     BanPageResponseDto,

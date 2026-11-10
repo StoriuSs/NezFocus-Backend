@@ -1,7 +1,7 @@
 import { Inject } from '@nestjs/common'
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
-import { memberView, ServerView } from '../../../domain'
-import { ICON_STORAGE, IconStoragePort, SERVER_REPOSITORY, ServerRepositoryPort } from '../../ports'
+import { memberView, SERVER_REPOSITORY, ServerRepositoryPort, ServerView } from '../../../domain'
+import { ICON_STORAGE, IconStoragePort } from '../../ports'
 import { ListMyServersQuery } from './server.queries'
 
 export type ServerListItem = ServerView & { iconUrl: string | null }

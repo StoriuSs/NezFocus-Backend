@@ -1,7 +1,6 @@
 import { Inject } from '@nestjs/common'
 import { PERMISSION_CACHE, PermissionCachePort } from '@/modules/permissions'
-import { RoleState, RoleWrite, ServerNotFoundError } from '../../domain'
-import { ROLE_REPOSITORY, RoleRepositoryPort } from '../ports'
+import { ROLE_REPOSITORY, RoleRepositoryPort, RoleState, RoleWrite, ServerNotFoundError } from '../../domain'
 
 /**
  * What every change to the roles does around its own rule: run it in the

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { BanListItem, BanPerson, ModerationRepositoryPort } from '../../application/ports'
-import { ModerationState, ModerationWrite } from '../../domain'
+import { BanListItem, BanPerson, ModerationRepositoryPort, ModerationState, ModerationWrite } from '../../domain'
 import { lockMembership, Tx } from './prisma-server.repository'
 
 const PERSON = { id: true, username: true, displayName: true, avatarUrl: true, deletedAt: true } as const

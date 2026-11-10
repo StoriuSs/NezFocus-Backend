@@ -1,6 +1,5 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, PermissionCachePort } from '@/modules/permissions'
-import { LayoutState, LayoutWrite, ServerNotFoundError } from '../../../domain'
-import { ServerRepositoryPort } from '../../ports'
+import { LayoutState, LayoutWrite, ServerNotFoundError, ServerRepositoryPort } from '../../../domain'
 import {
     CreateCategoryCommand,
     CreateChannelCommand,

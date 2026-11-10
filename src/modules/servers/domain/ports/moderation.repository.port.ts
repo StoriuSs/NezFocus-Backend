@@ -1,4 +1,4 @@
-import { ModerationState, ModerationWrite } from '../../domain'
+import { ModerationState, ModerationWrite } from '../moderation'
 
 /** Someone as the ban list names them; names are null once their account is deleted. */
 export interface BanPerson {

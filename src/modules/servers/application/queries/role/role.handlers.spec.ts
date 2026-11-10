@@ -1,6 +1,5 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
-import { MissingPermissionError, ServerNotFoundError } from '../../../domain'
-import { MemberDirectoryPort, RoleRepositoryPort } from '../../ports'
+import { MemberRepositoryPort, MissingPermissionError, RoleRepositoryPort, ServerNotFoundError } from '../../../domain'
 import { ListMembersHandler, ListRolesHandler } from './role.handlers'
 import { ListMembersQuery, ListRolesQuery } from './role.queries'
 
@@ -48,7 +47,7 @@ describe('ListMembersHandler (D-152)', () => {
         const directory = { search: jest.fn().mockResolvedValue(page) }
         const checker = { access: jest.fn().mockResolvedValue(access('chi')) }
         const handler = new ListMembersHandler(
-            directory as unknown as MemberDirectoryPort,
+            directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort
         )
         await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toEqual(page)
@@ -59,7 +58,7 @@ describe('ListMembersHandler (D-152)', () => {
         const directory = { search: jest.fn() }
         const checker = { access: jest.fn().mockResolvedValue(null) }
         const handler = new ListMembersHandler(
-            directory as unknown as MemberDirectoryPort,
+            directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort
         )
         await expect(handler.execute(new ListMembersQuery('x', 'ot', search))).rejects.toThrow(ServerNotFoundError)
@@ -76,7 +75,7 @@ describe('ListMembersHandler (D-152)', () => {
         const listFor = async (viewer: ServerAccess) => {
             const checker = { access: jest.fn().mockResolvedValue(viewer) }
             const handler = new ListMembersHandler(
-                directory as unknown as MemberDirectoryPort,
+                directory as unknown as MemberRepositoryPort,
                 checker as unknown as PermissionCheckerPort
             )
             return (await handler.execute(new ListMembersQuery(viewer.member.userId, 'ot', search))).items[0]

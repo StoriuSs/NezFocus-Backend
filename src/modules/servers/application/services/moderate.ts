@@ -1,7 +1,12 @@
 import { Inject } from '@nestjs/common'
 import { PERMISSION_CACHE, PermissionCachePort } from '@/modules/permissions'
-import { ModerationState, ModerationWrite, ServerNotFoundError } from '../../domain'
-import { MODERATION_REPOSITORY, ModerationRepositoryPort } from '../ports'
+import {
+    MODERATION_REPOSITORY,
+    ModerationRepositoryPort,
+    ModerationState,
+    ModerationWrite,
+    ServerNotFoundError
+} from '../../domain'
 
 /**
  * What every kick, ban, unban and timeout does around its own rule: run it in

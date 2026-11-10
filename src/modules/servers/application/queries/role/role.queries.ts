@@ -1,4 +1,4 @@
-import { MemberSearch } from '../../ports'
+import { MemberSearch } from '../../../domain'
 
 /*
  * Reading the roles and the members (REQ-ROLE-01, S-SET-02, S-SET-03, D-152).

@@ -1,15 +1,16 @@
 import { Inject } from '@nestjs/common'
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 import { Permission, PERMISSION_CHECKER, PermissionCheckerPort, serverPermissions } from '@/modules/permissions'
-import { ServerNotFoundError, timeoutForViewer } from '../../../domain'
 import {
-    MEMBER_DIRECTORY,
-    MemberDirectoryPort,
+    MEMBER_REPOSITORY,
     MemberListItem,
+    MemberRepositoryPort,
     ROLE_REPOSITORY,
     RoleListItem,
-    RoleRepositoryPort
-} from '../../ports'
+    RoleRepositoryPort,
+    ServerNotFoundError,
+    timeoutForViewer
+} from '../../../domain'
 import { requireServerPermission } from '../../services/require-permission'
 import { ListMembersQuery, ListRolesQuery } from './role.queries'
 
@@ -29,7 +30,7 @@ export class ListRolesHandler implements IQueryHandler<ListRolesQuery> {
 @QueryHandler(ListMembersQuery)
 export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
     constructor(
-        @Inject(MEMBER_DIRECTORY) private readonly members: MemberDirectoryPort,
+        @Inject(MEMBER_REPOSITORY) private readonly members: MemberRepositoryPort,
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort
     ) {}
 

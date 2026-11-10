@@ -19,7 +19,7 @@ import {
     RoleNotFoundError,
     RoleOrderStaleError,
     RoleRuleError
-} from './server.errors'
+} from './errors'
 
 /*
  * The roles of one server (REQ-ROLE-01, ROLE-02, D-87, D-148, D-153). As with

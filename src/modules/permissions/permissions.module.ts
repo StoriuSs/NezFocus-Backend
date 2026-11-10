@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common'
-import { ACCESS_SOURCE, PERMISSION_CACHE, PERMISSION_CHECKER } from './application/ports'
-import { PrismaAccessSource } from './infrastructure/persistence/prisma-access-source'
-import { RedisPermissionChecker } from './infrastructure/adapters/redis-permission-checker.adapter'
+import { ACCESS_SOURCE, PERMISSION_CACHE, PERMISSION_CHECKER } from './application'
+import { PrismaAccessSource, RedisPermissionChecker } from './infrastructure'
 
 /**
  * Works out what a member may do in a server (REQ-ROLE-05). Has no routes of

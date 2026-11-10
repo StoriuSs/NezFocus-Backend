@@ -1,6 +1,5 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
-import { MissingPermissionError } from '../../../domain'
-import { ModerationRepositoryPort } from '../../ports'
+import { MissingPermissionError, ModerationRepositoryPort } from '../../../domain'
 import { ListBansHandler } from './moderation.handlers'
 import { ListBansQuery } from './moderation.queries'
 

@@ -1,7 +1,7 @@
 import { Inject } from '@nestjs/common'
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
-import { BanListItem, MODERATION_REPOSITORY, ModerationRepositoryPort } from '../../ports'
+import { BanListItem, MODERATION_REPOSITORY, ModerationRepositoryPort } from '../../../domain'
 import { requireServerPermission } from '../../services/require-permission'
 import { ListBansQuery } from './moderation.queries'
 

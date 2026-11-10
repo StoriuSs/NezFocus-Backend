@@ -9,7 +9,6 @@ import { validateAndTransform } from '@/shared/utils'
 import {
     AcceptInviteCommand,
     CreateInviteCommand,
-    InviteListRow,
     InvitePreview,
     ListInvitesQuery,
     ListMyServersQuery,
@@ -17,7 +16,7 @@ import {
     RevokeInviteCommand,
     ServerListItem
 } from '../../application'
-import { InviteRecord, JoinDecision, ServerNotFoundError } from '../../domain'
+import { InviteListRow, InviteRecord, JoinDecision, ServerNotFoundError } from '../../domain'
 import {
     AcceptInviteResponseDto,
     CreateInviteRequestDto,

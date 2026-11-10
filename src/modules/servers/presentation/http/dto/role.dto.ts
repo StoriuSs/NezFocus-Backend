@@ -18,8 +18,15 @@ import {
     ValidateIf,
     ValidateNested
 } from 'class-validator'
-import { MEMBER_SORTS, MemberSort, SORT_ORDERS, SortOrder } from '../../../application/ports'
-import { CHANNEL_NAME_MAX_LENGTH, MAX_ROLE_GRANT, MAX_ROLES } from '../../../domain'
+import {
+    CHANNEL_NAME_MAX_LENGTH,
+    MAX_ROLE_GRANT,
+    MAX_ROLES,
+    MEMBER_SORTS,
+    MemberSort,
+    SORT_ORDERS,
+    SortOrder
+} from '../../../domain'
 import { ServerIdParamsDto } from './server-id.params.dto'
 
 /*

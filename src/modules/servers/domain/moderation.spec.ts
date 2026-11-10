@@ -16,7 +16,7 @@ import {
     MissingPermissionError,
     ModerationRuleError,
     RoleHierarchyError
-} from './server.errors'
+} from './errors'
 
 const NOW = new Date('2026-11-10T09:00:00Z')
 const LATER = (seconds: number) => new Date(NOW.getTime() + seconds * 1000)

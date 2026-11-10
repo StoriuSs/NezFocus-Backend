@@ -1,7 +1,13 @@
 import { Inject } from '@nestjs/common'
 import { PERMISSION_CACHE, PermissionCachePort } from '@/modules/permissions'
-import { LayoutState, LayoutWrite, ServerChanges, ServerNotFoundError } from '../../domain'
-import { SERVER_REPOSITORY, ServerRepositoryPort } from '../ports'
+import {
+    LayoutState,
+    LayoutWrite,
+    SERVER_REPOSITORY,
+    ServerChanges,
+    ServerNotFoundError,
+    ServerRepositoryPort
+} from '../../domain'
 
 /**
  * Whether each field of the server is in the permission cache (D-146 holds

@@ -1,6 +1,5 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCachePort } from '@/modules/permissions'
-import { RoleState, RoleWrite, ServerNotFoundError } from '../../../domain'
-import { RoleRepositoryPort } from '../../ports'
+import { RoleRepositoryPort, RoleState, RoleWrite, ServerNotFoundError } from '../../../domain'
 import {
     CreateRoleHandler,
     DeleteRoleHandler,

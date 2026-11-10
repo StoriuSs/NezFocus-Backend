@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { MembershipSnapshot, NewServer, ServerRepositoryPort } from '../../application/ports'
-import { LayoutState, LayoutWrite, nameKey } from '../../domain'
+import { LayoutState, LayoutWrite, MembershipSnapshot, nameKey, NewServer, ServerRepositoryPort } from '../../domain'
 
 /**
  * The advisory lock that serialises everything adding a server to one

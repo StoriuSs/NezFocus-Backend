@@ -13,9 +13,10 @@ import {
     MaxServersReachedError,
     MissingPermissionError,
     ServerNotFoundError,
-    serverPlan
+    serverPlan,
+    ServerRepositoryPort
 } from '../../../domain'
-import { FileCleanupPort, IconStoragePort, ServerRepositoryPort } from '../../ports'
+import { FileCleanupPort, IconStoragePort } from '../../ports'
 import {
     CreateServerCommand,
     RemoveServerIconCommand,

@@ -5,30 +5,32 @@ import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
+    INVITE_REPOSITORY,
+    MEMBER_REPOSITORY,
+    MODERATION_REPOSITORY,
+    ROLE_REPOSITORY,
+    SERVER_REPOSITORY
+} from './domain'
+import {
     CHANNEL_LAYOUT_COMMAND_HANDLERS,
     FILE_CLEANUP,
     GUESS_LIMIT,
     ICON_STORAGE,
     INVITE_COMMAND_HANDLERS,
     INVITE_QUERY_HANDLERS,
-    INVITE_REPOSITORY,
-    MEMBER_DIRECTORY,
     MODERATION_COMMAND_HANDLERS,
     MODERATION_QUERY_HANDLERS,
-    MODERATION_REPOSITORY,
     ROLE_COMMAND_HANDLERS,
     ROLE_QUERY_HANDLERS,
-    ROLE_REPOSITORY,
     SERVER_COMMAND_HANDLERS,
     SERVER_QUERY_HANDLERS,
-    SERVER_REPOSITORY,
     SYSTEM_MESSAGES
 } from './application'
 import {
     BullMqFileCleanup,
     NoSystemMessagesYet,
     PrismaInviteRepository,
-    PrismaMemberDirectory,
+    PrismaMemberRepository,
     PrismaModerationRepository,
     PrismaRoleRepository,
     PrismaServerRepository,
@@ -58,7 +60,7 @@ import {
         { provide: FILE_CLEANUP, useClass: BullMqFileCleanup },
         { provide: INVITE_REPOSITORY, useClass: PrismaInviteRepository },
         { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
-        { provide: MEMBER_DIRECTORY, useClass: PrismaMemberDirectory },
+        { provide: MEMBER_REPOSITORY, useClass: PrismaMemberRepository },
         { provide: MODERATION_REPOSITORY, useClass: PrismaModerationRepository },
         // RateLimiter comes from the global CacheModule.
         { provide: GUESS_LIMIT, useExisting: RateLimiter },

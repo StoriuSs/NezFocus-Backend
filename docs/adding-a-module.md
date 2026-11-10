@@ -483,8 +483,8 @@ Both modules follow these, so a file is where you expect it:
 | --- | --- |
 | Entity | `domain/entities/<name>.entity.ts` |
 | Domain rules | Pure functions and constants beside the entities, `domain/<topic>.ts`: users' `username.rules.ts`, auth's `password-policy.ts`, `session-end.ts` |
-| Domain errors | `domain/errors/<topic>.errors.ts`, classes named `<Something>Error` (not `Exception`: in Nest that is an `HttpException`) |
-| Repository port | `domain/ports/<name>.repository.port.ts` |
+| Domain errors | `domain/errors/<topic>.errors.ts`, classes named `<Something>Error` (not `Exception`: in Nest that is an `HttpException`). An error goes in the file of what it is about, not of who throws it: servers' `RoleHierarchyError` sits in `role.errors.ts` though moderation throws it too. Limits and other constants are rules, in `domain/<topic>.ts` (servers' `server-limit.rules.ts`) |
+| Repository port | `domain/ports/<name>.repository.port.ts`. Any port that reads or writes the module's own tables is one, a port that only lists rows for a page included (servers' `MemberRepositoryPort`, the Members tab) |
 | Other ports | `application/ports/<name>.port.ts` |
 | Command | `application/commands/<name>/<name>.command.ts` and `<name>.handler.ts`, the folder named after the command: `PlaceOrderCommand` → `place-order/`. In a long module, by area: `commands/<area>/<area>.commands.ts` and `<area>.handlers.ts` ([3. The application layer](#3-the-application-layer)) |
 | Query | `application/queries/<name>/<name>.query.ts` and `<name>.handler.ts`; by area: `queries/<area>/<area>.queries.ts` and `<area>.handlers.ts` |

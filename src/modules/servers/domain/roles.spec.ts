@@ -19,7 +19,7 @@ import {
     RoleNotFoundError,
     RoleOrderStaleError,
     RoleRuleError
-} from './server.errors'
+} from './errors'
 
 const NOW = new Date('2026-11-10T09:00:00Z')
 

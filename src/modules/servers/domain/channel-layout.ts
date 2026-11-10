@@ -8,7 +8,7 @@ import {
 } from './channel-name.rules'
 import { ChannelSnapshot, ServerSnapshot } from './member-view'
 import { nameKey } from './name-key'
-import { CategoryNotFoundError, ChannelNotFoundError, LayoutRuleError, MissingPermissionError } from './server.errors'
+import { CategoryNotFoundError, ChannelNotFoundError, LayoutRuleError, MissingPermissionError } from './errors'
 
 /*
  * Categories and channels of one server (REQ-SRV-02, D-84, D-149): every

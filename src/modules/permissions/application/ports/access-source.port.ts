@@ -1,7 +1,5 @@
 import { AccessMember, AccessServer } from '../../domain'
 
-export const ACCESS_SOURCE = Symbol('ACCESS_SOURCE')
-
 /**
  * Where the facts a permission depends on are read from: the database, the
  * record of truth. The cache sits in front of it (PermissionCheckerPort).
@@ -12,3 +10,5 @@ export interface AccessSourcePort {
     /** Null: the person is not a member of that server. */
     loadMember(serverId: string, userId: string): Promise<AccessMember | null>
 }
+
+export const ACCESS_SOURCE = Symbol('AccessSourcePort')

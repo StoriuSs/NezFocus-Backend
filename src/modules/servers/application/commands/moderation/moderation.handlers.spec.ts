@@ -1,6 +1,5 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCachePort } from '@/modules/permissions'
-import { ModerationState, ModerationWrite, ServerNotFoundError } from '../../../domain'
-import { ModerationRepositoryPort } from '../../ports'
+import { ModerationRepositoryPort, ModerationState, ModerationWrite, ServerNotFoundError } from '../../../domain'
 import { BanMemberHandler, KickMemberHandler, TimeoutMemberHandler, UnbanMemberHandler } from './moderation.handlers'
 import { BanMemberCommand, KickMemberCommand, TimeoutMemberCommand, UnbanMemberCommand } from './moderation.commands'
 

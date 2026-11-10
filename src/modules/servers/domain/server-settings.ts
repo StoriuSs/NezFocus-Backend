@@ -1,7 +1,7 @@
 import { channelPermissions, Permission, serverPermissions } from '@/modules/permissions'
 import { LayoutState, LayoutWrite, ServerChanges } from './channel-layout'
 import { isServerName, normaliseServerName } from './server-name.rules'
-import { ChannelNotFoundError, LayoutRuleError, MissingPermissionError } from './server.errors'
+import { ChannelNotFoundError, LayoutRuleError, MissingPermissionError } from './errors'
 
 /** What "Overview" of the server settings may change (S-SET-01). Left out: unchanged. */
 export interface ServerEdit {
