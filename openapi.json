@@ -2820,6 +2820,33 @@
             }
           },
           {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "description": "name (default), role or joined_at (D-89).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "role",
+                "joined_at"
+              ]
+            }
+          },
+          {
+            "name": "order",
+            "required": false,
+            "in": "query",
+            "description": "asc (default): A to Z, lowest role first, oldest first.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          },
+          {
             "name": "q",
             "required": false,
             "in": "query",
@@ -2894,6 +2921,336 @@
           }
         ],
         "summary": "One page of the members, by name (D-89, D-90, D-152). Anyone in the server.",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/members/{userId}": {
+      "delete": {
+        "operationId": "ModerationController_kick_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationReasonRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Out of the server, back in with a new invite (KICK_MEMBERS).",
+        "tags": [
+          "servers"
+        ]
+      },
+      "patch": {
+        "operationId": "ModerationController_timeout_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeoutMemberRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Time out, give a running timeout a new length, or end it (MODERATE_MEMBERS).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/bans": {
+      "get": {
+        "operationId": "ModerationController_bans_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "10, 50 or 100 (D-90); 50 when left out.",
+            "schema": {
+              "type": "number",
+              "enum": [
+                10,
+                50,
+                100
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BanPageResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One page of the bans, newest first (BAN_MEMBERS).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/bans/{userId}": {
+      "put": {
+        "operationId": "ModerationController_ban_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationReasonRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Out of the server and kept out (BAN_MEMBERS); only someone in it (D-155).",
+        "tags": [
+          "servers"
+        ]
+      },
+      "delete": {
+        "operationId": "ModerationController_unban_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
           "servers"
         ]
@@ -4414,6 +4771,17 @@
           "joined_at": {
             "format": "date-time",
             "type": "string"
+          },
+          "timeout_until": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Set while a timeout runs; everyone sees it (D-154)."
+          },
+          "timeout_reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only for those who may time people out, and for the one timed out (D-154)."
           }
         },
         "required": [
@@ -4423,7 +4791,9 @@
           "avatar_url",
           "is_owner",
           "role_ids",
-          "joined_at"
+          "joined_at",
+          "timeout_until",
+          "timeout_reason"
         ]
       },
       "PageMetaResponseDto": {
@@ -4464,6 +4834,117 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MemberResponseDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMetaResponseDto"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ]
+      },
+      "ModerationReasonRequestDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 512
+          }
+        }
+      },
+      "TimeoutMemberRequestDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 512
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "nullable": true,
+            "enum": [
+              60,
+              300,
+              600,
+              3600,
+              86400,
+              604800
+            ]
+          }
+        },
+        "required": [
+          "timeout_seconds"
+        ]
+      },
+      "BanPersonResponseDto": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "user_id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "BanResponseDto": {
+        "type": "object",
+        "properties": {
+          "banned_by": {
+            "nullable": true,
+            "description": "Null when that account is gone for good.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BanPersonResponseDto"
+              }
+            ]
+          },
+          "user": {
+            "$ref": "#/components/schemas/BanPersonResponseDto"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "banned_by",
+          "user",
+          "reason",
+          "created_at"
+        ]
+      },
+      "BanPageResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BanResponseDto"
             }
           },
           "meta": {

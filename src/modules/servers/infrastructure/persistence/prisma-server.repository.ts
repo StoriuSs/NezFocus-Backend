@@ -77,6 +77,20 @@ export function toMembership({ server, ...member }: MembershipRow): MembershipSn
 
 export type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
 
+/**
+ * Locks the live server's row (FOR UPDATE, the lock every change to its
+ * channels, roles and members takes, D-149) and reads the person acting.
+ * Null when the server is gone or they are not in it.
+ */
+export async function lockMembership(tx: Tx, serverId: string, userId: string): Promise<MembershipSnapshot | null> {
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Server" WHERE "id" = ${serverId} AND "deletedAt" IS NULL FOR UPDATE
+    `
+    if (locked.length === 0) return null
+    const row = await tx.member.findUnique({ where: { serverId_userId: { serverId, userId } }, select: MEMBERSHIP })
+    return row ? toMembership(row) : null
+}
+
 @Injectable()
 export class PrismaServerRepository implements ServerRepositoryPort {
     constructor(private readonly prisma: PrismaService) {}

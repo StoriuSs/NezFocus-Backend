@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { RoleListItem, RoleRepositoryPort } from '../../application/ports'
 import { RoleState, RoleWrite } from '../../domain'
-import { MEMBERSHIP, toMembership, Tx } from './prisma-server.repository'
+import { lockMembership, Tx } from './prisma-server.repository'
 
 const TARGET = { userId: true, timeoutUntil: true, roles: { select: { roleId: true } } } as const
 
@@ -20,21 +20,14 @@ export class PrismaRoleRepository implements RoleRepositoryPort {
             // The same lock as every change to the channel list (D-149): one
             // change to a server's roles at a time, each deciding on rows no
             // other change can alter before it commits.
-            const locked = await tx.$queryRaw<{ id: string }[]>`
-                SELECT "id" FROM "Server" WHERE "id" = ${serverId} AND "deletedAt" IS NULL FOR UPDATE
-            `
-            if (locked.length === 0) return null
-            const row = await tx.member.findUnique({
-                where: { serverId_userId: { serverId, userId } },
-                select: MEMBERSHIP
-            })
-            if (!row) return null
+            const membership = await lockMembership(tx, serverId, userId)
+            if (!membership) return null
             const targets =
                 targetIds.length === 0
                     ? []
                     : await tx.member.findMany({ where: { serverId, userId: { in: targetIds } }, select: TARGET })
 
-            const { server, member } = toMembership(row)
+            const { server, member } = membership
             const writes = decide({
                 server,
                 member,

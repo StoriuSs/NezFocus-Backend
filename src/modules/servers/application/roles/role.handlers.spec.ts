@@ -165,7 +165,7 @@ describe('ListRolesHandler', () => {
 })
 
 describe('ListMembersHandler (D-152)', () => {
-    const search = { q: null, roleId: null, page: 1, limit: 50 }
+    const search = { q: null, roleId: null, sort: 'name' as const, order: 'asc' as const, page: 1, limit: 50 }
     const page = { items: [], total: 0 }
 
     it('lists the members for anyone in the server, with no permission needed', async () => {
@@ -175,7 +175,7 @@ describe('ListMembersHandler (D-152)', () => {
             directory as unknown as MemberDirectoryPort,
             checker as unknown as PermissionCheckerPort
         )
-        await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toBe(page)
+        await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toEqual(page)
         expect(directory.search).toHaveBeenCalledWith('ot', search)
     })
 
@@ -188,5 +188,24 @@ describe('ListMembersHandler (D-152)', () => {
         )
         await expect(handler.execute(new ListMembersQuery('x', 'ot', search))).rejects.toThrow(ServerNotFoundError)
         expect(directory.search).not.toHaveBeenCalled()
+    })
+
+    it('shows a running timeout to all, its reason only to those who may time people out (D-154)', async () => {
+        const dung = {
+            userId: 'dung',
+            timeoutUntil: new Date('2999-01-01T00:00:00Z'),
+            timeoutReason: 'Gửi tin liên tục'
+        }
+        const directory = { search: jest.fn().mockResolvedValue({ items: [dung], total: 1 }) }
+        const listFor = async (viewer: ServerAccess) => {
+            const checker = { access: jest.fn().mockResolvedValue(viewer) }
+            const handler = new ListMembersHandler(
+                directory as unknown as MemberDirectoryPort,
+                checker as unknown as PermissionCheckerPort
+            )
+            return (await handler.execute(new ListMembersQuery(viewer.member.userId, 'ot', search))).items[0]
+        }
+        expect(await listFor(access('chi'))).toEqual({ ...dung, timeoutReason: null })
+        expect(await listFor(access('an'))).toEqual(dung)
     })
 })

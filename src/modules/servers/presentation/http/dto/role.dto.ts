@@ -18,6 +18,7 @@ import {
     ValidateIf,
     ValidateNested
 } from 'class-validator'
+import { MEMBER_SORTS, MemberSort, SORT_ORDERS, SortOrder } from '../../../application/ports'
 import { CHANNEL_NAME_MAX_LENGTH, MAX_ROLE_GRANT, MAX_ROLES } from '../../../domain'
 import { ServerIdParamsDto } from './server-id.params.dto'
 
@@ -34,7 +35,7 @@ const TYPED_MAX = CHANNEL_NAME_MAX_LENGTH * 4
 /** Checked only when sent: `null` is not "not sent", and is refused (as update-profile.request.dto.ts). */
 const IfSent = () => ValidateIf((_dto: object, value: unknown) => value !== undefined)
 /** Far past any server's last page, low enough that the offset stays an exact integer. */
-const MAX_PAGE = 100_000
+export const MAX_PAGE = 100_000
 
 export class ServerRoleParamsDto extends ServerIdParamsDto {
     @IsUUID()
@@ -178,6 +179,18 @@ export class MemberListQueryDto {
     @Type(() => Number)
     @IsIn([10, 50, 100])
     limit?: number
+
+    /** name (default), role or joined_at (D-89). */
+    @ApiPropertyOptional({ enum: MEMBER_SORTS })
+    @IsOptional()
+    @IsIn(MEMBER_SORTS)
+    sort?: MemberSort
+
+    /** asc (default): A to Z, lowest role first, oldest first. */
+    @ApiPropertyOptional({ enum: SORT_ORDERS })
+    @IsOptional()
+    @IsIn(SORT_ORDERS)
+    order?: SortOrder
 }
 
 export class MemberResponseDto {
@@ -212,6 +225,18 @@ export class MemberResponseDto {
     @Expose()
     @IsDate()
     joinedAt: Date
+
+    /** Set while a timeout runs; everyone sees it (D-154). */
+    @Expose()
+    @IsOptional()
+    @IsDate()
+    timeoutUntil: Date | null
+
+    /** Only for those who may time people out, and for the one timed out (D-154). */
+    @Expose()
+    @IsOptional()
+    @IsString()
+    timeoutReason: string | null
 }
 
 export class PageMetaResponseDto {

@@ -70,7 +70,12 @@ export const MESSAGES = {
         ROLES_REORDERED: 'Roles reordered',
         ROLE_GRANTED: 'Role given',
         ROLE_REVOKED: 'Role taken back',
-        MEMBERS_LISTED: 'Members fetched'
+        MEMBERS_LISTED: 'Members fetched',
+        MEMBER_KICKED: 'Member kicked',
+        MEMBER_TIMEOUT_CHANGED: 'Timeout changed',
+        MEMBER_BANNED: 'Member banned',
+        MEMBER_UNBANNED: 'Ban lifted',
+        BANS_LISTED: 'Bans fetched'
     },
 
     // Health messages

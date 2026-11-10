@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { MemberDirectoryPort, MemberListItem, MemberSearch } from '../../application/ports'
+import { MemberDirectoryPort, MemberListItem, MemberSearch, MemberSort, SortOrder } from '../../application/ports'
 
 interface MemberRow {
     userId: string
@@ -11,10 +11,36 @@ interface MemberRow {
     isOwner: boolean
     roleIds: string[]
     joinedAt: Date
+    timeoutUntil: Date | null
+    timeoutReason: string | null
 }
 
 /** `%`, `_` and `\` typed in the box are looked for as themselves, not as patterns. */
 const literal = (text: string) => text.replace(/[\\%_]/g, (char) => `\\${char}`)
+
+const NAME = Prisma.sql`lower(unaccent(coalesce(u."displayName", u."username", '')))`
+const USERNAME = Prisma.sql`lower(coalesce(u."username", ''))`
+
+/**
+ * The ORDER BY of one sort (D-89). Ties go by name, then username, A → Z,
+ * whichever way the column runs; the id keeps two equal rows in one order
+ * across pages. Role rank: the owner above every role, then the highest
+ * position held, 0 for none.
+ */
+function orderBy(sort: MemberSort, order: SortOrder): Prisma.Sql {
+    const way = order === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`
+    const ties = Prisma.sql`${NAME} ASC, ${USERNAME} ASC, m."userId" ASC`
+    switch (sort) {
+        case 'name':
+            return Prisma.sql`${NAME} ${way}, ${USERNAME} ASC, m."userId" ASC`
+        case 'joined_at':
+            return Prisma.sql`m."joinedAt" ${way}, ${ties}`
+        case 'role':
+            return Prisma.sql`(CASE WHEN s."ownerId" = m."userId" THEN 2147483647 ELSE coalesce((
+                    SELECT max(r."position") FROM "MemberRole" mr JOIN "Role" r ON r."id" = mr."roleId"
+                    WHERE mr."serverId" = m."serverId" AND mr."userId" = m."userId"), 0) END) ${way}, ${ties}`
+    }
+}
 
 @Injectable()
 export class PrismaMemberDirectory implements MemberDirectoryPort {
@@ -29,7 +55,7 @@ export class PrismaMemberDirectory implements MemberDirectoryPort {
      */
     async search(
         serverId: string,
-        { q, roleId, page, limit }: MemberSearch
+        { q, roleId, sort, order, page, limit }: MemberSearch
     ): Promise<{ items: MemberListItem[]; total: number }> {
         const where = Prisma.sql`
             m."serverId" = ${serverId}
@@ -50,6 +76,7 @@ export class PrismaMemberDirectory implements MemberDirectoryPort {
         const [rows, counted] = await Promise.all([
             this.prisma.$queryRaw<MemberRow[]>`
                 SELECT m."userId", u."username", u."displayName", u."avatarUrl", m."joinedAt",
+                    m."timeoutUntil", m."timeoutReason",
                     (s."ownerId" = m."userId") AS "isOwner",
                     coalesce((SELECT array_agg(mr."roleId" ORDER BY mr."roleId") FROM "MemberRole" mr
                         WHERE mr."serverId" = m."serverId" AND mr."userId" = m."userId"), '{}') AS "roleIds"
@@ -57,10 +84,7 @@ export class PrismaMemberDirectory implements MemberDirectoryPort {
                 JOIN "User" u ON u."id" = m."userId"
                 JOIN "Server" s ON s."id" = m."serverId"
                 WHERE ${where}
-                -- By name without accents or case (D-89, as C-13), then username; the id keeps two
-                -- equal names in one order across pages.
-                ORDER BY lower(unaccent(coalesce(u."displayName", u."username", ''))),
-                    lower(coalesce(u."username", '')), m."userId"
+                ORDER BY ${orderBy(sort, order)}
                 LIMIT ${limit} OFFSET ${(page - 1) * limit}
             `,
             this.prisma.$queryRaw<{ total: bigint }[]>`

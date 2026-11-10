@@ -1,6 +1,13 @@
 import { Inject } from '@nestjs/common'
 import { CommandHandler, ICommandHandler, IQueryHandler, QueryHandler } from '@nestjs/cqrs'
-import { PERMISSION_CACHE, PERMISSION_CHECKER, PermissionCachePort, PermissionCheckerPort } from '@/modules/permissions'
+import {
+    Permission,
+    PERMISSION_CACHE,
+    PERMISSION_CHECKER,
+    PermissionCachePort,
+    PermissionCheckerPort,
+    serverPermissions
+} from '@/modules/permissions'
 import {
     planCreateRole,
     planDeleteRole,
@@ -10,7 +17,8 @@ import {
     planUpdateRole,
     RoleState,
     RoleWrite,
-    ServerNotFoundError
+    ServerNotFoundError,
+    timeoutForViewer
 } from '../../domain'
 import {
     MEMBER_DIRECTORY,
@@ -136,10 +144,18 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort
     ) {}
 
-    /** Anyone in the server (D-152); anyone else learns only "not found". */
+    /**
+     * Anyone in the server (D-152); anyone else learns only "not found". A
+     * running timeout shows to all, its reason to those who may time people
+     * out and to the one timed out (D-154).
+     */
     async execute({ userId, serverId, search }: ListMembersQuery): Promise<{ items: MemberListItem[]; total: number }> {
-        if (!(await this.checker.access(serverId, userId))) throw new ServerNotFoundError(serverId)
-        return this.members.search(serverId, search)
+        const access = await this.checker.access(serverId, userId)
+        if (!access) throw new ServerNotFoundError(serverId)
+        const now = new Date()
+        const mayModerate = (serverPermissions(access.server, access.member, now) & Permission.MODERATE_MEMBERS) !== 0n
+        const { items, total } = await this.members.search(serverId, search)
+        return { items: items.map((item) => timeoutForViewer(item, { userId, mayModerate }, now)), total }
     }
 }
 

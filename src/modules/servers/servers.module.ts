@@ -14,6 +14,8 @@ import {
     INVITE_REPOSITORY,
     ListMyServersHandler,
     MEMBER_DIRECTORY,
+    MODERATION_HANDLERS,
+    MODERATION_REPOSITORY,
     RemoveServerIconHandler,
     ROLE_HANDLERS,
     ROLE_REPOSITORY,
@@ -27,11 +29,18 @@ import {
     NoSystemMessagesYet,
     PrismaInviteRepository,
     PrismaMemberDirectory,
+    PrismaModerationRepository,
     PrismaRoleRepository,
     PrismaServerRepository,
     ServerIconStorage
 } from './infrastructure'
-import { ChannelLayoutController, InvitesController, RolesController, ServersController } from './presentation'
+import {
+    ChannelLayoutController,
+    InvitesController,
+    ModerationController,
+    RolesController,
+    ServersController
+} from './presentation'
 
 /**
  * Servers, their categories, channels, roles, members, invites and bans
@@ -42,7 +51,7 @@ import { ChannelLayoutController, InvitesController, RolesController, ServersCon
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.
     imports: [CqrsModule, UploadModule, PermissionsModule, registerQueues(QUEUES.FILE_CLEANUP)],
-    controllers: [ServersController, ChannelLayoutController, InvitesController, RolesController],
+    controllers: [ServersController, ChannelLayoutController, InvitesController, RolesController, ModerationController],
     providers: [
         { provide: SERVER_REPOSITORY, useClass: PrismaServerRepository },
         { provide: ICON_STORAGE, useClass: ServerIconStorage },
@@ -50,6 +59,7 @@ import { ChannelLayoutController, InvitesController, RolesController, ServersCon
         { provide: INVITE_REPOSITORY, useClass: PrismaInviteRepository },
         { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
         { provide: MEMBER_DIRECTORY, useClass: PrismaMemberDirectory },
+        { provide: MODERATION_REPOSITORY, useClass: PrismaModerationRepository },
         // RateLimiter comes from the global CacheModule.
         { provide: GUESS_LIMIT, useExisting: RateLimiter },
         { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
@@ -60,7 +70,8 @@ import { ChannelLayoutController, InvitesController, RolesController, ServersCon
         ListMyServersHandler,
         ...CHANNEL_LAYOUT_HANDLERS,
         ...INVITE_HANDLERS,
-        ...ROLE_HANDLERS
+        ...ROLE_HANDLERS,
+        ...MODERATION_HANDLERS
     ]
 })
 export class ServersModule {}
