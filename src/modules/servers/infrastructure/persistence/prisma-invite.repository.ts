@@ -11,7 +11,7 @@ import {
     JoinDecision,
     JoinFacts
 } from '../../domain'
-import { membershipsLock } from './prisma-server.repository'
+import { membershipsLock } from './server-locks'
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
 

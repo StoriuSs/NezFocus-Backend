@@ -879,7 +879,7 @@ The `UserRepositoryPort` lives in the Domain layer because the concept of "persi
 
 **3. Why is `PrismaUserRepository` in `persistence/` while the other adapters are in `adapters/`?**
 Both folders contain outbound adapters, but they are separated by concern:
-- **`persistence/`** — Contains adapters for data persistence (database repositories). These depend heavily on the `mappers/` folder for converting between Prisma models and domain entities, and if you ever swapped databases, you'd replace the entire `persistence/` folder while `adapters/` stays untouched.
+- **`persistence/`** — Contains adapters for data persistence: the database repositories, and the Prisma adapter of a port that is not a repository (permissions' `PrismaAccessSource`, which reads the servers module's tables). These depend heavily on the `mappers/` folder for converting between Prisma models and domain entities, and if you ever swapped databases, you'd replace the entire `persistence/` folder while `adapters/` stays untouched.
 - **`adapters/`** — Contains adapters for other infrastructure (file storage, queued work, the directory published to other modules). These are typically simpler wrappers around a shared service or SDK.
 
 This is purely an organizational choice. Both are semantically outbound adapter implementations. (The auth module splits them the same way; its emails are in a third folder, `email/`.)

@@ -1,94 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { LayoutState, LayoutWrite, MembershipSnapshot, nameKey, NewServer, ServerRepositoryPort } from '../../domain'
-
-/**
- * The advisory lock that serialises everything adding a server to one
- * person's list — creating one, joining one (PrismaInviteRepository) — so the count of their
- * servers cannot change between reading it and acting on it. Scoped to the
- * transaction (released at commit or rollback), and this module's own concern
- * rather than a lock on the users module's row.
- */
-// Taken before any Server row lock (InviteRepositoryPort.join).
-export const membershipsLock = (userId: string) => `server-memberships:${userId}`
+import { membershipSelect, toMembership } from './membership.selections'
+import { membershipsLock, Tx } from './server-locks'
 
 const EVERYONE = '@everyone'
-
-/** Everything one member's view of a server, or a change to its channel list, is decided from. */
-export const MEMBERSHIP = {
-    userId: true,
-    timeoutUntil: true,
-    roles: { select: { roleId: true } },
-    server: {
-        select: {
-            id: true,
-            name: true,
-            iconKey: true,
-            ownerId: true,
-            welcomeChannelId: true,
-            categories: { select: { id: true, name: true, position: true } },
-            roles: { select: { id: true, name: true, permissions: true, position: true, isEveryone: true } },
-            channels: {
-                select: {
-                    id: true,
-                    categoryId: true,
-                    type: true,
-                    name: true,
-                    position: true,
-                    isPrivate: true,
-                    sendMode: true,
-                    isStudyRoom: true,
-                    taskBoardEnabled: true,
-                    viewRoles: { select: { roleId: true } }
-                }
-            }
-        }
-    }
-} as const
-
-type ChannelRow = Omit<MembershipSnapshot['server']['channels'][number], 'viewRoleIds'> & {
-    viewRoles: { roleId: string }[]
-}
-
-interface MembershipRow {
-    userId: string
-    timeoutUntil: Date | null
-    roles: { roleId: string }[]
-    server: Omit<MembershipSnapshot['server'], 'channels'> & { channels: ChannelRow[] }
-}
-
-export function toMembership({ server, ...member }: MembershipRow): MembershipSnapshot {
-    return {
-        server: {
-            ...server,
-            channels: server.channels.map(({ viewRoles, ...channel }) => ({
-                ...channel,
-                viewRoleIds: viewRoles.map((view) => view.roleId)
-            }))
-        },
-        member: {
-            userId: member.userId,
-            roleIds: member.roles.map((role) => role.roleId),
-            timeoutUntil: member.timeoutUntil
-        }
-    }
-}
-
-export type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
-
-/**
- * Locks the live server's row (FOR UPDATE, the lock every change to its
- * channels, roles and members takes, D-149) and reads the person acting.
- * Null when the server is gone or they are not in it.
- */
-export async function lockMembership(tx: Tx, serverId: string, userId: string): Promise<MembershipSnapshot | null> {
-    const locked = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "Server" WHERE "id" = ${serverId} AND "deletedAt" IS NULL FOR UPDATE
-    `
-    if (locked.length === 0) return null
-    const row = await tx.member.findUnique({ where: { serverId_userId: { serverId, userId } }, select: MEMBERSHIP })
-    return row ? toMembership(row) : null
-}
 
 @Injectable()
 export class PrismaServerRepository implements ServerRepositoryPort {
@@ -174,7 +90,7 @@ export class PrismaServerRepository implements ServerRepositoryPort {
             where: { userId, ...(serverId ? { serverId } : {}), server: { deletedAt: null } },
             // Join order (C-05); a second ordering so the same instant never shuffles.
             orderBy: [{ joinedAt: 'asc' }, { serverId: 'asc' }],
-            select: MEMBERSHIP
+            select: membershipSelect
         })
         return rows.map(toMembership)
     }
@@ -206,7 +122,7 @@ export class PrismaServerRepository implements ServerRepositoryPort {
             if (locked.length === 0) return null
             const row = await tx.member.findUnique({
                 where: { serverId_userId: { serverId, userId } },
-                select: MEMBERSHIP
+                select: membershipSelect
             })
             if (!row) return null
 

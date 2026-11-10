@@ -376,7 +376,9 @@ Prisma's `select` returns `any` or wrong types because TypeScript can't infer th
 
 ### The Solution: Typed Selections
 
-> **Not in the starter today.** The users module maps every row through
+> **In use in servers' `membership.selections.ts`**: `membershipSelect`, what
+> every member's view of a server is decided from, its row type derived as below,
+> and `toMembership`, which reads that row. The users module maps every row through
 > `UserMapper` into a domain entity, so it barely uses `select` at all. The
 > pattern below is here for when you add a query that does — a list endpoint
 > returning a handful of columns, say — because the first instinct (an inline
@@ -815,7 +817,7 @@ export type UserWithPosts = Prisma.UserGetPayload<{
 | `ServiceResponse<T>` | `src/shared/types/service-response.type.ts` | Type-safe service returns |
 | `createResponse()` | `src/shared/types/service-response.type.ts` | Type-safe response builder |
 | `validateAndTransform()` | `src/shared/utils/serializer.util.ts` | Runtime validation |
-| Typed Selections | next to the repository, `src/modules/<module>/infrastructure/persistence/*.selections.ts` (none in the starter yet) | Type-safe Prisma queries |
+| Typed Selections | next to the repository, `src/modules/<module>/infrastructure/persistence/*.selections.ts` (servers' `membership.selections.ts`) | Type-safe Prisma queries |
 | Strict Mode | `tsconfig.json` | Compile-time type safety |
 
 **Result:** Fewer bugs, better DX, safer production code! 🎉

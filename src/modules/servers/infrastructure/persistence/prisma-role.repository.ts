@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { RoleListItem, RoleRepositoryPort, RoleState, RoleWrite } from '../../domain'
-import { lockMembership, Tx } from './prisma-server.repository'
+import { lockMembership, Tx } from './server-locks'
 
 const TARGET = { userId: true, timeoutUntil: true, roles: { select: { roleId: true } } } as const
 

@@ -5,7 +5,7 @@ import { createClient, RedisClientType } from 'redis'
 import { PrismaClient } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { MetricsService } from '@/shared/infrastructure/monitoring/metrics.service'
-import { PrismaAccessSource } from '@/modules/permissions/infrastructure/persistence/prisma-access-source'
+import { PrismaAccessSource } from '@/modules/permissions/infrastructure/persistence/prisma-access-source.adapter'
 import {
     memberKey,
     RedisPermissionChecker,
