@@ -16,7 +16,7 @@ export const membershipsLock = (userId: string) => `server-memberships:${userId}
 const EVERYONE = '@everyone'
 
 /** Everything one member's view of a server, or a change to its channel list, is decided from. */
-const MEMBERSHIP = {
+export const MEMBERSHIP = {
     userId: true,
     timeoutUntil: true,
     roles: { select: { roleId: true } },
@@ -58,7 +58,7 @@ interface MembershipRow {
     server: Omit<MembershipSnapshot['server'], 'channels'> & { channels: ChannelRow[] }
 }
 
-function toMembership({ server, ...member }: MembershipRow): MembershipSnapshot {
+export function toMembership({ server, ...member }: MembershipRow): MembershipSnapshot {
     return {
         server: {
             ...server,
@@ -75,7 +75,7 @@ function toMembership({ server, ...member }: MembershipRow): MembershipSnapshot 
     }
 }
 
-type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
+export type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
 
 @Injectable()
 export class PrismaServerRepository implements ServerRepositoryPort {

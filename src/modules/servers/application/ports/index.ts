@@ -1,5 +1,7 @@
 export * from './guess-limit.port'
 export * from './icon-storage.port'
 export * from './invite.repository.port'
+export * from './member-directory.port'
+export * from './role.repository.port'
 export * from './server.repository.port'
 export * from './system-messages.port'

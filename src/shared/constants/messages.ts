@@ -62,7 +62,15 @@ export const MESSAGES = {
         INVITES_LISTED: 'Invites fetched',
         INVITE_REVOKED: 'Invite revoked',
         INVITE_FOUND: 'Invite fetched',
-        INVITE_ACCEPTED: 'Joined the server'
+        INVITE_ACCEPTED: 'Joined the server',
+        ROLES_LISTED: 'Roles fetched',
+        ROLE_CREATED: 'Role created',
+        ROLE_UPDATED: 'Role updated',
+        ROLE_DELETED: 'Role deleted',
+        ROLES_REORDERED: 'Roles reordered',
+        ROLE_GRANTED: 'Role given',
+        ROLE_REVOKED: 'Role taken back',
+        MEMBERS_LISTED: 'Members fetched'
     },
 
     // Health messages
