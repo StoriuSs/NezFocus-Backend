@@ -2102,6 +2102,279 @@
           "servers"
         ]
       }
+    },
+    "/api/v1/servers/{serverId}/invites": {
+      "post": {
+        "operationId": "InvitesController_create_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InviteResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A link to send (CREATE_INVITE): their own again when it has the same\nlifetime, no limit on uses and half its time left; a new one otherwise\n(D-151).",
+        "tags": [
+          "invites"
+        ]
+      },
+      "get": {
+        "operationId": "InvitesController_list_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InviteListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The server's links that still open, newest first (MANAGE_SERVER, S-SET-04).",
+        "tags": [
+          "invites"
+        ]
+      }
+    },
+    "/api/v1/invites/{code}": {
+      "get": {
+        "operationId": "InvitesController_preview_v1",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "description": "Checked against 8–10 letters and digits by the handler, so a bad one counts as a wrong code.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel",
+            "required": false,
+            "in": "query",
+            "description": "The `?channel=` of the link (D-150). Not one someone joining sees: ignored.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InvitePreviewResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The invite page, open to anyone (S-SRV-03). INVITE_INVALID (410) for a\nlink that no longer opens; more than 30 wrong codes a minute from one\nnetwork: RATE_LIMIT_EXCEEDED.",
+        "tags": [
+          "invites"
+        ]
+      },
+      "delete": {
+        "operationId": "InvitesController_revoke_v1",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "description": "Checked against 8–10 letters and digits by the handler, so a bad one counts as a wrong code.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Stop a link opening: its creator, or anyone with MANAGE_SERVER.",
+        "tags": [
+          "invites"
+        ]
+      }
+    },
+    "/api/v1/invites/{code}/accept": {
+      "post": {
+        "operationId": "InvitesController_accept_v1",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "description": "Checked against 8–10 letters and digits by the handler, so a bad one counts as a wrong code.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AcceptInviteResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Join the server (REQ-SRV-04). A member is answered with the server as\nwell, `joined: false`, and no use counted. The client opens the link's\n`?channel=` when it is among the channels it now sees, else the first\ntext channel.",
+        "tags": [
+          "invites"
+        ]
+      }
     }
   },
   "info": {
@@ -3203,6 +3476,257 @@
             }
           }
         }
+      },
+      "InviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The link is /invite/{code}."
+          },
+          "max_age_seconds": {
+            "type": "number",
+            "nullable": true,
+            "description": "The lifetime chosen; null: never expires."
+          },
+          "max_uses": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null: no limit."
+          },
+          "uses": {
+            "type": "number"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Null: never expires."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "max_age_seconds",
+          "max_uses",
+          "uses",
+          "expires_at",
+          "created_at"
+        ]
+      },
+      "CreateInviteRequestDto": {
+        "type": "object",
+        "properties": {
+          "max_age_seconds": {
+            "type": "number",
+            "nullable": true,
+            "description": "30 minutes, 1 hour, 1 day or 7 days, in seconds; null: never expires.",
+            "enum": [
+              1800,
+              3600,
+              86400,
+              604800
+            ],
+            "example": 604800
+          },
+          "max_uses": {
+            "type": "number",
+            "nullable": true,
+            "description": "1–100; null: no limit.",
+            "minimum": 1,
+            "maximum": 100,
+            "example": null
+          }
+        },
+        "required": [
+          "max_age_seconds",
+          "max_uses"
+        ]
+      },
+      "InviteCreatorResponseDto": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "member",
+              "left",
+              "deleted"
+            ]
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "InviteListItemResponseDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The link is /invite/{code}."
+          },
+          "max_age_seconds": {
+            "type": "number",
+            "nullable": true,
+            "description": "The lifetime chosen; null: never expires."
+          },
+          "max_uses": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null: no limit."
+          },
+          "uses": {
+            "type": "number"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Null: never expires."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "creator": {
+            "$ref": "#/components/schemas/InviteCreatorResponseDto"
+          }
+        },
+        "required": [
+          "code",
+          "max_age_seconds",
+          "max_uses",
+          "uses",
+          "expires_at",
+          "created_at",
+          "creator"
+        ]
+      },
+      "InviteListResponseDto": {
+        "type": "object",
+        "properties": {
+          "invites": {
+            "description": "The links that still open, newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteListItemResponseDto"
+            }
+          }
+        },
+        "required": [
+          "invites"
+        ]
+      },
+      "InviteServerResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null: show the initials."
+          },
+          "member_count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "icon_url",
+          "member_count"
+        ]
+      },
+      "InviteTargetResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "voice"
+            ]
+          },
+          "is_study_room": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "is_study_room"
+        ]
+      },
+      "InvitePreviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "server": {
+            "$ref": "#/components/schemas/InviteServerResponseDto"
+          },
+          "inviter_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null: the creator has left or the account is deleted (\"You're invited to\", D-81)."
+          },
+          "channel": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InviteTargetResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "server",
+          "inviter_name",
+          "channel"
+        ]
+      },
+      "AcceptInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/ServerResponseDto"
+          },
+          "joined": {
+            "type": "boolean",
+            "description": "False: already a member; nothing changed and no use was counted."
+          }
+        },
+        "required": [
+          "server",
+          "joined"
+        ]
       }
     }
   }

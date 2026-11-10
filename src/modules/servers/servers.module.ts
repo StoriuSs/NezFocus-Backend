@@ -3,19 +3,30 @@ import { CqrsModule } from '@nestjs/cqrs'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
+import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
     CHANNEL_LAYOUT_HANDLERS,
     CreateServerHandler,
     FILE_CLEANUP,
+    GUESS_LIMIT,
     ICON_STORAGE,
+    INVITE_HANDLERS,
+    INVITE_REPOSITORY,
     ListMyServersHandler,
     RemoveServerIconHandler,
     SERVER_REPOSITORY,
+    SYSTEM_MESSAGES,
     UpdateServerHandler,
     UploadServerIconHandler
 } from './application'
-import { BullMqFileCleanup, PrismaServerRepository, ServerIconStorage } from './infrastructure'
-import { ChannelLayoutController, ServersController } from './presentation'
+import {
+    BullMqFileCleanup,
+    NoSystemMessagesYet,
+    PrismaInviteRepository,
+    PrismaServerRepository,
+    ServerIconStorage
+} from './infrastructure'
+import { ChannelLayoutController, InvitesController, ServersController } from './presentation'
 
 /**
  * Servers, their categories, channels, roles, members, invites and bans
@@ -26,17 +37,22 @@ import { ChannelLayoutController, ServersController } from './presentation'
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.
     imports: [CqrsModule, UploadModule, PermissionsModule, registerQueues(QUEUES.FILE_CLEANUP)],
-    controllers: [ServersController, ChannelLayoutController],
+    controllers: [ServersController, ChannelLayoutController, InvitesController],
     providers: [
         { provide: SERVER_REPOSITORY, useClass: PrismaServerRepository },
         { provide: ICON_STORAGE, useClass: ServerIconStorage },
         { provide: FILE_CLEANUP, useClass: BullMqFileCleanup },
+        { provide: INVITE_REPOSITORY, useClass: PrismaInviteRepository },
+        // RateLimiter comes from the global CacheModule.
+        { provide: GUESS_LIMIT, useExisting: RateLimiter },
+        { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
         CreateServerHandler,
         UploadServerIconHandler,
         RemoveServerIconHandler,
         UpdateServerHandler,
         ListMyServersHandler,
-        ...CHANNEL_LAYOUT_HANDLERS
+        ...CHANNEL_LAYOUT_HANDLERS,
+        ...INVITE_HANDLERS
     ]
 })
 export class ServersModule {}

@@ -11,6 +11,8 @@ export type DomainErrorKind =
     | 'rate_limited'
     /** Something the answer depends on could not be reached; try again later. */
     | 'unavailable'
+    /** It existed and no longer does: an invite used up, out of time or revoked. */
+    | 'gone'
 
 /** A key present in both ERROR_CODES and ERROR_TYPES. */
 export type ErrorKey = keyof typeof ERROR_CODES & keyof typeof ERROR_TYPES

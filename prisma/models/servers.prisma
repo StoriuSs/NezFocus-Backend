@@ -119,8 +119,7 @@ model Channel {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
-  welcomeOf Server?  @relation("WelcomeChannel")
-  invites   Invite[]
+  welcomeOf Server? @relation("WelcomeChannel")
 
   // No two channels of one kind share a name in the same category, or among
   // the channels outside any. The migration makes this index NULLS NOT
@@ -208,25 +207,24 @@ model MemberRole {
 /// An invite link (REQ-SRV-03). Revoking one deletes it.
 model Invite {
   /// 8–10 random letters and digits; the link is /invite/{code}.
-  code      String    @id
-  serverId  String
-  server    Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  creatorId String
-  creator   User      @relation("InviteCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  /// The channel to open after joining. Not returned when it is private.
-  channelId String?
-  channel   Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  code          String    @id
+  serverId      String
+  server        Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  creatorId     String
+  creator       User      @relation("InviteCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   /// Empty: no limit.
-  maxUses   Int?
-  uses      Int       @default(0)
-  /// Empty: never expires.
-  expiresAt DateTime? @db.Timestamptz(6)
+  maxUses       Int?
+  uses          Int       @default(0)
+  /// The lifetime chosen, kept to tell whether a link may be handed out
+  /// again (D-151). Empty: never expires.
+  maxAgeSeconds Int?
+  expiresAt     DateTime? @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  @@index([serverId])
+  // A target channel is not kept here: it rides on the link as ?channel= (D-150).
+  @@index([serverId, createdAt])
   @@index([creatorId])
-  @@index([channelId])
 }
 
 /// A person who may not join again until unbanned (REQ-ROLE-04).

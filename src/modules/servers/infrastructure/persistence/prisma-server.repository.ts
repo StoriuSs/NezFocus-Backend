@@ -5,12 +5,13 @@ import { LayoutState, LayoutWrite, nameKey } from '../../domain'
 
 /**
  * The advisory lock that serialises everything adding a server to one
- * person's list — creating one now, joining one in L6 — so the count of their
+ * person's list — creating one, joining one (PrismaInviteRepository) — so the count of their
  * servers cannot change between reading it and acting on it. Scoped to the
  * transaction (released at commit or rollback), and this module's own concern
  * rather than a lock on the users module's row.
  */
-const membershipsLock = (userId: string) => `server-memberships:${userId}`
+// Taken before any Server row lock (InviteRepositoryPort.join).
+export const membershipsLock = (userId: string) => `server-memberships:${userId}`
 
 const EVERYONE = '@everyone'
 
@@ -244,8 +245,8 @@ async function applyWrite(tx: Tx, serverId: string, write: LayoutWrite): Promise
             return null
         }
         case 'deleteChannel':
-            // Its view roles go with it; invites to it lose their channel, and
-            // a server welcoming there sends none (D-83).
+            // Its view roles go with it, and a server welcoming there sends
+            // none (D-83). A link naming it opens the first text channel (D-150).
             await tx.channel.delete({ where: { id: write.id } })
             return null
         case 'placeChannels': {

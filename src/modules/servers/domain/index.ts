@@ -1,6 +1,7 @@
 export * from './channel-layout'
 export * from './channel-name.rules'
 export * from './icon.rules'
+export * from './invites'
 export * from './member-view'
 export * from './name-key'
 export * from './server.errors'

@@ -57,7 +57,12 @@ export const MESSAGES = {
         CHANNEL_CREATED: 'Channel created',
         CHANNEL_UPDATED: 'Channel saved',
         CHANNEL_DELETED: 'Channel deleted',
-        LAYOUT_MOVED: 'Order saved'
+        LAYOUT_MOVED: 'Order saved',
+        INVITE_CREATED: 'Invite link ready',
+        INVITES_LISTED: 'Invites fetched',
+        INVITE_REVOKED: 'Invite revoked',
+        INVITE_FOUND: 'Invite fetched',
+        INVITE_ACCEPTED: 'Joined the server'
     },
 
     // Health messages
