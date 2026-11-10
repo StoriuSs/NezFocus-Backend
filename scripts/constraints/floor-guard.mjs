@@ -14,7 +14,8 @@
 // as needing one, and the commit-msg hook and CI enforce it.
 //
 // A change to CONSTRAINTS.md that lowers the bar (a looser threshold, a rule
-// removed) is the owner's decision (CONSTRAINTS.md): it passes only with a
+// removed, a new row in its exceptions table) is the owner's decision
+// (CONSTRAINTS.md): it passes only with a
 // "Constraints-approved: <why>" line in the commit message, and is printed
 // either way so it stays loud.
 //
@@ -150,7 +151,7 @@ for (const r of removedRules) {
 // message to read yet, it is listed but does not fail.
 const NEEDS_REASON = ['test-deleted', 'assertion-removed']
 // The same for a lowered bar in CONSTRAINTS.md, with the owner's approval.
-const NEEDS_APPROVAL = ['threshold-loosened', 'threshold-changed', 'threshold-removed', 'rule-removed']
+const NEEDS_APPROVAL = ['threshold-loosened', 'threshold-changed', 'threshold-removed', 'rule-removed', 'new-exception']
 const needsReason = findings.filter((f) => NEEDS_REASON.includes(f.rule))
 const needsApproval = findings.filter((f) => NEEDS_APPROVAL.includes(f.rule))
 const blocking = findings.filter((f) =>

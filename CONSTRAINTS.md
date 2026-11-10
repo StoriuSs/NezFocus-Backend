@@ -32,7 +32,7 @@ Kiểm bởi `node scripts/constraints/floor-guard.mjs`, chuyển thể từ b�
 - Không làm test dễ đi: không thêm `.skip`, `.only`, `.todo`, `xit`, `xdescribe`.
 - Không xóa test hay assertion mà không có lý do: xóa file test hay bỏ một `expect` thì commit message phải có dòng `Tests-removed: <vì sao>`. `check:task` liệt kê những chỗ này để AI đưa lý do vào commit message gợi ý; hook `commit-msg` và CI chặn khi thiếu.
 - Không có secret trong code: xem dòng "Secret" ở bảng dưới.
-- File này không bị nới để một thay đổi qua được: hạ một ngưỡng, xóa một luật hay thêm một dòng ngoại lệ đều bị floor-guard báo. Đổi hay xóa một ngưỡng chỉ qua được khi commit message có dòng `Constraints-approved: <lý do>`, tức chủ dự án đã duyệt (thêm 06/11/2026); floor-guard vẫn in ra để thay đổi không lặng lẽ.
+- File này không bị nới để một thay đổi qua được: hạ một ngưỡng, xóa một luật hay thêm một dòng ngoại lệ đều bị floor-guard báo. Đổi hay xóa một ngưỡng, hay thêm một dòng ngoại lệ (từ 10/11/2026), chỉ qua được khi commit message có dòng `Constraints-approved: <lý do>`, tức chủ dự án đã duyệt (thêm 06/11/2026); floor-guard vẫn in ra để thay đổi không lặng lẽ.
 
 **Nhánh `learn/*` (bước B3 của docs/WORKFLOW.md)** chỉ được miễn luật "việc dở" (`TODO(human)`, thân hàm bị thay bằng `throw`), vì bản viết lại bắt đầu từ chữ ký và thân trống. Luật secret, luật cấm skip / xóa test và việc test phải chạy vẫn giữ nguyên: test là thứ chấm bản viết lại.
 
