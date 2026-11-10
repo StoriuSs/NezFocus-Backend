@@ -365,6 +365,7 @@ to be running.
 | `idempotency-replay` | `@Idempotent`: another user's key never replays my answer; the same key with another body is refused ([idempotency.md](./idempotency.md)) |
 | `health` | dependency errors stay out of `/health` in production |
 | `operational-endpoints` | the API docs behind basic auth in production |
+| `servers-write-then-read` | a server write whose server is gone by the read after it answers 404, not 500 (D-159) |
 
 **How an e2e test fakes a signed-in user.** There is no token in these
 suites: a small middleware puts the user on the request, as the access-token

@@ -154,16 +154,18 @@ it there first, under the same key in both:
 // ERROR_TYPES
 ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
 // ERROR_CODES: the HTTP status, then a number in the module's own hundred
-ORDER_NOT_FOUND: '404300',
+ORDER_NOT_FOUND: '404400',
 ```
 
 A code is the HTTP status and three digits. A new code takes its module's
-hundred: auth's are `x1xx`, users' `x2xx`, shared ones `x0xx`, so `orders`
-takes `x3xx` (`404300`, then `409300`, ...). Most existing codes are older
+hundred: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, shared ones
+`x0xx`, so `orders` takes `x4xx` (`404400`, then `409400`, ...). Most existing codes are older
 than that rule and were numbered in turn under their status, auth's
 `401001`–`401009` and `403002`–`403005` and `USER_NOT_FOUND` `404001`
 among them. They keep their numbers: a code keeps one meaning for ever, in logs
-and support tickets. For the same reason, never reuse a retired one (they are
+and support tickets. The one move so far was before any release: servers'
+codes, first numbered in users' `x2xx`, took `x3xx` (D-158), and the old
+numbers were retired. For the same reason, never reuse a retired one (they are
 listed above `ERROR_CODES`).
 
 | `kind` | Status |
@@ -516,6 +518,19 @@ To an existing module, the short version:
 5. **A controller method** — decorators, one bus call, `createResponse` —
    in the controller of its topic.
 6. **`pnpm openapi:export`** so the committed contract matches, and a test.
+
+**One exception to "one bus call": a write that answers with what it
+changed.** When the client must swap its copy of a resource at once, the
+controller runs the command, then the query its `GET` uses, and answers with
+that. The command still returns ids or its outcome (accepting an invite says
+whether it joined), never what the client shows, so no handler reads for the
+answer.
+If the query finds nothing, the resource went between the two calls (deleted,
+or the caller lost access): throw the module's not-found error, a 404. That
+check is the only `if` such a controller holds. In servers (D-159): creating a
+server, changing it (`PATCH`), every channel-layout route and accepting an
+invite, all reading `ListMyServersQuery` (the e2e suite
+`servers-write-then-read` covers the 404).
 
 If you find yourself adding a sixth argument to an existing command rather
 than writing a new one, that is usually two operations wearing a coat.

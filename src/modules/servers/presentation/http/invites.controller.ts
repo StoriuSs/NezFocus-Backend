@@ -126,9 +126,9 @@ export class InvitesController {
         const [item]: ServerListItem[] = await this.queryBus.execute(new ListMyServersQuery(user.id, serverId))
         // Gone between joining and this read (deleted, or banned meanwhile).
         if (!item) throw new ServerNotFoundError(serverId)
-        return createResponse(MESSAGES.SERVER.INVITE_ACCEPTED, {
-            server: presentServer(item),
-            joined: decision === 'join'
-        })
+        return createResponse(
+            MESSAGES.SERVER.INVITE_ACCEPTED,
+            validateAndTransform(AcceptInviteResponseDto, { server: presentServer(item), joined: decision === 'join' })
+        )
     }
 }

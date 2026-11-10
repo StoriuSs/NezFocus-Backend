@@ -80,6 +80,8 @@ export class ServersController {
             new CreateServerCommand(user.id, dto.name, dto.template)
         )
         const [item]: ServerListItem[] = await this.queryBus.execute(new ListMyServersQuery(user.id, serverId))
+        // Gone between creating and this read (deleted meanwhile).
+        if (!item) throw new ServerNotFoundError(serverId)
         return createResponse(MESSAGES.SERVER.CREATED, presentServer(item))
     }
 
