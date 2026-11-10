@@ -151,9 +151,10 @@ describe('Server overview over HTTP (integration)', () => {
             as('an', api().delete(`/api/v1/servers/${serverId}/channels/${id('hoi-dap')}`))
         ])
         expect(deleted.status).toBe(200)
-        // Chosen first, then deleted (none), or deleted first and refused.
+        // Chosen first, then deleted: none (D-83). Deleted first: refused, and the
+        // Study Server keeps the welcome channel it was made with.
         expect([200, 404]).toContain(chosen.status)
         const stored = await prisma.server.findUniqueOrThrow({ where: { id: serverId } })
-        expect(stored.welcomeChannelId).toBeNull()
+        expect(stored.welcomeChannelId).toBe(chosen.status === 200 ? null : id('chao-mung'))
     })
 })
