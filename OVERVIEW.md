@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with two worked modules: `users`, and the larger `auth` |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with four modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area) and `permissions` (the two ports `servers` asks) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth and users modules"]
+        App["NestJS API<br/>auth, users, servers, permissions"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -264,7 +264,7 @@ session, and the sweep does not know it exists. (The avatar file is the sweep's
 own job, not an event's: it keeps the key until the file's removal is queued,
 so a crash cannot lose it.)
 
-### The two modules
+### The modules
 
 `src/modules/users/` is the small worked example. Every layer, filled in:
 
@@ -273,7 +273,7 @@ users/
 ├── domain/                     # Knows nothing about anything
 │   ├── entities/user.entity.ts
 │   ├── errors/                 # UsernameTakenError, and friends
-│   ├── ports/user.repository.port.ts
+│   ├── ports/                  # user.repository.port.ts, user-settings.repository.port.ts
 │   ├── username.rules.ts       # The pattern and why it is that narrow
 │   ├── profile-text.rules.ts   # Display name and bio, counted in characters, not UTF-16 units
 │   └── user-settings.rules.ts  # Theme, language, switches; the time zone once every 24 hours
@@ -283,12 +283,11 @@ users/
 │   ├── events/                 # Published, plus the handlers that listen
 │   └── ports/                  # storage, background jobs, user directory
 ├── infrastructure/             # The outside world, plugged in
-│   ├── persistence/prisma-user.repository.ts
+│   ├── persistence/            # prisma-user.repository.ts, prisma-user-settings.repository.ts
 │   ├── adapters/               # uploads, BullMQ, the user directory for auth
 │   └── mappers/user.mapper.ts  # Database row ⇄ domain entity
 ├── presentation/               # The edge
-│   ├── http/                   # Controller and DTOs, one class per file
-│   └── consumers/              # Queue workers
+│   └── http/                   # Controller and DTOs, one class per file
 ├── index.ts                    # What other modules may import
 └── users.module.ts             # Which adapter fills which port
 ```
@@ -301,18 +300,20 @@ auth/
 ├── domain/                     # Errors, repository ports, the password policy, reading a user agent, masking an IP
 ├── application/
 │   ├── commands/               # send-email-code, verify-email-code, complete-account, login, refresh, revoke-session, revoke-other-sessions, delete-own-account, finish-oauth, ...
-│   ├── queries/                # sign-in methods, sign-in options, list sessions
+│   ├── queries/                # sign-in options, list sessions
 │   ├── events/handlers/        # Reacting to the users module's events
 │   ├── services/               # Shared steps: issue a session, check a code, the limits
 │   ├── ports/                  # Hasher, tokens, OIDC, mailer, rate limits, ...
 │   └── rate-limits.ts          # Every sign-in limit, in one table
 ├── infrastructure/
 │   ├── adapters/               # Argon2, jose (JWT), openid-client, Redis, BullMQ, Prometheus
+│   ├── email/                  # The emails: words per language, the layout, the jobs
 │   └── persistence/            # The Prisma repositories
 ├── presentation/
 │   ├── http/                   # The /auth routes in five controllers, by topic; DTOs
 │   ├── guards/                 # AccessTokenGuard, global
-│   └── consumers/              # Sends the emails, runs the hourly clean-up
+│   ├── rate-limit/             # The throttler's key for signed-in routes
+│   └── consumers/              # Sends the emails (the hourly clean-up runs from src/maintenance)
 └── auth.module.ts
 ```
 
@@ -322,8 +323,43 @@ deletion rule `deletesAt`: the way two modules talk without importing each other
 insides, and an ESLint rule keeps it that way. [docs/auth/in-the-code.md](./docs/auth/in-the-code.md) maps
 it file by file.
 
-Copy that shape for your own modules. There is a step-by-step in
-[adding-a-module.md](./docs/adding-a-module.md).
+`src/modules/servers/` (servers, channels, roles, invites, moderation) has
+too many use cases for one folder each, so it groups them by area:
+
+```
+servers/
+├── domain/                     # The rules as pure functions: names, layout, roles, invites, moderation
+│   ├── errors/                 # One file per area: server, channel-layout, invite, role, moderation
+│   └── ports/                  # The five repository ports
+├── application/
+│   ├── commands/<area>/        # <area>.commands.ts + <area>.handlers.ts, for server, channel-layout, invite, role, moderation
+│   ├── queries/<area>/         # The same, for server, invite, role, moderation
+│   ├── services/               # ChangeLayout, ChangeRoles, Moderate: lock, decide, write, then clear the permission cache
+│   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages
+├── infrastructure/
+│   ├── persistence/            # The Prisma repositories, the shared select (membership.selections.ts) and row locks (server-locks.ts)
+│   └── adapters/               # Icon storage, BullMQ clean-up, the system messages not written yet
+├── presentation/http/          # Five controllers by area, the presenter, one DTO class per file
+├── index.ts                    # What other modules may import (nothing yet)
+└── servers.module.ts
+```
+
+`src/modules/permissions/` answers what a member may do in a server. It
+publishes two ports in its `index.ts`, `PERMISSION_CHECKER` (ask, served
+from Redis) and `PERMISSION_CACHE` (tell it what changed after a commit),
+plus the pure rules a write calls on rows it has locked. Its database
+reader is `infrastructure/persistence/prisma-access-source.adapter.ts`.
+`servers` depends on it, never the reverse. A write in `servers` that changes
+roles, members or channels decides on rows it read under a lock, so it calls
+those rules itself; one whose outcome does not depend on the hierarchy (a
+name, an icon, an invite) asks `PERMISSION_CHECKER`
+(`application/services/require-permission.ts`).
+
+Copy one of these shapes for your own modules: one folder per use case while
+there are few; grouping by area once there are many is the owner's call, so
+ask first. There is a step-by-step in
+[adding-a-module.md](./docs/adding-a-module.md), and its "Names and places"
+table says where each kind of file goes.
 
 → [hexagonal-architecture.md](./docs/hexagonal-architecture.md) ·
 [cqrs-guide.md](./docs/cqrs-guide.md)
@@ -403,9 +439,12 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── health/                 # The three probes
 │   ├── modules/auth/           # Sign-in, sessions, Google, account deletion
 │   ├── modules/users/          # Profiles, usernames, avatars, settings, deletion
+│   ├── modules/servers/        # Servers, channels, roles, invites, moderation
+│   ├── modules/permissions/    # What a member may do in a server, cached
+│   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
-├── prisma/                     # Schema (models/auth.prisma, models/users.prisma) and migrations
+├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma) and migrations
 ├── test/                       # e2e and integration suites
 ├── k6/                         # Load-test scripts
 ├── monitoring/                 # Prometheus, Loki, Alloy, Grafana, Alertmanager
@@ -463,8 +502,8 @@ an admin console for support staff. See
 [docs/auth/security.md](./docs/auth/security.md) for what it defends against,
 and what it does not.
 
-**Hexagonal and CQRS, for a starter with two modules.** It looks like a lot of
-folders for two features, and it is. The point is that the third, fifth and
+**Hexagonal and CQRS, for four modules.** It looks like a lot of
+folders for four features, and it is. The point is that the fifth, tenth and
 twentieth feature go in the same shape, and by then a `UsersService` would have
 been a thousand lines nobody wants to open. Learn it on the modules that are
 already here.
@@ -502,7 +541,7 @@ Deliberately absent, with a page explaining what each would take:
 
 - Audit logging, feature flags, distributed tracing, circuit breakers, a
   transactional outbox, websockets → [extensions.md](./docs/extensions.md)
-- Passkeys (WebAuthn), a device list, more social providers → the auth module
+- Passkeys (WebAuthn), more social providers → the auth module
   is built to take them; [docs/auth/in-the-code.md](./docs/auth/in-the-code.md)
   says where
 - Multi-tenancy, GraphQL, a microservice split: out of scope, and each would
@@ -533,7 +572,7 @@ doing before Docker has created volumes named after this starter.
 
 **If you are experienced and just want the map:** this page, then
 [common-utilities.md](./docs/common-utilities.md) for what is already in the shared
-layer, then read `src/modules/users/` end to end. It is about 1,700 lines
+layer, then read `src/modules/users/` end to end. It is about 2,400 lines
 without its tests, and it shows every pattern the repository uses.
 `src/modules/auth/` is the same patterns at full size.
 

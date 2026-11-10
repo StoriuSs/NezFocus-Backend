@@ -39,8 +39,11 @@
 # Hexagonal Architecture: A Beginner's Guide
 
 This page is for anyone about to add or change code in `src/modules/`. It
-explains how the starter's two modules, `users` and `auth`, are organised,
-why, and where a new piece of code belongs. Every example is real code from
+explains how the modules are organised, why, and where a new piece of code
+belongs. There are four (`users`, `auth`, `servers`, `permissions`); the
+examples here come from `users` and `auth`, and
+[adding-a-module.md](./adding-a-module.md) shows how `servers` groups its
+use cases by area. Every example is real code from
 the repository, shortened.
 
 ## Table of Contents
@@ -167,8 +170,8 @@ filter at the edge turns the kind into an HTTP status ([FAQ 9](#faq)).
 **Location:** `modules/users/application/`
 
 This layer orchestrates the business logic using CQRS (Commands, Queries, Events). It contains:
-- **Commands:** "Change something" (e.g., `UpdateProfileCommand`, `UploadAvatarCommand`, `RemoveAvatarCommand`, `SweepDeletedAccountsCommand`).
-- **Queries:** "Read something" (e.g., `CheckUsernameQuery`).
+- **Commands:** "Change something" (e.g., `UpdateProfileCommand`, `UpdateSettingsCommand`, `UploadAvatarCommand`, `RemoveAvatarCommand`, `SweepDeletedAccountsCommand`).
+- **Queries:** "Read something" (e.g., `CheckUsernameQuery`, `GetSettingsQuery`, `ResolveAvatarUrlQuery`).
 - **Events:** "Something happened" (e.g., `UserProfileUpdatedEvent`, `AvatarUploadedEvent`, `AvatarRemovedEvent`, `AccountDeletedEvent`).
 - **Handlers:** The actual logic for each Command, Query, and Event.
 - **Application Ports:** Interfaces for outside capabilities (`StoragePort`, `BackgroundJobsPort`), and the one this module offers other modules (`UserDirectoryPort`).
@@ -241,7 +244,9 @@ export class PrismaUserRepository implements UserRepositoryPort {
 This is the outermost entry point. It contains:
 - **HTTP Controllers:** Receive HTTP requests, create Commands/Queries, and dispatch them.
 - **DTOs:** Request/Response Data Transfer Objects (validation, serialization).
-- **Queue Consumers:** BullMQ workers that process background jobs.
+- **Queue Consumers:** BullMQ workers that process background jobs, where a
+  module has some (`auth`'s `AuthJobsConsumer`; users has none: its sweep is
+  run by `src/maintenance`, its file clean-up by `UploadModule`).
 
 There are no per-module exception filters: one shared `DomainExceptionFilter`
 handles every module's errors ([FAQ 9](#faq)).
@@ -253,9 +258,7 @@ handles every module's errors ([FAQ 9](#faq)).
 export class UsersController {
     constructor(
         private readonly commandBus: CommandBus,
-        private readonly queryBus: QueryBus,
-        private readonly configService: ConfigService,
-        @Inject(STORAGE) private readonly storage: StoragePort
+        private readonly queryBus: QueryBus
     ) {}
 
     @Patch('me')
@@ -287,11 +290,12 @@ Ports come in two flavours:
 
 #### Outbound Ports (explicitly defined)
 
-These describe **what the application needs from the outside world**. They are the interfaces your application calls *out* through. The users module has three:
+These describe **what the application needs from the outside world**. They are the interfaces your application calls *out* through. The users module has four:
 
 | Port | What it describes | Location |
 |------|-------------------|----------|
 | `UserRepositoryPort` | "I need to find, create, update and delete users" | `domain/ports/` |
+| `UserSettingsRepositoryPort` | "I need to read and save a user's settings" | `domain/ports/` |
 | `StoragePort` | "I need to store, delete and link to files" | `application/ports/` |
 | `BackgroundJobsPort` | "I need work done later, with retries" | `application/ports/` |
 
@@ -306,7 +310,7 @@ export interface BackgroundJobsPort {
 export const BACKGROUND_JOBS = Symbol('BackgroundJobsPort')
 ```
 
-It has a fourth port that points the other way: `UserDirectoryPort`, what this
+It has a fifth port that points the other way: `UserDirectoryPort`, what this
 module **offers** to other modules. See
 [Where the two modules meet](#where-the-two-modules-meet).
 
@@ -339,13 +343,14 @@ Each Command/Query **defines** a use case entry point with its exact input shape
 
 An **Adapter** is a concrete class that **implements** a Port interface. It's the actual plug that fits into the wall outlet.
 
-In the users module, there are 4 **outbound** adapters and 2 **inbound** adapters:
+In the users module, there are 5 **outbound** adapters and 1 **inbound** adapter:
 
 **Outbound Adapters** (Infrastructure Layer — the app reaching *out*):
 
 | Adapter | Implements | Technology Used |
 |---------|-----------|-----------------|
 | `PrismaUserRepository` | `UserRepositoryPort` | Prisma + PostgreSQL |
+| `PrismaUserSettingsRepository` | `UserSettingsRepositoryPort` | Prisma + PostgreSQL |
 | `UploadStorage` | `StoragePort` | The shared `UploadService`: sharp, then local disk or S3 |
 | `BullMqBackgroundJobs` | `BackgroundJobsPort` | BullMQ (the `file-cleanup` queue) |
 | `UserDirectory` | `UserDirectoryPort` (for other modules) | This module's own `UserRepositoryPort` |
@@ -394,6 +399,7 @@ The magic glue is inside `users.module.ts`. This is where you tell NestJS: "When
     providers: [
         // Port → Adapter bindings (Hexagonal Architecture wiring)
         { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
+        { provide: USER_SETTINGS_REPOSITORY, useClass: PrismaUserSettingsRepository },
         { provide: STORAGE, useClass: UploadStorage },
         { provide: BACKGROUND_JOBS, useClass: BullMqBackgroundJobs },
         // Published for other modules: what the auth module needs from users.
@@ -433,7 +439,9 @@ Infrastructure → Application → Domain
 
 Between modules, the same idea holds in one direction: **the auth module
 depends on the users module, never the reverse.** Nothing in
-`src/modules/users/` imports from `src/modules/auth/`.
+`src/modules/users/` imports from `src/modules/auth/`. Likewise `servers`
+depends on `permissions` (its two ports and its pure rules), and nothing in
+`src/modules/permissions/` imports from `servers`.
 
 ## Architecture Diagram
 
@@ -441,8 +449,9 @@ depends on the users module, never the reverse.** Nothing in
 
 ![Hexagonal Architecture Overview](./hexagonal-overview-v4.png)
 
-(A general picture. In the users module the outbound adapters are the
-database repository, the storage adapter and the background-jobs adapter; the
+(A general picture. In the users module the outbound adapters are the two
+database repositories (users and their settings), the storage adapter and the
+background-jobs adapter; the
 auth module adds, among others, a Redis cache adapter.)
 
 ```mermaid
@@ -495,8 +504,9 @@ graph TB
         direction TB
         ENTITY["UserEntity"]
         EXCEPTIONS["Domain Errors"]
-        subgraph DOM_PORTS["Outbound Port"]
+        subgraph DOM_PORTS["Outbound Ports"]
             URP["UserRepositoryPort"]
+            USRP["UserSettingsRepositoryPort"]
         end
     end
 
@@ -504,6 +514,7 @@ graph TB
         direction TB
         subgraph PERSISTENCE["persistence/"]
             PRISMA_REPO["PrismaUserRepository\n(Outbound Adapter)"]
+            PRISMA_SETTINGS["PrismaUserSettingsRepository\n(Outbound Adapter)"]
         end
         subgraph ADAPTERS["adapters/"]
             STORAGE_ADAPTER["UploadStorage\n(Outbound Adapter)"]
@@ -522,14 +533,17 @@ graph TB
     CMDBUS --> HANDLERS
     HANDLERS -->|publishes| EVENTS
     HANDLERS -.->|uses| URP
+    HANDLERS -.->|uses| USRP
     HANDLERS -.->|uses| SP
     EVENTS -.->|uses| BJP
 
     URP ---|implemented by| PRISMA_REPO
+    USRP ---|implemented by| PRISMA_SETTINGS
     SP ---|implemented by| STORAGE_ADAPTER
     BJP ---|implemented by| JOBS_ADAPTER
 
     PRISMA_REPO -->|queries| PG
+    PRISMA_SETTINGS -->|queries| PG
     PRISMA_REPO -->|uses| MAPPER
     STORAGE_ADAPTER -->|saves| STORE
     JOBS_ADAPTER -->|enqueues| BULL
@@ -681,7 +695,7 @@ about its shape.
 | Layer | What is there |
 |---|---|
 | `domain/` | `errors/` (every auth `DomainError`, by topic), the repository ports in `ports/`, the password policy. No entities: the user is the users module's |
-| `application/` | 17 command handlers (register, verify, login, refresh, logout, reset and change password, Google, account deletion...), 2 query handlers, 2 event handlers, small services shared by handlers (`SessionIssuer`, `CodeIssuer`, `SignInGate`), the rate-limit rules, and the ports for outside services in `application/ports/` |
+| `application/` | 16 command handlers (send and verify an email code, complete the account, login, refresh, logout, reset and change password, Google, sessions, account deletion...), 2 query handlers, 2 event handlers, small services shared by handlers (`SessionIssuer`, `CodeIssuer`, `SignInGate`), the rate-limit rules, and the ports for outside services in `application/ports/` |
 | `infrastructure/` | one adapter per port (below): `adapters/` and `persistence/`, as in users; and `email/`, the emails `AuthJobsConsumer` sends (`AuthEmails` and their templates) |
 | `presentation/` | Five controllers for the /auth routes (HTTP), `AccessTokenGuard` (the global guard that checks every request's token), `AuthJobsConsumer` (sends the emails) |
 
@@ -701,6 +715,7 @@ the users module:
 | `AuthMailerPort` | queue the auth emails | `BullMqAuthMailer` | BullMQ (`auth` queue) |
 | `AuthEventsPort` | count what happened | `PrometheusAuthEvents` | Prometheus (`auth_events_total`) |
 | `RateLimitPort` | fixed-window limits | the shared `RateLimiter` | Redis |
+| `ServerOwnershipPort` | the servers that stop an account being deleted | `NoServersYet` | none yet: always empty |
 
 The auth handler tests replace these with in-memory fakes
 ([`auth-test-world.shared-spec.ts`](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)), which is the payoff of the ports: the
@@ -764,7 +779,9 @@ flowchart LR
 
 The result: you could delete `src/modules/auth/` and the users module would
 still compile. The other way round, auth needs users' published port,
-command and events, and nothing else from it. When you add a module, give it
+events, and a few published rules, errors and field decorators
+(`normaliseEmail`, `deletesAt`, `UsernameTakenError`, `DisplayNameField`,
+`TimeZoneField`, ...), and nothing else from it. When you add a module, give it
 the same kind of seams: a published port for what others may ask, commands
 for what others may make it do, events for what it announces.
 
@@ -780,26 +797,31 @@ modules/users/
 │   ├── entities/
 │   │   └── user.entity.ts           # Pure domain entity
 │   ├── errors/                      # DomainError subclasses, by topic
+│   │   ├── settings.errors.ts
 │   │   ├── user.errors.ts
 │   │   └── username.errors.ts
 │   ├── ports/
-│   │   └── user.repository.port.ts  # Outbound port for persistence
+│   │   ├── user.repository.port.ts  # Outbound port for persistence
+│   │   └── user-settings.repository.port.ts
 │   ├── account-deletion.rules.ts    # the 14 days: wait after a request, incomplete accounts (D-141)
 │   ├── avatar.rules.ts              # 8 MB, JPG / PNG / WEBP (no GIF)
 │   ├── email.rules.ts
 │   ├── profile-text.rules.ts        # display name and bio: NFC, code points, visible characters (D-139)
 │   ├── timezone.rules.ts            # IANA zone names (used by "complete your account")
+│   ├── user-settings.rules.ts       # theme, language, switches; the time zone once every 24 hours
 │   ├── username.rules.ts
 │   └── index.ts                     # Barrel export
 │
 ├── application/                     # 🟡 The Brain (orchestration + use cases)
 │   ├── commands/
 │   │   ├── update-profile/
+│   │   ├── update-settings/
 │   │   ├── upload-avatar/
 │   │   ├── remove-avatar/           # DELETE /users/me/avatar
 │   │   └── sweep-deleted-accounts/  # deletes accounts whose 14 days are over (D-141)
 │   ├── queries/
 │   │   ├── check-username/
+│   │   ├── get-settings/
 │   │   └── resolve-avatar-url/
 │   ├── events/
 │   │   ├── handlers/
@@ -822,15 +844,17 @@ modules/users/
 │   ├── mappers/
 │   │   └── user.mapper.ts           # Prisma model ↔ Domain entity
 │   ├── persistence/
-│   │   └── prisma-user.repository.ts # Implements UserRepositoryPort
+│   │   ├── prisma-user.repository.ts # Implements UserRepositoryPort
+│   │   └── prisma-user-settings.repository.ts
 │   └── index.ts
 │
-├── presentation/                    # 🔵 The Face (HTTP, queues)
+├── presentation/                    # 🔵 The Face (HTTP)
 │   ├── http/
 │   │   ├── users.controller.ts
 │   │   ├── avatar-file.pipe.ts      # the avatar's declared type (415 UPLOAD_INVALID_TYPE)
 │   │   └── dto/                     # one class per file: *.request.dto.ts, *.response.dto.ts;
-│   │                                # profile-text.decorators.ts: DisplayNameField, BioField
+│   │                                # profile-text.decorators.ts: DisplayNameField, BioField;
+│   │                                # settings.decorators.ts: TimeZoneField, OptionalChoiceField, OptionalSwitchField
 │   └── index.ts
 │
 ├── index.ts                         # What other modules may import (the auth module does)
@@ -844,22 +868,23 @@ And the auth module, in short:
 modules/auth/
 ├── domain/              # errors/, ports/ (the four repositories), password-policy.ts, ...
 ├── application/
-│   ├── commands/        # one folder per use case: register/, login/, delete-own-account/, finish-oauth/, ...
+│   ├── commands/        # one folder per use case: send-email-code/, login/, delete-own-account/, finish-oauth/, ...
 │   ├── queries/         # get-auth-options/, list-sessions/
 │   ├── events/handlers/ # reacting to the users module's events, one handler per file
 │   ├── ports/           # the outside services: hasher, tokens, mailer, ... (table above)
 │   ├── services/        # SessionIssuer, CodeIssuer, SignInGate, ...
-│   └── rate-limits.ts   # every auth limit, and RateLimitPort
-├── infrastructure/      # adapters/ (jose-token-service.adapter.ts, ...), persistence/ (prisma-session.repository.ts, ...)
+│   └── rate-limits.ts   # AUTH_RATE_LIMITS, every auth limit (the port is ports/rate-limit.port.ts)
+├── infrastructure/      # adapters/ (jose-token-service.adapter.ts, ...), persistence/ (prisma-session.repository.ts, ...), email/ (the emails and their templates)
 ├── presentation/
-│   ├── http/            # auth, password, account-deletion, oauth .controller.ts; auth-cookies.ts; dto/
+│   ├── http/            # auth, password, sessions, account-deletion, oauth .controller.ts; auth-cookies.ts; route-helpers.ts; dto/
 │   ├── guards/          # access-token.guard.ts (registered globally in AppModule)
+│   ├── rate-limit/      # throttle-by-user.ts, the throttler's key for signed-in routes
 │   └── consumers/       # auth-jobs.consumer.ts
 └── auth.module.ts       # 🔗 Wiring
 ```
 
 The full layout, with what each file does, is in
-[auth/in-the-code.md](./auth/in-the-code.md). How to start a third module is
+[auth/in-the-code.md](./auth/in-the-code.md). How to start a new module is
 in [adding-a-module.md](./adding-a-module.md).
 
 ---
@@ -907,7 +932,7 @@ In NestJS, when you use `@Inject()`, you need a **token** to identify what you w
 A `Symbol` is a JavaScript primitive that is guaranteed to be unique. Using `Symbol('StoragePort')` creates a unique token that NestJS can use to wire up the correct adapter during dependency injection.
 
 **7. Can I have multiple modules each with their own Hexagonal structure?**
-Absolutely! That's the entire point, and the starter already has two: `users` and `auth` ([above](#the-second-hexagon-the-auth-module)). If you add a `PaymentsModule`, it would have its own:
+Absolutely! That's the entire point, and the repository has four: `users`, `auth` ([above](#the-second-hexagon-the-auth-module)), `servers` and `permissions`. If you add a `PaymentsModule`, it would have its own:
 - `payments/domain/` (PaymentEntity, PaymentRepositoryPort)
 - `payments/application/` (ProcessPaymentCommand, PaymentProviderPort)
 - `payments/infrastructure/` (StripePaymentAdapter, PrismaPaymentRepository)
@@ -939,6 +964,7 @@ That something is `DomainExceptionFilter`
 | `forbidden` | 403 |
 | `not_found` | 404 |
 | `conflict` | 409 |
+| `gone` | 410 |
 | `unprocessable` | 422 |
 | `rate_limited` | 429 (with `Retry-After`) |
 | `unavailable` | 503 |

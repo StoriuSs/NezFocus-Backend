@@ -18,6 +18,8 @@
     - [describe() and it()](#describe-and-it)
     - [beforeEach / afterEach](#beforeeach--aftereach)
   - [Quick Start](#quick-start)
+    - [E2E vs integration](#e2e-vs-integration)
+    - [In CI](#in-ci)
   - [The Suites in This Starter](#the-suites-in-this-starter)
     - [Unit tests](#unit-tests)
     - [E2E tests](#e2e-tests)
@@ -40,6 +42,7 @@
     - ["Reflect.getMetadata is not a function"](#reflectgetmetadata-is-not-a-function)
     - [Tests timing out](#tests-timing-out)
     - [Module not found errors](#module-not-found-errors)
+  - [What this page does not cover](#what-this-page-does-not-cover)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -338,18 +341,20 @@ The GitHub Actions workflow runs every suite on every push, the integration suit
 
 ### Unit tests
 
-`pnpm test` runs every `*.spec.ts` under `src/`, about 70 tests, in a few
+`pnpm test` runs every `*.spec.ts` under `src/`, about 75 suites, in a few
 seconds. They need nothing running: ports are replaced by fakes. Jest compiles
 without type-checking (`isolatedModules` in `test/esm-transform.js`):
 `pnpm exec tsc --noEmit`, lint and CI check the types.
 
 | Area | Suites (next to the code they test) |
 |---|---|
-| Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `email-code` (sign-up and sign-in by code), `sessions` (sign-in limits, refresh, the list of devices and signing them out), `passwords`, `google`, `delete-account` |
-| Auth building blocks | `limits.spec.ts` (guesses counted before they are checked), `password-policy.spec.ts`, `device.spec.ts` (browser, system and device kind from a user agent), `masked-ip.spec.ts` (IPv4, IPv6 and `::ffff:` addresses masked), `route-helpers.spec.ts` (the user agent cut to 512), `jose-token-service.adapter.spec.ts` (a token for another audience, issuer, or past its lifetime is refused) |
-| Users | `upload-avatar` (no orphaned file), `remove-avatar` (the file goes; no avatar answers the same), `sweep-deleted-accounts`, `profile-text.rules.spec.ts` (NFC, code points, a name that looks empty), `update-profile.request.dto.spec.ts` (`null` refused, empty bio clears), `avatar-file.pipe.spec.ts` (declared type, 415), `user-directory.adapter.spec.ts` (a Google name cut without splitting an emoji) |
-| Shared | the roles guard, 5xx answers that leak nothing, a 413 file named `UPLOAD_FILE_TOO_LARGE` and a 413 JSON body `PAYLOAD_TOO_LARGE_ERROR`, URL redaction in logs, the queue failure reporter (no job data), image-processing limits, S3 errors kept out of answers, stored file extensions, IPv6 /64, the verification code generator, unique error codes |
-| Structure | `module-structure.spec.ts` in `src/modules/`: every file where the "Names and places" table of [adding-a-module.md](./adding-a-module.md#names-and-places) puts it, an `index.ts` in every layer, one DTO class per file named after it, each command and query named after its folder. It reads the tree, so no change to a file makes it related: `check:task` runs it by name (`pnpm test:structure`) |
+| Auth commands | one file per area, sharing the in-memory fakes of [auth-test-world.shared-spec.ts](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts): `email-code` (sign-up and sign-in by code), `sessions` (sign-in limits, refresh, the list of devices and signing them out), `passwords`, `google`, `delete-account`, `complete-account` (of two submissions at once, one wins) |
+| Auth building blocks | `limits.spec.ts` (guesses counted before they are checked), `password-policy.spec.ts`, `device.spec.ts` (browser, system and device kind from a user agent), `masked-ip.spec.ts` (IPv4, IPv6 and `::ffff:` addresses masked), `route-helpers.spec.ts` (the user agent cut to 512), `jose-token-service.adapter.spec.ts` (a token for another audience, issuer, or past its lifetime is refused), `session-end.spec.ts`, `end-sessions-of-deleted-account.handler.spec.ts`, `prometheus-auth-events.adapter.spec.ts`, `auth-emails.spec.ts`, `access-token.guard.spec.ts`, `throttle-by-user.spec.ts` |
+| Users | `upload-avatar` (no orphaned file), `remove-avatar` (the file goes; no avatar answers the same), `sweep-deleted-accounts`, `profile-text.rules.spec.ts` (NFC, code points, a name that looks empty), `update-profile.request.dto.spec.ts` (`null` refused, empty bio clears), `avatar-file.pipe.spec.ts` (declared type, 415), `user-directory.adapter.spec.ts` (a Google name cut without splitting an emoji); the settings (`update-settings` and `get-settings` handlers, `update-settings.request.dto.spec.ts`, `user-settings.rules.spec.ts`, `timezone.rules.spec.ts`); `username.rules.spec.ts`, `account-deletion.rules.spec.ts` |
+| Shared | the roles guard, 5xx answers that leak nothing, a 413 file named `UPLOAD_FILE_TOO_LARGE` and a 413 JSON body `PAYLOAD_TOO_LARGE_ERROR`, URL redaction in logs, the queue failure reporter (no job data), image-processing limits, S3 errors kept out of answers, stored file extensions, IPv6 /64, the verification code generator, unique error codes, the email service, the rate limiter, the request log (`logging.interceptor.spec.ts`); and in `src/maintenance/`, the scheduled jobs' consumer (`maintenance.consumer.spec.ts`) |
+| Servers | one `<area>.handlers.spec.ts` beside each command and query area; the rules in `domain/` (`channel-layout`, `channel-name.rules`, `invites`, `member-view`, `moderation`, `roles`, `server-name.rules`, `server-settings`, `server-templates`); `services/invite-guesses.spec.ts`; `services/permission-cache.spec.ts`, which fails when a command handler does not go through `ChangeLayout`, `ChangeRoles` or `Moderate` (the base classes that report `serverChanged` / `memberChanged` to the permission cache after the commit) and is not on its list of exceptions with a reason, or when that list names a handler that is gone or now goes through a base |
+| Permissions | `access.spec.ts` (what a member may do in a channel and a server, who outranks whom, which permission changes and role hand-outs are allowed), `permission-flags.spec.ts` (the bits on the wire), `access-codec.spec.ts` (the cached entry read back as it was written) |
+| Structure | `module-structure.spec.ts` in `src/modules/`: every file where the "Names and places" table of [adding-a-module.md](./adding-a-module.md#names-and-places) puts it, an `index.ts` in every layer, one DTO class per file named after it, DTO classes only in `dto/`, each command and query named after its folder, each command and query folder in one form (a single pair, or the area pair). It reads the tree, so no change to a file makes it related: `check:task` runs it by name (`pnpm test:structure`) |
 | Configuration | env validation (production refusals) and `env:check` (files in step), pino and Sentry redaction, image versions, compose healthchecks, monitoring files |
 
 ### E2E tests
@@ -361,6 +366,7 @@ to be running.
 
 | Suite | What it checks |
 |---|---|
+| `auth-routes` | the fixed `GET /auth/options` and `/auth/sessions` reach their own handlers, because `OAuthController` (`GET auth/:provider`) is registered last |
 | `openapi-contract` | users responses match the committed `openapi.json`, which the web app's types are generated from ([openapi.md](./openapi.md)) |
 | `exception-filter` | a server error answers without its detail |
 | `idempotency-replay` | `@Idempotent`: another user's key never replays my answer; the same key with another body is refused ([idempotency.md](./idempotency.md)) |
@@ -396,6 +402,13 @@ share the services.
 | `account-deletion` | Postgres, Redis, Mailpit | deleting over HTTP (D-141): `deletes_at` and every session ended; another device told `account_deleted` with the date; signing in again by password, code or Google reaches the same account, which can only restore itself; restore; the username held while waiting; after 14 days the address makes a new account |
 | `profile-http` | Postgres, Redis, Mailpit | `PATCH /users/me` and the avatar routes over HTTP: names counted in characters (decomposed Vietnamese, emoji), a name that would look empty or `null` refused; a JPG, PNG or WEBP avatar taken and removed (twice answers the same); a GIF refused by declared type or by its bytes (415); a file over 8 MB refused with `UPLOAD_FILE_TOO_LARGE` (413) |
 | `settings-http` | Postgres, Redis, Mailpit | `GET` and `PATCH /users/me/settings` over HTTP: the values from completing the account and the defaults; a choice kept for the next browser; an unknown value or a switch sent as a string refused; the time zone changed once, then `429` with `reason: "timezone"`, `changeable_at` and `Retry-After`; of two zone changes at once, one wins |
+| `servers-http` | Postgres, Redis, Mailpit | servers made from a template, the creator their owner; one server for one `Idempotency-Key` sent twice; one of two racing requests makes the 100th server; a deleted server not counted; a member shown only the channels they may see; the icon taken from those who manage the server only |
+| `server-settings-http` | Postgres, Redis, Mailpit | rename for those who manage the server; the welcome channel moved to a text channel they see, or none (D-83); never a channel deleted while it was being chosen |
+| `channel-layout-http` | Postgres, Redis, Mailpit | names stored as REQ-SRV-02 says, clashes refused; only `MANAGE_CHANNELS` changes the list; private channels shown to their roles and the owner; one channel per drop (D-149); two changes to one server wait for each other |
+| `invites-http` | Postgres, Redis, Mailpit | the same link handed out again; the public invite page; one join, one use; one of two people racing takes the last use; banned or at 100 servers refused without a use; revoke; more than 30 wrong codes a minute from one network refused |
+| `roles-http` | Postgres, Redis, Mailpit | a role given and taken back shows or hides its private channel at once; a manager held to roles below theirs and permissions they hold (REQ-ROLE-02); an order made from a changed list refused; members found without accents or by role (D-152) |
+| `moderation-http` | Postgres, Redis, Mailpit | kick, ban and unban, timeout to viewing only (D-154); ADMINISTRATOR never timed out (D-147); a ban racing a join never leaves both; members sorted by role and joining day (D-89) |
+| `permissions` | Postgres, Redis | the cached server and member served until `serverChanged` / `memberChanged`; someone outside the server not remembered; a timeout and the role bits back from Redis as they went in; private channels |
 | `rate-limiter` | Redis | exactly `limit` hits pass when many arrive at once |
 | `s3-storage` | RustFS | a private bucket refuses an unsigned URL and serves a signed one |
 
@@ -412,13 +425,16 @@ auth tests are built are in [in-the-code.md](./auth/in-the-code.md).
 │   └── **/*.spec.ts                 # Unit tests (next to source files)
 ├── test/
 │   ├── setup.ts                     # Shared test environment setup
+│   ├── esm-transform.js             # Compiles ESM-only dependencies, for every config
 │   ├── jest-e2e.config.js           # Config for test/e2e/
 │   ├── jest-integration.config.js   # Config for test/integration/
+│   ├── run-integration.cjs          # pnpm test:integration: Jest twice, with and without VM modules
 │   ├── e2e/
 │   │   └── *.e2e-spec.ts            # Self-contained, need nothing running
 │   └── integration/
 │       ├── global-setup.ts          # Fails fast if a service is unreachable
 │       ├── fake-oidc-issuer.ts      # A stand-in for Google's OpenID Connect
+│       ├── helpers.ts               # Boot the app, poll Mailpit for a code
 │       ├── targets.ts               # Service addresses, overridable with TEST_*
 │       └── *.integration-spec.ts    # Need Postgres / Redis / RustFS / Mailpit
 ├── scripts/
@@ -510,9 +526,9 @@ modules/
 ├── auth/domain/
 │   ├── password-policy.ts
 │   └── password-policy.spec.ts          ← Domain test
-├── auth/infrastructure/
-│   ├── aes-secret-box.adapter.ts
-│   └── aes-secret-box.adapter.spec.ts           ← Adapter test
+├── auth/infrastructure/adapters/
+│   ├── jose-token-service.adapter.ts
+│   └── jose-token-service.adapter.spec.ts   ← Adapter test
 └── users/application/commands/upload-avatar/
     ├── upload-avatar.handler.ts
     └── upload-avatar.handler.spec.ts    ← Handler test
@@ -555,7 +571,7 @@ import { CompleteAccountHandler } from './complete-account.handler'
 import { CompleteAccountCommand } from './complete-account.command'
 import { USER_DIRECTORY } from '@/modules/users'
 import { AccountAlreadyCompleteError, CREDENTIAL_REPOSITORY } from '@/modules/auth/domain'
-import { PASSWORD_HASHER, SESSION_CACHE } from '../../ports'
+import { AUTH_MAILER, PASSWORD_HASHER, SESSION_CACHE } from '../../ports'
 
 describe('CompleteAccountHandler', () => {
     let handler: CompleteAccountHandler
@@ -580,7 +596,8 @@ describe('CompleteAccountHandler', () => {
                 // The password is written by directory.complete, in its transaction.
                 { provide: CREDENTIAL_REPOSITORY, useValue: { findHash: jest.fn().mockResolvedValue(null) } },
                 { provide: PASSWORD_HASHER, useValue: { hash: jest.fn().mockResolvedValue('hash') } },
-                { provide: SESSION_CACHE, useValue: cache }
+                { provide: SESSION_CACHE, useValue: cache },
+                { provide: AUTH_MAILER, useValue: { sendPasswordChanged: jest.fn() } }
             ]
         }).compile()
 

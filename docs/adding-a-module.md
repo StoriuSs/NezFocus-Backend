@@ -1,7 +1,9 @@
 # Adding a module
 
-The starter ships two feature modules: `users`, small enough to read in one
-sitting, and `auth`, the same shape at full size. This page builds a third one
+The repository has four feature modules: `users`, small enough to read in one
+sitting, `auth`, the same shape at full size, `servers`, whose use cases are
+grouped by area, and `permissions`, a port the others ask. This page builds a
+new one
 — `orders` — so you can see every layer filled in once, in order, with the
 reasoning at each step.
 
@@ -35,7 +37,8 @@ several adapters behind it (`OAUTH_PROVIDERS`, one per sign-in provider),
 shared steps pulled into `application/services/` instead of copied between
 handlers, and how one module uses another without importing its insides: auth
 imports only what `src/modules/users/index.ts` publishes — the
-`USER_DIRECTORY` port, two events, a command and `normaliseEmail`
+`USER_DIRECTORY` port, two events, and a few rules and field decorators
+(`normaliseEmail`, `deletesAt`, `DisplayNameField`, ...)
 ([auth/in-the-code.md](./auth/in-the-code.md)).
 
 The order matters: **inside out**. The domain first, the HTTP last. Starting
@@ -45,7 +48,7 @@ a request.
 ## 1. The database
 
 Prisma models live in one file per module, under `prisma/models/`
-(`users.prisma` holds one model, `auth.prisma` seven):
+(`users.prisma` holds two models, `auth.prisma` five, `servers.prisma` nine):
 
 ```prisma
 // prisma/models/orders.prisma
@@ -161,7 +164,7 @@ A code is the HTTP status and three digits. A new code takes its module's
 hundred: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, shared ones
 `x0xx`, so `orders` takes `x4xx` (`404400`, then `409400`, ...). Most existing codes are older
 than that rule and were numbered in turn under their status, auth's
-`401001`–`401009` and `403002`–`403005` and `USER_NOT_FOUND` `404001`
+`401001`–`401008` and `403003`–`403004` and `USER_NOT_FOUND` `404001`
 among them. They keep their numbers: a code keeps one meaning for ever, in logs
 and support tickets. The one move so far was before any release: servers'
 codes, first numbered in users' `x2xx`, took `x3xx` (D-158), and the old
@@ -175,6 +178,7 @@ listed above `ERROR_CODES`).
 | `forbidden` | 403 |
 | `not_found` | 404 |
 | `conflict` | 409 |
+| `gone` | 410 |
 | `unprocessable` | 422 |
 | `rate_limited` | 429, with `Retry-After` from `retryAfterSeconds` |
 | `unavailable` | 503 |
@@ -236,13 +240,15 @@ src/modules/servers/application/
 └── services/                   # what several handlers share: a base class, a permission check
 ```
 
-`servers` does this for its five areas (`server`, `channel-layout`,
-`invite`, `role`, `moderation`), each folder named like the files in it;
+`servers` does this for its five command areas (`server`, `channel-layout`,
+`invite`, `role`, `moderation`; four of them have queries, `channel-layout`
+has none), each folder named like the files in it;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`
 go only `commands/`, `queries/`, `events/`, `ports/` and `services/`, plus
-the settings file. Grouping a module that does not have it yet is the
+the module's settings and limits files (auth's `auth-settings.ts`,
+`oauth-settings.ts`, `rate-limits.ts`). Grouping a module that does not have it yet is the
 owner's call: ask first.
 
 **A command** is a plain data class — the intent, nothing else:
@@ -299,7 +305,7 @@ here. Two rules that are not optional:
 **Extra ports** go here, not in the domain, when the *use case* needs
 something the domain does not: sending mail, queuing a job, calling a payment
 provider. `users` keeps `storage`, `background-jobs` and `user-directory`
-here for that reason; `auth` keeps nine (`auth-mailer`, `rate-limit`,
+here for that reason; `auth` keeps ten (`auth-mailer`, `rate-limit`,
 `oauth-provider`, ...).
 
 ## 4. The infrastructure layer
@@ -436,10 +442,11 @@ Then add `OrdersModule` to the `imports` of `src/app.module.ts`, and the
 routes exist.
 
 **What other modules may use** goes in `src/modules/orders/index.ts`, and
-nothing else: a port, an event, a command another module sends. Add
-`'orders'` to `MODULES` at the top of `eslint.config.mjs` and a deep import into
-the module from another one (`@/modules/orders/application/...`) becomes a
-lint error. Its insides then stay free to move.
+nothing else: a port, an event, a command another module sends.
+`MODULES` at the top of `eslint.config.mjs` is every folder under
+`src/modules`, so from the module's first file a deep import into it from
+another one (`@/modules/orders/application/...`) is a lint error. Its insides
+then stay free to move.
 
 The rule covers `src/modules` only. `src/app.module.ts`, `src/maintenance`
 and the CLIs in `src/bootstrap` are where modules are wired together, and a
