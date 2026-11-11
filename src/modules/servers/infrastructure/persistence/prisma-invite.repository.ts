@@ -95,7 +95,8 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
                         name: true,
                         iconKey: true,
                         ownerId: true,
-                        _count: { select: { members: true } },
+                        // Live accounts only, as GET /servers counts (D-161).
+                        _count: { select: { members: { where: { user: { deletedAt: null } } } } },
                         roles: {
                             where: { isEveryone: true },
                             select: { id: true, permissions: true, position: true, isEveryone: true }

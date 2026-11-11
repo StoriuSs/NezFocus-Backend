@@ -209,11 +209,16 @@ describe('CleanUpServersHandler', () => {
     function setUp(
         leftovers: { serverId: string; userId: string }[],
         outcomes: Record<string, boolean | Error> = {},
-        queue: () => Promise<void> = async () => undefined
+        queue: () => Promise<void> = async () => undefined,
+        bansFail = false
     ) {
         const log: string[] = []
         const servers = {
             leftoverMemberships: jest.fn().mockResolvedValue(leftovers),
+            forgetBansOfDeleted: jest.fn(async () => {
+                log.push('forget bans')
+                if (bansFail) throw new Error('database down')
+            }),
             deletedBefore: jest.fn().mockResolvedValue(DELETED),
             purge: jest.fn(async (ids: string[]) => void log.push(`purge ${ids.join(',')}`))
         }
@@ -251,8 +256,8 @@ describe('CleanUpServersHandler', () => {
         expect(commandBus.execute).toHaveBeenCalledWith(new ForgetDeletedMemberCommand('binh', 'ot'))
         expect(servers.deletedBefore).toHaveBeenCalledWith(purgeDeletedBefore(NOW), expect.any(Number))
         expect(purgeDeletedBefore(NOW)).toEqual(new Date('2026-10-12T09:00:00Z'))
-        // Icons queued first: the row is the only record of the key.
-        expect(log).toEqual(['queue icons/old-1.webp', 'purge old-1,old-2'])
+        // The bans of deleted accounts (D-162); icons queued before the rows: the row is the only record of the key.
+        expect(log).toEqual(['forget bans', 'queue icons/old-1.webp', 'purge old-1,old-2'])
     })
 
     it('deletes no server whose icon could not be queued: the next run tries again', async () => {
@@ -260,7 +265,7 @@ describe('CleanUpServersHandler', () => {
             throw new Error('queue unreachable')
         })
         await expect(handler.execute(new CleanUpServersCommand(NOW))).rejects.toThrow('queue unreachable')
-        expect(log).toEqual([])
+        expect(log).toEqual(['forget bans'])
     })
 
     it('counts only the leftovers it changed', async () => {
@@ -286,6 +291,13 @@ describe('CleanUpServersHandler', () => {
         expect(error).not.toHaveBeenCalled()
     })
 
+    it('still deletes the servers due when the bans of deleted accounts cannot be forgotten', async () => {
+        const { log, handler } = setUp([], {}, async () => undefined, true)
+        await expect(handler.execute(new CleanUpServersCommand(NOW))).resolves.toEqual({ forgotten: 0, purged: 2 })
+        expect(log).toEqual(['forget bans', 'queue icons/old-1.webp', 'purge old-1,old-2'])
+        expect(error).toHaveBeenCalledTimes(1)
+    })
+
     it('logs any other failure and goes on', async () => {
         const { handler } = setUp(
             [
@@ -302,7 +314,10 @@ describe('CleanUpServersHandler', () => {
 describe('ForgetDeletedAccountHandler (AccountDeletedEvent, D-76)', () => {
     it('runs one command per server they were in, and goes on past one that fails', async () => {
         const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
-        const servers = { serverIdsOf: jest.fn().mockResolvedValue(['broken', 'ot']) }
+        const servers = {
+            serverIdsOf: jest.fn().mockResolvedValue(['broken', 'ot']),
+            forgetBansOf: jest.fn().mockResolvedValue(undefined)
+        }
         const commandBus = {
             execute: jest.fn(async (command: ForgetDeletedMemberCommand) => {
                 if (command.serverId === 'broken') throw new Error('database down')
@@ -319,6 +334,24 @@ describe('ForgetDeletedAccountHandler (AccountDeletedEvent, D-76)', () => {
             new ForgetDeletedMemberCommand('binh', 'broken'),
             new ForgetDeletedMemberCommand('binh', 'ot')
         ])
+        // Then the bans held against them (D-162).
+        expect(servers.forgetBansOf).toHaveBeenCalledWith('binh')
+        expect(error).toHaveBeenCalledTimes(1)
+        error.mockRestore()
+    })
+
+    it('logs bans it could not forget, for the daily clean-up to finish', async () => {
+        const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+        const servers = {
+            serverIdsOf: jest.fn().mockResolvedValue([]),
+            forgetBansOf: jest.fn().mockRejectedValue(new Error('database down'))
+        }
+        const handler = new ForgetDeletedAccountHandler(
+            servers as unknown as ServerRepositoryPort,
+            { execute: jest.fn() } as unknown as CommandBus
+        )
+
+        await expect(handler.handle(new AccountDeletedEvent('binh', true))).resolves.toBeUndefined()
         expect(error).toHaveBeenCalledTimes(1)
         error.mockRestore()
     })

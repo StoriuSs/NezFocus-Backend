@@ -1,4 +1,5 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
+import { UserDirectoryPort } from '@/modules/users'
 import { MemberRepositoryPort, MissingPermissionError, RoleRepositoryPort, ServerNotFoundError } from '../../../domain'
 import { ListMembersHandler, ListRolesHandler } from './role.handlers'
 import { ListMembersQuery, ListRolesQuery } from './role.queries'
@@ -8,6 +9,11 @@ const roles = [
     { id: 'docs', name: 'Nhóm tài liệu', permissions: 0n, position: 1, isEveryone: false },
     { id: 'lead', name: 'Trưởng nhóm', permissions: Permission.MANAGE_ROLES, position: 2, isEveryone: false }
 ]
+
+/** Picture keys as the storage would give them out. */
+const pictures = {
+    avatarUrl: jest.fn((key: string | null) => Promise.resolve(key && `https://files.example.test/${key}`))
+} as unknown as UserDirectoryPort
 
 const access = (userId: string, roleIds: string[] = []): ServerAccess => ({
     server: { ownerId: 'an', roles, channels: [] },
@@ -56,7 +62,8 @@ describe('ListMembersHandler (D-152)', () => {
         const checker = { access: jest.fn().mockResolvedValue(access('chi')) }
         const handler = new ListMembersHandler(
             directory as unknown as MemberRepositoryPort,
-            checker as unknown as PermissionCheckerPort
+            checker as unknown as PermissionCheckerPort,
+            pictures
         )
         await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toEqual(page)
         expect(directory.search).toHaveBeenCalledWith('ot', search)
@@ -67,7 +74,8 @@ describe('ListMembersHandler (D-152)', () => {
         const checker = { access: jest.fn().mockResolvedValue(null) }
         const handler = new ListMembersHandler(
             directory as unknown as MemberRepositoryPort,
-            checker as unknown as PermissionCheckerPort
+            checker as unknown as PermissionCheckerPort,
+            pictures
         )
         await expect(handler.execute(new ListMembersQuery('x', 'ot', search))).rejects.toThrow(ServerNotFoundError)
         expect(directory.search).not.toHaveBeenCalled()
@@ -84,7 +92,8 @@ describe('ListMembersHandler (D-152)', () => {
             const checker = { access: jest.fn().mockResolvedValue(viewer) }
             const handler = new ListMembersHandler(
                 directory as unknown as MemberRepositoryPort,
-                checker as unknown as PermissionCheckerPort
+                checker as unknown as PermissionCheckerPort,
+                pictures
             )
             return (await handler.execute(new ListMembersQuery(viewer.member.userId, 'ot', search))).items[0]
         }

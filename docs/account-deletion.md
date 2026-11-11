@@ -250,6 +250,9 @@ handlers, run by the event bus in the same process right after:
   One it owned with others in it is left as it is, with a warning in the log:
   the request checks again once it is saved (below), so only a join through
   an invite made in the moment before the second revoke could leave one.
+  Then the bans held against the account go, with the reasons moderators
+  wrote about it (D-162): they stop no one now, since signing up again makes
+  a new account. Bans the account made of others stay.
 
 Last, the sweep removes the avatar files itself, not through the event. The
 statement above keeps the `avatarUrl` key on the deleted row: it is all that
@@ -282,7 +285,7 @@ your own.
 | On restore | `deletionRequestedAt` cleared; sessions stay ended | `RestoreAccountHandler` |
 | 14 days after the request, at the next 15-minute sweep | `deletedAt` and `deletedBy` set; `email`, `username`, `displayName`, `bio` set to null; `UserSettings` deleted | `SweepDeletedAccountsHandler` |
 | Moments after the sweep | Open sessions ended (reason `account-deleted`); password and Google links deleted | `EndSessionsOfDeletedAccountHandler` |
-| Moments after the sweep | Out of every server; a server it owned alone deleted, then gone for good 30 days later | `ForgetDeletedAccountHandler` (servers), then the daily servers clean-up |
+| Moments after the sweep | Out of every server; a server it owned alone deleted, then gone for good 30 days later; bans held against it deleted (D-162) | `ForgetDeletedAccountHandler` (servers), then the daily servers clean-up |
 | The same sweep, right after | Avatar file queued for deletion, then `avatarUrl` set to null (a crash in between: the next sweep) | `SweepDeletedAccountsHandler` |
 | Within the hour, only if the step above failed | The same session, password and link clean-up, with a warning in the log | hourly auth clean-up |
 | A day after they stop working | Emailed codes (`VerificationCode` rows, keyed by address, not by account) | hourly auth clean-up |
@@ -353,7 +356,8 @@ working more than a day ago, for every account.
 The servers module has its own net: its daily clean-up
 (`CleanUpServersHandler`, the `servers-clean-up` schedule) finds deleted
 accounts still in a live server and runs the same `ForgetDeletedMemberCommand`
-for each, then deletes for good the servers deleted more than 30 days ago.
+for each, deletes the bans still held against any deleted account, then
+deletes for good the servers deleted more than 30 days ago.
 
 ## Errors
 

@@ -209,6 +209,15 @@ export class PrismaServerRepository implements ServerRepositoryPort {
         return rows.map((row) => row.serverId)
     }
 
+    async forgetBansOf(userId: string): Promise<void> {
+        await this.prisma.ban.deleteMany({ where: { userId, user: { deletedAt: { not: null } } } })
+    }
+
+    async forgetBansOfDeleted(): Promise<void> {
+        // Every deleted account (User_deletedAt_idx), then Ban_userId_idx for each.
+        await this.prisma.ban.deleteMany({ where: { user: { deletedAt: { not: null } } } })
+    }
+
     async leftoverMemberships(limit: number): Promise<LeftoverMembership[]> {
         return this.prisma.$queryRaw<LeftoverMembership[]>`
             SELECT m."serverId", m."userId"

@@ -154,6 +154,11 @@ class FakeDirectory implements UserDirectoryPort {
         user.deletionRequestedAt = null
         return true
     }
+
+    // Not used by auth; servers lists pictures through it.
+    async avatarUrl(key: string | null) {
+        return key
+    }
 }
 
 /** The servers that stop a deletion: none until a test names some. */

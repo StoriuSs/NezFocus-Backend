@@ -7,6 +7,7 @@ import { PrismaService } from '@/shared/infrastructure/persistence/database/pris
 import { MetricsService } from '@/shared/infrastructure/monitoring/metrics.service'
 import { PrismaUserRepository } from '@/modules/users/infrastructure/persistence/prisma-user.repository'
 import { UserDirectory } from '@/modules/users/infrastructure/adapters/user-directory.adapter'
+import { StoragePort } from '@/modules/users/application/ports/storage.port'
 import {
     AuthSettings,
     EndSessionsOfDeletedAccountHandler,
@@ -87,7 +88,8 @@ describe('Auth persistence and sessions (integration)', () => {
         codes = new PrismaVerificationCodeRepository(prismaService)
         credentials = new PrismaCredentialRepository(prismaService)
         oauthAccounts = new PrismaOAuthAccountRepository(prismaService)
-        const directory = new UserDirectory(new PrismaUserRepository(prismaService))
+        // Pictures are not part of signing in: no storage behind them here.
+        const directory = new UserDirectory(new PrismaUserRepository(prismaService), {} as StoragePort)
         cache = new RedisSessionCache(redis, sessions, directory, metrics)
         tokens = new JoseTokenService(
             { secret: 'integration-only-secret-0123456789abcdef', issuer: 'itest', audience: 'itest' },

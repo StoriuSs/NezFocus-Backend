@@ -100,7 +100,7 @@ const accessOf = (server: ServerSnapshot) => ({
 })
 
 /** MANAGE_CHANNELS in the server: categories, and new channels. */
-function requireManageServer({ server, member }: LayoutState, now: Date): void {
+function requireManageChannels({ server, member }: LayoutState, now: Date): void {
     const granted = serverPermissions(accessOf(server), member, now)
     if ((granted & Permission.MANAGE_CHANNELS) === 0n) throw new MissingPermissionError('MANAGE_CHANNELS')
 }
@@ -186,7 +186,7 @@ function viewRoles(server: ServerSnapshot, isPrivate: boolean, ids: string[]): s
 
 /** A category at the end of the list (S-SRV-05 `category`). */
 export function planCreateCategory(state: LayoutState, typed: string, now: Date): LayoutWrite[] {
-    requireManageServer(state, now)
+    requireManageChannels(state, now)
     requireRoom(state.server)
     const { name, nameKey: key } = categoryName(typed)
     if (state.server.categories.some((c) => nameKey(c.name) === key)) throw new LayoutRuleError('name_taken')
@@ -194,7 +194,7 @@ export function planCreateCategory(state: LayoutState, typed: string, now: Date)
 }
 
 export function planRenameCategory(state: LayoutState, categoryId: string, typed: string, now: Date): LayoutWrite[] {
-    requireManageServer(state, now)
+    requireManageChannels(state, now)
     const category = requireCategory(state, categoryId)
     const { name, nameKey: key } = categoryName(typed)
     if (state.server.categories.some((c) => c.id !== categoryId && nameKey(c.name) === key)) {
@@ -210,7 +210,7 @@ export function planRenameCategory(state: LayoutState, categoryId: string, typed
  * rename first.
  */
 export function planDeleteCategory(state: LayoutState, categoryId: string, now: Date): LayoutWrite[] {
-    requireManageServer(state, now)
+    requireManageChannels(state, now)
     requireCategory(state, categoryId)
     const moving = groupOf(state.server, categoryId)
     const clashing = moving.filter((c) => clashesInGroup(state.server, null, c.type, nameKey(c.name)))
@@ -231,7 +231,7 @@ export function planDeleteCategory(state: LayoutState, categoryId: string, now: 
 
 /** A channel at the end of its group (S-SRV-05). */
 export function planCreateChannel(state: LayoutState, draft: ChannelDraft, now: Date): LayoutWrite[] {
-    requireManageServer(state, now)
+    requireManageChannels(state, now)
     if (draft.categoryId !== null) requireCategory(state, draft.categoryId)
     requireRoom(state.server)
     if (draft.isStudyRoom && draft.type !== 'voice') throw new LayoutRuleError('not_for_type')
@@ -340,7 +340,7 @@ function planMoveCategory(
     move: Extract<LayoutMove, { kind: 'category' }>,
     now: Date
 ): LayoutWrite[] {
-    requireManageServer(state, now)
+    requireManageChannels(state, now)
     const category = requireCategory(state, move.id)
 
     const places = placeAfter([...state.server.categories].sort(byPosition), category, move.afterId)

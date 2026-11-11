@@ -250,6 +250,35 @@ describe('Leaving, deleting and handing over a server over HTTP (integration)', 
             expect(await prisma.invite.count({ where: { serverId: shared.serverId } })).toBe(1)
         })
 
+        it('forgets the bans of a deleted account with their reasons, at once and in the daily clean-up (D-162)', async () => {
+            await signUp('hoa')
+            await signUp('khoa')
+            const { serverId } = await serverWith('an', ['hoa', 'khoa'])
+            for (const who of ['hoa', 'khoa']) {
+                const banned = await as('an', api().put(url(serverId, `/bans/${users[who].id}`))).send({
+                    reason: 'Spam'
+                })
+                expect(banned.status).toBe(200)
+            }
+            const bans = (who: string) => prisma.ban.count({ where: { userId: users[who].id } })
+            // A ban Hòa made of someone else, in a server of hers others are still in.
+            const hers = await serverWith('hoa', ['binh', 'an'], 'Nhóm của Hòa')
+            expect((await as('hoa', api().put(url(hers.serverId, `/bans/${users.binh.id}`))).send({})).status).toBe(200)
+
+            // The event, as when the 14 days are over.
+            await prisma.user.update({ where: { id: users.hoa.id }, data: { deletedAt: new Date() } })
+            app.get(EventBus).publish(new AccountDeletedEvent(users.hoa.id, true))
+            await eventually(async () => (await bans('hoa')) === 0)
+            // The bans she made of others stay (D-162).
+            expect(await prisma.ban.count({ where: { bannedById: users.hoa.id } })).toBe(1)
+
+            // The event lost: the daily clean-up finds it.
+            await prisma.user.update({ where: { id: users.khoa.id }, data: { deletedAt: new Date() } })
+            expect(await bans('khoa')).toBe(1)
+            await app.get(CommandBus).execute(new CleanUpServersCommand(new Date()))
+            expect(await bans('khoa')).toBe(0)
+        })
+
         it('takes a deleted account out of its servers, with a server it owned alone (AccountDeletedEvent)', async () => {
             await signUp('em')
             const { serverId } = await serverWith('an', ['em'])
@@ -270,7 +299,7 @@ describe('Leaving, deleting and handing over a server over HTTP (integration)', 
 
         it('finishes in the daily clean-up what a lost event left behind, and only that', async () => {
             await signUp('giang')
-            const { serverId } = await serverWith('an', ['binh', 'giang'])
+            const { serverId, code } = await serverWith('an', ['binh', 'giang'])
             // Deleted, and the event never handled: no longer counted, still a row.
             await prisma.user.update({ where: { id: users.giang.id }, data: { deletedAt: new Date() } })
             expect((await listed('an')).find((server) => server.id === serverId)?.member_count).toBe(2)
@@ -279,6 +308,8 @@ describe('Leaving, deleting and handing over a server over HTTP (integration)', 
                 member_count: number
             }[]
             expect(roles.find((role) => role.is_everyone)?.member_count).toBe(2)
+            // The invite page counts the same way.
+            expect((await anyone(api().get(`/api/v1/invites/${code}`))).body.data.server.member_count).toBe(2)
 
             await app.get(CommandBus).execute(new CleanUpServersCommand(new Date()))
 

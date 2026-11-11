@@ -143,6 +143,26 @@ describe('Moderation over HTTP (integration)', () => {
         expect((await join('dung', code)).status).toBe(200)
     })
 
+    it("gives members' and banned people's pictures as addresses a browser can open, not storage keys", async () => {
+        const { serverId } = await studyServer()
+        const keyOf = (who: Who) => `avatars/${users[who].id}.webp`
+        for (const who of ['binh', 'dung'] as const) {
+            await prisma.user.update({ where: { id: users[who].id }, data: { avatarUrl: keyOf(who) } })
+        }
+        const opens = (who: Who) => expect.stringMatching(new RegExp(`^https?://.+/${keyOf(who).replace('.', '\\.')}`))
+
+        const listed = (await as('an', api().get(url(serverId, '/members')))).body.data.items as {
+            user_id: string
+            avatar_url: string | null
+        }[]
+        expect(listed.find((item) => item.user_id === users.binh.id)?.avatar_url).toEqual(opens('binh'))
+        expect(listed.find((item) => item.user_id === users.chi.id)?.avatar_url).toBeNull()
+
+        expect((await ban('an', serverId, 'dung')).status).toBe(200)
+        const bans = await as('an', api().get(url(serverId, '/bans')))
+        expect(bans.body.data.items[0].user.avatar_url).toEqual(opens('dung'))
+    })
+
     it('times out to viewing only, shows it to all and its reason to moderators (D-154)', async () => {
         const { serverId } = await studyServer()
         expect(outcome(await timeout('binh', serverId, 'chi', 120))).toEqual([422, 'VALIDATION_ERROR'])

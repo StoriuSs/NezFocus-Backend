@@ -93,6 +93,20 @@ export interface ServerRepositoryPort {
      */
     leftoverMemberships(limit: number): Promise<LeftoverMembership[]>
 
+    /**
+     * The bans held against this account go, with their reasons (D-162), if
+     * the account is deleted: they stop no one any more. Bans it made of
+     * others stay. For the AccountDeletedEvent: one account, through
+     * Ban_userId_idx.
+     */
+    forgetBansOf(userId: string): Promise<void>
+
+    /**
+     * forgetBansOf for every deleted account at once: what a lost event left
+     * (the daily clean-up). Running it again changes nothing.
+     */
+    forgetBansOfDeleted(): Promise<void>
+
     /** Up to `limit` servers deleted before `before`, oldest first, with their icon's key. */
     deletedBefore(before: Date, limit: number): Promise<{ serverId: string; iconKey: string | null }[]>
 

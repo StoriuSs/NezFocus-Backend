@@ -353,7 +353,7 @@ In the users module, there are 5 **outbound** adapters and 1 **inbound** adapter
 | `PrismaUserSettingsRepository` | `UserSettingsRepositoryPort` | Prisma + PostgreSQL |
 | `UploadStorage` | `StoragePort` | The shared `UploadService`: sharp, then local disk or S3 |
 | `BullMqBackgroundJobs` | `BackgroundJobsPort` | BullMQ (the `file-cleanup` queue) |
-| `UserDirectory` | `UserDirectoryPort` (for other modules) | This module's own `UserRepositoryPort` |
+| `UserDirectory` | `UserDirectoryPort` (for other modules) | This module's own `UserRepositoryPort`, and `StoragePort` for picture addresses |
 
 **Inbound Adapters** (Presentation Layer — the outside world reaching *in*):
 
@@ -443,8 +443,8 @@ depends on the users module, never the reverse.** Nothing in
 depends on `permissions` (its two ports and its pure rules), and nothing in
 `src/modules/permissions/` imports from `servers`. `servers` also depends on
 `auth` (the `CURRENT_PASSWORD` port, and the `SERVER_OWNERSHIP` port it
-answers) and on `users` (`AccountDeletedEvent`); neither imports `servers`
-(D-160).
+answers) and on `users` (`AccountDeletedEvent`, and `USER_DIRECTORY` for
+people's pictures in its lists); neither imports `servers` (D-160).
 
 ## Architecture Diagram
 
@@ -762,7 +762,8 @@ flowchart LR
    name, username, Terms, first settings and the password hash in one
    transaction), read the account's language and time zone for emails, and
    record or take back a request to delete the account (`requestDeletion`,
-   `cancelDeletion`, D-141). It speaks in a small `DirectoryUser` record, not the
+   `cancelDeletion`, D-141). `servers` uses one more: `avatarUrl`, a stored
+   picture key as an address, for its member and ban lists. It speaks in a small `DirectoryUser` record, not the
    `UserEntity`, so auth never depends on the entity's shape. `UsersModule`
    binds it to `UserDirectory` and exports only that token
    (`exports: [USER_DIRECTORY]`); `AuthModule` imports `UsersModule` and

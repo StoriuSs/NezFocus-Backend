@@ -5,6 +5,7 @@ export interface BanPerson {
     userId: string
     username: string | null
     displayName: string | null
+    /** The stored picture key from the repository; ListBansHandler turns it into an address. */
     avatarUrl: string | null
 }
 

@@ -8,8 +8,9 @@ import { ForgetDeletedMemberCommand } from '../../commands/server/server.command
  * An account's 14 days are over (D-76): out of every server it was in, and a
  * server it owned alone goes with it. One command per server, so each takes
  * that server's lock and tells the permission cache like any other leave.
- * A failure is logged; the daily clean-up (CleanUpServersHandler) finds the
- * membership again and finishes it.
+ * Then the bans held against it go, with their reasons (D-162). A failure is
+ * logged; the daily clean-up (CleanUpServersHandler) finds what is left and
+ * finishes it.
  */
 @EventsHandler(AccountDeletedEvent)
 export class ForgetDeletedAccountHandler implements IEventHandler<AccountDeletedEvent> {
@@ -29,6 +30,11 @@ export class ForgetDeletedAccountHandler implements IEventHandler<AccountDeleted
                 if (error instanceof ServerNotFoundError) continue
                 this.logger.error(`Could not remove deleted account ${userId} from server ${serverId}`, error)
             }
+        }
+        try {
+            await this.servers.forgetBansOf(userId)
+        } catch (error) {
+            this.logger.error(`Could not forget the bans of deleted account ${userId}`, error)
         }
     }
 }

@@ -5,7 +5,7 @@
  * instead of auth reading the users table, this module publishes the few
  * operations auth needs, in terms of a small record rather than the domain
  * entity. The dependency runs one way: auth depends on this interface; nothing
- * here knows auth exists.
+ * here knows auth exists. servers uses it too, for people's pictures.
  */
 export interface DirectoryUser {
     id: string
@@ -14,6 +14,7 @@ export interface DirectoryUser {
     roles: string[]
     username: string | null
     displayName: string | null
+    /** The stored picture's key, not an address: `avatarUrl` turns it into one. */
     avatarUrl: string | null
     bio: string | null
     /** When the "complete your account" step was done; null until then (D-61). */
@@ -91,6 +92,13 @@ export interface UserDirectoryPort {
      * @returns false if it was not waiting to be deleted, or is gone
      */
     cancelDeletion(id: string): Promise<boolean>
+
+    /**
+     * A stored picture key (the `avatarUrl` column holds keys) as an address
+     * the browser can open: a presigned one on a private S3 bucket. For lists
+     * other modules show, such as a server's members.
+     */
+    avatarUrl(key: string | null): Promise<string | null>
 }
 
 export const USER_DIRECTORY = Symbol('UserDirectoryPort')

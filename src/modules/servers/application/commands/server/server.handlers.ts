@@ -192,7 +192,8 @@ export class ForgetDeletedMemberHandler
 
 /**
  * Daily (src/maintenance): first what a lost AccountDeletedEvent left
- * behind, then the servers deleted 30 days ago, for good, with their icons.
+ * behind (memberships, then bans, D-162), then the servers deleted 30 days
+ * ago, for good, with their icons.
  * Nothing to tell the permission cache: a server leaves it the moment it is
  * deleted, and each leftover goes through ForgetDeletedMemberCommand.
  *
@@ -222,6 +223,13 @@ export class CleanUpServersHandler implements ICommandHandler<CleanUpServersComm
                     this.logger.error(`Could not remove deleted account ${userId} from server ${serverId}`, error)
                 }
             }
+        }
+
+        try {
+            await this.servers.forgetBansOfDeleted()
+        } catch (error) {
+            // Tried again tomorrow; the servers due for good still go today.
+            this.logger.error('Could not forget the bans of deleted accounts', error)
         }
 
         const deleted = await this.servers.deletedBefore(purgeDeletedBefore(now), CLEAN_UP_BATCH)

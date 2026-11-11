@@ -5,6 +5,7 @@ import { AuthModule } from '@/modules/auth/auth.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
+import { UsersModule } from '@/modules/users/users.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
     INVITE_REPOSITORY,
@@ -53,11 +54,19 @@ import {
  * (SRS 4.2, 4.3). The only module that writes these tables. Asks the
  * permissions module what someone may do, and tells it after each commit
  * what changed (D-146). Asks the auth module for the password when a server
- * is handed over (CURRENT_PASSWORD, D-160).
+ * is handed over (CURRENT_PASSWORD, D-160), and the users module for
+ * people's pictures as addresses (USER_DIRECTORY).
  */
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.
-    imports: [CqrsModule, UploadModule, PermissionsModule, AuthModule, registerQueues(QUEUES.FILE_CLEANUP)],
+    imports: [
+        CqrsModule,
+        UploadModule,
+        PermissionsModule,
+        AuthModule,
+        UsersModule,
+        registerQueues(QUEUES.FILE_CLEANUP)
+    ],
     controllers: [ServersController, ChannelLayoutController, InvitesController, RolesController, ModerationController],
     providers: [
         { provide: SERVER_REPOSITORY, useClass: PrismaServerRepository },

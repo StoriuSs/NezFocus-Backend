@@ -5,6 +5,7 @@ import {
     DirectoryUser,
     UserDirectoryPort
 } from '@/modules/users/application/ports/user-directory.port'
+import { STORAGE, StoragePort } from '@/modules/users/application/ports/storage.port'
 
 const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
     id: user.id,
@@ -25,7 +26,10 @@ const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
  */
 @Injectable()
 export class UserDirectory implements UserDirectoryPort {
-    constructor(@Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort) {}
+    constructor(
+        @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
+        @Inject(STORAGE) private readonly storage: StoragePort
+    ) {}
 
     async findByEmail(email: string): Promise<DirectoryUser | null> {
         const user = await this.users.findLiveByEmail(email)
@@ -64,5 +68,10 @@ export class UserDirectory implements UserDirectoryPort {
 
     cancelDeletion(id: string): Promise<boolean> {
         return this.users.cancelDeletion(id)
+    }
+
+    /** The same address the profile gives (ResolveAvatarUrlHandler). */
+    async avatarUrl(key: string | null): Promise<string | null> {
+        return key ? this.storage.getReadUrl(key) : null
     }
 }

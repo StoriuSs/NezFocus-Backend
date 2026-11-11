@@ -1,5 +1,8 @@
 import { UserEntity, UserRepositoryPort } from '@/modules/users/domain'
+import { StoragePort } from '@/modules/users/application/ports/storage.port'
 import { UserDirectory } from './user-directory.adapter'
+
+const noStorage = {} as StoragePort
 
 // An account made by Google takes the name Google has (REQ-AUTH-10), under the profile's rules (D-139).
 describe('UserDirectory.create', () => {
@@ -8,7 +11,7 @@ describe('UserDirectory.create', () => {
             Promise.resolve(new UserEntity({ id: 'user-1', email, displayName: data.displayName }))
         )
         const users = { createWithEmail } as unknown as UserRepositoryPort
-        return { directory: new UserDirectory(users), createWithEmail }
+        return { directory: new UserDirectory(users, noStorage), createWithEmail }
     }
 
     it('cuts a long name at 32 characters without splitting an emoji', async () => {
@@ -21,5 +24,19 @@ describe('UserDirectory.create', () => {
         const { directory: users, createWithEmail } = directory()
         await users.create('ada@example.test', 'ㅤ')
         expect(createWithEmail).toHaveBeenCalledWith('ada@example.test', { displayName: null })
+    })
+})
+
+// Other modules list people with their pictures (a server's members).
+describe('UserDirectory.avatarUrl', () => {
+    it("gives the storage's address for a stored key, and nothing without one", async () => {
+        const getReadUrl = jest.fn((key: string) => Promise.resolve(`https://files.example.test/${key}?signed`))
+        const directory = new UserDirectory({} as UserRepositoryPort, { getReadUrl } as unknown as StoragePort)
+
+        await expect(directory.avatarUrl('avatars/user-1.webp')).resolves.toBe(
+            'https://files.example.test/avatars/user-1.webp?signed'
+        )
+        await expect(directory.avatarUrl(null)).resolves.toBeNull()
+        expect(getReadUrl).toHaveBeenCalledTimes(1)
     })
 })

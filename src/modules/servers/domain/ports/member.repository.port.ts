@@ -3,6 +3,7 @@ export interface MemberListItem {
     userId: string
     username: string | null
     displayName: string | null
+    /** The stored picture key from the repository; ListMembersHandler turns it into an address. */
     avatarUrl: string | null
     isOwner: boolean
     /** Not @everyone. */

@@ -1,6 +1,7 @@
 import { Inject } from '@nestjs/common'
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 import { Permission, PERMISSION_CHECKER, PermissionCheckerPort, serverPermissions } from '@/modules/permissions'
+import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
     MEMBER_REPOSITORY,
     MemberListItem,
@@ -32,7 +33,8 @@ export class ListRolesHandler implements IQueryHandler<ListRolesQuery> {
 export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
     constructor(
         @Inject(MEMBER_REPOSITORY) private readonly members: MemberRepositoryPort,
-        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort
+        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
+        @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort
     ) {}
 
     /**
@@ -48,7 +50,11 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
         const now = new Date()
         const mayModerate = (serverPermissions(access.server, access.member, now) & Permission.MODERATE_MEMBERS) !== 0n
         const { items, total } = await this.members.search(serverId, search)
-        return { items: items.map((item) => timeoutForViewer(item, { userId, mayModerate }, now)), total }
+        // The repository gives the stored picture keys; the client needs addresses.
+        const shown = await Promise.all(
+            items.map(async (item) => ({ ...item, avatarUrl: await this.directory.avatarUrl(item.avatarUrl) }))
+        )
+        return { items: shown.map((item) => timeoutForViewer(item, { userId, mayModerate }, now)), total }
     }
 }
 

@@ -56,7 +56,7 @@ const EventHandlers = [CleanupOldAvatarHandler]
         { provide: USER_SETTINGS_REPOSITORY, useClass: PrismaUserSettingsRepository },
         { provide: STORAGE, useClass: UploadStorage },
         { provide: BACKGROUND_JOBS, useClass: BullMqBackgroundJobs },
-        // Published for other modules: what the auth module needs from users.
+        // Published for other modules: what auth needs from users, and servers' picture addresses.
         { provide: USER_DIRECTORY, useClass: UserDirectory },
 
         // CQRS Handlers
