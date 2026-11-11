@@ -286,6 +286,10 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # The last stage only upgrades Alpine's packages: built afresh every
+          # time, or its upgrade would come from the cache and stay as old as
+          # the cache (Dockerfile, stage 6). Seconds; the others keep the cache.
+          no-cache-filters: prod
       # Docker Hub now and then doesn't answer a runner in time; pulling first,
       # with retries, keeps that from failing the check (scripts/pull-images.sh).
       - name: Pull the images of the smoke test and the scan

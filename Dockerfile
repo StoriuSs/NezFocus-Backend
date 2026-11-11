@@ -7,7 +7,8 @@
 #   2. deps        — Install ALL npm dependencies (dev + prod)
 #   3. build       — Compile TypeScript and generate Prisma client
 #   4. dev         — Development image (hot-reload, debugging, full deps)
-#   5. prod        — Production image (minimal, distroless-like)
+#   5. runtime     — The production image's contents (minimal, distroless-like)
+#   6. prod        — runtime with Alpine's latest fixes: the image that ships
 #
 # Usage:
 #   Dev:   docker build --target dev  -t nestapp:dev .
@@ -20,8 +21,9 @@ FROM node:22.23.2-alpine AS base
 
 # Alpine's security fixes first: the node image is built from the packages of
 # its day, so a fix published since (musl, zlib…) is missing until the next
-# node release, and CI's Trivy scan fails on it. Every stage, prod included,
-# starts from here.
+# node release, and CI's Trivy scan fails on it. Every stage starts from here.
+# CI takes this layer from its build cache while the node image stays the
+# same, so the final `prod` stage upgrades again, never from the cache.
 # Required by sharp (image processing) and Prisma
 RUN apk upgrade --no-cache && apk add --no-cache \
     libc6-compat \
@@ -109,9 +111,9 @@ EXPOSE 3000 9229
 # Start with hot-reload
 CMD ["pnpm", "run", "dev"]
 
-# ----- STAGE 5: PRODUCTION -----
+# ----- STAGE 5: RUNTIME -----
 # Minimal image with only what's needed to run the compiled app
-FROM base AS prod
+FROM base AS runtime
 
 ENV NODE_ENV=production
 
@@ -197,3 +199,16 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # once itself, before switching versions. exec makes node PID 1, so it gets
 # SIGTERM directly and shuts down gracefully.
 CMD ["sh", "-c", "if [ \"${RUN_MIGRATIONS:-true}\" = true ]; then ./node_modules/.bin/prisma migrate deploy || exit 1; fi; exec node dist/src/main"]
+
+# ----- STAGE 6: PRODUCTION -----
+# The runtime with the Alpine fixes published since it was cached. `base`
+# upgrades too, but CI reuses that layer from its build cache as long as the
+# node image is the same, so a fix Alpine shipped later never arrives and
+# Trivy fails on it (the frontend's libxslt, 11/2026). This stage is built
+# afresh every time (`no-cache-filters: prod` in ci.yml) and only upgrades:
+# seconds, not the install and the build again. It keeps the runtime's
+# user, command and health check. Root only for the upgrade.
+FROM runtime AS prod
+USER root
+RUN apk upgrade --no-cache
+USER nestjs

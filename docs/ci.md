@@ -287,8 +287,12 @@ added to the schema but not to `.env.example`.
 **The image scan:** Trivy lists each hole with its package and fixed version.
 
 - A package of the base image (Alpine or Node): usually fixed by the next
-  build, which downloads the newest base. If the base hasn't published the
-  fix yet, wait, or move the `Dockerfile` to a newer version of it.
+  build, which downloads the newest base and, in its last stage, upgrades
+  Alpine's packages (`apk upgrade`). That stage is never taken from the build
+  cache (`no-cache-filters: prod`): cached, the upgrade would not run again
+  while the Node image stays the same, and a fixed hole would stay. Rerunning
+  a failed scan therefore picks up Alpine's latest. If neither has published
+  the fix yet, wait, or move the `Dockerfile` to a newer version of the base.
 - An npm package: as for the advisories above.
 - A hole that doesn't affect you (the vulnerable part is never used): add its
   ID (e.g. `CVE-2026-12345`) to a file named `.trivyignore` at the root of
