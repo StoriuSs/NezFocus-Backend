@@ -1537,6 +1537,63 @@
         "tags": [
           "servers"
         ]
+      },
+      "delete": {
+        "operationId": "ServersController_remove_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteServerRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete the server for every member (owner only, S-SET-07), its name\ntyped again. Its invites answer 410 INVITE_INVALID from now.",
+        "tags": [
+          "servers"
+        ]
       }
     },
     "/api/v1/servers/{serverId}/icon": {
@@ -1658,6 +1715,114 @@
           }
         ],
         "summary": "Back to the initials (MANAGE_SERVER).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/members/me": {
+      "delete": {
+        "operationId": "ServersController_leave_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Leave the server (S-SRV-04): any member but the owner, who hands it\nover first (403 OWNER_CANNOT_LEAVE). Declared in this controller,\nwhich ServersModule lists before ModerationController, so `me` is\nnever taken for a member id by DELETE …/members/:userId (kick).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
+    "/api/v1/servers/{serverId}/transfer": {
+      "post": {
+        "operationId": "ServersController_transfer_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnershipRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Hand the server to another member (owner only, S-SET-07), with the\nowner's password. The old owner keeps their roles. The client reads the\nserver list again: what they may do has changed.",
         "tags": [
           "servers"
         ]
@@ -2817,6 +2982,15 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "name": "transferable",
+            "required": false,
+            "in": "query",
+            "description": "true: only those the owner may hand the server to (S-SET-07, D-161): not\nthemselves, not an account waiting to be deleted. Owner only.",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -4102,6 +4276,10 @@
             "type": "boolean",
             "description": "The owner outranks every role and may do everything."
           },
+          "member_count": {
+            "type": "number",
+            "description": "Everyone in it, themselves included (D-161): \"gone for N members\" when\ndeleting it, and the servers that block deleting the account (D-76)."
+          },
           "top_role_position": {
             "type": "number",
             "description": "Their highest role's position, 0 with none. Roles at or above it are locked for them, unless they are the owner."
@@ -4152,6 +4330,7 @@
           "name",
           "icon_url",
           "is_owner",
+          "member_count",
           "top_role_position",
           "role_ids",
           "roles",
@@ -4223,6 +4402,39 @@
         },
         "required": [
           "icon_url"
+        ]
+      },
+      "DeleteServerRequestDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The server's name typed again to confirm, compared without case or\naccents (REQ-SRV-05). Another name: VALIDATION_ERROR, `data.rule`\n`name_mismatch`.",
+            "maxLength": 400
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "TransferOwnershipRequestDto": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "The member who becomes the owner: not one waiting to be deleted, nor timed out (D-91).",
+            "format": "uuid"
+          },
+          "password": {
+            "type": "string",
+            "description": "The owner's password (wrong: 400 AUTH_CURRENT_PASSWORD_INVALID, counted as when changing it).",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": [
+          "user_id",
+          "password"
         ]
       },
       "CreatedInServerResponseDto": {

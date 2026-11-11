@@ -103,6 +103,44 @@ describe('Asking to delete your own account', () => {
         expect((refused as OwnershipTransferRequiredError).details.servers).toEqual(w.servers.blocking)
         expect(user.deletionRequestedAt).toBeNull()
         expect(w.mailer.scheduled).toEqual([])
+        expect(w.servers.revokedFor).toEqual([])
+    })
+
+    it('stops the invites of the servers they are alone in, once the request is saved, and again once no tab can make one (D-121)', async () => {
+        const w = setup()
+        const user = completedAccount(w)
+
+        await deleteWith(w, user.id, PASSWORD)
+
+        // The second time after the cached session and user are dropped: a
+        // tab still holding them could have made an invite in between.
+        expect(w.servers.revoked).toEqual([
+            { userId: user.id, cacheCleared: false },
+            { userId: user.id, cacheCleared: true }
+        ])
+    })
+
+    it('looks again once the request is saved: a server someone joined meanwhile takes the request back (L9 review)', async () => {
+        const w = setup()
+        const user = completedAccount(w)
+        const joined = [{ id: 'server-1', name: 'Ghi chú riêng', memberCount: 2 }]
+        w.servers.nextChecks = [[], joined]
+
+        const refused = await deleteWith(w, user.id, PASSWORD).catch((e: unknown) => e)
+
+        expect(refused).toBeInstanceOf(OwnershipTransferRequiredError)
+        expect((refused as OwnershipTransferRequiredError).details.servers).toEqual(joined)
+        expect(user.deletionRequestedAt).toBeNull()
+        expect(w.mailer.scheduled).toEqual([])
+        expect(w.cache.endedSessions).toEqual([])
+    })
+
+    it('stops no invite on a wrong password', async () => {
+        const w = setup()
+        const user = completedAccount(w)
+
+        await expect(deleteWith(w, user.id, 'Wrong-Password-1')).rejects.toThrow(CurrentPasswordInvalidError)
+        expect(w.servers.revokedFor).toEqual([])
     })
 
     it('refuses an account already waiting or deleted', async () => {

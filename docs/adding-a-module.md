@@ -443,6 +443,15 @@ routes exist.
 
 **What other modules may use** goes in `src/modules/orders/index.ts`, and
 nothing else: a port, an event, a command another module sends.
+
+When two modules need each other, keep the code pointing one way. The
+servers module asks auth's `CURRENT_PASSWORD` port, so auth may not import
+servers; yet deleting an account must ask about servers. Auth defines that
+port (`SERVER_OWNERSHIP`), servers answers it, and gives it through a small
+`@Global()` module declared in `servers.module.ts` beside `ServersModule`
+(the table has one module file per module) and imported by `AppModule`
+(D-160). Ask the owner before adding another such pair.
+
 `MODULES` at the top of `eslint.config.mjs` is every folder under
 `src/modules`, so from the module's first file a deep import into it from
 another one (`@/modules/orders/application/...`) is a lint error. Its insides

@@ -27,6 +27,14 @@ export class ServerResponseDto {
     @IsBoolean()
     isOwner: boolean
 
+    /**
+     * Everyone in it, themselves included (D-161): "gone for N members" when
+     * deleting it, and the servers that block deleting the account (D-76).
+     */
+    @Expose()
+    @IsInt()
+    memberCount: number
+
     /** What they may do in the server as a whole: menus and settings pages. */
     @ApiProperty({ example: '3657600' })
     @Expose()

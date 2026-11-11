@@ -44,7 +44,13 @@ const FALLBACK_TIME_ZONE = 'UTC'
  * it. The users module's sweep deletes it once they are over. The owner is
  * emailed the date, in the account's time zone.
  *
- * An Owner of servers with other members hands them over first (D-76).
+ * An Owner of servers with other members hands them over first (D-76). The
+ * invites of the servers they own alone stop now (D-121): those servers go
+ * with the account. Someone could join one, or be handed one, between the
+ * check and the request (L9 review): so, once the request is saved and the
+ * invites revoked, the servers are checked again, and one with others in it
+ * now takes the request back with the same 409. The invites are revoked a
+ * second time once no session or cached record is left that could make one.
  *
  * @returns when the account is deleted
  */
@@ -81,6 +87,7 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         // this session too, a moment ago).
         if (!requested?.deletionRequestedAt) throw new AccountDisabledError()
         const deletionDate = deletesAt(requested.deletionRequestedAt)
+        await this.stopInvitesOrTakeBack(userId)
 
         await this.limiter.reset(AUTH_RATE_LIMITS.currentPasswordFailuresPerUser, userId)
         const ended = await this.sessions.revokeAllForUser(userId, 'deletion-requested', now)
@@ -88,6 +95,8 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         await afterCommit(this.logger, 'Account deletion request', [
             () => this.cache.invalidateSessions(ended),
             () => this.cache.invalidateUser(userId),
+            // Again: a tab still holding the cached session could make one until now.
+            () => this.servers.revokeSoloServerInvites(userId),
             async () => {
                 if (!email) return
                 const timeZone = (await this.directory.timeZoneOf(userId)) ?? FALLBACK_TIME_ZONE
@@ -96,6 +105,27 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         ])
         this.events.record('account_deletion_requested')
         return deletionDate
+    }
+
+    /**
+     * Revoke the invites of the servers they own alone, then look again: a
+     * join or a handover that slipped in since the first check takes the
+     * request back (409, as before it). Revoked invites stay revoked, as
+     * when the account is restored (D-121). Any failure takes it back too.
+     */
+    private async stopInvitesOrTakeBack(userId: string): Promise<void> {
+        let blocking: Awaited<ReturnType<ServerOwnershipPort['serversBlockingDeletion']>>
+        try {
+            await this.servers.revokeSoloServerInvites(userId)
+            blocking = await this.servers.serversBlockingDeletion(userId)
+        } catch (error) {
+            await this.directory.cancelDeletion(userId)
+            throw error
+        }
+        if (blocking.length > 0) {
+            await this.directory.cancelDeletion(userId)
+            throw new OwnershipTransferRequiredError(blocking)
+        }
     }
 
     /** As when changing it: wrong ones count against the user. */

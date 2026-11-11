@@ -164,6 +164,7 @@ export class RolesController {
             new ListMembersQuery(user.id, serverId, {
                 q,
                 roleId: query.roleId ?? null,
+                transferableFrom: query.transferable ? user.id : null,
                 sort: query.sort ?? 'name',
                 order: query.order ?? 'asc',
                 page,

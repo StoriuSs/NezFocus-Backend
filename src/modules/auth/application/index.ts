@@ -9,6 +9,7 @@ export * from './services/session-issuer'
 export * from './services/code-issuer'
 export * from './services/limits'
 export * from './services/sign-in-gate'
+export * from './services/current-password-check'
 
 // Commands
 export * from './commands/change-password/change-password.command'

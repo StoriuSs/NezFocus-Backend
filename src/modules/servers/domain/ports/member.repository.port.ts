@@ -27,6 +27,12 @@ export interface MemberSearch {
     q: string | null
     /** Only those holding this role. */
     roleId: string | null
+    /**
+     * Only those this owner may hand the server to (S-SET-07
+     * `transfer-picker`, D-161): not themselves, not an account waiting to be
+     * deleted. Those timed out stay, shown greyed (D-91).
+     */
+    transferableFrom: string | null
     /** `asc` is A → Z, lowest role first, oldest first; ties go by name then username, A → Z. */
     sort: MemberSort
     order: SortOrder

@@ -40,7 +40,15 @@ describe('ListRolesHandler', () => {
 })
 
 describe('ListMembersHandler (D-152)', () => {
-    const search = { q: null, roleId: null, sort: 'name' as const, order: 'asc' as const, page: 1, limit: 50 }
+    const search = {
+        q: null,
+        roleId: null,
+        transferableFrom: null,
+        sort: 'name' as const,
+        order: 'asc' as const,
+        page: 1,
+        limit: 50
+    }
     const page = { items: [], total: 0 }
 
     it('lists the members for anyone in the server, with no permission needed', async () => {

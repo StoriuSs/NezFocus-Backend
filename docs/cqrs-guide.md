@@ -176,6 +176,14 @@ export class RefreshCachedUserHandler implements IEventHandler<UserProfileUpdate
 ```
 *Why is this amazing?* If your boss says "We need to send an email every time a profile is updated", you don't even touch the `UpdateProfileHandler`. You just create a new `SendEmailOnProfileUpdateHandler` that listens to `UserProfileUpdatedEvent`. True decoupling!
 
+An event handler, or a scheduled command, may send a command of its own
+through the `CommandBus` when the work is one the module already has a
+command for. The servers module does this when an account is deleted:
+`ForgetDeletedAccountHandler` (and the daily `CleanUpServersHandler`) send one
+`ForgetDeletedMemberCommand` per server, so each goes through the same base
+class as a member leaving, takes that server's lock and tells the permission
+cache. Calling the repository directly would skip both.
+
 ---
 
 ## Full Flow Example: Updating a Profile

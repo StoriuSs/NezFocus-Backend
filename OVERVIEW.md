@@ -328,20 +328,22 @@ too many use cases for one folder each, so it groups them by area:
 
 ```
 servers/
-├── domain/                     # The rules as pure functions: names, layout, roles, invites, moderation
-│   ├── errors/                 # One file per area: server, channel-layout, invite, role, moderation
+├── domain/                     # The rules as pure functions: names, layout, roles, invites, moderation, membership
+│   ├── errors/                 # One file per area: server, channel-layout, invite, role, moderation, membership
 │   └── ports/                  # The five repository ports
 ├── application/
 │   ├── commands/<area>/        # <area>.commands.ts + <area>.handlers.ts, for server, channel-layout, invite, role, moderation
 │   ├── queries/<area>/         # The same, for server, invite, role, moderation
-│   ├── services/               # ChangeLayout, ChangeRoles, Moderate: lock, decide, write, then clear the permission cache
+│   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users)
+│   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, then clear the permission cache
 │   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages
 ├── infrastructure/
-│   ├── persistence/            # The Prisma repositories, the shared select (membership.selections.ts) and row locks (server-locks.ts)
+│   ├── persistence/            # The Prisma repositories, auth's SERVER_OWNERSHIP answered (prisma-server-ownership.adapter.ts),
+│   │                           #   the shared select (membership.selections.ts) and row locks (server-locks.ts)
 │   └── adapters/               # Icon storage, BullMQ clean-up, the system messages not written yet
 ├── presentation/http/          # Five controllers by area, the presenter, one DTO class per file
-├── index.ts                    # What other modules may import (nothing yet)
-└── servers.module.ts
+├── index.ts                    # What other modules may import: the daily clean-up's command, for src/maintenance
+└── servers.module.ts           # ServersModule, and the global ServerOwnershipModule (D-160)
 ```
 
 `src/modules/permissions/` answers what a member may do in a server. It
@@ -354,6 +356,15 @@ roles, members or channels decides on rows it read under a lock, so it calls
 those rules itself; one whose outcome does not depend on the hierarchy (a
 name, an icon, an invite) asks `PERMISSION_CHECKER`
 (`application/services/require-permission.ts`).
+
+`servers` and `auth` need each other, and the code still points one way,
+`servers` → `auth` (D-160): handing a server over asks auth's
+`CURRENT_PASSWORD` port for the owner's password; deleting an account asks
+auth's own `SERVER_OWNERSHIP` port, which `servers` answers from its tables
+and gives to every module through the small global `ServerOwnershipModule`,
+so `AuthModule` never imports `ServersModule`. It also hears the users
+module's `AccountDeletedEvent` (imported from `@/modules/users`) to take a
+deleted account out of its servers.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

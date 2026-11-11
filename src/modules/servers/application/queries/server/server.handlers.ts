@@ -4,7 +4,7 @@ import { memberView, SERVER_REPOSITORY, ServerRepositoryPort, ServerView } from 
 import { ICON_STORAGE, IconStoragePort } from '../../ports'
 import { ListMyServersQuery } from './server.queries'
 
-export type ServerListItem = ServerView & { iconUrl: string | null }
+export type ServerListItem = ServerView & { iconUrl: string | null; memberCount: number }
 
 /**
  * Every server the person is in, as they see it: the channels they may see,
@@ -25,9 +25,10 @@ export class ListMyServersHandler implements IQueryHandler<ListMyServersQuery> {
         const now = new Date()
         const memberships = await this.servers.listForMember(userId, serverId)
         return Promise.all(
-            memberships.map(async ({ server, member }) => ({
+            memberships.map(async ({ server, member, memberCount }) => ({
                 ...memberView(server, member, now),
-                iconUrl: server.iconKey ? await this.storage.getReadUrl(server.iconKey) : null
+                iconUrl: server.iconKey ? await this.storage.getReadUrl(server.iconKey) : null,
+                memberCount
             }))
         )
     }

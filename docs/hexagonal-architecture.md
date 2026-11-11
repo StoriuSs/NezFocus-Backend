@@ -441,7 +441,10 @@ Between modules, the same idea holds in one direction: **the auth module
 depends on the users module, never the reverse.** Nothing in
 `src/modules/users/` imports from `src/modules/auth/`. Likewise `servers`
 depends on `permissions` (its two ports and its pure rules), and nothing in
-`src/modules/permissions/` imports from `servers`.
+`src/modules/permissions/` imports from `servers`. `servers` also depends on
+`auth` (the `CURRENT_PASSWORD` port, and the `SERVER_OWNERSHIP` port it
+answers) and on `users` (`AccountDeletedEvent`); neither imports `servers`
+(D-160).
 
 ## Architecture Diagram
 
@@ -715,7 +718,14 @@ the users module:
 | `AuthMailerPort` | queue the auth emails | `BullMqAuthMailer` | BullMQ (`auth` queue) |
 | `AuthEventsPort` | count what happened | `PrometheusAuthEvents` | Prometheus (`auth_events_total`) |
 | `RateLimitPort` | fixed-window limits | the shared `RateLimiter` | Redis |
-| `ServerOwnershipPort` | the servers that stop an account being deleted | `NoServersYet` | none yet: always empty |
+| `ServerOwnershipPort` | the servers that stop an account being deleted, and revoking the invites of those it owns alone (D-121) | `PrismaServerOwnership`, in the servers module (D-160) | Prisma + PostgreSQL |
+
+Auth also publishes a port for another module, as users publishes
+`UserDirectoryPort`: `CurrentPasswordPort` (`CurrentPasswordCheck`), the
+password checked again when the servers module hands a server over, with
+wrong ones counted as when changing it. `ServerOwnershipPort` goes the other
+way: auth defines it, the servers module answers it through a small global
+module, so the code depends one way only, servers on auth (D-160).
 
 The auth handler tests replace these with in-memory fakes
 ([`auth-test-world.shared-spec.ts`](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)), which is the payoff of the ports: the

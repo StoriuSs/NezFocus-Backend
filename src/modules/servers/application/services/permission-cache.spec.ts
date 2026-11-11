@@ -1,5 +1,6 @@
 import * as application from '..'
 import { ChangeLayout } from './change-layout'
+import { ChangeMembership } from './change-membership'
 import { ChangeRoles } from './change-roles'
 import { Moderate } from './moderate'
 
@@ -13,7 +14,7 @@ import { Moderate } from './moderate'
 /** COMMAND_HANDLER_METADATA of @nestjs/cqrs, which its index does not export. */
 const COMMAND_HANDLER = '__commandHandler__'
 
-const BASES = [ChangeLayout, ChangeRoles, Moderate]
+const BASES = [ChangeLayout, ChangeRoles, Moderate, ChangeMembership]
 
 /** What the cache holds: the owner, the roles, the channels' access, and each member's roles and timeout. */
 const OUTSIDE_THE_CACHE: Record<string, string> = {
@@ -22,7 +23,9 @@ const OUTSIDE_THE_CACHE: Record<string, string> = {
     RemoveServerIconHandler: 'the icon is not in the cache',
     CreateInviteHandler: 'invites are not in the cache',
     RevokeInviteHandler: 'invites are not in the cache',
-    AcceptInviteHandler: 'a newcomer: "not a member" is never cached'
+    AcceptInviteHandler: 'a newcomer: "not a member" is never cached',
+    CleanUpServersHandler:
+        'deletes for good servers already gone from the cache; each leftover member goes through ForgetDeletedMemberHandler'
 }
 
 type HandlerClass = { name: string; prototype: object }

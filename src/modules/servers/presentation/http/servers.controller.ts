@@ -21,19 +21,24 @@ import { MESSAGES } from '@/shared/constants'
 import { validateAndTransform } from '@/shared/utils'
 import {
     CreateServerCommand,
+    DeleteServerCommand,
+    LeaveServerCommand,
     ListMyServersQuery,
     RemoveServerIconCommand,
     ServerListItem,
+    TransferOwnershipCommand,
     UpdateServerCommand,
     UploadServerIconCommand
 } from '../../application'
 import { ICON_MAX_BYTES, ServerNotFoundError } from '../../domain'
 import {
     CreateServerRequestDto,
+    DeleteServerRequestDto,
     ServerIconResponseDto,
     ServerIdParamsDto,
     ServerListResponseDto,
     ServerResponseDto,
+    TransferOwnershipRequestDto,
     UpdateServerRequestDto
 } from './dto'
 import { IconFilePipe } from './icon-file.pipe'
@@ -80,7 +85,11 @@ export class ServersController {
             new CreateServerCommand(user.id, dto.name, dto.template)
         )
         const [item]: ServerListItem[] = await this.queryBus.execute(new ListMyServersQuery(user.id, serverId))
-        // Gone between creating and this read (deleted meanwhile).
+        // Gone between creating and this read. Not reachable through the API
+        // (M1 L9): deleting needs the id and the name typed again, and the id
+        // is only known from this answer; an owner waiting to be deleted is
+        // refused at every route. Were it reached, this 404 releases the
+        // idempotency key and a retry would create a second server.
         if (!item) throw new ServerNotFoundError(serverId)
         return createResponse(MESSAGES.SERVER.CREATED, presentServer(item))
     }
@@ -133,6 +142,56 @@ export class ServersController {
             new UploadServerIconCommand(user.id, serverId, file.buffer)
         )
         return createResponse(MESSAGES.SERVER.ICON_UPDATED, validateAndTransform(ServerIconResponseDto, result))
+    }
+
+    /**
+     * Leave the server (S-SRV-04): any member but the owner, who hands it
+     * over first (403 OWNER_CANNOT_LEAVE). Declared in this controller,
+     * which ServersModule lists before ModerationController, so `me` is
+     * never taken for a member id by DELETE …/members/:userId (kick).
+     */
+    @Delete(':serverId/members/me')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(null)
+    async leave(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId }: ServerIdParamsDto
+    ): Promise<ServiceResponse<null>> {
+        await this.commandBus.execute(new LeaveServerCommand(user.id, serverId))
+        return createResponse(MESSAGES.SERVER.LEFT, null)
+    }
+
+    /**
+     * Delete the server for every member (owner only, S-SET-07), its name
+     * typed again. Its invites answer 410 INVITE_INVALID from now.
+     */
+    @Delete(':serverId')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(null)
+    async remove(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId }: ServerIdParamsDto,
+        @Body() dto: DeleteServerRequestDto
+    ): Promise<ServiceResponse<null>> {
+        await this.commandBus.execute(new DeleteServerCommand(user.id, serverId, dto.name))
+        return createResponse(MESSAGES.SERVER.DELETED, null)
+    }
+
+    /**
+     * Hand the server to another member (owner only, S-SET-07), with the
+     * owner's password. The old owner keeps their roles. The client reads the
+     * server list again: what they may do has changed.
+     */
+    @Post(':serverId/transfer')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(null)
+    async transfer(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId }: ServerIdParamsDto,
+        @Body() dto: TransferOwnershipRequestDto
+    ): Promise<ServiceResponse<null>> {
+        await this.commandBus.execute(new TransferOwnershipCommand(user.id, serverId, dto.userId, dto.password))
+        return createResponse(MESSAGES.SERVER.TRANSFERRED, null)
     }
 
     /** Back to the initials (MANAGE_SERVER). */

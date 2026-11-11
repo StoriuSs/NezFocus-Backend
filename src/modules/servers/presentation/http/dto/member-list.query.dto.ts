@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
+import { Transform, Type } from 'class-transformer'
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
 import { MEMBER_SORTS, MemberSort, SORT_ORDERS, SortOrder } from '../../../domain'
 import { MAX_PAGE } from './shared/fields'
 
@@ -16,6 +16,20 @@ export class MemberListQueryDto {
     @IsOptional()
     @IsUUID()
     roleId?: string
+
+    /**
+     * true: only those the owner may hand the server to (S-SET-07, D-161): not
+     * themselves, not an account waiting to be deleted. Owner only.
+     */
+    @ApiPropertyOptional({ type: Boolean })
+    @IsOptional()
+    // The raw value: the pipe's implicit conversion has already made "false" true.
+    @Transform(({ obj, key }) => {
+        const raw: unknown = (obj as Record<string, unknown>)[key]
+        return raw === 'true' ? true : raw === 'false' ? false : raw
+    })
+    @IsBoolean()
+    transferable?: boolean
 
     @IsOptional()
     @Type(() => Number)

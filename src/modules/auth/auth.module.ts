@@ -16,7 +16,7 @@ import {
     CompleteAccountHandler,
     DeleteOwnAccountHandler,
     RestoreAccountHandler,
-    SERVER_OWNERSHIP,
+    CURRENT_PASSWORD,
     GetAuthOptionsHandler,
     SendEmailCodeHandler,
     SignInGate,
@@ -43,6 +43,7 @@ import {
     RevokeSessionHandler,
     SESSION_CACHE,
     SessionIssuer,
+    CurrentPasswordCheck,
     StartOAuthHandler,
     TOKEN_SERVICE,
     VerifyEmailCodeHandler
@@ -60,7 +61,6 @@ import {
     AuthEmails,
     BullMqAuthMailer,
     JoseTokenService,
-    NoServersYet,
     OpenIdConnectProvider,
     PrismaCredentialRepository,
     PrismaOAuthAccountRepository,
@@ -174,8 +174,11 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         { provide: OAUTH_STATE, useClass: RedisOAuthState },
         { provide: AUTH_MAILER, useClass: BullMqAuthMailer },
         { provide: AUTH_EVENTS, useClass: PrometheusAuthEvents },
-        // Until the servers module (M1) answers it from its tables.
-        { provide: SERVER_OWNERSHIP, useClass: NoServersYet },
+        // SERVER_OWNERSHIP (this module's port) is answered by the servers
+        // module, through its global ServerOwnershipModule (D-160): auth never
+        // imports servers.
+        // For the servers module, which asks again when a server is handed over.
+        { provide: CURRENT_PASSWORD, useClass: CurrentPasswordCheck },
         // One class answers both: the guard's lookup and the handlers' invalidations.
         RedisSessionCache,
         { provide: PRINCIPAL, useExisting: RedisSessionCache },
@@ -202,6 +205,7 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         AuthJobsConsumer
     ],
     // TOKEN_SERVICE: the global throttler checks access tokens too (throttle-by-user.ts).
-    exports: [AccessTokenGuard, TOKEN_SERVICE]
+    // CURRENT_PASSWORD: the servers module's handover asks for the password (D-160).
+    exports: [AccessTokenGuard, TOKEN_SERVICE, CURRENT_PASSWORD]
 })
 export class AuthModule {}

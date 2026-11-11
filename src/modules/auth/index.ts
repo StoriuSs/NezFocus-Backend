@@ -12,5 +12,13 @@ export { AccessTokenGuard } from './presentation/guards/access-token.guard'
 export { throttleByUser } from './presentation/rate-limit/throttle-by-user'
 export { TOKEN_SERVICE, type TokenServicePort } from './application/ports'
 
+// The account's password checked again, for a step of another module that
+// asks for it (handing a server over, D-160). AuthModule exports it.
+export { CURRENT_PASSWORD, type CurrentPasswordPort } from './application/ports/current-password.port'
+
+// What deleting an account asks of the servers module, which answers it (D-160).
+export { SERVER_OWNERSHIP, type ServerOwnershipPort } from './application/ports/server-ownership.port'
+export type { BlockingServer } from './domain'
+
 // Run on a schedule by src/maintenance.
 export { CleanUpAuthCommand } from './application/commands/clean-up-auth/clean-up-auth.command'

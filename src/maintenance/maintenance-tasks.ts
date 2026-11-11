@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config'
 import { ICommand } from '@nestjs/cqrs'
 import { CleanUpAuthCommand } from '@/modules/auth'
+import { CleanUpServersCommand } from '@/modules/servers'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
 
 const MINUTE_MS = 60 * 1000
@@ -38,5 +39,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'auth-clean-up',
         everyMs: 60 * MINUTE_MS,
         command: (now) => new CleanUpAuthCommand(now)
+    },
+    {
+        // Deletes for good the servers deleted 30 days ago, and takes out of
+        // their servers the deleted accounts whose event was lost.
+        id: 'servers-clean-up',
+        everyMs: 24 * 60 * MINUTE_MS,
+        command: (now) => new CleanUpServersCommand(now)
     }
 ]

@@ -86,8 +86,10 @@ with "forgot password" (`POST /auth/forgot-password`, then
 **An Owner of servers with other members** is refused with 409
 `OWNERSHIP_TRANSFER_REQUIRED` until they hand those servers over (D-76).
 `data.servers` lists them, `[{ "id", "name", "member_count" }]`, for the dialog
-that says so. Servers arrive in M1; until then the `ServerOwnershipPort`
-adapter (`NoServersYet`) answers an empty list, so nothing is blocked.
+that says so. The servers module answers `ServerOwnershipPort`
+(`PrismaServerOwnership`, D-160): a member is anyone in the server whose
+account is not deleted, the owner counted, as `member_count` in
+`GET /servers` (D-161).
 
 ## Asking to delete: what runs, in order
 
@@ -124,9 +126,18 @@ sequenceDiagram
    conditional statement: it matches only a live, completed account that is
    not already waiting. Of two requests at once, one records it; the other
    gets 403 `AUTH_ACCOUNT_DISABLED` (its session is being ended anyway).
+   Right after, the invites of the live servers the account owns are deleted
+   (`revokeSoloServerInvites`, D-121: those servers go with the account, and
+   a stranger joining meanwhile would leave members without an owner), and
+   the servers are checked again: someone who joined, or a server handed to
+   them, since step 3 takes the request back (`cancelDeletion`) with the same
+   409. A handover locks the recipient's account row (`FOR SHARE`), so it and
+   this request cannot pass each other. Revoked invites stay revoked.
 5. The wrong-password counter is reset, and **every session ends** with the
-   revoke reason `deletion-requested`. Then the cached sessions and the cached
-   user are dropped, and the email is queued: job `account-deletion-scheduled`,
+   revoke reason `deletion-requested`. Then the cached sessions and the
+   cached user are dropped, the invites are revoked a second time (a tab
+   still holding the cached session could have made one until then), and the
+   email is queued: job `account-deletion-scheduled`,
    "Your {app} account will be deleted on dd/mm/yyyy", the date written in the
    account's time zone, with a button to `FRONTEND_URL/login` where restoring
    starts. `auth_events_total{event="account_deletion_requested"}` is counted
@@ -232,6 +243,13 @@ handlers, run by the event bus in the same process right after:
   When the owner asked for the deletion (the event's `ownerAsked`, false for
   a sign-up left incomplete), it counts
   `auth_events_total{event="account_deleted"}`.
+- **`ForgetDeletedAccountHandler`** (servers): takes the account out of every
+  live server it is in, one `ForgetDeletedMemberCommand` per server, each
+  under that server's lock and telling the permission cache after the
+  commit. A server it owned alone is deleted like any other (kept 30 days).
+  One it owned with others in it is left as it is, with a warning in the log:
+  the request checks again once it is saved (below), so only a join through
+  an invite made in the moment before the second revoke could leave one.
 
 Last, the sweep removes the avatar files itself, not through the event. The
 statement above keeps the `avatarUrl` key on the deleted row: it is all that
@@ -259,11 +277,12 @@ your own.
 
 | When | What | By |
 |---|---|---|
-| In the request | `User.deletionRequestedAt` set; every session ended (reason `deletion-requested`) and dropped from the cache; the refresh cookie cleared in this browser; the email queued | `DeleteOwnAccountHandler`, `AccountDeletionController` |
+| In the request | `User.deletionRequestedAt` set; every session ended (reason `deletion-requested`) and dropped from the cache; the refresh cookie cleared in this browser; the invites of the servers it owns alone deleted (D-121); the email queued | `DeleteOwnAccountHandler`, `AccountDeletionController` |
 | While waiting | Nothing. Email, username, password, Google links, avatar, settings all kept | |
 | On restore | `deletionRequestedAt` cleared; sessions stay ended | `RestoreAccountHandler` |
 | 14 days after the request, at the next 15-minute sweep | `deletedAt` and `deletedBy` set; `email`, `username`, `displayName`, `bio` set to null; `UserSettings` deleted | `SweepDeletedAccountsHandler` |
 | Moments after the sweep | Open sessions ended (reason `account-deleted`); password and Google links deleted | `EndSessionsOfDeletedAccountHandler` |
+| Moments after the sweep | Out of every server; a server it owned alone deleted, then gone for good 30 days later | `ForgetDeletedAccountHandler` (servers), then the daily servers clean-up |
 | The same sweep, right after | Avatar file queued for deletion, then `avatarUrl` set to null (a crash in between: the next sweep) | `SweepDeletedAccountsHandler` |
 | Within the hour, only if the step above failed | The same session, password and link clean-up, with a warning in the log | hourly auth clean-up |
 | A day after they stop working | Emailed codes (`VerificationCode` rows, keyed by address, not by account) | hourly auth clean-up |
@@ -330,6 +349,11 @@ avatar file has no such net: the row's key is already erased, so a lost event
 leaves the file behind ([file-uploads-and-s3.md](file-uploads-and-s3.md)). The
 same job removes sessions ended more than 7 days ago and codes that stopped
 working more than a day ago, for every account.
+
+The servers module has its own net: its daily clean-up
+(`CleanUpServersHandler`, the `servers-clean-up` schedule) finds deleted
+accounts still in a live server and runs the same `ForgetDeletedMemberCommand`
+for each, then deletes for good the servers deleted more than 30 days ago.
 
 ## Errors
 
@@ -474,7 +498,9 @@ name, say), leave the username out of `deleteDue`'s erase list and drop the
 | [account-deletion.controller.ts](../src/modules/auth/presentation/http/account-deletion.controller.ts) | `POST /auth/account/delete` (clears the cookie) and `POST /auth/account/restore` |
 | [delete-own-account.handler.ts](../src/modules/auth/application/commands/delete-own-account/delete-own-account.handler.ts) | The proof, the limits, the servers check, the request, ending the sessions, the email and the metric |
 | [restore-account.handler.ts](../src/modules/auth/application/commands/restore-account/restore-account.handler.ts) | Taking the request back |
-| [server-ownership.port.ts](../src/modules/auth/application/ports/server-ownership.port.ts) | The servers that block a deletion; `NoServersYet` until M1 |
+| [server-ownership.port.ts](../src/modules/auth/application/ports/server-ownership.port.ts) | The servers that block a deletion, and revoking the invites of those owned alone |
+| [prisma-server-ownership.adapter.ts](../src/modules/servers/infrastructure/persistence/prisma-server-ownership.adapter.ts) | The servers module's answer to that port (D-160) |
+| [forget-deleted-account.handler.ts](../src/modules/servers/application/events/handlers/forget-deleted-account.handler.ts) | A deleted account out of its servers |
 | [access-token.guard.ts](../src/modules/auth/presentation/guards/access-token.guard.ts) | `ACCOUNT_PENDING_DELETION` on routes not marked `@AllowPendingDeletion()` |
 | [account-deletion.rules.ts](../src/modules/users/domain/account-deletion.rules.ts) | The 14 days: `DELETION_WAIT_MS`, `INCOMPLETE_ACCOUNT_MS`, `deletesAt`, `dueForDeletion` |
 | [sweep-deleted-accounts.handler.ts](../src/modules/users/application/commands/sweep-deleted-accounts/sweep-deleted-accounts.handler.ts) | Deleting the accounts whose time has come; publishes `AccountDeletedEvent`; queues the avatar files, then forgets their keys |

@@ -55,7 +55,7 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
      */
     async search(
         serverId: string,
-        { q, roleId, sort, order, page, limit }: MemberSearch
+        { q, roleId, transferableFrom, sort, order, page, limit }: MemberSearch
     ): Promise<{ items: MemberListItem[]; total: number }> {
         const where = Prisma.sql`
             m."serverId" = ${serverId}
@@ -64,6 +64,11 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
                 roleId
                     ? Prisma.sql`AND EXISTS (SELECT 1 FROM "MemberRole" r
                         WHERE r."serverId" = m."serverId" AND r."userId" = m."userId" AND r."roleId" = ${roleId})`
+                    : Prisma.empty
+            }
+            ${
+                transferableFrom
+                    ? Prisma.sql`AND m."userId" <> ${transferableFrom} AND u."deletionRequestedAt" IS NULL`
                     : Prisma.empty
             }
             ${

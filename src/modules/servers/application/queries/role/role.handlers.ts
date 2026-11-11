@@ -5,6 +5,7 @@ import {
     MEMBER_REPOSITORY,
     MemberListItem,
     MemberRepositoryPort,
+    NotOwnerError,
     ROLE_REPOSITORY,
     RoleListItem,
     RoleRepositoryPort,
@@ -42,6 +43,8 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
     async execute({ userId, serverId, search }: ListMembersQuery): Promise<{ items: MemberListItem[]; total: number }> {
         const access = await this.checker.access(serverId, userId)
         if (!access) throw new ServerNotFoundError(serverId)
+        // Who is waiting to be deleted is no one else's business (D-161).
+        if (search.transferableFrom !== null && access.server.ownerId !== userId) throw new NotOwnerError()
         const now = new Date()
         const mayModerate = (serverPermissions(access.server, access.member, now) & Permission.MODERATE_MEMBERS) !== 0n
         const { items, total } = await this.members.search(serverId, search)

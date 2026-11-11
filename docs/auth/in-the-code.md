@@ -201,7 +201,8 @@ others in [application/ports/](../../src/modules/auth/application/ports/).
 | `AUTH_EVENTS` | Count an event | [prometheus-auth-events.adapter.ts](../../src/modules/auth/infrastructure/adapters/prometheus-auth-events.adapter.ts) | prom-client |
 | `PRINCIPAL` and `SESSION_CACHE` | The per-request session check; invalidation; the refresh grace replacement | [redis-session-cache.adapter.ts](../../src/modules/auth/infrastructure/adapters/redis-session-cache.adapter.ts) (one instance answers both) | Redis, Postgres fallback |
 | `RATE_LIMIT` | `hit`, `check`, `release`, `reset` a fixed-window counter; `hit` and `check` throw `LimitsUnavailableError` (503) when Redis is down (D-137) | the shared [rate-limiter.ts](../../src/shared/infrastructure/rate-limit/rate-limiter.ts) | Redis (Lua) |
-| `SERVER_OWNERSHIP` | The servers an account owns that have other members, which block deleting it (D-76) | [no-servers-yet.adapter.ts](../../src/modules/auth/infrastructure/adapters/no-servers-yet.adapter.ts): none, until the servers module answers it in M1 | none |
+| `SERVER_OWNERSHIP` | The servers an account owns that have other members, which block deleting it (D-76); revoking the invites of those it owns alone (D-121) | the servers module's [prisma-server-ownership.adapter.ts](../../src/modules/servers/infrastructure/persistence/prisma-server-ownership.adapter.ts), given by its global `ServerOwnershipModule` (D-160) | Postgres |
+| `CURRENT_PASSWORD` | Exported for the servers module: the password checked again when a server is handed over, wrong ones counted as when changing it (D-160) | [current-password-check.ts](../../src/modules/auth/application/services/current-password-check.ts), an application service (the rule is auth's, the technology is behind its own ports) | Postgres, Redis (the limit) |
 | `USER_DIRECTORY` | The user row, owned by the users module: find, create, `complete` (the "complete your account" write, the password included, in one transaction), `languageOf` (for emails nobody asked for), `timeZoneOf` (the date in the deletion email), `requestDeletion` and `cancelDeletion` (D-141) | [user-directory.adapter.ts](../../src/modules/users/infrastructure/adapters/user-directory.adapter.ts) | Prisma |
 
 Settings, also provided by `auth.module.ts` from config:
@@ -246,9 +247,11 @@ account). Read it next to its tests in the scenario specs in `commands/`
 `passwords.spec.ts`, `google.spec.ts`, `delete-account.spec.ts`).
 
 `DeleteOwnAccountHandler` proves who is asking, checks `SERVER_OWNERSHIP`
-(servers with other members block it, D-76; `NoServersYet` answers none until
-M1), then records the request through `USER_DIRECTORY.requestDeletion` and
-ends every session. Nothing is deleted then (D-141): the **users** module's
+(servers with other members block it, D-76), then records the request
+through `USER_DIRECTORY.requestDeletion`, revokes the invites of the
+servers the account owns alone and checks the servers again (a join or a
+handover meanwhile takes the request back, D-121), then ends every session
+and revokes the invites once more after the cache is cleared. Nothing is deleted then (D-141): the **users** module's
 15-minute sweep deletes the account 14 days later and publishes
 `AccountDeletedEvent`. `RestoreAccountHandler` takes the request back through
 `USER_DIRECTORY.cancelDeletion`. Users owns deletion; auth owns the proof and

@@ -159,8 +159,19 @@ class FakeDirectory implements UserDirectoryPort {
 /** The servers that stop a deletion: none until a test names some. */
 class FakeServerOwnership implements ServerOwnershipPort {
     blocking: BlockingServer[] = []
+    /** Answers for the next checks, in order, before `blocking`: someone joining meanwhile. */
+    nextChecks: BlockingServer[][] = []
+    /** Whose servers had their invites revoked, in order, and whether their cached record was dropped by then. */
+    revoked: { userId: string; cacheCleared: boolean }[] = []
+    constructor(private readonly cache: FakeCache) {}
+    get revokedFor() {
+        return this.revoked.map((revoke) => revoke.userId)
+    }
     async serversBlockingDeletion() {
-        return this.blocking
+        return this.nextChecks.shift() ?? this.blocking
+    }
+    async revokeSoloServerInvites(userId: string) {
+        this.revoked.push({ userId, cacheCleared: this.cache.changedUsers.includes(userId) })
     }
 }
 
@@ -553,7 +564,7 @@ export function setup() {
     const oauthState = new FakeOAuthState()
     const oauthAccounts = new FakeOAuthAccounts()
     const gate = new SignInGate(sessionIssuer)
-    const servers = new FakeServerOwnership()
+    const servers = new FakeServerOwnership(cache)
     const forgot = new ForgotPasswordHandler(directory, credentials, limiter, codeIssuer)
 
     return {

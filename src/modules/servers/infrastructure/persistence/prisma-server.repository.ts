@@ -1,8 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { LayoutState, LayoutWrite, MembershipSnapshot, nameKey, NewServer, ServerRepositoryPort } from '../../domain'
+import {
+    LayoutState,
+    LayoutWrite,
+    LeftoverMembership,
+    ListedMembership,
+    MembershipState,
+    MembershipWrite,
+    nameKey,
+    NewServer,
+    ServerRepositoryPort
+} from '../../domain'
 import { membershipSelect, toMembership } from './membership.selections'
-import { membershipsLock, Tx } from './server-locks'
+import { lockMembership, membershipsLock, Tx } from './server-locks'
 
 const EVERYONE = '@everyone'
 
@@ -85,14 +95,22 @@ export class PrismaServerRepository implements ServerRepositoryPort {
         })
     }
 
-    async listForMember(userId: string, serverId?: string): Promise<MembershipSnapshot[]> {
+    async listForMember(userId: string, serverId?: string): Promise<ListedMembership[]> {
         const rows = await this.prisma.member.findMany({
             where: { userId, ...(serverId ? { serverId } : {}), server: { deletedAt: null } },
             // Join order (C-05); a second ordering so the same instant never shuffles.
             orderBy: [{ joinedAt: 'asc' }, { serverId: 'asc' }],
             select: membershipSelect
         })
-        return rows.map(toMembership)
+        if (rows.length === 0) return []
+        // One grouped count for the whole list (D-161), through the Member primary key.
+        const counts = await this.prisma.member.groupBy({
+            by: ['serverId'],
+            where: { serverId: { in: rows.map((row) => row.server.id) }, user: { deletedAt: null } },
+            _count: { _all: true }
+        })
+        const countOf = new Map(counts.map((count) => [count.serverId, count._count._all]))
+        return rows.map((row) => ({ ...toMembership(row), memberCount: countOf.get(row.server.id) ?? 0 }))
     }
 
     async replaceIcon(serverId: string, iconKey: string | null): Promise<{ previousIconKey: string | null } | null> {
@@ -132,6 +150,115 @@ export class PrismaServerRepository implements ServerRepositoryPort {
             }
             return { createdId }
         })
+    }
+
+    async changeMembership(
+        serverId: string,
+        userId: string,
+        targetId: string | null,
+        decide: (state: MembershipState) => MembershipWrite[]
+    ): Promise<boolean> {
+        return this.prisma.$transaction(async (tx) => {
+            // The same lock as every change to the server's members and roles,
+            // so a handover never races a kick or a role given to the recipient.
+            const membership = await lockMembership(tx, serverId, userId)
+            if (!membership) return false
+            const otherMembers = await tx.member.count({
+                where: { serverId, userId: { not: userId }, user: { deletedAt: null } }
+            })
+            // FOR SHARE on their account: asking to delete it (an UPDATE) waits
+            // for this handover, then sees them as owner and is taken back; a
+            // request saved first is seen here (L9 review).
+            if (targetId) await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${targetId} FOR SHARE`
+            const target = targetId
+                ? await tx.member.findUnique({
+                      where: { serverId_userId: { serverId, userId: targetId } },
+                      select: {
+                          userId: true,
+                          timeoutUntil: true,
+                          roles: { select: { roleId: true } },
+                          user: { select: { deletedAt: true, deletionRequestedAt: true } }
+                      }
+                  })
+                : null
+
+            const writes = decide({
+                ...membership,
+                otherMembers,
+                // A deleted account is in no server any more, whatever rows remain.
+                target:
+                    target && !target.user.deletedAt
+                        ? {
+                              userId: target.userId,
+                              roleIds: target.roles.map((role) => role.roleId),
+                              timeoutUntil: target.timeoutUntil,
+                              pendingDeletion: target.user.deletionRequestedAt !== null
+                          }
+                        : null
+            })
+            for (const write of writes) await applyMembershipWrite(tx, serverId, write)
+            return true
+        })
+    }
+
+    async serverIdsOf(userId: string): Promise<string[]> {
+        const rows = await this.prisma.member.findMany({
+            where: { userId, server: { deletedAt: null } },
+            select: { serverId: true }
+        })
+        return rows.map((row) => row.serverId)
+    }
+
+    async leftoverMemberships(limit: number): Promise<LeftoverMembership[]> {
+        return this.prisma.$queryRaw<LeftoverMembership[]>`
+            SELECT m."serverId", m."userId"
+            FROM "Member" m
+            JOIN "User" u ON u."id" = m."userId"
+            JOIN "Server" s ON s."id" = m."serverId"
+            WHERE u."deletedAt" IS NOT NULL
+                AND s."deletedAt" IS NULL
+                AND NOT (
+                    s."ownerId" = m."userId"
+                    AND EXISTS (
+                        SELECT 1 FROM "Member" o JOIN "User" ou ON ou."id" = o."userId"
+                        WHERE o."serverId" = s."id" AND o."userId" <> m."userId" AND ou."deletedAt" IS NULL
+                    )
+                )
+            ORDER BY m."serverId" ASC, m."userId" ASC
+            LIMIT ${limit}
+        `
+    }
+
+    async deletedBefore(before: Date, limit: number): Promise<{ serverId: string; iconKey: string | null }[]> {
+        const rows = await this.prisma.server.findMany({
+            where: { deletedAt: { not: null, lte: before } },
+            select: { id: true, iconKey: true },
+            orderBy: [{ deletedAt: 'asc' }, { id: 'asc' }],
+            take: limit
+        })
+        return rows.map((row) => ({ serverId: row.id, iconKey: row.iconKey }))
+    }
+
+    async purge(serverIds: string[]): Promise<void> {
+        if (serverIds.length === 0) return
+        // Categories, channels, roles, members, invites and bans go with it (ON DELETE CASCADE).
+        await this.prisma.server.deleteMany({ where: { id: { in: serverIds }, deletedAt: { not: null } } })
+    }
+}
+
+/** One leave, deletion or handover the domain decided. */
+async function applyMembershipWrite(tx: Tx, serverId: string, write: MembershipWrite): Promise<void> {
+    switch (write.kind) {
+        case 'leave':
+            // Their roles go with the row (MemberRole, ON DELETE CASCADE).
+            await tx.member.delete({ where: { serverId_userId: { serverId, userId: write.userId } } })
+            return
+        case 'transferOwnership':
+            await tx.server.update({ where: { id: serverId }, data: { ownerId: write.toUserId } })
+            return
+        case 'deleteServer':
+            await tx.server.update({ where: { id: serverId }, data: { deletedAt: new Date() } })
+            return
     }
 }
 

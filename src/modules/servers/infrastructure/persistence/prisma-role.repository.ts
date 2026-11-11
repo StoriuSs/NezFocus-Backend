@@ -46,7 +46,8 @@ export class PrismaRoleRepository implements RoleRepositoryPort {
         const server = await this.prisma.server.findFirst({
             where: { id: serverId, deletedAt: null },
             select: {
-                _count: { select: { members: true } },
+                // Not deleted accounts, as member_count in GET /servers (D-161).
+                _count: { select: { members: { where: { user: { deletedAt: null } } } } },
                 roles: {
                     select: {
                         id: true,
@@ -55,7 +56,7 @@ export class PrismaRoleRepository implements RoleRepositoryPort {
                         permissions: true,
                         mentionable: true,
                         isEveryone: true,
-                        _count: { select: { members: true } }
+                        _count: { select: { members: { where: { member: { user: { deletedAt: null } } } } } }
                     }
                 }
             }

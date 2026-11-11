@@ -1,5 +1,6 @@
 export * from './channel-layout.errors'
 export * from './invite.errors'
+export * from './membership.errors'
 export * from './moderation.errors'
 export * from './role.errors'
 export * from './server.errors'
