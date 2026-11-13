@@ -1,0 +1,215 @@
+// Owned by src/modules/messaging (SRS 4.4, 7.1; ARCHITECTURE 9): only it
+// writes them.
+//
+// Every message belongs to a channel of the servers module. A direct message
+// conversation (M6) will be a Channel row too, of type dm and with no server;
+// the social module keeps which two people it joins (D-167). So these tables
+// never need a second kind of conversation.
+//
+// Ids are UUIDv7, so ordering by id is ordering by time (ARCHITECTURE 2.4):
+// history pages, "unread" and "mentioned since" all compare ids, with no
+// createdAt in any index.
+
+enum MessageType {
+  /// Written by a person: authorId is set.
+  regular
+  /// Made by the app (REQ-MSG-08): no author, never edited. systemEvent says
+  /// what happened, systemData whom it is about (D-168).
+  system
+}
+
+/// What a system message reports. Later milestones add values (study
+/// sessions in M4, calls in M6).
+enum SystemEvent {
+  /// Someone joined the server (D-83). systemData: { userId }.
+  member_joined
+  /// Someone pinned a message. systemData: { userId, messageId }.
+  message_pinned
+}
+
+/// A message in a channel.
+model Message {
+  id        String  @id @default(uuid(7))
+  channelId String
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  /// Empty on system messages, and only on them (a check in the migration),
+  /// so every rule about "the author" (editing, deleting one's own message,
+  /// the clean-up when banned, answers counting as mentions) leaves them
+  /// alone (D-168). Accounts are never removed from the database (they are
+  /// marked deleted, REQ-AUTH-09), so a message never loses its author.
+  authorId  String?
+  author    User?   @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  type        MessageType  @default(regular)
+  systemEvent SystemEvent?
+  /// What a system message needs to be drawn, keys in camelCase like the
+  /// columns (see SystemEvent). Empty on regular messages. A check in the
+  /// migration keeps type, systemEvent and authorId in step.
+  systemData  Json?
+
+  /// At most 2000 characters; empty when the message is only files, or once
+  /// it is deleted. Mentions are kept as tokens (<@userId>, <@&roleId>,
+  /// <#channelId>, @everyone, @here), only those the author was allowed to
+  /// use, so renaming a person, role or channel leaves old messages right.
+  content String  @default("")
+  /// Made by the client to match its "sending" copy with the saved message
+  /// (REQ-MSG-01). Unique per author, so a retry long after the idempotency
+  /// key expired still makes one message (REQ-MSG-10). Empty on system
+  /// messages (a check in the migration).
+  nonce   String?
+
+  /// The message this one answers, in the same channel: the application
+  /// checks that, as the database cannot here and still empty the link when
+  /// the message goes. A deleted message keeps its row, so the answer shows
+  /// "the original message was deleted" (REQ-MSG-05).
+  replyToId String?
+  replyTo   Message?  @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReply")
+
+  // Mentions that reach many people are kept on the message rather than as
+  // one MessageMention row per person (D-164). Only those the author was
+  // allowed to make: @everyone and @here need MENTION_EVERYONE, a role must
+  // be mentionable (REQ-MSG-03). Messages with any of the three are also in
+  // the partial index Message_broad_mentions_idx (in the migration), which
+  // the mention count reads.
+  /// @everyone.
+  mentionEveryone    Boolean  @default(false)
+  /// @here: who could see the channel and was neither offline nor invisible
+  /// when it was sent (D-166).
+  mentionHereUserIds String[] @default([])
+  /// @role.
+  mentionRoleIds     String[] @default([])
+
+  /// Shown as "edited". Earlier versions are not kept.
+  editedAt  DateTime? @db.Timestamptz(6)
+  /// Deleting keeps the row (see replyToId) and, in the same transaction,
+  /// empties it of everything else: content, the three mention columns, its
+  /// MessageMention rows (so the mention count drops by itself, D-164), its
+  /// reactions and its pin; its attachments lose messageId and go to the
+  /// clean-up.
+  deletedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  attachments Attachment[]
+  reactions   Reaction[]
+  pin         Pin?
+  mentions    MessageMention[]
+
+  // History pages (before / after / around an id, D-48) and the latest
+  // message of a channel. Also the target of the composite keys of
+  // MessageMention and Pin: neither can name a message of another channel.
+  @@unique([channelId, id])
+  @@unique([authorId, nonce])
+  // Deleting someone's recent messages in a server when banning them (D-156).
+  @@index([authorId, id])
+  // Answers lose their link when the message they answer is removed for good
+  // (with its channel): without this, Postgres reads every message to find them.
+  @@index([replyToId])
+}
+
+/// A file sent with a message (REQ-MSG-04). Uploaded before the message is
+/// sent, then attached to it.
+model Attachment {
+  id         String   @id @default(uuid(7))
+  /// Accounts are never removed from the database (see Message.author).
+  uploaderId String
+  uploader   User     @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  /// Empty until the message is sent, and again once the message is deleted
+  /// or removed with its channel. The clean-up deletes the files (and the
+  /// thumbnail) of any attachment that is empty and was uploaded more than 24
+  /// hours ago (REQ-MSG-04; a partial index in the migration): one left by a
+  /// deleted message goes at the next run.
+  messageId  String?
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  /// Order within the message, 0-9 (at most 10 files; a check in the
+  /// migration).
+  position   Int?
+
+  /// The name as the person's device gave it.
+  filename     String
+  /// Bytes, at most 25 MB.
+  size         Int
+  /// The type read from the content when the upload was checked, not the one
+  /// the client sent (D-93).
+  contentType  String?
+  storageKey   String    @unique
+  /// Images only: a smaller copy, and the size to keep room for (both or
+  /// neither, a check in the migration).
+  thumbnailKey String?
+  width        Int?
+  height       Int?
+  /// When the content was checked (POST /attachments/{id}/complete). Only a
+  /// checked file can be sent.
+  completedAt  DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // Two files of one message never share a place.
+  @@unique([messageId, position])
+  @@index([uploaderId])
+}
+
+/// One person's emoji on a message (REQ-MSG-05): once per emoji, at most 20
+/// different emoji per message.
+model Reaction {
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  /// The emoji itself, e.g. "👍".
+  emoji     String
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Emoji are listed in the order they were first added.
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([messageId, emoji, userId])
+  @@index([userId])
+}
+
+/// A pinned message (REQ-MSG-07): at most 50 per channel.
+model Pin {
+  channelId  String
+  messageId  String
+  message    Message @relation(fields: [channelId, messageId], references: [channelId, id], onDelete: Cascade)
+  pinnedById String?
+  pinnedBy   User?   @relation("PinnedBy", fields: [pinnedById], references: [id], onDelete: SetNull)
+
+  pinnedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // The key also serves the pins panel: at most 50 rows a channel, sorted
+  // by pinnedAt in memory.
+  @@id([channelId, messageId])
+  @@index([pinnedById])
+}
+
+/// How far a person has read a channel (REQ-MSG-09). Everything after
+/// lastReadId is unread; the mention count is worked out from that (D-164).
+model ReadState {
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId  String
+  channel    Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  /// The last message read. Not a foreign key: it is only a place in the
+  /// channel, compared by id, and stays one after that message is deleted.
+  lastReadId String
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@id([userId, channelId])
+  @@index([channelId])
+}
+
+/// A person a message is about in their own right (D-164): mentioned with
+/// @name, or the author of the message it answers (not when answering
+/// oneself, D-39). @everyone, @here and @role are on the message instead.
+model MessageMention {
+  messageId String
+  channelId String
+  message   Message @relation(fields: [channelId, messageId], references: [channelId, id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  // A person's mentions in one channel after the last message they read.
+  @@index([userId, channelId, messageId])
+}

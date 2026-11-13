@@ -186,6 +186,8 @@ were dropped; no `2xxxxx` code is sent any more.
 | `409100` | `ACCOUNT_ALREADY_COMPLETE` | "Complete your account" sent for an account already completed |
 | `409101` | `OWNERSHIP_TRANSFER_REQUIRED` | Deleting an account that owns servers with other members (D-76): hand them over first |
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
+| `409400` | `MAX_PINS_REACHED` | Pinning a 51st message in a channel |
+| `409401` | `MAX_REACTIONS_REACHED` | A 21st different emoji on a message |
 | `410300` | `INVITE_INVALID` | An invite that expired, ran out of uses, was revoked, or whose server was deleted |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |

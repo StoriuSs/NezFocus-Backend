@@ -328,6 +328,14 @@ So the row stays and is marked deleted:
   old account instead. `test/integration/account-deletion.integration-spec.ts`
   shows both, against the real database.
 
+In NezFocus the messaging tables are such data (M2). An account's messages
+stay, shown as "Deleted account" (REQ-AUTH-09), and so do its reactions,
+pins and read places. `Message.author` and `Attachment.uploader` are
+`onDelete: Restrict`, so removing a `User` row by hand fails instead of
+losing messages. Files the account uploaded but never sent go with the
+24-hour attachment clean-up, like anyone's. Do not add a step that deletes
+these rows when an account is deleted.
+
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.
 

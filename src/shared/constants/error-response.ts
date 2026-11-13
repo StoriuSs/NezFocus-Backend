@@ -48,6 +48,12 @@ export const ERROR_TYPES = {
     // Timed out; the response says until when.
     MEMBER_TIMED_OUT: 'MEMBER_TIMED_OUT',
 
+    // Messaging errors (SRS appendix A)
+    // A channel already has 50 pinned messages (REQ-MSG-07).
+    MAX_PINS_REACHED: 'MAX_PINS_REACHED',
+    // A message already has 20 different emoji (REQ-MSG-05).
+    MAX_REACTIONS_REACHED: 'MAX_REACTIONS_REACHED',
+
     // Upload errors
     UPLOAD_FILE_TOO_LARGE: 'UPLOAD_FILE_TOO_LARGE',
     UPLOAD_INVALID_TYPE: 'UPLOAD_INVALID_TYPE',
@@ -138,6 +144,8 @@ export const ERROR_CODES = {
     ACCOUNT_ALREADY_COMPLETE: '409100',
     OWNERSHIP_TRANSFER_REQUIRED: '409101',
     USERNAME_CONFLICT: '409200',
+    MAX_PINS_REACHED: '409400',
+    MAX_REACTIONS_REACHED: '409401',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)
     UPLOAD_INVALID_FILE: '400002',

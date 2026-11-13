@@ -61,6 +61,15 @@ model User {
   bans           Ban[]    @relation("BannedUser")
   bansGiven      Ban[]    @relation("BannedBy")
 
+  // Owned by the messaging module (prisma/models/messaging.prisma); declared
+  // here only because Prisma needs both sides of a relation.
+  messages        Message[]        @relation("MessageAuthor")
+  attachments     Attachment[]     @relation("AttachmentUploader")
+  reactions       Reaction[]
+  pinsGiven       Pin[]            @relation("PinnedBy")
+  readStates      ReadState[]
+  messageMentions MessageMention[]
+
   @@index([username])
   @@index([deletedAt])
   @@index([deletionRequestedAt])
@@ -99,6 +108,11 @@ model UserSettings {
   allowServerMemberMessages Boolean @default(true)
   /// "Show study activity" (D-79).
   showStudyActivity         Boolean @default(true)
+
+  /// The status they chose (REQ-AUTH-07): online | do_not_disturb |
+  /// invisible. Idle and offline are worked out from their open tabs and
+  /// never stored (ARCHITECTURE 3.3).
+  presence String @default("online")
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)

@@ -455,7 +455,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
-├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma) and migrations
+├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma) and migrations
 ├── test/                       # e2e and integration suites
 ├── k6/                         # Load-test scripts
 ├── monitoring/                 # Prometheus, Loki, Alloy, Grafana, Alertmanager

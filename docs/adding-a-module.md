@@ -48,7 +48,8 @@ a request.
 ## 1. The database
 
 Prisma models live in one file per module, under `prisma/models/`
-(`users.prisma` holds two models, `auth.prisma` five, `servers.prisma` nine):
+(`users.prisma` holds two models, `auth.prisma` five, `servers.prisma` nine,
+`messaging.prisma` six):
 
 ```prisma
 // prisma/models/orders.prisma
@@ -157,12 +158,13 @@ it there first, under the same key in both:
 // ERROR_TYPES
 ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
 // ERROR_CODES: the HTTP status, then a number in the module's own hundred
-ORDER_NOT_FOUND: '404400',
+ORDER_NOT_FOUND: '404500',
 ```
 
 A code is the HTTP status and three digits. A new code takes its module's
-hundred: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, shared ones
-`x0xx`, so `orders` takes `x4xx` (`404400`, then `409400`, ...). Most existing codes are older
+hundred: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, messaging's
+`x4xx`, shared ones `x0xx`, so `orders` takes `x5xx` (`404500`, then
+`409500`, ...). Most existing codes are older
 than that rule and were numbered in turn under their status, auth's
 `401001`–`401008` and `403003`–`403004` and `USER_NOT_FOUND` `404001`
 among them. They keep their numbers: a code keeps one meaning for ever, in logs

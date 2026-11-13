@@ -121,6 +121,11 @@ model Channel {
 
   welcomeOf Server? @relation("WelcomeChannel")
 
+  // Owned by the messaging module (prisma/models/messaging.prisma); declared
+  // here only because Prisma needs both sides of a relation.
+  messages   Message[]
+  readStates ReadState[]
+
   // No two channels of one kind share a name in the same category, or among
   // the channels outside any. The migration makes this index NULLS NOT
   // DISTINCT so that "no category" counts as one group.
