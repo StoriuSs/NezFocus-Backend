@@ -1,0 +1,32 @@
+import { Module } from '@nestjs/common'
+import { CqrsModule } from '@nestjs/cqrs'
+import { PermissionsModule } from '@/modules/permissions/permissions.module'
+import { RealtimeModule } from '@/modules/realtime/realtime.module'
+import { ServersModule } from '@/modules/servers/servers.module'
+import { UsersModule } from '@/modules/users/users.module'
+import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
+import { MESSAGE_REPOSITORY } from './domain'
+import { MESSAGE_COMMAND_HANDLERS, MESSAGE_EVENT_HANDLERS, MESSAGE_QUERY_HANDLERS, SEND_LIMIT } from './application'
+import { PrismaMessageRepository } from './infrastructure'
+import { MessagingController } from './presentation'
+
+/**
+ * Messages in text channels (SRS 4.4): the only module that writes the
+ * messaging tables. Asks servers which server a channel is in
+ * (CHANNEL_DIRECTORY), permissions what someone may do there
+ * (PERMISSION_CHECKER), users for pictures as addresses (USER_DIRECTORY), and
+ * tells the channel's sockets through realtime's EVENT_PUBLISHER.
+ */
+@Module({
+    imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
+    controllers: [MessagingController],
+    providers: [
+        { provide: MESSAGE_REPOSITORY, useClass: PrismaMessageRepository },
+        // RateLimiter comes from the global CacheModule.
+        { provide: SEND_LIMIT, useExisting: RateLimiter },
+        ...MESSAGE_COMMAND_HANDLERS,
+        ...MESSAGE_QUERY_HANDLERS,
+        ...MESSAGE_EVENT_HANDLERS
+    ]
+})
+export class MessagingModule {}

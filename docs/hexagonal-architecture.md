@@ -943,7 +943,7 @@ In NestJS, when you use `@Inject()`, you need a **token** to identify what you w
 A `Symbol` is a JavaScript primitive that is guaranteed to be unique. Using `Symbol('StoragePort')` creates a unique token that NestJS can use to wire up the correct adapter during dependency injection.
 
 **7. Can I have multiple modules each with their own Hexagonal structure?**
-Absolutely! That's the entire point, and the repository has five: `users`, `auth` ([above](#the-second-hexagon-the-auth-module)), `servers`, `permissions` and `realtime`. If you add a `PaymentsModule`, it would have its own:
+Absolutely! That's the entire point, and the repository has six: `users`, `auth` ([above](#the-second-hexagon-the-auth-module)), `servers`, `permissions`, `realtime` and `messaging`. If you add a `PaymentsModule`, it would have its own:
 - `payments/domain/` (PaymentEntity, PaymentRepositoryPort)
 - `payments/application/` (ProcessPaymentCommand, PaymentProviderPort)
 - `payments/infrastructure/` (StripePaymentAdapter, PrismaPaymentRepository)

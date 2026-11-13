@@ -1,9 +1,9 @@
 # Adding a module
 
-The repository has five feature modules: `users`, small enough to read in one
+The repository has six feature modules: `users`, small enough to read in one
 sitting, `auth`, the same shape at full size, `servers`, whose use cases are
-grouped by area, `permissions`, a port the others ask, and `realtime`, the
-sockets. This page builds a
+grouped by area, `permissions`, a port the others ask, `realtime`, the
+sockets, and `messaging`, grouped by area like `servers`. This page builds a
 new one
 — `orders` — so you can see every layer filled in once, in order, with the
 reasoning at each step.
@@ -509,7 +509,7 @@ file starts with a row here and a pattern in that test.
 | Domain rules | Pure functions and constants beside the entities, `domain/<topic>.ts`: users' `username.rules.ts`, auth's `password-policy.ts`, `session-end.ts` |
 | Domain errors | `domain/errors/<topic>.errors.ts`, classes named `<Something>Error` (not `Exception`: in Nest that is an `HttpException`). An error goes in the file of what it is about, not of who throws it: servers' `RoleHierarchyError` sits in `role.errors.ts` though moderation throws it too. Limits and other constants are rules, in `domain/<topic>.ts` (servers' `server-limit.rules.ts`) |
 | Repository port | `domain/ports/<name>.repository.port.ts`. Any port that reads or writes the module's own tables is one, a port that only lists rows for a page included (servers' `MemberRepositoryPort`, the Members tab) |
-| Other ports | `application/ports/<name>.port.ts` |
+| Other ports | `application/ports/<name>.port.ts`. A port a module offers others, answered from its own tables, is one of these too, not a repository: servers' `MembershipPort` and `ChannelDirectoryPort`, with their adapters in `persistence/` (`prisma-<what>.adapter.ts`) |
 | Command | `application/commands/<name>/<name>.command.ts` and `<name>.handler.ts`, the folder named after the command: `PlaceOrderCommand` → `place-order/`. In a long module, by area: `commands/<area>/<area>.commands.ts` and `<area>.handlers.ts` ([3. The application layer](#3-the-application-layer)) |
 | Query | `application/queries/<name>/<name>.query.ts` and `<name>.handler.ts`; by area: `queries/<area>/<area>.queries.ts` and `<area>.handlers.ts` |
 | Event, event handler | `application/events/<name>.event.ts`; `application/events/handlers/<name>.handler.ts`, one per file |
@@ -557,6 +557,13 @@ check is the only `if` such a controller holds. In servers (D-159): creating a
 server, changing it (`PATCH`), every channel-layout route and accepting an
 invite, all reading `ListMyServersQuery` (the e2e suite
 `servers-write-then-read` covers the 404).
+
+**A second exception: sending a message (NezFocus D-169).** Its handler
+builds the saved message anyway, to send `message.created` to the
+channel, so `SendMessageCommand` returns that view and the controller
+answers with it: no query reads the message again. Both the command and
+the history query build the view with the same function
+(`messaging/application/services/message-views.ts`).
 
 If you find yourself adding a sixth argument to an existing command rather
 than writing a new one, that is usually two operations wearing a coat.

@@ -3468,6 +3468,162 @@
           "realtime"
         ]
       }
+    },
+    "/api/v1/channels/{channelId}/messages": {
+      "get": {
+        "operationId": "MessagingController_list_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "required": false,
+            "in": "query",
+            "description": "Messages older than this id: scrolling up.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "required": false,
+            "in": "query",
+            "description": "Messages newer than this id: catching up after a lost connection.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "around",
+            "required": false,
+            "in": "query",
+            "description": "This message and those on both sides of it: opening a link to a message.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "1-100; 50 when left out.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MessagePageResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A page of history, oldest first; the newest when no cursor is given (D-48).",
+        "tags": [
+          "messaging"
+        ]
+      },
+      "post": {
+        "operationId": "MessagingController_send_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MessageResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send a message (REQ-MSG-01): SEND_MESSAGES, then the limits (REQ-MSG-10),\nthen saved and told to the channel as `message.created`. A nonce already\nused answers with that message, told to no one again.",
+        "tags": [
+          "messaging"
+        ]
+      }
     }
   },
   "info": {
@@ -5222,6 +5378,142 @@
         "required": [
           "ticket",
           "expires_in_seconds"
+        ]
+      },
+      "MessageAuthorResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "MessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "`system`: made by the app (REQ-MSG-08), with no author.",
+            "enum": [
+              "regular",
+              "system"
+            ],
+            "type": "string"
+          },
+          "author": {
+            "nullable": true,
+            "description": "Null on a system message (D-168).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
+          },
+          "system_event": {
+            "type": "string",
+            "nullable": true,
+            "description": "What a system message reports (`member_joined`, `message_pinned`); null on a regular one."
+          },
+          "system_data": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Whom a system message is about (`{ user_id }`, D-168); null on a regular one."
+          },
+          "edited_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Shown as \"edited\"; null if never edited."
+          },
+          "id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Plain text; empty on a system message."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "author",
+          "system_event",
+          "system_data",
+          "edited_at",
+          "id",
+          "channel_id",
+          "content",
+          "created_at"
+        ]
+      },
+      "MessagePageResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageResponseDto"
+            }
+          },
+          "has_more_before": {
+            "type": "boolean",
+            "description": "Older messages exist: ask with `before` = the first id."
+          },
+          "has_more_after": {
+            "type": "boolean",
+            "description": "Newer messages exist: ask with `after` = the last id."
+          }
+        },
+        "required": [
+          "items",
+          "has_more_before",
+          "has_more_after"
+        ]
+      },
+      "SendMessageRequestDto": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "1-2000 characters, an emoji counting as one, once the blank around it is dropped.",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "nonce": {
+            "type": "string",
+            "description": "Chosen by the client for this message and kept across its retries: the\nsame nonce again answers with the message already sent (REQ-MSG-10),\nand `message.created` carries it back so the sender's \"sending\" copy\nis swapped for the saved one.",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "content",
+          "nonce"
         ]
       }
     }

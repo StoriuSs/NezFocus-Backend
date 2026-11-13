@@ -15,6 +15,7 @@ import {
     SERVER_REPOSITORY
 } from './domain'
 import {
+    CHANNEL_DIRECTORY,
     CHANNEL_LAYOUT_COMMAND_HANDLERS,
     FILE_CLEANUP,
     GUESS_LIMIT,
@@ -34,6 +35,7 @@ import {
 import {
     BullMqFileCleanup,
     NoSystemMessagesYet,
+    PrismaChannelDirectory,
     PrismaInviteRepository,
     PrismaMemberRepository,
     PrismaModerationRepository,
@@ -82,6 +84,7 @@ import {
         { provide: GUESS_LIMIT, useExisting: RateLimiter },
         { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
         { provide: MEMBERSHIP, useClass: PrismaMembership },
+        { provide: CHANNEL_DIRECTORY, useClass: PrismaChannelDirectory },
         ...SERVER_COMMAND_HANDLERS,
         ...SERVER_QUERY_HANDLERS,
         ...CHANNEL_LAYOUT_COMMAND_HANDLERS,
@@ -94,7 +97,8 @@ import {
         ...SERVER_EVENT_HANDLERS
     ],
     // MEMBERSHIP: the realtime gateway puts a socket in its servers' rooms.
-    exports: [MEMBERSHIP]
+    // CHANNEL_DIRECTORY: messaging learns whose permissions a channel follows.
+    exports: [CHANNEL_DIRECTORY, MEMBERSHIP]
 })
 export class ServersModule {}
 

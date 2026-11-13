@@ -1,3 +1,4 @@
+export * from './channel-directory.port'
 export * from './file-cleanup.port'
 export * from './guess-limit.port'
 export * from './icon-storage.port'

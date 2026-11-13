@@ -86,6 +86,12 @@ export const MESSAGES = {
         TICKET_ISSUED: 'Realtime ticket issued'
     },
 
+    // Messaging messages
+    MESSAGING: {
+        MESSAGE_SENT: 'Message sent',
+        MESSAGES_LISTED: 'Messages fetched'
+    },
+
     // Health messages
     HEALTH: {
         CHECK_SUCCESS: 'Health check successful'

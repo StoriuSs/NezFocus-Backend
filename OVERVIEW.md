@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with five modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks) and `realtime` (sockets: a gateway, and the port every module sends events through) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with six modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through) and `messaging` (messages in channels, grouped by area like `servers`) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions, realtime"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -336,13 +336,15 @@ servers/
 │   ├── queries/<area>/         # The same, for server, invite, role, moderation
 │   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users)
 │   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, then clear the permission cache
-│   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages
+│   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP and
+│                               #   CHANNEL_DIRECTORY, which this module answers for realtime and messaging
 ├── infrastructure/
 │   ├── persistence/            # The Prisma repositories, auth's SERVER_OWNERSHIP answered (prisma-server-ownership.adapter.ts),
+│   │                           #   MEMBERSHIP and CHANNEL_DIRECTORY answered (prisma-membership / prisma-channel-directory.adapter.ts),
 │   │                           #   the shared select (membership.selections.ts) and row locks (server-locks.ts)
 │   └── adapters/               # Icon storage, BullMQ clean-up, the system messages not written yet
 ├── presentation/http/          # Five controllers by area, the presenter, one DTO class per file
-├── index.ts                    # What other modules may import: the daily clean-up's command, for src/maintenance
+├── index.ts                    # What other modules may import: MEMBERSHIP, CHANNEL_DIRECTORY, the daily clean-up's command
 └── servers.module.ts           # ServersModule, and the global ServerOwnershipModule (D-160)
 ```
 
@@ -378,6 +380,17 @@ events through its `EVENT_PUBLISHER` port. It hears auth's
 `SessionEnds`) and cuts those sessions' sockets off. socket.io itself, with
 its Redis adapter for several instances, is set up in
 `src/shared/infrastructure/websocket/redis-io-adapter.ts`.
+
+`src/modules/messaging/` holds the messages of text channels (SRS 4.4),
+grouped by area like `servers`. `POST /channels/{id}/messages` asks servers'
+`CHANNEL_DIRECTORY` which server the channel is in, then
+`PERMISSION_CHECKER` what the person may do there
+(`application/services/channel-access.ts`), counts the message per person
+(`sending-limits.ts`, open while Redis is down), saves it (a nonce its author
+already used answers with that message) and publishes `MessageCreatedEvent`,
+which an event handler sends to the channel's sockets through realtime's
+`EVENT_PUBLISHER`. `GET` reads history pages by id (`before`, `after`,
+`around`).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
@@ -466,6 +479,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/servers/        # Servers, channels, roles, invites, moderation
 │   ├── modules/permissions/    # What a member may do in a server, cached
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events
+│   ├── modules/messaging/      # Messages in channels: sending, history
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
@@ -527,8 +541,8 @@ an admin console for support staff. See
 [docs/auth/security.md](./docs/auth/security.md) for what it defends against,
 and what it does not.
 
-**Hexagonal and CQRS, for five modules.** It looks like a lot of
-folders for five features, and it is. The point is that the fifth, tenth and
+**Hexagonal and CQRS, for six modules.** It looks like a lot of
+folders for six features, and it is. The point is that the seventh, tenth and
 twentieth feature go in the same shape, and by then a `UsersService` would have
 been a thousand lines nobody wants to open. Learn it on the modules that are
 already here.
