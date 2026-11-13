@@ -16,5 +16,3 @@ export class PublishCreatedMessageHandler implements IEventHandler<MessageCreate
         this.publisher.toChannel(message.channelId, 'message.created', { message, nonce })
     }
 }
-
-export const MESSAGE_EVENT_HANDLERS = [PublishCreatedMessageHandler]

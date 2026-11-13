@@ -390,7 +390,12 @@ grouped by area like `servers`. `POST /channels/{id}/messages` asks servers'
 already used answers with that message) and publishes `MessageCreatedEvent`,
 which an event handler sends to the channel's sockets through realtime's
 `EVENT_PUBLISHER`. `GET` reads history pages by id (`before`, `after`,
-`around`).
+`around`); each message quotes the one it answers (`reply_to`).
+`PATCH` / `DELETE /messages/{id}` (a second controller, `message.controller.ts`)
+find the message and its channel together (`message-access.ts`: a deleted
+message, or one in a channel the person cannot view, is the same 404), edit
+or soft-delete it (the row stays, emptied, for the replies to it) and publish
+`message.updated` / `message.deleted` the same way.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
@@ -479,7 +484,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/servers/        # Servers, channels, roles, invites, moderation
 │   ├── modules/permissions/    # What a member may do in a server, cached
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events
-│   ├── modules/messaging/      # Messages in channels: sending, history
+│   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

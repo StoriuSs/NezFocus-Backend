@@ -54,7 +54,8 @@ export class MessagingController {
     /**
      * Send a message (REQ-MSG-01): SEND_MESSAGES, then the limits (REQ-MSG-10),
      * then saved and told to the channel as `message.created`. A nonce already
-     * used answers with that message, told to no one again.
+     * used answers with that message, told to no one again. `reply_to_id`
+     * answers a regular message of the channel (REQ-MSG-05).
      */
     @Post()
     @HttpCode(HttpStatus.CREATED)
@@ -66,7 +67,7 @@ export class MessagingController {
         @Body() dto: SendMessageRequestDto
     ): Promise<ServiceResponse<MessageResponseDto>> {
         const message: MessageView = await this.commandBus.execute(
-            new SendMessageCommand(user.id, channelId, dto.content, dto.nonce)
+            new SendMessageCommand(user.id, channelId, dto.content, dto.nonce, dto.replyToId ?? null)
         )
         return createResponse(MESSAGES.MESSAGING.MESSAGE_SENT, validateAndTransform(MessageResponseDto, message))
     }

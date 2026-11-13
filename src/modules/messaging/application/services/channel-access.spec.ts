@@ -1,7 +1,7 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import { CannotSendError, ChannelNotFoundError, TimedOutError } from '../../domain'
-import { openChannel, requireSending } from './channel-access'
+import { openChannel, requireSending, timedOutUntil } from './channel-access'
 
 const NOW = new Date('2026-10-18T21:47:00Z')
 const LATER = new Date('2026-10-18T22:30:00Z')
@@ -106,5 +106,23 @@ describe('Posting in an open channel (REQ-ROLE-03, REQ-ROLE-04)', () => {
     it('refuses everyone once @everyone loses SEND_MESSAGES', async () => {
         const opened = await world().open('hoi-dap', 'binh')
         expect(() => requireSending({ ...opened, permissions: Permission.VIEW_CHANNEL }, NOW)).toThrow(CannotSendError)
+    })
+})
+
+describe('Whether a timeout holds the person back (deleting one’s own message, SRS 1.70)', () => {
+    it('gives until when for a timed-out member', async () => {
+        const { open } = world()
+        expect(timedOutUntil(await open('hoi-dap', 'phong'), NOW)).toEqual(LATER)
+    })
+
+    it('gives nothing to someone not timed out, or whose timeout ended', async () => {
+        const { open } = world()
+        expect(timedOutUntil(await open('hoi-dap', 'binh'), NOW)).toBeNull()
+        expect(timedOutUntil(await open('hoi-dap', 'phong'), LATER)).toBeNull()
+    })
+
+    it('gives nothing to the owner though a timeout is on record (appendix B, step 1)', async () => {
+        const { open } = world()
+        expect(timedOutUntil(await open('hoi-dap', 'an'), NOW)).toBeNull()
     })
 })

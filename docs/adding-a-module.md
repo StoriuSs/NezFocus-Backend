@@ -558,10 +558,11 @@ server, changing it (`PATCH`), every channel-layout route and accepting an
 invite, all reading `ListMyServersQuery` (the e2e suite
 `servers-write-then-read` covers the 404).
 
-**A second exception: sending a message (NezFocus D-169).** Its handler
-builds the saved message anyway, to send `message.created` to the
-channel, so `SendMessageCommand` returns that view and the controller
-answers with it: no query reads the message again. Both the command and
+**A second exception: commands that tell a channel a message (NezFocus
+D-169).** Sending and editing build the message anyway, to send
+`message.created` / `message.updated` to the channel, so
+`SendMessageCommand` and `EditMessageCommand` return that view and the
+controller answers with it: no query reads the message again. Both the command and
 the history query build the view with the same function
 (`messaging/application/services/message-views.ts`).
 

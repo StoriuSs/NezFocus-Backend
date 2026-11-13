@@ -2,8 +2,9 @@ import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Transform, Type } from 'class-transformer'
 import { IsDate, IsIn, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { MessageAuthorResponseDto } from './message-author.response.dto'
+import { RepliedMessageResponseDto } from './replied-message.response.dto'
 
-/** One message, as history pages, the send route and `message.created` give it. */
+/** One message, as history pages, the send and edit routes, `message.created` and `message.updated` give it. */
 export class MessageResponseDto {
     @Expose()
     @IsString()
@@ -47,6 +48,14 @@ export class MessageResponseDto {
     @IsOptional()
     @IsObject()
     systemData: Record<string, unknown> | null
+
+    /** The message this one answers; null if none (REQ-MSG-05). */
+    @Expose()
+    @ApiProperty({ type: RepliedMessageResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => RepliedMessageResponseDto)
+    replyTo: RepliedMessageResponseDto | null
 
     /** Shown as "edited"; null if never edited. */
     @Expose()

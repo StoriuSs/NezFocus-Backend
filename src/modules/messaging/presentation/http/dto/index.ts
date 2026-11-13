@@ -8,6 +8,8 @@
 
 // Requests
 export { ChannelIdParamsDto } from './channel-id.params.dto'
+export { EditMessageRequestDto } from './edit-message.request.dto'
+export { MessageIdParamsDto } from './message-id.params.dto'
 export { MessageHistoryQueryDto } from './message-history.query.dto'
 export { SendMessageRequestDto } from './send-message.request.dto'
 
@@ -15,3 +17,4 @@ export { SendMessageRequestDto } from './send-message.request.dto'
 export { MessageAuthorResponseDto } from './message-author.response.dto'
 export { MessagePageResponseDto } from './message-page.response.dto'
 export { MessageResponseDto } from './message.response.dto'
+export { RepliedMessageResponseDto } from './replied-message.response.dto'

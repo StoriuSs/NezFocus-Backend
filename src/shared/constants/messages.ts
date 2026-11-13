@@ -89,7 +89,9 @@ export const MESSAGES = {
     // Messaging messages
     MESSAGING: {
         MESSAGE_SENT: 'Message sent',
-        MESSAGES_LISTED: 'Messages fetched'
+        MESSAGES_LISTED: 'Messages fetched',
+        MESSAGE_EDITED: 'Message edited',
+        MESSAGE_DELETED: 'Message deleted'
     },
 
     // Health messages

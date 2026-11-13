@@ -7,12 +7,18 @@ import {
     MessagePage,
     MessageRecord,
     MessageRepositoryPort,
-    NewMessage
+    NewMessage,
+    StoredMessage
 } from '../../domain'
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
 
-/** What the chat reads of a message, its author's name and picture key included. */
+const AUTHOR = { select: { id: true, username: true, displayName: true, avatarUrl: true } } as const
+
+/**
+ * What the chat reads of a message: its author's name and picture key, and
+ * the message it answers as it is now (edited, or deleted).
+ */
 const MESSAGE = {
     id: true,
     channelId: true,
@@ -22,20 +28,39 @@ const MESSAGE = {
     systemData: true,
     editedAt: true,
     createdAt: true,
-    author: { select: { id: true, username: true, displayName: true, avatarUrl: true } }
+    author: AUTHOR,
+    replyTo: { select: { id: true, content: true, deletedAt: true, author: AUTHOR } }
 } satisfies Prisma.MessageSelect
 
 type MessageRow = Prisma.MessageGetPayload<{ select: typeof MESSAGE }>
+type AuthorRow = NonNullable<MessageRow['author']>
 
-const toRecord = ({ author, systemData, ...row }: MessageRow): MessageRecord => ({
-    ...row,
-    author: author && {
+const toAuthor = (author: AuthorRow | null) =>
+    author && {
         id: author.id,
         username: author.username,
         displayName: author.displayName,
         avatarKey: author.avatarUrl
-    },
-    systemData: (systemData as Record<string, unknown> | null) ?? null
+    }
+
+const toRecord = ({ author, systemData, replyTo, ...row }: MessageRow): MessageRecord => ({
+    ...row,
+    author: toAuthor(author),
+    systemData: (systemData as Record<string, unknown> | null) ?? null,
+    // A deleted message is quoted by its id alone (REQ-MSG-05).
+    replyTo:
+        replyTo &&
+        (replyTo.deletedAt
+            ? { id: replyTo.id, author: null, content: '', deleted: true }
+            : { id: replyTo.id, author: toAuthor(replyTo.author), content: replyTo.content, deleted: false })
+})
+
+/** A message found by id or nonce: deleted ones too, saying so. */
+const STORED = { ...MESSAGE, deletedAt: true } satisfies Prisma.MessageSelect
+
+const toStored = ({ deletedAt, ...row }: Prisma.MessageGetPayload<{ select: typeof STORED }>): StoredMessage => ({
+    ...toRecord(row),
+    deleted: deletedAt !== null
 })
 
 /** What history pages show: a deleted message keeps its row (for answers to it), not its place in the list. */
@@ -49,10 +74,10 @@ const LIVE = { deletedAt: null } as const
 export class PrismaMessageRepository implements MessageRepositoryPort {
     constructor(private readonly prisma: PrismaService) {}
 
-    async create(message: NewMessage): Promise<{ message: MessageRecord; created: boolean }> {
+    async create(message: NewMessage): Promise<{ message: MessageRecord; created: boolean; deleted: boolean }> {
         try {
             const row = await this.prisma.message.create({ data: message, select: MESSAGE })
-            return { message: toRecord(row), created: true }
+            return { message: toRecord(row), created: true, deleted: false }
         } catch (error) {
             // The channel went between the permission check and now.
             if (prismaCode(error) === 'P2003') throw new ChannelNotFoundError(message.channelId)
@@ -60,16 +85,54 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
             if (prismaCode(error) !== 'P2002') throw error
             const sent = await this.findByNonce(message.authorId, message.nonce)
             if (!sent) throw error
-            return { message: sent, created: false }
+            const { deleted, ...record } = sent
+            return { message: record, created: false, deleted }
         }
     }
 
-    async findByNonce(authorId: string, nonce: string): Promise<MessageRecord | null> {
+    async findByNonce(authorId: string, nonce: string): Promise<StoredMessage | null> {
         const row = await this.prisma.message.findUnique({
             where: { authorId_nonce: { authorId, nonce } },
-            select: MESSAGE
+            select: STORED
         })
-        return row && toRecord(row)
+        return row && toStored(row)
+    }
+
+    async find(id: string): Promise<StoredMessage | null> {
+        const row = await this.prisma.message.findUnique({ where: { id }, select: STORED })
+        return row && toStored(row)
+    }
+
+    async edit(id: string, content: string, at: Date): Promise<MessageRecord | null> {
+        try {
+            const row = await this.prisma.message.update({
+                where: { id, ...LIVE },
+                data: { content, editedAt: at },
+                select: MESSAGE
+            })
+            return toRecord(row)
+        } catch (error) {
+            // Deleted (or gone with its channel) since the handler read it.
+            if (prismaCode(error) === 'P2025') return null
+            throw error
+        }
+    }
+
+    async remove(id: string, at: Date): Promise<boolean> {
+        return this.prisma.$transaction(async (tx) => {
+            // Only a live row: of two deletes at once, one empties it, the other learns it is gone.
+            const { count } = await tx.message.updateMany({
+                where: { id, ...LIVE },
+                data: { deletedAt: at, content: '', mentionEveryone: false, mentionHereUserIds: [], mentionRoleIds: [] }
+            })
+            if (count === 0) return false
+            await tx.messageMention.deleteMany({ where: { messageId: id } })
+            await tx.reaction.deleteMany({ where: { messageId: id } })
+            await tx.pin.deleteMany({ where: { messageId: id } })
+            // Its files keep their place, lose the message, and go with the next clean-up.
+            await tx.attachment.updateMany({ where: { messageId: id }, data: { messageId: null } })
+            return true
+        })
     }
 
     async page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage> {

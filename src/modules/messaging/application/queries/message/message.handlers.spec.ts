@@ -22,6 +22,7 @@ const message = (id: string, authorId: string | null, avatarKey: string | null =
     content: authorId ? `Tin ${id}` : '',
     systemEvent: authorId ? null : 'member_joined',
     systemData: authorId ? null : { userId: 'dung' },
+    replyTo: null,
     editedAt: null,
     createdAt: new Date('2026-10-18T20:02:00Z')
 })
@@ -33,7 +34,15 @@ function world() {
                 message('m1', 'binh', 'avatars/binh.webp'),
                 message('m2', 'binh', 'avatars/binh.webp'),
                 message('m3', null),
-                message('m4', 'chi')
+                {
+                    ...message('m4', 'chi'),
+                    replyTo: {
+                        id: 'm1',
+                        author: { id: 'binh', username: 'binh', displayName: 'binh', avatarKey: 'avatars/binh.webp' },
+                        content: 'Tin m1',
+                        deleted: false
+                    }
+                }
             ],
             hasMoreBefore: true,
             hasMoreAfter: false
@@ -57,7 +66,7 @@ function world() {
 }
 
 describe('ListMessagesHandler (SRS 5.1)', () => {
-    it('reads the page asked for, and gives each picture as an address, signed once per picture', async () => {
+    it('reads the page asked for, and gives each picture as an address, those of quoted authors too, signed once per picture', async () => {
         const { handler, repository, users } = world()
 
         const page = await handler.execute(new ListMessagesQuery('binh', 'hoi-dap', { kind: 'before', id: 'm9' }, 4))
@@ -69,6 +78,7 @@ describe('ListMessagesHandler (SRS 5.1)', () => {
             ['m3', null],
             ['m4', null]
         ])
+        expect(page.items[3]?.replyTo?.author?.avatarUrl).toBe('https://cdn.test/avatars/binh.webp')
         expect(users.avatarUrl).toHaveBeenCalledTimes(1)
         expect([page.hasMoreBefore, page.hasMoreAfter]).toEqual([true, false])
     })

@@ -3619,7 +3619,113 @@
             "bearer": []
           }
         ],
-        "summary": "Send a message (REQ-MSG-01): SEND_MESSAGES, then the limits (REQ-MSG-10),\nthen saved and told to the channel as `message.created`. A nonce already\nused answers with that message, told to no one again.",
+        "summary": "Send a message (REQ-MSG-01): SEND_MESSAGES, then the limits (REQ-MSG-10),\nthen saved and told to the channel as `message.created`. A nonce already\nused answers with that message, told to no one again. `reply_to_id`\nanswers a regular message of the channel (REQ-MSG-05).",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/messages/{messageId}": {
+      "patch": {
+        "operationId": "MessageController_edit_v1",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditMessageRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MessageResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "New text for one's own message, while one may still post in the\nchannel; marked edited and told to the channel as `message.updated`.\nAnswers with the message as it now is (D-169).",
+        "tags": [
+          "messaging"
+        ]
+      },
+      "delete": {
+        "operationId": "MessageController_delete_v1",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One's own message unless timed out, anyone's with MANAGE_MESSAGES; told\nto the channel as `message.deleted`.",
         "tags": [
           "messaging"
         ]
@@ -5406,6 +5512,38 @@
           "avatar_url"
         ]
       },
+      "RepliedMessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "author": {
+            "nullable": true,
+            "description": "Null once that message is deleted.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Its text as it is now (edits show); empty once deleted."
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "The reply line says \"the original message was deleted\" (REQ-MSG-05)."
+          }
+        },
+        "required": [
+          "author",
+          "id",
+          "content",
+          "deleted"
+        ]
+      },
       "MessageResponseDto": {
         "type": "object",
         "properties": {
@@ -5438,6 +5576,16 @@
             "nullable": true,
             "description": "Whom a system message is about (`{ user_id }`, D-168); null on a regular one."
           },
+          "reply_to": {
+            "nullable": true,
+            "description": "The message this one answers; null if none (REQ-MSG-05).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RepliedMessageResponseDto"
+              }
+            ]
+          },
           "edited_at": {
             "format": "date-time",
             "type": "string",
@@ -5464,6 +5612,7 @@
           "author",
           "system_event",
           "system_data",
+          "reply_to",
           "edited_at",
           "id",
           "channel_id",
@@ -5509,11 +5658,30 @@
             "description": "Chosen by the client for this message and kept across its retries: the\nsame nonce again answers with the message already sent (REQ-MSG-10),\nand `message.created` carries it back so the sender's \"sending\" copy\nis swapped for the saved one.",
             "minLength": 1,
             "maxLength": 64
+          },
+          "reply_to_id": {
+            "type": "string",
+            "description": "The message this one answers: a regular message of the same channel, deleted or not (REQ-MSG-05).",
+            "format": "uuid"
           }
         },
         "required": [
           "content",
           "nonce"
+        ]
+      },
+      "EditMessageRequestDto": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "1-2000 characters, an emoji counting as one, once the blank around it is dropped.",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "content"
         ]
       }
     }

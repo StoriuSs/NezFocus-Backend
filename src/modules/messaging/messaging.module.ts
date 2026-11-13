@@ -6,9 +6,16 @@ import { ServersModule } from '@/modules/servers/servers.module'
 import { UsersModule } from '@/modules/users/users.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import { MESSAGE_REPOSITORY } from './domain'
-import { MESSAGE_COMMAND_HANDLERS, MESSAGE_EVENT_HANDLERS, MESSAGE_QUERY_HANDLERS, SEND_LIMIT } from './application'
+import {
+    MESSAGE_COMMAND_HANDLERS,
+    MESSAGE_QUERY_HANDLERS,
+    PublishCreatedMessageHandler,
+    PublishDeletedMessageHandler,
+    PublishUpdatedMessageHandler,
+    SEND_LIMIT
+} from './application'
 import { PrismaMessageRepository } from './infrastructure'
-import { MessagingController } from './presentation'
+import { MessageController, MessagingController } from './presentation'
 
 /**
  * Messages in text channels (SRS 4.4): the only module that writes the
@@ -19,14 +26,16 @@ import { MessagingController } from './presentation'
  */
 @Module({
     imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
-    controllers: [MessagingController],
+    controllers: [MessagingController, MessageController],
     providers: [
         { provide: MESSAGE_REPOSITORY, useClass: PrismaMessageRepository },
         // RateLimiter comes from the global CacheModule.
         { provide: SEND_LIMIT, useExisting: RateLimiter },
         ...MESSAGE_COMMAND_HANDLERS,
         ...MESSAGE_QUERY_HANDLERS,
-        ...MESSAGE_EVENT_HANDLERS
+        PublishCreatedMessageHandler,
+        PublishUpdatedMessageHandler,
+        PublishDeletedMessageHandler
     ]
 })
 export class MessagingModule {}

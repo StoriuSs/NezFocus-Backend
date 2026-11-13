@@ -8,6 +8,20 @@ export interface MessageAuthor {
     avatarKey: string | null
 }
 
+/**
+ * The message a reply answers, as its reply line shows it (C-10 `reply`).
+ * Once that message is deleted, only its id is left: the line says "the
+ * original message was deleted" (REQ-MSG-05).
+ */
+export interface RepliedMessage {
+    id: string
+    /** Null once deleted. */
+    author: MessageAuthor | null
+    /** Empty once deleted. */
+    content: string
+    deleted: boolean
+}
+
 /** A message as the chat reads it. */
 export interface MessageRecord {
     id: string
@@ -19,8 +33,15 @@ export interface MessageRecord {
     /** What a system message reports, and whom it is about (D-168); null on a regular one. */
     systemEvent: string | null
     systemData: Record<string, unknown> | null
+    /** The message this one answers; null if none, or if that one was removed for good with its channel. */
+    replyTo: RepliedMessage | null
     editedAt: Date | null
     createdAt: Date
+}
+
+/** A message found by id, deleted or not: a reply may still answer a deleted one (REQ-MSG-05). */
+export interface StoredMessage extends MessageRecord {
+    deleted: boolean
 }
 
 export interface NewMessage {
@@ -28,6 +49,8 @@ export interface NewMessage {
     authorId: string
     content: string
     nonce: string
+    /** A regular message of the same channel, checked by the application (the database cannot, schema). */
+    replyToId: string | null
 }
 
 /**
@@ -57,11 +80,23 @@ export interface MessageRepositoryPort {
      * Save a message, unless its author already sent one with this nonce
      * (REQ-MSG-10): then that one comes back, and `created` is false. Two
      * sends of one nonce at once make one message either way, as the
-     * database keeps (authorId, nonce) unique.
+     * database keeps (authorId, nonce) unique. `deleted`: the one that came
+     * back was deleted since.
      */
-    create(message: NewMessage): Promise<{ message: MessageRecord; created: boolean }>
-    /** The message this author sent with this nonce, in any channel; null if none. */
-    findByNonce(authorId: string, nonce: string): Promise<MessageRecord | null>
+    create(message: NewMessage): Promise<{ message: MessageRecord; created: boolean; deleted: boolean }>
+    /** The message this author sent with this nonce, in any channel, deleted or not; null if none. */
+    findByNonce(authorId: string, nonce: string): Promise<StoredMessage | null>
+    /** The message with this id, deleted ones included; null if there is none. */
+    find(id: string): Promise<StoredMessage | null>
+    /** Replace the text of a message not deleted, marked edited at `at`; null if it is deleted (or gone) by now. */
+    edit(id: string, content: string, at: Date): Promise<MessageRecord | null>
+    /**
+     * Delete a message, keeping its row for the replies to it (schema): in
+     * one transaction its text and mentions are emptied, its mention rows,
+     * reactions and pin removed, its files let go for the clean-up. False if
+     * it was deleted (or gone) already.
+     */
+    remove(id: string, at: Date): Promise<boolean>
     /** Up to `limit` messages of the channel from `cursor`; `around` splits them half before, half from the id on. */
     page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage>
 }

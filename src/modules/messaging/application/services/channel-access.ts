@@ -48,3 +48,15 @@ export function requireSending({ permissions, member }: OpenChannel, now: Date):
         throw new TimedOutError(member.timeoutUntil)
     throw new CannotSendError()
 }
+
+/**
+ * Whether the person is timed out in this channel's server now. The owner
+ * and ADMINISTRATOR are never held back by one (appendix B, step 1): they
+ * keep MANAGE_MESSAGES, which channelPermissions takes from everyone else
+ * timed out.
+ */
+export function timedOutUntil({ permissions, member }: OpenChannel, now: Date): Date | null {
+    if ((permissions & Permission.MANAGE_MESSAGES) !== 0n) return null
+    if (!member.timeoutUntil || member.timeoutUntil.getTime() <= now.getTime()) return null
+    return member.timeoutUntil
+}

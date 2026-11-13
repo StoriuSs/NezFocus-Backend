@@ -3,14 +3,16 @@ import { AddressInfo } from 'net'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import request from 'supertest'
 import { io, Socket } from 'socket.io-client'
+import { MESSAGE_REPOSITORY, MessageRepositoryPort } from '@/modules/messaging/domain'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
 /**
- * Sending and reading messages through the whole app (REQ-MSG-01, REQ-MSG-10,
- * SRS 5.1): who may read and post, the nonce that makes a retry harmless, the
- * limits per person, history pages, and `message.created` to the channel.
+ * Sending and reading messages through the whole app (REQ-MSG-01, REQ-MSG-05,
+ * REQ-MSG-10, SRS 5.1): who may read and post, the nonce that makes a retry
+ * harmless, the limits per person, history pages, editing, deleting and
+ * replying, and the events the channel hears.
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -43,6 +45,13 @@ describe('Messages (integration)', () => {
         as(who, api().post(`/api/v1/channels/${channelId}/messages`))
             .set('Idempotency-Key', randomUUID())
             .send({ content, nonce })
+    const reply = (who: Who, channelId: string, content: string, replyToId: string) =>
+        as(who, api().post(`/api/v1/channels/${channelId}/messages`))
+            .set('Idempotency-Key', randomUUID())
+            .send({ content, nonce: randomUUID(), reply_to_id: replyToId })
+    const edit = (who: Who, messageId: string, content: string) =>
+        as(who, api().patch(`/api/v1/messages/${messageId}`)).send({ content })
+    const remove = (who: Who, messageId: string) => as(who, api().delete(`/api/v1/messages/${messageId}`))
     const history = (who: Who, channelId: string, query = '') =>
         as(who, api().get(`/api/v1/channels/${channelId}/messages${query}`))
 
@@ -346,6 +355,168 @@ describe('Messages (integration)', () => {
             ])
             expect(outcome(await history('chi', channelId, '?limit=101'))).toEqual([422, 'VALIDATION_ERROR'])
             expect(outcome(await history('chi', channelId, '?limit=0'))).toEqual([422, 'VALIDATION_ERROR'])
+        })
+    })
+
+    describe('editing, deleting and replying (REQ-MSG-05, SRS 1.70)', () => {
+        /** A fresh channel, so these pages hold only this group's messages. */
+        async function newChannel(name: string): Promise<string> {
+            const res = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ type: 'text', name })
+            return res.body.data.id as string
+        }
+
+        it('lets the author edit, marks it edited and tells the channel the message as it now is', async () => {
+            const channelId = await newChannel('sua-tin')
+            const sent = await send('binh', channelId, 'Mình vào sớm giữ chỗ')
+            const watching = collect(await connectAs('an'), 'message.updated')
+
+            const res = await edit('binh', sent.body.data.id, '  Mình vào phòng rồi nhé \n')
+
+            expect(res.status).toBe(200)
+            expect(res.body.data).toMatchObject({ id: sent.body.data.id, content: 'Mình vào phòng rồi nhé' })
+            expect(Date.parse(res.body.data.edited_at as string)).toBeGreaterThan(Date.now() - 10_000)
+            expect(await watching()).toEqual([{ message: res.body.data }])
+            expect((await history('chi', channelId)).body.data.items[0]).toMatchObject({
+                content: 'Mình vào phòng rồi nhé',
+                edited_at: res.body.data.edited_at
+            })
+        })
+
+        it("refuses editing someone else's message, an empty text, and a message one cannot see", async () => {
+            const channelId = await newChannel('sua-tin-khac')
+            const sent = await send('binh', channelId, 'Tin của Bình')
+            const secret = await send('an', secretId, 'Tin bí mật')
+
+            expect(outcome(await edit('an', sent.body.data.id, 'Sửa hộ'))).toEqual([403, 'FORBIDDEN_ERROR'])
+            expect(outcome(await edit('binh', sent.body.data.id, ' \n '))).toEqual([422, 'VALIDATION_ERROR'])
+            expect(outcome(await edit('binh', secret.body.data.id, 'Sửa'))).toEqual([404, 'NOT_FOUND_ERROR'])
+            expect(outcome(await edit('binh', randomUUID(), 'Sửa'))).toEqual([404, 'NOT_FOUND_ERROR'])
+        })
+
+        it('soft-deletes in one go: the text, mentions, reactions, pin and files go, the row stays', async () => {
+            const channelId = await newChannel('xoa-tin')
+            const sent = await send('binh', channelId, 'Xóa tin này nhé')
+            const id: string = sent.body.data.id
+            await prisma.message.update({ where: { id }, data: { mentionEveryone: true, mentionRoleIds: ['r1'] } })
+            await prisma.messageMention.create({ data: { messageId: id, channelId, userId: users.an.id } })
+            await prisma.reaction.create({ data: { messageId: id, emoji: '👍', userId: users.chi.id } })
+            await prisma.pin.create({ data: { channelId, messageId: id, pinnedById: users.an.id } })
+            const file = await prisma.attachment.create({
+                data: {
+                    uploaderId: users.binh.id,
+                    messageId: id,
+                    position: 0,
+                    filename: 'cau3.jpg',
+                    size: 1024,
+                    storageKey: `itest/${randomUUID()}.jpg`
+                }
+            })
+            const watching = collect(await connectAs('chi'), 'message.deleted')
+
+            const res = await remove('binh', id)
+
+            expect(res.status).toBe(200)
+            expect(await watching()).toEqual([{ id, channel_id: channelId }])
+            const row = await prisma.message.findUniqueOrThrow({ where: { id } })
+            expect(row).toMatchObject({
+                content: '',
+                mentionEveryone: false,
+                mentionRoleIds: [],
+                mentionHereUserIds: []
+            })
+            expect(row.deletedAt).toBeInstanceOf(Date)
+            expect(await prisma.messageMention.count({ where: { messageId: id } })).toBe(0)
+            expect(await prisma.reaction.count({ where: { messageId: id } })).toBe(0)
+            expect(await prisma.pin.count({ where: { messageId: id } })).toBe(0)
+            expect((await prisma.attachment.findUniqueOrThrow({ where: { id: file.id } })).messageId).toBeNull()
+            expect((await history('an', channelId)).body.data.items).toEqual([])
+            expect(outcome(await remove('binh', id))).toEqual([404, 'NOT_FOUND_ERROR'])
+            expect(outcome(await edit('binh', id, 'Sửa'))).toEqual([404, 'NOT_FOUND_ERROR'])
+            await prisma.attachment.delete({ where: { id: file.id } })
+        })
+
+        it('answers not found to a retry of a message deleted meanwhile, the same nonce (REQ-MSG-10)', async () => {
+            const channelId = await newChannel('gui-lai-tin-da-xoa')
+            const nonce = randomUUID()
+            const sent = await send('binh', channelId, 'Gửi rồi xóa', nonce)
+            await remove('binh', sent.body.data.id)
+
+            expect(outcome(await send('binh', channelId, 'Gửi rồi xóa', nonce))).toEqual([404, 'NOT_FOUND_ERROR'])
+        })
+
+        it('keeps a second edit or delete of a deleted message from the row itself, whoever wins the race', async () => {
+            const channelId = await newChannel('xoa-dua')
+            const sent = await send('binh', channelId, 'Hai người cùng xóa')
+            const id: string = sent.body.data.id
+            const repository = app.get<MessageRepositoryPort>(MESSAGE_REPOSITORY)
+
+            expect(await repository.remove(id, new Date())).toBe(true)
+            expect(await repository.remove(id, new Date())).toBe(false)
+            expect(await repository.edit(id, 'Sửa sau khi xóa', new Date())).toBeNull()
+        })
+
+        it("lets MANAGE_MESSAGES delete someone else's message, no one else", async () => {
+            const channelId = await newChannel('xoa-tin-khac')
+            const sent = await send('chi', channelId, 'Tin của Chi')
+
+            expect(outcome(await remove('binh', sent.body.data.id))).toEqual([403, 'FORBIDDEN_ERROR'])
+            expect((await remove('an', sent.body.data.id)).status).toBe(200)
+        })
+
+        it('refuses a timed-out author both editing and deleting, saying until when', async () => {
+            const [id] = await seed('dung', generalId, 1)
+            const timedOut = await as('an', api().patch(`/api/v1/servers/${serverId}/members/${users.dung.id}`)).send({
+                timeout_seconds: 60
+            })
+            expect(timedOut.status).toBe(200)
+
+            const edited = await edit('dung', id, 'Sửa')
+            const deleted = await remove('dung', id)
+
+            expect(outcome(edited)).toEqual([403, 'MEMBER_TIMED_OUT'])
+            expect(outcome(deleted)).toEqual([403, 'MEMBER_TIMED_OUT'])
+            expect(deleted.body.data.timeout_until).toBe(edited.body.data.timeout_until)
+        })
+
+        it('quotes the message a reply answers, as it is now, and says once it is deleted', async () => {
+            const channelId = await newChannel('tra-loi')
+            const original = await send('an', channelId, 'Ok, mình vào sớm giữ chỗ')
+
+            const res = await reply('chi', channelId, 'Mình giữ chỗ cạnh An rồi nè', original.body.data.id)
+
+            expect(res.status).toBe(201)
+            expect(res.body.data.reply_to).toMatchObject({
+                id: original.body.data.id,
+                author: { id: users.an.id },
+                content: 'Ok, mình vào sớm giữ chỗ',
+                deleted: false
+            })
+            await edit('an', original.body.data.id, 'Mình vào trễ chút')
+            const answer = () => history('binh', channelId).then((page) => page.body.data.items.at(-1).reply_to)
+            expect(await answer()).toMatchObject({ content: 'Mình vào trễ chút', deleted: false })
+
+            await remove('an', original.body.data.id)
+            expect(await answer()).toEqual({ id: original.body.data.id, author: null, content: '', deleted: true })
+            const late = await reply('binh', channelId, 'Vẫn trả lời được', original.body.data.id)
+            expect(late.status).toBe(201)
+            expect(late.body.data.reply_to).toMatchObject({ deleted: true })
+        })
+
+        it('refuses to answer a message of another channel, an unknown one, or a system message', async () => {
+            const channelId = await newChannel('tra-loi-sai')
+            const elsewhere = await send('an', generalId, 'Ở kênh chung')
+            const system = await prisma.message.create({
+                data: { channelId, type: 'system', systemEvent: 'member_joined', systemData: { userId: users.chi.id } },
+                select: { id: true }
+            })
+
+            for (const target of [elsewhere.body.data.id as string, randomUUID(), system.id]) {
+                expect(outcome(await reply('binh', channelId, 'Trả lời', target))).toEqual([422, 'VALIDATION_ERROR'])
+            }
+            expect(outcome(await remove('an', system.id))).toEqual([403, 'FORBIDDEN_ERROR'])
+            await prisma.message.delete({ where: { id: system.id } })
         })
     })
 })
