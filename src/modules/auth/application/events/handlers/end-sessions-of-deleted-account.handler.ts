@@ -10,6 +10,7 @@ import {
     SESSION_REPOSITORY,
     SessionRepositoryPort
 } from '@/modules/auth/domain'
+import { SessionEnds } from '../../services/session-ends'
 
 /**
  * A deleted account's sessions end now, not when their access tokens expire,
@@ -36,6 +37,7 @@ export class EndSessionsOfDeletedAccountHandler implements IEventHandler<Account
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(OAUTH_ACCOUNT_REPOSITORY) private readonly oauthAccounts: OAuthAccountRepositoryPort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
+        private readonly sessionEnds: SessionEnds,
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort
     ) {}
 
@@ -44,7 +46,7 @@ export class EndSessionsOfDeletedAccountHandler implements IEventHandler<Account
         try {
             await this.cache.invalidateUser(event.userId)
             const ended = await this.sessions.revokeAllForUser(event.userId, 'account-deleted', new Date())
-            await this.cache.invalidateSessions(ended)
+            await this.sessionEnds.ended(ended)
             await this.credentials.delete(event.userId)
             await this.oauthAccounts.deleteForUser(event.userId)
         } catch (error) {

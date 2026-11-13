@@ -5,5 +5,8 @@
  * from './servers.module'.
  */
 
+// Which servers someone is in, for the realtime module's rooms (SRS 5.2).
+export { MEMBERSHIP, type MembershipPort } from './application/ports/membership.port'
+
 // Run on a schedule by src/maintenance.
 export { CleanUpServersCommand } from './application/commands/server/server.commands'

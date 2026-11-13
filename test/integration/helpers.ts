@@ -42,7 +42,7 @@ export async function bootApp(
     const { AppModule } = require('@/app.module') as typeof import('@/app.module')
     const moduleRef = await override(Test.createTestingModule({ imports: [AppModule] })).compile()
     const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false })
-    configureApp(app)
+    await configureApp(app)
     await app.init()
     return app
 }

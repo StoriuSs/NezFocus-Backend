@@ -1,7 +1,6 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 import { Inject, Logger } from '@nestjs/common'
 import { CleanUpAuthCommand } from './clean-up-auth.command'
-import { SESSION_CACHE, SessionCachePort } from '../../ports'
 import {
     CREDENTIAL_REPOSITORY,
     CredentialRepositoryPort,
@@ -12,6 +11,7 @@ import {
     VERIFICATION_CODE_REPOSITORY,
     VerificationCodeRepositoryPort
 } from '@/modules/auth/domain'
+import { SessionEnds } from '../../services/session-ends'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -40,14 +40,14 @@ export class CleanUpAuthHandler implements ICommandHandler<CleanUpAuthCommand> {
         @Inject(VERIFICATION_CODE_REPOSITORY) private readonly codes: VerificationCodeRepositoryPort,
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(OAUTH_ACCOUNT_REPOSITORY) private readonly oauthAccounts: OAuthAccountRepositoryPort,
-        @Inject(SESSION_CACHE) private readonly cache: SessionCachePort
+        private readonly sessionEnds: SessionEnds
     ) {}
 
     async execute({ now }: CleanUpAuthCommand): Promise<{ sessions: number; codes: number; orphans: number }> {
         const orphaned = await this.sessions.revokeForDeletedAccounts(now)
-        await this.cache.invalidateSessions(orphaned)
+        await this.sessionEnds.ended(orphaned)
         const leftOpen = await this.sessions.revokeFromBeforeDeletionRequests(now)
-        await this.cache.invalidateSessions(leftOpen)
+        await this.sessionEnds.ended(leftOpen)
         if (leftOpen.length > 0) {
             this.logger.warn(
                 `Ended ${leftOpen.length} session(s) signed in before a request to delete their account: the request did not finish`

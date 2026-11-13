@@ -168,6 +168,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `401005` | `AUTH_TOKEN_INVALID` | The access token is not one this API issued |
 | `401006` | `AUTH_TOKEN_REVOKED` | The session behind the token has ended (`data.reason`) |
 | `401008` | `AUTH_REFRESH_FAILED` | The refresh cookie is missing, expired or ended: sign in again |
+| `401600` | `REALTIME_TICKET_INVALID` | Only on a socket's refused handshake (`connect_error`, `data.type`), never an HTTP response: the ticket was missing, made up, spent or out of time. Buy a new one and connect again; do not sign out |
 | `403000` | `FORBIDDEN_ERROR` | Missing a permission in a server (SRS appendix B). A server or channel the caller may not know about answers `NOT_FOUND_ERROR` instead |
 | `403003` | `AUTH_ACCOUNT_DISABLED` | The account was deleted |
 | `403004` | `AUTH_FORBIDDEN` | Not allowed: a missing role, or a cookie route called from an origin not in `CORS_ORIGINS` |

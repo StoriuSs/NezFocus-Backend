@@ -6,15 +6,17 @@ import * as path from 'path'
 import { SnakeToCamelPipe, createValidationPipe } from '@/shared/presentation/pipes'
 import { httpMetricsMiddleware, requestIdMiddleware } from '@/shared/presentation/middlewares'
 import { MetricsService } from '@/shared/infrastructure/monitoring/metrics.service'
+import { RedisIoAdapter } from '@/shared/infrastructure/websocket/redis-io-adapter'
 
 /**
  * The HTTP pipeline every request goes through: proxy trust, middleware,
  * versioned routes under the prefix, CORS, cookies, security headers, uploads
- * and the global pipes. Shared by main.ts and the tests that boot the whole
+ * and the global pipes; and socket.io with its Redis adapter
+ * (RedisIoAdapter). Shared by main.ts and the tests that boot the whole
  * app (test/integration/auth-http.integration-spec.ts), so those test the
  * pipeline production runs rather than a copy of it.
  */
-export function configureApp(app: NestExpressApplication): void {
+export async function configureApp(app: NestExpressApplication): Promise<void> {
     const configService = app.get(ConfigService)
 
     // Behind Nginx (and Cloudflare). Trust the single reverse-proxy hop so
@@ -75,4 +77,9 @@ export function configureApp(app: NestExpressApplication): void {
         new SnakeToCamelPipe(), // Convert snake_case to camelCase before validation
         createValidationPipe()
     )
+
+    // Sockets (SRS 5.2): before init, which starts the gateways.
+    const sockets = new RedisIoAdapter(app)
+    await sockets.connectToRedis()
+    app.useWebSocketAdapter(sockets)
 }

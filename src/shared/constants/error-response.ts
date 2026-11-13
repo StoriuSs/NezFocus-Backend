@@ -54,6 +54,11 @@ export const ERROR_TYPES = {
     // A message already has 20 different emoji (REQ-MSG-05).
     MAX_REACTIONS_REACHED: 'MAX_REACTIONS_REACHED',
 
+    // Realtime errors (SRS 5.2)
+    // A socket offered no ticket, a made-up one, or one spent or out of time:
+    // buy a new one (POST /realtime/ticket) and connect again.
+    REALTIME_TICKET_INVALID: 'REALTIME_TICKET_INVALID',
+
     // Upload errors
     UPLOAD_FILE_TOO_LARGE: 'UPLOAD_FILE_TOO_LARGE',
     UPLOAD_INVALID_TYPE: 'UPLOAD_INVALID_TYPE',
@@ -116,6 +121,8 @@ export const ERROR_CODES = {
     AUTH_TOKEN_INVALID: '401005',
     AUTH_TOKEN_REVOKED: '401006',
     AUTH_REFRESH_FAILED: '401008',
+    // Only on a socket's refused handshake (connect_error data.type), never an HTTP 401.
+    REALTIME_TICKET_INVALID: '401600',
 
     // Auth codes and passwords (400, 422)
     AUTH_CODE_INVALID: '400102',

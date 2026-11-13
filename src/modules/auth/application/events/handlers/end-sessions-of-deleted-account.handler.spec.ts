@@ -1,6 +1,7 @@
 import { AccountDeletedEvent } from '@/modules/users'
 import { CredentialRepositoryPort, OAuthAccountRepositoryPort, SessionRepositoryPort } from '@/modules/auth/domain'
 import { AuthEvent, AuthEventsPort, SessionCachePort } from '../../ports'
+import { SessionEnds } from '../../services/session-ends'
 import { EndSessionsOfDeletedAccountHandler } from './end-sessions-of-deleted-account.handler'
 
 /** The handler with ports that do nothing but answer, and the metrics it records. */
@@ -16,6 +17,7 @@ function setup() {
         credentials,
         links,
         cache as unknown as SessionCachePort,
+        { ended: async () => undefined } as unknown as SessionEnds,
         events
     )
     return { handler, recorded }

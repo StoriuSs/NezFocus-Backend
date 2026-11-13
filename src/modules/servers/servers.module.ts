@@ -21,6 +21,7 @@ import {
     ICON_STORAGE,
     INVITE_COMMAND_HANDLERS,
     INVITE_QUERY_HANDLERS,
+    MEMBERSHIP,
     MODERATION_COMMAND_HANDLERS,
     MODERATION_QUERY_HANDLERS,
     ROLE_COMMAND_HANDLERS,
@@ -37,6 +38,7 @@ import {
     PrismaMemberRepository,
     PrismaModerationRepository,
     PrismaRoleRepository,
+    PrismaMembership,
     PrismaServerOwnership,
     PrismaServerRepository,
     ServerIconStorage
@@ -79,6 +81,7 @@ import {
         // RateLimiter comes from the global CacheModule.
         { provide: GUESS_LIMIT, useExisting: RateLimiter },
         { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
+        { provide: MEMBERSHIP, useClass: PrismaMembership },
         ...SERVER_COMMAND_HANDLERS,
         ...SERVER_QUERY_HANDLERS,
         ...CHANNEL_LAYOUT_COMMAND_HANDLERS,
@@ -89,7 +92,9 @@ import {
         ...MODERATION_COMMAND_HANDLERS,
         ...MODERATION_QUERY_HANDLERS,
         ...SERVER_EVENT_HANDLERS
-    ]
+    ],
+    // MEMBERSHIP: the realtime gateway puts a socket in its servers' rooms.
+    exports: [MEMBERSHIP]
 })
 export class ServersModule {}
 

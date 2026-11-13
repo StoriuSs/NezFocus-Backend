@@ -3429,6 +3429,45 @@
           "servers"
         ]
       }
+    },
+    "/api/v1/realtime/ticket": {
+      "post": {
+        "operationId": "RealtimeController_ticket_v1",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RealtimeTicketResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A ticket for this session, spendable once within 30 seconds. Not\n`@Idempotent()`: it makes nothing that lasts, and a retry is simply\nanother ticket.",
+        "tags": [
+          "realtime"
+        ]
+      }
     }
   },
   "info": {
@@ -5166,6 +5205,23 @@
         "required": [
           "items",
           "meta"
+        ]
+      },
+      "RealtimeTicketResponseDto": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "description": "Sent once in the socket's `auth`; never in a URL. Spent on the first connection."
+          },
+          "expires_in_seconds": {
+            "type": "number",
+            "description": "How long it can still be spent: 30 seconds."
+          }
+        },
+        "required": [
+          "ticket",
+          "expires_in_seconds"
         ]
       }
     }

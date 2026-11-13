@@ -222,13 +222,14 @@ proxy in the world.
 
 ## Already built, elsewhere
 
-Three items that were on this list and are now in the repository:
+Four items that were on this list and are now in the repository:
 
 | | Where |
 | --- | --- |
 | **Runtime configuration for the frontend** — one image for every environment, settings read at container start rather than baked in at build | The React starter's `nginx/40-runtime-config.sh`, and its `docs/environment.md` |
 | **Load testing** — k6 scripts and a guide | [load-testing.md](./load-testing.md) |
 | **Migrations as a one-shot job** — already how `deploy.sh` works on one server; the multi-server version is written up | [scaling.md](./scaling.md#running-more-than-one-app-instance) |
+| **Websockets** — socket.io with the Redis adapter, a 30-second one-use ticket instead of a token in the URL, rooms per person, session, server and channel | `src/modules/realtime/` and `src/shared/infrastructure/websocket/redis-io-adapter.ts` ([OVERVIEW.md](../OVERVIEW.md)) |
 
 ## Related
 

@@ -10,6 +10,10 @@ export * from './services/code-issuer'
 export * from './services/limits'
 export * from './services/sign-in-gate'
 export * from './services/current-password-check'
+export * from './services/session-ends'
+
+// Events
+export * from './events/sessions-ended.event'
 
 // Commands
 export * from './commands/change-password/change-password.command'

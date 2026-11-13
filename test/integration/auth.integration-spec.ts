@@ -21,6 +21,7 @@ import { PrismaSessionRepository } from '@/modules/auth/infrastructure/persisten
 import { PrismaCredentialRepository } from '@/modules/auth/infrastructure/persistence/prisma-credential.repository'
 import { PrismaVerificationCodeRepository } from '@/modules/auth/infrastructure/persistence/prisma-verification-code.repository'
 import { RedisSessionCache } from '@/modules/auth/infrastructure/adapters/redis-session-cache.adapter'
+import { SessionEnds } from '@/modules/auth/application/services/session-ends'
 import { PrismaOAuthAccountRepository } from '@/modules/auth/infrastructure/persistence/prisma-oauth-account.repository'
 import { databaseTarget, redisTarget } from './targets'
 
@@ -44,6 +45,8 @@ describe('Auth persistence and sessions (integration)', () => {
     let credentials: PrismaCredentialRepository
     let oauthAccounts: PrismaOAuthAccountRepository
     let cache: RedisSessionCache
+    /** Sessions ending, told to nobody: no other module runs here. */
+    const ended = () => new SessionEnds(cache, { publish: () => undefined } as never)
     let tokens: JoseTokenService
     let refresh: RefreshHandler
 
@@ -95,7 +98,7 @@ describe('Auth persistence and sessions (integration)', () => {
             { secret: 'integration-only-secret-0123456789abcdef', issuer: 'itest', audience: 'itest' },
             settings
         )
-        refresh = new RefreshHandler(sessions, tokens, cache, { record: jest.fn() }, settings)
+        refresh = new RefreshHandler(sessions, tokens, cache, ended(), { record: jest.fn() }, settings)
     })
 
     afterAll(async () => {
@@ -233,7 +236,7 @@ describe('Auth persistence and sessions (integration)', () => {
             await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } })
             await prisma.credential.create({ data: { userId: user.id, passwordHash: 'argon2-hash' } })
             await oauthAccounts.link(user.id, 'google', `sub-${user.id}`)
-            await new EndSessionsOfDeletedAccountHandler(sessions, credentials, oauthAccounts, cache, {
+            await new EndSessionsOfDeletedAccountHandler(sessions, credentials, oauthAccounts, cache, ended(), {
                 record: () => undefined
             }).handle(new AccountDeletedEvent(user.id))
 

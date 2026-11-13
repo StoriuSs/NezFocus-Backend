@@ -30,6 +30,7 @@ import { IssuedSession } from '../../services/session-issuer'
 import { SignInGate } from '../../services/sign-in-gate'
 import { withGuess } from '../../services/limits'
 import { afterCommit } from '../../services/after-commit'
+import { SessionEnds } from '../../services/session-ends'
 
 /**
  * Choose a new password with the code from "forgot password", and sign in
@@ -63,6 +64,7 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
         @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
+        private readonly sessionEnds: SessionEnds,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort,
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
@@ -108,7 +110,7 @@ export class ResetPasswordHandler implements ICommandHandler<ResetPasswordComman
         // is logged if it fails, and the reset still signs in. A cached
         // session left behind expires on its own, as it would have anyway.
         await afterCommit(this.logger, 'Password reset', [
-            () => this.cache.invalidateSessions(ended),
+            () => this.sessionEnds.ended(ended),
             () => this.cache.invalidateUser(user.id),
             () =>
                 hadPassword

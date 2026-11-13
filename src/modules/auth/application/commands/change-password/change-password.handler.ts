@@ -16,14 +16,13 @@ import {
     AuthMailerPort,
     PASSWORD_HASHER,
     PasswordHasherPort,
-    SESSION_CACHE,
-    SessionCachePort,
     RATE_LIMIT,
     RateLimitPort
 } from '../../ports'
 import { AUTH_RATE_LIMITS } from '../../rate-limits'
 import { withGuess } from '../../services/limits'
 import { afterCommit } from '../../services/after-commit'
+import { SessionEnds } from '../../services/session-ends'
 
 /**
  * Change the password, knowing the current one. Ends every other session: a
@@ -39,7 +38,7 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
         @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
-        @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
+        private readonly sessionEnds: SessionEnds,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort
     ) {}
@@ -63,7 +62,7 @@ export class ChangePasswordHandler implements ICommandHandler<ChangePasswordComm
         const ended = await this.sessions.revokeAllForUser(user.id, 'password-changed', new Date(), command.sessionId)
         // Changed: a retry would be refused (the current password is new now).
         await afterCommit(this.logger, 'Password change', [
-            () => this.cache.invalidateSessions(ended),
+            () => this.sessionEnds.ended(ended),
             () => this.limiter.reset(rule, command.userId),
             async () => {
                 if (user.email) await this.mailer.sendPasswordChanged(user.email, command.language)

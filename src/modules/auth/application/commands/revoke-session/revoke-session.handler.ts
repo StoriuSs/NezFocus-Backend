@@ -1,8 +1,8 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 import { Inject } from '@nestjs/common'
 import { RevokeSessionCommand } from './revoke-session.command'
-import { SESSION_CACHE, SessionCachePort } from '../../ports'
 import { SESSION_REPOSITORY, SessionRepositoryPort } from '@/modules/auth/domain'
+import { SessionEnds } from '../../services/session-ends'
 
 /**
  * Sign out one session from the list of sessions (D-75): no confirmation, and
@@ -18,12 +18,12 @@ import { SESSION_REPOSITORY, SessionRepositoryPort } from '@/modules/auth/domain
 export class RevokeSessionHandler implements ICommandHandler<RevokeSessionCommand> {
     constructor(
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
-        @Inject(SESSION_CACHE) private readonly cache: SessionCachePort
+        private readonly sessionEnds: SessionEnds
     ) {}
 
     async execute({ userId, sessionId }: RevokeSessionCommand): Promise<void> {
         const theirs = await this.sessions.revokeOne(userId, sessionId, 'revoked', new Date())
         // On the main path: the cached session is what the next request is checked against.
-        if (theirs) await this.cache.invalidateSessions([sessionId])
+        if (theirs) await this.sessionEnds.ended([sessionId])
     }
 }

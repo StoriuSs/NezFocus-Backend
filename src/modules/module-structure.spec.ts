@@ -57,6 +57,7 @@ const PLACES: string[] = [
     `presentation/http/dto/(?:index|${NAME}\\.(?:request|response|params|query)\\.dto|${NAME}\\.decorators)\\.ts`,
     `presentation/http/dto/shared/(?:${NAME}\\.dto|fields)\\.ts`,
     `presentation/consumers/${NAME}\\.consumer\\.ts`,
+    `presentation/gateways/${NAME}\\.gateway\\.ts`,
     `presentation/guards/${NAME}\\.guard\\.ts`,
     `presentation/rate-limit/${HELPER}\\.ts`
 ]

@@ -81,6 +81,11 @@ export const MESSAGES = {
         BANS_LISTED: 'Bans fetched'
     },
 
+    // Realtime messages
+    REALTIME: {
+        TICKET_ISSUED: 'Realtime ticket issued'
+    },
+
     // Health messages
     HEALTH: {
         CHECK_SUCCESS: 'Health check successful'

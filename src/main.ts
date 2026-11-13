@@ -24,7 +24,7 @@ async function bootstrap() {
     app.useLogger(app.get(AppLogger))
 
     // Middleware, routes, CORS, cookies, headers, pipes: src/bootstrap/configure-app.ts
-    configureApp(app)
+    await configureApp(app)
 
     const configService = app.get(ConfigService)
     const apiPrefix = configService.get<string>('app.apiPrefix')!

@@ -1,8 +1,9 @@
 # Adding a module
 
-The repository has four feature modules: `users`, small enough to read in one
+The repository has five feature modules: `users`, small enough to read in one
 sitting, `auth`, the same shape at full size, `servers`, whose use cases are
-grouped by area, and `permissions`, a port the others ask. This page builds a
+grouped by area, `permissions`, a port the others ask, and `realtime`, the
+sockets. This page builds a
 new one
 — `orders` — so you can see every layer filled in once, in order, with the
 reasoning at each step.
@@ -163,7 +164,7 @@ ORDER_NOT_FOUND: '404500',
 
 A code is the HTTP status and three digits. A new code takes its module's
 hundred: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, messaging's
-`x4xx`, shared ones `x0xx`, so `orders` takes `x5xx` (`404500`, then
+`x4xx`, realtime's `x6xx`, shared ones `x0xx`, so `orders` takes `x5xx` (`404500`, then
 `409500`, ...). Most existing codes are older
 than that rule and were numbered in turn under their status, auth's
 `401001`–`401008` and `403003`–`403004` and `USER_NOT_FOUND` `404001`
@@ -522,6 +523,7 @@ file starts with a row here and a pattern in that test.
 | Guard | `presentation/guards/<name>.guard.ts` (auth's `AccessTokenGuard`, registered globally in `AppModule`) |
 | Throttler keys | `presentation/rate-limit/`: whom the global throttler counts a request against (auth's `throttle-by-user.ts`, [rate-limit.md](./rate-limit.md)) |
 | Queue consumer | `presentation/consumers/<name>.consumer.ts`: an inbound adapter, like a controller, for jobs the module itself queues. A job on a schedule is not one of these (below) |
+| Websocket gateway | `presentation/gateways/<name>.gateway.ts`, `<Name>Gateway`: an inbound adapter for sockets, like a controller, so it dispatches one command per connection and holds no rules (realtime's `RealtimeGateway`). What its events send goes out through the module's `EVENT_PUBLISHER` port, not through the gateway |
 | DI token | The port's role in capitals, no suffix: `ORDER_REPOSITORY`, `AUTH_MAILER`, `STORAGE`. Its `Symbol` description is the port's name, `Symbol('OrderRepositoryPort')` |
 | Emails | `infrastructure/email/<module>-emails.ts` (each email's subject and context, sent through shared's `EmailService`), its helpers beside it without a suffix (auth's `email-copy.ts`, the words of each email, and `auth-email-jobs.ts`, the job contract between the mailer adapter and the consumer), and `templates/*.hbs` ([core-infrastructure.md](./core-infrastructure.md#a-modules-emails)) |
 | A job on a schedule | a command of the module's, exported from its `index.ts`, and a line in `src/maintenance/maintenance-tasks.ts` saying how often ([core-infrastructure.md](./core-infrastructure.md#scheduled-work)) |

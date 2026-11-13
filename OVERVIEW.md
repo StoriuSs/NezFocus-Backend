@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with four modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area) and `permissions` (the two ports `servers` asks) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with five modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks) and `realtime` (sockets: a gateway, and the port every module sends events through) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -366,6 +366,19 @@ so `AuthModule` never imports `ServersModule`. It also hears the users
 module's `AccountDeletedEvent` (imported from `@/modules/users`) to take a
 deleted account out of its servers.
 
+`src/modules/realtime/` is the socket side (SRS 5.2, ARCHITECTURE 3). A
+client buys a 30-second, one-use ticket with `POST /realtime/ticket`, then
+opens socket.io with it; `presentation/gateways/realtime.gateway.ts` turns
+the handshake into one `OpenConnectionCommand`, which spends the ticket,
+checks the session is still live (auth's `PRINCIPAL`) and works out the
+rooms: the person's, the session's, each server (servers' `MEMBERSHIP`) and
+each text channel they may view (`PERMISSION_CHECKER`). Other modules send
+events through its `EVENT_PUBLISHER` port. It hears auth's
+`SessionsEndedEvent` (every way a session ends goes through auth's
+`SessionEnds`) and cuts those sessions' sockets off. socket.io itself, with
+its Redis adapter for several instances, is set up in
+`src/shared/infrastructure/websocket/redis-io-adapter.ts`.
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -452,6 +465,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/users/          # Profiles, usernames, avatars, settings, deletion
 │   ├── modules/servers/        # Servers, channels, roles, invites, moderation
 │   ├── modules/permissions/    # What a member may do in a server, cached
+│   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
@@ -513,8 +527,8 @@ an admin console for support staff. See
 [docs/auth/security.md](./docs/auth/security.md) for what it defends against,
 and what it does not.
 
-**Hexagonal and CQRS, for four modules.** It looks like a lot of
-folders for four features, and it is. The point is that the fifth, tenth and
+**Hexagonal and CQRS, for five modules.** It looks like a lot of
+folders for five features, and it is. The point is that the fifth, tenth and
 twentieth feature go in the same shape, and by then a `UsersService` would have
 been a thousand lines nobody wants to open. Learn it on the modules that are
 already here.

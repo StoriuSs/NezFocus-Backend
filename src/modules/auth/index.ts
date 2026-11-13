@@ -12,6 +12,11 @@ export { AccessTokenGuard } from './presentation/guards/access-token.guard'
 export { throttleByUser } from './presentation/rate-limit/throttle-by-user'
 export { TOKEN_SERVICE, type TokenServicePort } from './application/ports'
 
+// Whether the session a realtime ticket was bought in is still live, and
+// when sessions end, so their sockets are cut off (ARCHITECTURE 3.1).
+export { PRINCIPAL, type Principal, type PrincipalPort } from './application/ports/principal.port'
+export { SessionsEndedEvent } from './application/events/sessions-ended.event'
+
 // The account's password checked again, for a step of another module that
 // asks for it (handing a server over, D-160). AuthModule exports it.
 export { CURRENT_PASSWORD, type CurrentPasswordPort } from './application/ports/current-password.port'

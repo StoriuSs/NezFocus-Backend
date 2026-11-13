@@ -178,6 +178,10 @@ Everything above has to be done first. Then:
   checks that its session is still live, through a Redis cache with Postgres
   behind it ([sessions-and-tokens.md](./auth/sessions-and-tokens.md)). So any
   instance can serve any request, and a sign-out on one takes effect on all.
+- Sockets need none either: they are websocket only, no long-polling
+  (`src/shared/infrastructure/websocket/redis-io-adapter.ts`), so each stays
+  on the instance it opened on, and the socket.io Redis adapter carries an
+  event emitted on one instance to the sockets of every other.
 - The scheduled jobs are **BullMQ job schedulers**, held in Redis, so each
   tick runs once no matter how many instances are up: the deleted-account
   sweep and the hourly `auth-clean-up` (ended sessions, old codes), both on

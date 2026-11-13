@@ -101,9 +101,8 @@ server {
 	proxy_set_header X-Forwarded-Proto $scheme;
 	proxy_set_header X-Forwarded-Host  $host;
 	# An empty Connection header lets nginx reuse upstream connections. The
-	# API has no WebSockets; if you add some, give that location
-	# `proxy_set_header Upgrade $http_upgrade;` and `Connection "upgrade";`
-	# rather than sending "upgrade" on every request, which disables keepalive.
+	# socket.io location below sends "upgrade" instead, and only there:
+	# sending it on every request would disable keepalive.
 	proxy_set_header Connection        "";
 
 	# CORS handled by the NestJS app (don't double-handle here).
@@ -135,6 +134,29 @@ server {
 		allow 172.16.0.0/12;
 		allow 10.0.0.0/8;
 		deny all;
+		proxy_pass http://127.0.0.1:API_PORT;
+	}
+
+	# ── Sockets (socket.io, SRS 5.2) ────────────────────────────────────
+	# The websocket upgrade needs these two headers passed on. Sockets are
+	# websocket only (no long-polling), so every request here is an upgrade
+	# and "upgrade" is always the right Connection header. A socket stays
+	# open for hours: the app pings it every 25 seconds, so a read timeout
+	# just above that only closes a connection that has really gone quiet.
+	# The ticket travels in the handshake body, never in the URL, so access
+	# logs hold nothing worth stealing (D-13). Any proxy_set_header here
+	# replaces every one above rather than adding to them, so all are
+	# repeated: the app keys its limits and logs on the forwarded address.
+	location /socket.io/ {
+		proxy_set_header Host              $host;
+		proxy_set_header X-Real-IP         $remote_addr;
+		proxy_set_header X-Forwarded-For   $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host  $host;
+		proxy_set_header Upgrade           $http_upgrade;
+		proxy_set_header Connection        "upgrade";
+		proxy_read_timeout 75s;
+		proxy_send_timeout 75s;
 		proxy_pass http://127.0.0.1:API_PORT;
 	}
 

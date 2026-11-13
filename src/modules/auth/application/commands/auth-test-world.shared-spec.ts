@@ -45,6 +45,7 @@ import { RateLimitRule, RateLimitState } from '../rate-limits'
 import { CodeIssuer } from '../services/code-issuer'
 import { SessionIssuer } from '../services/session-issuer'
 import { SignInGate } from '../services/sign-in-gate'
+import { SessionEnds } from '../services/session-ends'
 import {
     ChangePasswordHandler,
     CompleteAccountHandler,
@@ -54,6 +55,7 @@ import {
     LoginCommand,
     ListSessionsHandler,
     LoginHandler,
+    LogoutHandler,
     RefreshHandler,
     ResetPasswordHandler,
     RestoreAccountHandler,
@@ -561,6 +563,11 @@ export function setup() {
     const sessions = new FakeSessions(directory)
     const codes = new FakeCodes()
     const cache = new FakeCache()
+    /** What other modules would hear of sessions ending (the realtime module cuts their sockets off). */
+    const sessionsEnded: string[][] = []
+    const sessionEnds = new SessionEnds(cache, {
+        publish: (event: { sessionIds: string[] }) => void sessionsEnded.push(event.sessionIds)
+    } as never)
     const mailer = new FakeMailer()
     const events = new FakeEvents()
     const codeIssuer = new CodeIssuer(codes, tokens, mailer, settings)
@@ -581,6 +588,7 @@ export function setup() {
         sessions,
         codes,
         cache,
+        sessionsEnded,
         mailer,
         google,
         oauthState,
@@ -600,10 +608,11 @@ export function setup() {
         sendCode: new SendEmailCodeHandler(directory, limiter, codeIssuer),
         verifyCode: new VerifyEmailCodeHandler(directory, limiter, events, codeIssuer, gate),
         login: new LoginHandler(directory, credentials, hasher, limiter, events, gate),
-        refresh: new RefreshHandler(sessions, tokens, cache, events, settings),
+        logout: new LogoutHandler(sessions, tokens, sessionEnds),
+        refresh: new RefreshHandler(sessions, tokens, cache, sessionEnds, events, settings),
         listSessions: new ListSessionsHandler(sessions),
-        revokeSession: new RevokeSessionHandler(sessions, cache),
-        revokeOtherSessions: new RevokeOtherSessionsHandler(sessions, cache),
+        revokeSession: new RevokeSessionHandler(sessions, sessionEnds),
+        revokeOtherSessions: new RevokeOtherSessionsHandler(sessions, sessionEnds),
         /** Forgot password, waiting for the email it queues after answering. */
         forgot: waitingForAfterwork(forgot),
         /** Forgot password as the route sees it: done when it answers. */
@@ -613,6 +622,7 @@ export function setup() {
             credentials,
             sessions,
             cache,
+            sessionEnds,
             hasher,
             limiter,
             servers,
@@ -626,13 +636,14 @@ export function setup() {
             sessions,
             hasher,
             cache,
+            sessionEnds,
             mailer,
             limiter,
             events,
             codeIssuer,
             gate
         ),
-        change: new ChangePasswordHandler(directory, credentials, sessions, hasher, cache, mailer, limiter),
+        change: new ChangePasswordHandler(directory, credentials, sessions, hasher, sessionEnds, mailer, limiter),
         complete: new CompleteAccountHandler(directory, credentials, hasher, cache, mailer),
 
         /** An account with a password. */

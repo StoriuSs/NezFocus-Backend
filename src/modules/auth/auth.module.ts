@@ -20,6 +20,7 @@ import {
     GetAuthOptionsHandler,
     SendEmailCodeHandler,
     SignInGate,
+    SessionEnds,
     CleanUpAuthHandler,
     CodeIssuer,
     EndSessionsOfDeletedAccountHandler,
@@ -190,6 +191,7 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
         SessionIssuer,
         CodeIssuer,
         SignInGate,
+        SessionEnds,
 
         // CQRS
         ...CommandHandlers,
@@ -206,6 +208,7 @@ const EventHandlers = [EndSessionsOfDeletedAccountHandler, RefreshCachedUserHand
     ],
     // TOKEN_SERVICE: the global throttler checks access tokens too (throttle-by-user.ts).
     // CURRENT_PASSWORD: the servers module's handover asks for the password (D-160).
-    exports: [AccessTokenGuard, TOKEN_SERVICE, CURRENT_PASSWORD]
+    // PRINCIPAL: the realtime gateway checks a ticket's session is still live.
+    exports: [AccessTokenGuard, TOKEN_SERVICE, CURRENT_PASSWORD, PRINCIPAL]
 })
 export class AuthModule {}

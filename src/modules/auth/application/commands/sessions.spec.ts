@@ -1,6 +1,13 @@
 import { InvalidCredentialsError, RateLimitedError, RefreshFailedError } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
-import { ListSessionsQuery, LoginCommand, RefreshCommand, RevokeOtherSessionsCommand, RevokeSessionCommand } from '..'
+import {
+    ListSessionsQuery,
+    LoginCommand,
+    LogoutCommand,
+    RefreshCommand,
+    RevokeOtherSessionsCommand,
+    RevokeSessionCommand
+} from '..'
 import { IP, PASSWORD, setup, signIn, World } from './auth-test-world.shared-spec'
 
 describe('Signing in', () => {
@@ -308,5 +315,33 @@ describe('The list of sessions, and ending them from it (D-75, D-138)', () => {
         await expect(w.revokeOtherSessions.execute(new RevokeOtherSessionsCommand(ada.id, 'session-3'))).resolves.toBe(
             0
         )
+    })
+})
+
+describe('Signing out', () => {
+    it('ends the session of the cookie: its access token stops now, and other modules hear of it', async () => {
+        const w = setup()
+        const ada = w.account()
+        const phone = await signIn(w) // session-1
+        await signIn(w) // session-2
+
+        await w.logout.execute(new LogoutCommand(phone.refreshToken))
+
+        expect(w.sessions.live(ada.id)).toEqual(['session-2'])
+        expect(w.cache.endedSessions).toEqual(['session-1'])
+        // The realtime module cuts that session's sockets off (SessionsEndedEvent).
+        expect(w.sessionsEnded).toEqual([['session-1']])
+    })
+
+    it('does nothing without a cookie, or with one whose session already ended', async () => {
+        const w = setup()
+        w.account()
+        const phone = await signIn(w)
+        await w.logout.execute(new LogoutCommand(phone.refreshToken))
+
+        await w.logout.execute(new LogoutCommand(undefined))
+        await w.logout.execute(new LogoutCommand(phone.refreshToken))
+
+        expect(w.sessionsEnded).toEqual([['session-1']])
     })
 })

@@ -12,6 +12,7 @@ import {
     TokenServicePort
 } from '../../ports'
 import { IssuedSession } from '../../services/session-issuer'
+import { SessionEnds } from '../../services/session-ends'
 
 /**
  * Trade a refresh token for a new access token — and a new refresh token:
@@ -31,6 +32,7 @@ export class RefreshHandler implements ICommandHandler<RefreshCommand> {
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
         @Inject(TOKEN_SERVICE) private readonly tokens: TokenServicePort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
+        private readonly sessionEnds: SessionEnds,
         @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
         @Inject(AUTH_SETTINGS) private readonly settings: AuthSettings
     ) {}
@@ -72,7 +74,7 @@ export class RefreshHandler implements ICommandHandler<RefreshCommand> {
                     userId: outcome.session.userId,
                     sessionId: outcome.session.id
                 })
-                await this.cache.invalidateSessions([outcome.session.id])
+                await this.sessionEnds.ended([outcome.session.id])
                 this.logger.warn(
                     `A refresh token was used twice; session ${outcome.session.id} of user ${outcome.session.userId} has been ended`
                 )

@@ -28,6 +28,7 @@ import {
 import { AUTH_RATE_LIMITS } from '../../rate-limits'
 import { withGuess } from '../../services/limits'
 import { afterCommit } from '../../services/after-commit'
+import { SessionEnds } from '../../services/session-ends'
 
 /** For an account with no settings row, which a completed one always has. */
 const FALLBACK_TIME_ZONE = 'UTC'
@@ -63,6 +64,7 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         @Inject(CREDENTIAL_REPOSITORY) private readonly credentials: CredentialRepositoryPort,
         @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepositoryPort,
         @Inject(SESSION_CACHE) private readonly cache: SessionCachePort,
+        private readonly sessionEnds: SessionEnds,
         @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasherPort,
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort,
         @Inject(SERVER_OWNERSHIP) private readonly servers: ServerOwnershipPort,
@@ -93,7 +95,7 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         const ended = await this.sessions.revokeAllForUser(userId, 'deletion-requested', now)
         const email = user.email
         await afterCommit(this.logger, 'Account deletion request', [
-            () => this.cache.invalidateSessions(ended),
+            () => this.sessionEnds.ended(ended),
             () => this.cache.invalidateUser(userId),
             // Again: a tab still holding the cached session could make one until now.
             () => this.servers.revokeSoloServerInvites(userId),
