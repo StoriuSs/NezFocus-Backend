@@ -14,7 +14,7 @@ import {
     timeoutForViewer
 } from '../../../domain'
 import { requireServerPermission } from '../../services/require-permission'
-import { ListMembersQuery, ListRolesQuery } from './role.queries'
+import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
 
 @QueryHandler(ListRolesQuery)
 export class ListRolesHandler implements IQueryHandler<ListRolesQuery> {
@@ -26,6 +26,34 @@ export class ListRolesHandler implements IQueryHandler<ListRolesQuery> {
     async execute({ userId, serverId }: ListRolesQuery): Promise<RoleListItem[]> {
         await requireServerPermission(this.checker, serverId, userId, 'MANAGE_ROLES')
         return this.roles.list(serverId)
+    }
+}
+
+/** A role as the composer suggests it: "{N} members" under its name (C-12 MentionSuggest). */
+export type MentionableRole = Pick<RoleListItem, 'id' | 'name' | 'memberCount'>
+
+/**
+ * Anyone in the server (D-171); anyone else learns only "not found". The
+ * roles they may mention, highest first: those that let everyone mention
+ * them, or every one with MENTION_EVERYONE (REQ-MSG-03). Never @everyone's
+ * own role: the @everyone mention stands for it.
+ */
+@QueryHandler(ListMentionableRolesQuery)
+export class ListMentionableRolesHandler implements IQueryHandler<ListMentionableRolesQuery> {
+    constructor(
+        @Inject(ROLE_REPOSITORY) private readonly roles: RoleRepositoryPort,
+        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort
+    ) {}
+
+    async execute({ userId, serverId }: ListMentionableRolesQuery): Promise<MentionableRole[]> {
+        const access = await this.checker.access(serverId, userId)
+        if (!access) throw new ServerNotFoundError(serverId)
+        const mayMentionAll =
+            (serverPermissions(access.server, access.member, new Date()) & Permission.MENTION_EVERYONE) !== 0n
+        const roles = await this.roles.list(serverId)
+        return roles
+            .filter((role) => !role.isEveryone && (role.mentionable || mayMentionAll))
+            .map(({ id, name, memberCount }) => ({ id, name, memberCount }))
     }
 }
 
@@ -58,4 +86,4 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
     }
 }
 
-export const ROLE_QUERY_HANDLERS = [ListRolesHandler, ListMembersHandler]
+export const ROLE_QUERY_HANDLERS = [ListRolesHandler, ListMentionableRolesHandler, ListMembersHandler]

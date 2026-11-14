@@ -1,6 +1,6 @@
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
-import { ChannelDirectoryPort } from '@/modules/servers'
+import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import { RateLimitState } from '@/shared/types/rate-limit.type'
 import {
@@ -28,7 +28,12 @@ const server: AccessServer = {
     ownerId: 'an',
     roles: [
         { id: 'everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true },
-        { id: 'quan-ly', permissions: Permission.MANAGE_MESSAGES, position: 1, isEveryone: false }
+        {
+            id: 'quan-ly',
+            permissions: Permission.MANAGE_MESSAGES | Permission.MENTION_EVERYONE,
+            position: 1,
+            isEveryone: false
+        }
     ],
     channels: [
         { id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
@@ -49,10 +54,33 @@ const author = (id: string) => ({
 
 type Row = StoredMessage & { nonce: string | null }
 
+/* People and roles a text can name: tokens carry ids of the UUID form. */
+const DUNG = '0190a0b0-0000-7000-8000-0000000000d1'
+const GIANG = '0190a0b0-0000-7000-8000-0000000000d2'
+/** Has an account, but is in no server here. */
+const KHACH = '0190a0b0-0000-7000-8000-0000000000d3'
+/** "Trợ giảng": everyone may mention it. */
+const TRO_GIANG = '0190a0b0-0000-7000-8000-0000000000e1'
+/** "Ban tổ chức": only MENTION_EVERYONE may. */
+const BAN_TO = '0190a0b0-0000-7000-8000-0000000000e2'
+/** A long name only MENTION_EVERYONE may mention. */
+const BAN_DAI = '0190a0b0-0000-7000-8000-0000000000e3'
+/** A member timed out: still sees the channel (appendix B). */
+const HUNG = '0190a0b0-0000-7000-8000-0000000000d4'
+const ROLES = [
+    { id: TRO_GIANG, name: 'Trợ giảng', mentionable: true },
+    { id: BAN_TO, name: 'Ban tổ chức', mentionable: false },
+    { id: BAN_DAI, name: 'Ban điều hành câu lạc bộ học thuật khoa công nghệ thông tin', mentionable: false }
+]
+const NO_MENTIONS = { mentionEveryone: false, mentionRoleIds: [], mentionUsers: [] }
+/** A quoted message's mentions: none in these texts. */
+const QUOTED = { mentionRoleIds: [], mentionUsers: [] }
+
 /**
  * One server: Bình a member, Chi a moderator (MANAGE_MESSAGES), Phong timed
  * out for an hour, An the owner; #thong-bao for managers only, #ban-quan-ly
- * private to moderators. Messages kept in memory.
+ * private to moderators. Dũng and Giang are members too, Khách is not. The
+ * moderator role may mention everyone. Messages kept in memory.
  */
 function world({ limited = false } = {}) {
     const saved: Row[] = []
@@ -61,8 +89,8 @@ function world({ limited = false } = {}) {
         const target = id ? byId(id) : undefined
         if (!target) return null
         return target.deleted
-            ? { id: target.id, author: null, content: '', deleted: true }
-            : { id: target.id, author: target.author, content: target.content, deleted: false }
+            ? { id: target.id, author: null, content: '', deleted: true, mentionRoleIds: [], mentionUsers: [] }
+            : { id: target.id, author: target.author, content: target.content, deleted: false, ...QUOTED }
     }
     const repository: MessageRepositoryPort = {
         create: jest.fn(async (input: NewMessage) => {
@@ -80,6 +108,9 @@ function world({ limited = false } = {}) {
                 editedAt: null,
                 pinned: false,
                 systemUser: null,
+                mentionEveryone: input.mentions.everyone,
+                mentionRoleIds: input.mentions.roleIds,
+                mentionUsers: [],
                 createdAt: new Date('2026-10-18T20:02:00Z'),
                 deleted: false,
                 nonce: input.nonce
@@ -92,7 +123,7 @@ function world({ limited = false } = {}) {
                 saved.find((row) => row.author?.id === authorId && row.nonce === nonce) ?? null
         ),
         find: jest.fn(async (id: string) => byId(id) ?? null),
-        edit: jest.fn(async (id: string, content: string, at: Date) => {
+        edit: jest.fn(async (id: string, content: string, _mentions: unknown, at: Date) => {
             const row = byId(id)
             if (!row || row.deleted) return null
             Object.assign(row, { content, editedAt: at })
@@ -102,6 +133,9 @@ function world({ limited = false } = {}) {
             const row = byId(id)
             if (!row || row.deleted) return false
             Object.assign(row, { deleted: true, content: '' })
+            // Replies now quote it by its id alone, as the repository reads them.
+            for (const reply of saved.filter((other) => other.replyTo?.id === id))
+                reply.replyTo = { id, author: null, content: '', deleted: true, mentionRoleIds: [], mentionUsers: [] }
             return true
         }),
         page: jest.fn()
@@ -120,6 +154,7 @@ function world({ limited = false } = {}) {
             editedAt: null,
             pinned: false,
             systemUser: null,
+            ...NO_MENTIONS,
             createdAt: new Date('2026-10-18T20:11:00Z'),
             deleted: false,
             nonce: by ? `seed-${saved.length + 1}` : null
@@ -132,7 +167,8 @@ function world({ limited = false } = {}) {
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => {
-            const timeoutUntil = userId === 'phong' ? new Date(Date.now() + 3600_000) : null
+            if (userId === KHACH) return null
+            const timeoutUntil = ['phong', HUNG].includes(userId) ? new Date(Date.now() + 3600_000) : null
             const roleIds = userId === 'chi' ? ['quan-ly'] : []
             return { server, member: { userId, roleIds, timeoutUntil } }
         })
@@ -142,10 +178,13 @@ function world({ limited = false } = {}) {
     const users = { avatarUrl: jest.fn(async (key: string | null) => (key ? `https://cdn.test/${key}` : null)) }
     const events = { publish: jest.fn() }
     const userDirectory = users as unknown as UserDirectoryPort
+    const roles: RoleDirectoryPort = {
+        rolesOf: jest.fn(async (_serverId: string, ids: string[]) => ROLES.filter((role) => ids.includes(role.id)))
+    }
     const bus = events as unknown as EventBus
 
-    const sender = new SendMessageHandler(repository, channels, checker, limit, userDirectory, bus)
-    const editor = new EditMessageHandler(repository, channels, checker, userDirectory, bus)
+    const sender = new SendMessageHandler(repository, channels, checker, limit, userDirectory, roles, bus)
+    const editor = new EditMessageHandler(repository, channels, checker, userDirectory, roles, bus)
     const deleter = new DeleteMessageHandler(repository, channels, checker, bus)
     const send = (
         userId: string,
@@ -286,7 +325,9 @@ describe('Replying (REQ-MSG-05, C-10 reply)', () => {
             id: original.id,
             author: { id: 'an', username: 'an.user', displayName: 'An', avatarUrl: 'https://cdn.test/avatars/an.webp' },
             content: 'Ok, mình vào sớm giữ chỗ',
-            deleted: false
+            deleted: false,
+            mentionUsers: [],
+            mentionRoles: []
         })
     })
 
@@ -297,7 +338,14 @@ describe('Replying (REQ-MSG-05, C-10 reply)', () => {
 
         const reply = await send('binh', 'Mình giữ chỗ rồi', 'n1', 'hoi-dap', original.id)
 
-        expect(reply.replyTo).toEqual({ id: original.id, author: null, content: '', deleted: true })
+        expect(reply.replyTo).toEqual({
+            id: original.id,
+            author: null,
+            content: '',
+            deleted: true,
+            mentionUsers: [],
+            mentionRoles: []
+        })
     })
 
     it.each([
@@ -456,5 +504,124 @@ describe('DeleteMessageHandler (REQ-MSG-05)', () => {
         const { remove, seed } = world()
         const message = seed('ban-quan-ly', 'chi')
         await expect(remove('binh', message.id)).rejects.toBeInstanceOf(MessageNotFoundError)
+    })
+})
+
+describe('Mentions when sending and editing (REQ-MSG-03, MSG-09, D-164, D-172)', () => {
+    const savedMentions = (repository: MessageRepositoryPort) =>
+        (repository.create as jest.Mock).mock.calls.at(-1)![0] as NewMessage
+
+    it('keeps a role the author may mention, and turns one they may not into its name as words', async () => {
+        const { send, repository } = world()
+
+        const message = await send('binh', `<@&${TRO_GIANG}> <@&${BAN_TO}> @everyone`)
+
+        expect(savedMentions(repository)).toMatchObject({
+            content: `<@&${TRO_GIANG}> @Ban tổ chức @everyone`,
+            mentions: { everyone: false, roleIds: [TRO_GIANG], userIds: [] }
+        })
+        expect(message).toMatchObject({ mentionEveryone: false, mentionRoles: [{ id: TRO_GIANG, name: 'Trợ giảng' }] })
+    })
+
+    it('lets MENTION_EVERYONE mention everyone and any role', async () => {
+        const { send, repository } = world()
+
+        await send('chi', `@everyone <@&${BAN_TO}>`)
+
+        expect(savedMentions(repository)).toMatchObject({
+            content: `@everyone <@&${BAN_TO}>`,
+            mentions: { everyone: true, roleIds: [BAN_TO], userIds: [] }
+        })
+    })
+
+    it('gives a mention row to the people mentioned who see the channel, never to the sender', async () => {
+        const { send, repository } = world()
+
+        await send(DUNG, `<@${DUNG}> <@${GIANG}> <@${KHACH}>`)
+        expect(savedMentions(repository).mentions.userIds).toEqual([GIANG])
+
+        // #ban-quan-ly is for moderators: Giang cannot see the message there.
+        await send('chi', `<@${GIANG}> <@${DUNG}>`, 'n2', 'ban-quan-ly')
+        expect(savedMentions(repository).mentions.userIds).toEqual([])
+    })
+
+    it('refuses a text the role names make longer than 2000 characters, before counting it', async () => {
+        const { send, repository, limit } = world()
+        const text = `${'x'.repeat(1950)} <@&${BAN_DAI}>`
+
+        await expect(send('binh', text)).rejects.toMatchObject({ details: { rule: 'length' } })
+        expect(limit.hit).not.toHaveBeenCalled()
+        expect(repository.create).not.toHaveBeenCalled()
+    })
+
+    it('mentions a member who is timed out: they still see the channel', async () => {
+        const { send, repository } = world()
+
+        await send('binh', `<@${HUNG}>`)
+
+        expect(savedMentions(repository).mentions.userIds).toEqual([HUNG])
+    })
+
+    it('counts the author of the message answered, deleted or not, unless it is the sender (D-39)', async () => {
+        const { send, seed, remove, repository } = world()
+        const giangs = seed('hoi-dap', GIANG)
+        const binhs = seed('hoi-dap', 'binh')
+        const gone = seed('hoi-dap', DUNG)
+        await remove(DUNG, gone.id)
+
+        await send('binh', 'Mình giữ chỗ rồi', 'n1', 'hoi-dap', giangs.id)
+        expect(savedMentions(repository).mentions.userIds).toEqual([GIANG])
+        await send('binh', 'Mình vào phòng rồi', 'n2', 'hoi-dap', binhs.id)
+        expect(savedMentions(repository).mentions.userIds).toEqual([])
+        await send('binh', 'Ai xóa vậy', 'n3', 'hoi-dap', gone.id)
+        expect(savedMentions(repository).mentions.userIds).toEqual([DUNG])
+    })
+
+    it('keeps the author answered when a reply is edited after the message answered is deleted', async () => {
+        const { send, edit, seed, remove, repository } = world()
+        const giangs = seed('hoi-dap', GIANG)
+        const answer = await send('binh', 'Mình giữ chỗ rồi', 'n1', 'hoi-dap', giangs.id)
+        await remove(GIANG, giangs.id)
+
+        await edit('binh', answer.id, 'Mình giữ chỗ cạnh bạn rồi')
+
+        expect(repository.edit).toHaveBeenCalledWith(
+            answer.id,
+            'Mình giữ chỗ cạnh bạn rồi',
+            { everyone: false, roleIds: [], userIds: [GIANG] },
+            expect.any(Date)
+        )
+    })
+
+    it('mentions no one from code', async () => {
+        const { send, repository } = world()
+
+        await send('chi', `\`@everyone\` \`<@${GIANG}>\``)
+
+        expect(savedMentions(repository).mentions).toEqual({ everyone: false, roleIds: [], userIds: [] })
+    })
+
+    it('writes the mentions of the new text when editing', async () => {
+        const { edit, seed, repository } = world()
+        const row = seed('hoi-dap', DUNG, 'Ai giải câu 3?')
+
+        await edit(DUNG, row.id, `<@${GIANG}> giải câu 3?`)
+
+        expect(repository.edit).toHaveBeenCalledWith(
+            row.id,
+            `<@${GIANG}> giải câu 3?`,
+            { everyone: false, roleIds: [], userIds: [GIANG] },
+            expect.any(Date)
+        )
+    })
+
+    it('changes nothing when the edit comes to the same kept text', async () => {
+        const { edit, seed, repository, events } = world()
+        const row = seed('hoi-dap', 'binh', 'Hỏi @Ban tổ chức')
+
+        await edit('binh', row.id, `Hỏi <@&${BAN_TO}>`)
+
+        expect(repository.edit).not.toHaveBeenCalled()
+        expect(events.publish).not.toHaveBeenCalled()
     })
 })

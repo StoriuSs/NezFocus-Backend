@@ -4,6 +4,7 @@ import { PrismaService } from '@/shared/infrastructure/persistence/database/pris
 import {
     ChannelNotFoundError,
     MessageCursor,
+    MessageMentions,
     MessagePage,
     MessageRecord,
     MessageRepositoryPort,
@@ -25,9 +26,21 @@ const LIVE = { deletedAt: null } as const
 export class PrismaMessageRepository implements MessageRepositoryPort {
     constructor(private readonly prisma: PrismaService) {}
 
-    async create(message: NewMessage): Promise<{ message: MessageRecord; created: boolean; deleted: boolean }> {
+    async create({
+        mentions,
+        ...message
+    }: NewMessage): Promise<{ message: MessageRecord; created: boolean; deleted: boolean }> {
         try {
-            const row = await this.prisma.message.create({ data: message, select: MESSAGE })
+            // The message and its mention rows in one statement (D-164).
+            const row = await this.prisma.message.create({
+                data: {
+                    ...message,
+                    mentionEveryone: mentions.everyone,
+                    mentionRoleIds: mentions.roleIds,
+                    mentions: { create: mentions.userIds.map((userId) => ({ userId })) }
+                },
+                select: MESSAGE
+            })
             return { message: await toRecordOf(this.prisma, row), created: true, deleted: false }
         } catch (error) {
             // The channel went between the permission check and now.
@@ -54,14 +67,26 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         return row && toStored(this.prisma, row)
     }
 
-    async edit(id: string, content: string, at: Date): Promise<MessageRecord | null> {
+    async edit(id: string, content: string, mentions: MessageMentions, at: Date): Promise<MessageRecord | null> {
         try {
-            const row = await this.prisma.message.update({
-                where: { id, ...LIVE },
-                data: { content, editedAt: at },
-                select: MESSAGE
+            return await this.prisma.$transaction(async (tx) => {
+                const row = await tx.message.update({
+                    where: { id, ...LIVE },
+                    data: {
+                        content,
+                        editedAt: at,
+                        mentionEveryone: mentions.everyone,
+                        mentionRoleIds: mentions.roleIds
+                    },
+                    select: MESSAGE
+                })
+                // Who it is about, written again from the new text (D-164).
+                await tx.messageMention.deleteMany({ where: { messageId: id } })
+                await tx.messageMention.createMany({
+                    data: mentions.userIds.map((userId) => ({ messageId: id, channelId: row.channelId, userId }))
+                })
+                return toRecordOf(tx, row)
             })
-            return await toRecordOf(this.prisma, row)
         } catch (error) {
             // Deleted (or gone with its channel) since the handler read it.
             if (prismaCode(error) === 'P2025') return null

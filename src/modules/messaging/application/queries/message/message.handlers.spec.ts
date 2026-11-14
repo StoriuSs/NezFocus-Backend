@@ -1,5 +1,5 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
-import { ChannelDirectoryPort } from '@/modules/servers'
+import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import { ChannelNotFoundError, MessageRecord, MessageRepositoryPort, ReactionRepositoryPort } from '../../../domain'
 import { ListMessagesQuery } from './message.queries'
@@ -23,13 +23,16 @@ const message = (id: string, authorId: string | null, avatarKey: string | null =
     systemEvent: authorId ? null : 'member_joined',
     systemData: authorId ? null : { userId: 'dung' },
     replyTo: null,
+    mentionEveryone: false,
+    mentionRoleIds: [],
+    mentionUsers: [],
     editedAt: null,
     pinned: false,
     systemUser: null,
     createdAt: new Date('2026-10-18T20:02:00Z')
 })
 
-function world() {
+function world(roles: RoleDirectoryPort = { rolesOf: jest.fn(async () => []) }) {
     const repository = {
         page: jest.fn().mockResolvedValue({
             items: [
@@ -45,7 +48,9 @@ function world() {
                         id: 'm1',
                         author: { id: 'binh', username: 'binh', displayName: 'binh', avatarKey: 'avatars/binh.webp' },
                         content: 'Tin m1',
-                        deleted: false
+                        deleted: false,
+                        mentionRoleIds: [],
+                        mentionUsers: []
                     }
                 }
             ],
@@ -80,7 +85,8 @@ function world() {
         reactions as unknown as ReactionRepositoryPort,
         channels,
         checker,
-        users as unknown as UserDirectoryPort
+        users as unknown as UserDirectoryPort,
+        roles
     )
     return { handler, repository, reactions, users }
 }
@@ -119,6 +125,45 @@ describe('ListMessagesHandler (SRS 5.1)', () => {
             [],
             []
         ])
+    })
+
+    it('names the people and roles mentioned as they are now, a reply line too, leaving out deleted roles (D-171)', async () => {
+        const chi = { id: 'chi', username: 'chi.le', displayName: 'Chi', avatarKey: 'avatars/chi.webp' }
+        const roles = { rolesOf: jest.fn(async () => [{ id: 'tro-giang', name: 'Trợ giảng K24', mentionable: true }]) }
+        const { handler, repository } = world(roles)
+        repository.page.mockResolvedValueOnce({
+            items: [
+                {
+                    ...message('m5', 'binh'),
+                    mentionRoleIds: ['tro-giang', 'da-xoa'],
+                    mentionUsers: [chi],
+                    replyTo: {
+                        id: 'm1',
+                        author: null,
+                        content: 'Tin m1',
+                        deleted: false,
+                        mentionRoleIds: ['tro-giang'],
+                        mentionUsers: [chi]
+                    }
+                }
+            ],
+            hasMoreBefore: false,
+            hasMoreAfter: false
+        })
+
+        const [item] = (await handler.execute(new ListMessagesQuery('binh', 'hoi-dap', { kind: 'latest' }, 4))).items
+
+        expect(item).toMatchObject({
+            mentionUsers: [{ id: 'chi', username: 'chi.le', displayName: 'Chi' }],
+            mentionRoles: [{ id: 'tro-giang', name: 'Trợ giảng K24' }],
+            replyTo: {
+                mentionUsers: [{ id: 'chi', username: 'chi.le', displayName: 'Chi' }],
+                mentionRoles: [{ id: 'tro-giang', name: 'Trợ giảng K24' }]
+            }
+        })
+        expect(item?.mentionUsers[0]).not.toHaveProperty('avatarKey')
+        expect(roles.rolesOf).toHaveBeenCalledTimes(1)
+        expect(roles.rolesOf).toHaveBeenCalledWith('ot', ['tro-giang', 'da-xoa'])
     })
 
     it('answers not found for a channel the member does not see', async () => {

@@ -1,6 +1,6 @@
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
-import { ChannelDirectoryPort } from '@/modules/servers'
+import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import {
     CannotPinError,
@@ -54,6 +54,9 @@ function world() {
             systemEvent: type === 'regular' ? null : 'member_joined',
             systemData: type === 'regular' ? null : { userId: 'dung' },
             replyTo: null,
+            mentionEveryone: false,
+            mentionRoleIds: [],
+            mentionUsers: [],
             editedAt: null,
             pinned: false,
             systemUser: null,
@@ -90,6 +93,9 @@ function world() {
                 systemData: { userId, messageId },
                 systemUser: person(userId, 'Chi'),
                 replyTo: null,
+                mentionEveryone: false,
+                mentionRoleIds: [],
+                mentionUsers: [],
                 editedAt: null,
                 pinned: false,
                 createdAt: new Date('2026-10-18T21:00:00Z')
@@ -123,7 +129,15 @@ function world() {
     const users = { avatarUrl: jest.fn(async () => null) } as unknown as UserDirectoryPort
     const events = { publish: jest.fn() }
     const bus = events as unknown as EventBus
-    const pinner = new PinMessageHandler(repository, pins, channels, checker, users, bus)
+    const pinner = new PinMessageHandler(
+        repository,
+        pins,
+        channels,
+        checker,
+        users,
+        { rolesOf: jest.fn(async () => []) } as RoleDirectoryPort,
+        bus
+    )
     const unpinner = new UnpinMessageHandler(repository, pins, channels, checker, bus)
     const pin = (userId: string, channelId: string, messageId: string) =>
         pinner.execute(new PinMessageCommand(userId, channelId, messageId))

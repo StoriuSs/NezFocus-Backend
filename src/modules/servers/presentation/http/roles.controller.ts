@@ -11,7 +11,9 @@ import {
     DeleteRoleCommand,
     GrantRoleCommand,
     ListMembersQuery,
+    ListMentionableRolesQuery,
     ListRolesQuery,
+    MentionableRole,
     ReorderRolesCommand,
     RevokeRoleCommand,
     UpdateRoleCommand
@@ -23,6 +25,7 @@ import {
     GrantRoleRequestDto,
     MemberListQueryDto,
     MemberPageResponseDto,
+    MentionableRoleListResponseDto,
     ReorderRolesRequestDto,
     RoleListResponseDto,
     ServerIdParamsDto,
@@ -62,6 +65,21 @@ export class RolesController {
             validateAndTransform(RoleListResponseDto, {
                 roles: roles.map((role) => ({ ...role, permissions: toWire(role.permissions) }))
             })
+        )
+    }
+
+    /** The roles the caller may mention, for the composer (anyone in the server, D-171). */
+    @Get('roles/mentionable')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(MentionableRoleListResponseDto)
+    async mentionable(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId }: ServerIdParamsDto
+    ): Promise<ServiceResponse<MentionableRoleListResponseDto>> {
+        const roles: MentionableRole[] = await this.queryBus.execute(new ListMentionableRolesQuery(user.id, serverId))
+        return createResponse(
+            MESSAGES.SERVER.ROLES_LISTED,
+            validateAndTransform(MentionableRoleListResponseDto, { roles })
         )
     }
 

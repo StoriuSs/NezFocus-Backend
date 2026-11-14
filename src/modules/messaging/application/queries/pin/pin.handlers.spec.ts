@@ -1,5 +1,5 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
-import { ChannelDirectoryPort } from '@/modules/servers'
+import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import { ChannelNotFoundError, MessageRecord, PinRepositoryPort, ReactionRepositoryPort } from '../../../domain'
 import { ListPinsQuery } from './pin.queries'
@@ -23,6 +23,9 @@ const record = (id: string, by: string): MessageRecord => ({
     systemEvent: null,
     systemData: null,
     replyTo: null,
+    mentionEveryone: false,
+    mentionRoleIds: [],
+    mentionUsers: [],
     editedAt: null,
     pinned: true,
     systemUser: null,
@@ -50,7 +53,8 @@ function world() {
         reactions as unknown as ReactionRepositoryPort,
         channels,
         checker,
-        users as unknown as UserDirectoryPort
+        users as unknown as UserDirectoryPort,
+        { rolesOf: jest.fn(async () => []) } as RoleDirectoryPort
     )
     return { handler, pins, reactions }
 }

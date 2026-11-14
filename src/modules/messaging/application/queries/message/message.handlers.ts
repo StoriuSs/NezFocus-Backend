@@ -1,7 +1,7 @@
 import { Inject } from '@nestjs/common'
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
-import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
+import { CHANNEL_DIRECTORY, ChannelDirectoryPort, ROLE_DIRECTORY, RoleDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { MESSAGE_REPOSITORY, MessageRepositoryPort, REACTION_REPOSITORY, ReactionRepositoryPort } from '../../../domain'
 import { openChannel } from '../../services/channel-access'
@@ -27,14 +27,15 @@ export class ListMessagesHandler implements IQueryHandler<ListMessagesQuery> {
         @Inject(REACTION_REPOSITORY) private readonly reactions: ReactionRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
-        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort
+        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
+        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort
     ) {}
 
     async execute({ userId, channelId, cursor, limit }: ListMessagesQuery): Promise<MessagePageView> {
-        await openChannel(this.channels, this.permissions, channelId, userId, new Date())
+        const { serverId } = await openChannel(this.channels, this.permissions, channelId, userId, new Date())
         const page = await this.messages.page(channelId, cursor, limit)
         const [views, summaries] = await Promise.all([
-            messageViews(this.users, page.items),
+            messageViews({ users: this.users, roles: this.roles }, serverId, page.items),
             this.reactions.summaries(
                 page.items.map((item) => item.id),
                 userId

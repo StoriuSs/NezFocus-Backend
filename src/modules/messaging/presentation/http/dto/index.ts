@@ -16,6 +16,8 @@ export { ReactionParamsDto } from './reaction.params.dto'
 export { SendMessageRequestDto } from './send-message.request.dto'
 
 // Responses
+export { MentionedRoleResponseDto } from './mentioned-role.response.dto'
+export { MentionedUserResponseDto } from './mentioned-user.response.dto'
 export { MessageAuthorResponseDto } from './message-author.response.dto'
 export { MessagePageResponseDto } from './message-page.response.dto'
 export { MessageResponseDto } from './message.response.dto'

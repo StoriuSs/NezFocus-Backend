@@ -336,15 +336,16 @@ servers/
 │   ├── queries/<area>/         # The same, for server, invite, role, moderation
 │   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users)
 │   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, then clear the permission cache
-│   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP and
-│                               #   CHANNEL_DIRECTORY, which this module answers for realtime and messaging
+│   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP,
+│                               #   CHANNEL_DIRECTORY and ROLE_DIRECTORY, which this module answers for realtime and messaging
 ├── infrastructure/
 │   ├── persistence/            # The Prisma repositories, auth's SERVER_OWNERSHIP answered (prisma-server-ownership.adapter.ts),
-│   │                           #   MEMBERSHIP and CHANNEL_DIRECTORY answered (prisma-membership / prisma-channel-directory.adapter.ts),
+│   │                           #   MEMBERSHIP, CHANNEL_DIRECTORY and ROLE_DIRECTORY answered (prisma-membership /
+│   │                           #   prisma-channel-directory / prisma-role-directory.adapter.ts),
 │   │                           #   the shared select (membership.selections.ts) and row locks (server-locks.ts)
 │   └── adapters/               # Icon storage, BullMQ clean-up, the system messages not written yet
 ├── presentation/http/          # Five controllers by area, the presenter, one DTO class per file
-├── index.ts                    # What other modules may import: MEMBERSHIP, CHANNEL_DIRECTORY, the daily clean-up's command
+├── index.ts                    # What other modules may import: MEMBERSHIP, CHANNEL_DIRECTORY, ROLE_DIRECTORY, the daily clean-up's command
 └── servers.module.ts           # ServersModule, and the global ServerOwnershipModule (D-160)
 ```
 
@@ -406,6 +407,19 @@ channel's pins), the shape of servers' `join`. A pin also saves the system
 message "<who> pinned a message" in that transaction. History and the pins
 read each message's reactions as the reader sees them (`me`); events carry
 `reaction.added` / `reaction.removed` / `pins.updated` instead.
+
+Mentions are tokens in the text (`<@id>`, `<@&id>`, `<#id>`, `@everyone`).
+Sending and editing decide them in `application/services/mentions.ts`: the
+pure `domain/mention.rules.ts` finds the tokens where the client draws text
+(`domain/message-markdown.ts`, a copy of the client's formatting parser: a
+token in code or a link counts for nothing, D-172), turns a role the author
+may not mention into its name as words (roles come from servers'
+`ROLE_DIRECTORY`), keeps @everyone only with MENTION_EVERYONE, and gives a
+`MessageMention` row to each person mentioned or answered who may view the
+channel, never the sender (D-39, D-164). Every message comes with the people
+and roles it names, read as they are now (`mention_users`, `mention_roles`,
+D-171); servers' `GET /servers/{id}/roles/mentionable` lists the roles the
+composer may suggest.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

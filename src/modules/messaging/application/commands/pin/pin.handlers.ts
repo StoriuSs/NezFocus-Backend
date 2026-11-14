@@ -1,7 +1,7 @@
 import { Inject } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, Permission, PermissionCheckerPort } from '@/modules/permissions'
-import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
+import { CHANNEL_DIRECTORY, ChannelDirectoryPort, ROLE_DIRECTORY, RoleDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
     CannotPinError,
@@ -24,20 +24,21 @@ import { PinMessageCommand, UnpinMessageCommand } from './pin.commands'
  * Let through only someone who may pin or unpin this message in `channelId`
  * (REQ-MSG-07): a message of that channel they see (else not found, naming
  * nothing), while not timed out (said first, as for deleting), with
- * MANAGE_MESSAGES.
+ * MANAGE_MESSAGES. Gives the channel's server.
  */
 async function requirePinning(
     messages: MessageRepositoryPort,
     channels: ChannelDirectoryPort,
     permissions: PermissionCheckerPort,
     { userId, channelId, messageId }: PinMessageCommand | UnpinMessageCommand
-): Promise<void> {
+): Promise<string> {
     const now = new Date()
     const { message, channel } = await openMessage(messages, channels, permissions, messageId, userId, now)
     if (message.channelId !== channelId) throw new MessageNotFoundError(messageId)
     const until = timedOutUntil(channel, now)
     if (until) throw new TimedOutError(until)
     if ((channel.permissions & Permission.MANAGE_MESSAGES) === 0n) throw new CannotPinError()
+    return channel.serverId
 }
 
 /**
@@ -54,18 +55,19 @@ export class PinMessageHandler implements ICommandHandler<PinMessageCommand> {
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
+        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
         private readonly events: EventBus
     ) {}
 
     async execute(command: PinMessageCommand): Promise<void> {
-        await requirePinning(this.messages, this.channels, this.permissions, command)
+        const serverId = await requirePinning(this.messages, this.channels, this.permissions, command)
         const { userId, channelId, messageId } = command
 
         const { decision, notice } = await this.pins.pin(channelId, messageId, userId, decidePin)
         if (decision === 'already') return
         this.events.publish(new PinsUpdatedEvent(channelId, messageId, true))
         if (notice) {
-            const [view] = await messageViews(this.users, [notice])
+            const [view] = await messageViews({ users: this.users, roles: this.roles }, serverId, [notice])
             this.events.publish(new MessageCreatedEvent(view, null))
         }
     }

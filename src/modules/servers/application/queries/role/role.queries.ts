@@ -13,6 +13,14 @@ export class ListRolesQuery {
     ) {}
 }
 
+/** The roles this member may mention, for the composer's suggestions (REQ-MSG-03, D-171). */
+export class ListMentionableRolesQuery {
+    constructor(
+        public readonly userId: string,
+        public readonly serverId: string
+    ) {}
+}
+
 /** The server's members, for anyone in it (D-152). */
 export class ListMembersQuery {
     constructor(

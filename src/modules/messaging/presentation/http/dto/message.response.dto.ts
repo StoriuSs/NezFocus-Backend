@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Transform, Type } from 'class-transformer'
 import { IsBoolean, IsDate, IsIn, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { MentionedRoleResponseDto } from './mentioned-role.response.dto'
+import { MentionedUserResponseDto } from './mentioned-user.response.dto'
 import { MessageAuthorResponseDto } from './message-author.response.dto'
 import { RepliedMessageResponseDto } from './replied-message.response.dto'
 
@@ -28,10 +30,32 @@ export class MessageResponseDto {
     @Type(() => MessageAuthorResponseDto)
     author: MessageAuthorResponseDto | null
 
-    /** Plain text; empty on a system message. */
+    /**
+     * Plain text; empty on a system message. Mentions are tokens: <@id> a
+     * person, <@&id> a role, <#id> a channel, and @everyone (REQ-MSG-03).
+     */
     @Expose()
     @IsString()
     content: string
+
+    /** @everyone in effect: the author had MENTION_EVERYONE. Otherwise the words are only words. */
+    @Expose()
+    @IsBoolean()
+    mentionEveryone: boolean
+
+    /** The people its <@id> tokens name, as they are now (D-171); an id of no account is left out. */
+    @Expose()
+    @ApiProperty({ type: [MentionedUserResponseDto] })
+    @ValidateNested({ each: true })
+    @Type(() => MentionedUserResponseDto)
+    mentionUsers: MentionedUserResponseDto[]
+
+    /** The roles it mentions in effect, as named now; a role deleted since is left out (D-171). */
+    @Expose()
+    @ApiProperty({ type: [MentionedRoleResponseDto] })
+    @ValidateNested({ each: true })
+    @Type(() => MentionedRoleResponseDto)
+    mentionRoles: MentionedRoleResponseDto[]
 
     /** What a system message reports (`member_joined`, `message_pinned`); null on a regular one. */
     @Expose()

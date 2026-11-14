@@ -2656,6 +2656,55 @@
         ]
       }
     },
+    "/api/v1/servers/{serverId}/roles/mentionable": {
+      "get": {
+        "operationId": "RolesController_mentionable_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MentionableRoleListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The roles the caller may mention, for the composer (anyone in the server, D-171).",
+        "tags": [
+          "servers"
+        ]
+      }
+    },
     "/api/v1/servers/{serverId}/roles/order": {
       "patch": {
         "operationId": "RolesController_reorder_v1",
@@ -5508,6 +5557,40 @@
           "roles"
         ]
       },
+      "MentionableRoleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "member_count": {
+            "type": "number",
+            "description": "Shown as \"{N} members\"."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "member_count"
+        ]
+      },
+      "MentionableRoleListResponseDto": {
+        "type": "object",
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionableRoleResponseDto"
+            }
+          }
+        },
+        "required": [
+          "roles"
+        ]
+      },
       "CreatedRoleResponseDto": {
         "type": "object",
         "properties": {
@@ -5848,6 +5931,42 @@
           "avatar_url"
         ]
       },
+      "MentionedUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name"
+        ]
+      },
+      "MentionedRoleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
       "RepliedMessageResponseDto": {
         "type": "object",
         "properties": {
@@ -5860,6 +5979,20 @@
                 "$ref": "#/components/schemas/MessageAuthorResponseDto"
               }
             ]
+          },
+          "mention_users": {
+            "description": "The people its <@id> tokens name, as on a message (D-171); empty once deleted.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedUserResponseDto"
+            }
+          },
+          "mention_roles": {
+            "description": "The roles it mentions in effect, as named now (D-171); empty once deleted.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedRoleResponseDto"
+            }
           },
           "id": {
             "type": "string"
@@ -5875,6 +6008,8 @@
         },
         "required": [
           "author",
+          "mention_users",
+          "mention_roles",
           "id",
           "content",
           "deleted"
@@ -5920,6 +6055,20 @@
                 "$ref": "#/components/schemas/MessageAuthorResponseDto"
               }
             ]
+          },
+          "mention_users": {
+            "description": "The people its <@id> tokens name, as they are now (D-171); an id of no account is left out.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedUserResponseDto"
+            }
+          },
+          "mention_roles": {
+            "description": "The roles it mentions in effect, as named now; a role deleted since is left out (D-171).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedRoleResponseDto"
+            }
           },
           "system_event": {
             "type": "string",
@@ -5972,7 +6121,11 @@
           },
           "content": {
             "type": "string",
-            "description": "Plain text; empty on a system message."
+            "description": "Plain text; empty on a system message. Mentions are tokens: <@id> a\nperson, <@&id> a role, <#id> a channel, and @everyone (REQ-MSG-03)."
+          },
+          "mention_everyone": {
+            "type": "boolean",
+            "description": "@everyone in effect: the author had MENTION_EVERYONE. Otherwise the words are only words."
           },
           "pinned": {
             "type": "boolean",
@@ -5986,6 +6139,8 @@
         "required": [
           "type",
           "author",
+          "mention_users",
+          "mention_roles",
           "system_event",
           "system_data",
           "system_user",
@@ -5995,6 +6150,7 @@
           "id",
           "channel_id",
           "content",
+          "mention_everyone",
           "pinned",
           "created_at"
         ]
@@ -6044,6 +6200,20 @@
               }
             ]
           },
+          "mention_users": {
+            "description": "The people its <@id> tokens name, as they are now (D-171); an id of no account is left out.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedUserResponseDto"
+            }
+          },
+          "mention_roles": {
+            "description": "The roles it mentions in effect, as named now; a role deleted since is left out (D-171).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedRoleResponseDto"
+            }
+          },
           "system_event": {
             "type": "string",
             "nullable": true,
@@ -6089,7 +6259,11 @@
           },
           "content": {
             "type": "string",
-            "description": "Plain text; empty on a system message."
+            "description": "Plain text; empty on a system message. Mentions are tokens: <@id> a\nperson, <@&id> a role, <#id> a channel, and @everyone (REQ-MSG-03)."
+          },
+          "mention_everyone": {
+            "type": "boolean",
+            "description": "@everyone in effect: the author had MENTION_EVERYONE. Otherwise the words are only words."
           },
           "pinned": {
             "type": "boolean",
@@ -6103,6 +6277,8 @@
         "required": [
           "type",
           "author",
+          "mention_users",
+          "mention_roles",
           "system_event",
           "system_data",
           "system_user",
@@ -6111,6 +6287,7 @@
           "id",
           "channel_id",
           "content",
+          "mention_everyone",
           "pinned",
           "created_at"
         ]
@@ -6215,6 +6392,20 @@
               }
             ]
           },
+          "mention_users": {
+            "description": "The people its <@id> tokens name, as they are now (D-171); an id of no account is left out.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedUserResponseDto"
+            }
+          },
+          "mention_roles": {
+            "description": "The roles it mentions in effect, as named now; a role deleted since is left out (D-171).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MentionedRoleResponseDto"
+            }
+          },
           "system_event": {
             "type": "string",
             "nullable": true,
@@ -6266,7 +6457,11 @@
           },
           "content": {
             "type": "string",
-            "description": "Plain text; empty on a system message."
+            "description": "Plain text; empty on a system message. Mentions are tokens: <@id> a\nperson, <@&id> a role, <#id> a channel, and @everyone (REQ-MSG-03)."
+          },
+          "mention_everyone": {
+            "type": "boolean",
+            "description": "@everyone in effect: the author had MENTION_EVERYONE. Otherwise the words are only words."
           },
           "pinned": {
             "type": "boolean",
@@ -6284,6 +6479,8 @@
         "required": [
           "type",
           "author",
+          "mention_users",
+          "mention_roles",
           "system_event",
           "system_data",
           "system_user",
@@ -6293,6 +6490,7 @@
           "id",
           "channel_id",
           "content",
+          "mention_everyone",
           "pinned",
           "created_at",
           "pinned_at"

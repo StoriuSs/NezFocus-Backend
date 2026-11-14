@@ -1,3 +1,5 @@
+import { MessageMentions } from '../mention.rules'
+
 /** Who wrote a message, as the chat shows them. */
 export interface MessageAuthor {
     id: string
@@ -20,6 +22,9 @@ export interface RepliedMessage {
     /** Empty once deleted. */
     content: string
     deleted: boolean
+    /** The roles it mentions in effect and the people its tokens name, as on a message; none once deleted (D-171). */
+    mentionRoleIds: string[]
+    mentionUsers: MessageAuthor[]
 }
 
 /** A message as the chat reads it. */
@@ -42,6 +47,16 @@ export interface MessageRecord {
      * an author (names null once erased, REQ-AUTH-09); null on a regular message, or one naming no one.
      */
     systemUser: MessageAuthor | null
+    /** @everyone, in effect (REQ-MSG-03). */
+    mentionEveryone: boolean
+    /** The roles mentioned in effect, in the order written (schema). */
+    mentionRoleIds: string[]
+    /**
+     * The people its <@id> tokens name, in the order written, read as they
+     * are now (D-171): anyone the text names, whether or not they could
+     * see the channel; an id of no account is left out.
+     */
+    mentionUsers: MessageAuthor[]
     editedAt: Date | null
     createdAt: Date
 }
@@ -58,6 +73,8 @@ export interface NewMessage {
     nonce: string
     /** A regular message of the same channel, checked by the application (the database cannot, schema). */
     replyToId: string | null
+    /** Decided by the application (`decideMentions`), those who cannot see the channel left out. */
+    mentions: MessageMentions
 }
 
 /**
@@ -95,8 +112,12 @@ export interface MessageRepositoryPort {
     findByNonce(authorId: string, nonce: string): Promise<StoredMessage | null>
     /** The message with this id, deleted ones included; null if there is none. */
     find(id: string): Promise<StoredMessage | null>
-    /** Replace the text of a message not deleted, marked edited at `at`; null if it is deleted (or gone) by now. */
-    edit(id: string, content: string, at: Date): Promise<MessageRecord | null>
+    /**
+     * Replace the text of a message not deleted, marked edited at `at`, and
+     * what it mentions with it (its mention rows written again, D-164); null
+     * if it is deleted (or gone) by now.
+     */
+    edit(id: string, content: string, mentions: MessageMentions, at: Date): Promise<MessageRecord | null>
     /**
      * Delete a message, keeping its row for the replies to it (schema): in
      * one transaction its text and mentions are emptied, its mention rows,

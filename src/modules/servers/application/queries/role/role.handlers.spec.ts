@@ -1,8 +1,8 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import { UserDirectoryPort } from '@/modules/users'
 import { MemberRepositoryPort, MissingPermissionError, RoleRepositoryPort, ServerNotFoundError } from '../../../domain'
-import { ListMembersHandler, ListRolesHandler } from './role.handlers'
-import { ListMembersQuery, ListRolesQuery } from './role.queries'
+import { ListMembersHandler, ListMentionableRolesHandler, ListRolesHandler } from './role.handlers'
+import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
 
 const roles = [
     { id: 'e', name: '@everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true },
@@ -42,6 +42,45 @@ describe('ListRolesHandler', () => {
                 new ListRolesQuery('x', 'ot')
             )
         ).rejects.toThrow(ServerNotFoundError)
+    })
+})
+
+describe('ListMentionableRolesHandler (REQ-MSG-03, D-171)', () => {
+    const listed = [
+        { id: 'lead', name: 'Trưởng nhóm', mentionable: true, isEveryone: false, memberCount: 2 },
+        { id: 'docs', name: 'Nhóm tài liệu', mentionable: false, isEveryone: false, memberCount: 1 },
+        { id: 'e', name: '@everyone', mentionable: false, isEveryone: true, memberCount: 9 }
+    ]
+    const repository = { list: jest.fn().mockResolvedValue(listed) } as unknown as RoleRepositoryPort
+    const run = (found: ServerAccess | null, userId = 'chi') =>
+        new ListMentionableRolesHandler(repository, {
+            access: jest.fn().mockResolvedValue(found)
+        } as unknown as PermissionCheckerPort).execute(new ListMentionableRolesQuery(userId, 'ot'))
+
+    it('gives any member the roles everyone may mention, never @everyone itself', async () => {
+        await expect(run(access('chi'))).resolves.toEqual([{ id: 'lead', name: 'Trưởng nhóm', memberCount: 2 }])
+    })
+
+    it('gives every role but @everyone to someone with MENTION_EVERYONE', async () => {
+        const mentioning = {
+            server: {
+                ownerId: 'an',
+                roles: [
+                    ...roles,
+                    { id: 'm', permissions: Permission.MENTION_EVERYONE, position: 3, isEveryone: false }
+                ],
+                channels: []
+            },
+            member: { userId: 'binh', roleIds: ['m'], timeoutUntil: null }
+        }
+        await expect(run(mentioning, 'binh')).resolves.toEqual([
+            { id: 'lead', name: 'Trưởng nhóm', memberCount: 2 },
+            { id: 'docs', name: 'Nhóm tài liệu', memberCount: 1 }
+        ])
+    })
+
+    it('answers NOT_FOUND to anyone outside', async () => {
+        await expect(run(null, 'x')).rejects.toThrow(ServerNotFoundError)
     })
 })
 

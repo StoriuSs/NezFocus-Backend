@@ -26,6 +26,7 @@ import {
     MODERATION_COMMAND_HANDLERS,
     MODERATION_QUERY_HANDLERS,
     ROLE_COMMAND_HANDLERS,
+    ROLE_DIRECTORY,
     ROLE_QUERY_HANDLERS,
     SERVER_COMMAND_HANDLERS,
     SERVER_EVENT_HANDLERS,
@@ -39,6 +40,7 @@ import {
     PrismaInviteRepository,
     PrismaMemberRepository,
     PrismaModerationRepository,
+    PrismaRoleDirectory,
     PrismaRoleRepository,
     PrismaMembership,
     PrismaServerOwnership,
@@ -85,6 +87,7 @@ import {
         { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
         { provide: MEMBERSHIP, useClass: PrismaMembership },
         { provide: CHANNEL_DIRECTORY, useClass: PrismaChannelDirectory },
+        { provide: ROLE_DIRECTORY, useClass: PrismaRoleDirectory },
         ...SERVER_COMMAND_HANDLERS,
         ...SERVER_QUERY_HANDLERS,
         ...CHANNEL_LAYOUT_COMMAND_HANDLERS,
@@ -98,7 +101,8 @@ import {
     ],
     // MEMBERSHIP: the realtime gateway puts a socket in its servers' rooms.
     // CHANNEL_DIRECTORY: messaging learns whose permissions a channel follows.
-    exports: [CHANNEL_DIRECTORY, MEMBERSHIP]
+    // ROLE_DIRECTORY: messaging checks and names the roles a message mentions.
+    exports: [CHANNEL_DIRECTORY, MEMBERSHIP, ROLE_DIRECTORY]
 })
 export class ServersModule {}
 

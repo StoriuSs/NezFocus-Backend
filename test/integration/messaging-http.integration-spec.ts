@@ -8,6 +8,9 @@ import { PrismaService } from '@/shared/infrastructure/persistence/database/pris
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
+/** An edit that mentions no one. */
+const NO_MENTIONS = { everyone: false, roleIds: [], userIds: [] }
+
 /**
  * Sending and reading messages through the whole app (REQ-MSG-01, REQ-MSG-05,
  * REQ-MSG-10, SRS 5.1): who may read and post, the nonce that makes a retry
@@ -358,6 +361,106 @@ describe('Messages (integration)', () => {
         })
     })
 
+    describe('mentions (REQ-MSG-03, D-164, D-171, D-172)', () => {
+        let channelId: string
+        /** "Trợ giảng" everyone may mention; "Ban tổ chức" only MENTION_EVERYONE may. */
+        let helpersId: string
+        let organisersId: string
+        const mentionRows = async (messageId: string) =>
+            (await prisma.messageMention.findMany({ where: { messageId }, select: { userId: true } }))
+                .map((row) => row.userId)
+                .sort()
+
+        beforeAll(async () => {
+            const made = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ type: 'text', name: 'nhac-ten' })
+            channelId = made.body.data.id
+            const role = async (name: string, mentionable: boolean) => {
+                const res = await as('an', api().post(`/api/v1/servers/${serverId}/roles`))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({ name })
+                const id: string = res.body.data.role_id
+                await as('an', api().patch(`/api/v1/servers/${serverId}/roles/${id}`)).send({ mentionable })
+                return id
+            }
+            helpersId = await role('Trợ giảng', true)
+            organisersId = await role('Ban tổ chức', false)
+        })
+
+        it('keeps what the author may mention, names it in history and to the channel, and saves who it is about', async () => {
+            const watching = collect(await connectAs('an'), 'message.created')
+            const nobody = randomUUID()
+            const text = `<@${users.chi.id}> <@${users.khanh.id}> <@${nobody}> <@&${helpersId}> <@&${organisersId}> @everyone ơi`
+
+            const res = await send('binh', channelId, text)
+
+            expect(res.status).toBe(201)
+            expect(res.body.data).toMatchObject({
+                content: `<@${users.chi.id}> <@${users.khanh.id}> <@${nobody}> <@&${helpersId}> @Ban tổ chức @everyone ơi`,
+                mention_everyone: false,
+                mention_roles: [{ id: helpersId, name: 'Trợ giảng' }]
+            })
+            // Khánh is named (an account), but is not in the server: no one to tell. An id of no account is left out.
+            expect(res.body.data.mention_users.map((user: { id: string }) => user.id)).toEqual([
+                users.chi.id,
+                users.khanh.id
+            ])
+            expect(await mentionRows(res.body.data.id)).toEqual([users.chi.id])
+            expect(await watching()).toEqual([{ message: res.body.data, nonce: expect.any(String) }])
+            const shown = (await history('dung', channelId)).body.data.items.at(-1)
+            expect(shown).toMatchObject({
+                mention_everyone: false,
+                mention_users: res.body.data.mention_users,
+                mention_roles: res.body.data.mention_roles
+            })
+
+            // A reply line names them too (D-171).
+            const answer = await reply('chi', channelId, 'Mình đây', res.body.data.id)
+            expect(answer.body.data.reply_to).toMatchObject({
+                mention_users: res.body.data.mention_users,
+                mention_roles: res.body.data.mention_roles
+            })
+        })
+
+        it('lets MENTION_EVERYONE mention everyone and any role, kept on the message', async () => {
+            const res = await send('an', channelId, `@everyone <@&${organisersId}>`)
+
+            expect(res.body.data).toMatchObject({
+                mention_everyone: true,
+                mention_roles: [{ id: organisersId, name: 'Ban tổ chức' }]
+            })
+            const row = await prisma.message.findUniqueOrThrow({ where: { id: res.body.data.id } })
+            expect(row).toMatchObject({ mentionEveryone: true, mentionRoleIds: [organisersId] })
+        })
+
+        it('tells the author answered and those who see the channel, never the sender, nothing from code', async () => {
+            const asked = await send('chi', channelId, 'Câu 3 làm sao?')
+            const answer = await reply('binh', channelId, `Mình nè <@${users.binh.id}>`, asked.body.data.id)
+            expect(await mentionRows(answer.body.data.id)).toEqual([users.chi.id])
+
+            // #ban-can-su is the owner's alone: Bình cannot see what names him there.
+            const secret = await send('an', secretId, `<@${users.binh.id}>`)
+            expect(await mentionRows(secret.body.data.id)).toEqual([])
+
+            const code = await send('an', channelId, `\`<@${users.dung.id}>\` \`@everyone\``)
+            expect(await mentionRows(code.body.data.id)).toEqual([])
+            expect(code.body.data.mention_everyone).toBe(false)
+        })
+
+        it('writes who a message is about again when it is edited', async () => {
+            const sent = await send('binh', channelId, `<@${users.chi.id}> xem giúp`)
+            expect(await mentionRows(sent.body.data.id)).toEqual([users.chi.id])
+
+            const edited = await edit('binh', sent.body.data.id, `<@${users.dung.id}> xem giúp`)
+            expect(edited.body.data.mention_users).toMatchObject([{ id: users.dung.id }])
+            expect(await mentionRows(sent.body.data.id)).toEqual([users.dung.id])
+
+            await edit('binh', sent.body.data.id, 'Thôi, xong rồi')
+            expect(await mentionRows(sent.body.data.id)).toEqual([])
+        })
+    })
+
     describe('editing, deleting and replying (REQ-MSG-05, SRS 1.70)', () => {
         /** A fresh channel, so these pages hold only this group's messages. */
         async function newChannel(name: string): Promise<string> {
@@ -454,7 +557,7 @@ describe('Messages (integration)', () => {
 
             expect(await repository.remove(id, new Date())).toBe(true)
             expect(await repository.remove(id, new Date())).toBe(false)
-            expect(await repository.edit(id, 'Sửa sau khi xóa', new Date())).toBeNull()
+            expect(await repository.edit(id, 'Sửa sau khi xóa', NO_MENTIONS, new Date())).toBeNull()
         })
 
         it("lets MANAGE_MESSAGES delete someone else's message, no one else", async () => {
@@ -498,7 +601,14 @@ describe('Messages (integration)', () => {
             expect(await answer()).toMatchObject({ content: 'Mình vào trễ chút', deleted: false })
 
             await remove('an', original.body.data.id)
-            expect(await answer()).toEqual({ id: original.body.data.id, author: null, content: '', deleted: true })
+            expect(await answer()).toEqual({
+                id: original.body.data.id,
+                author: null,
+                content: '',
+                deleted: true,
+                mention_users: [],
+                mention_roles: []
+            })
             const late = await reply('binh', channelId, 'Vẫn trả lời được', original.body.data.id)
             expect(late.status).toBe(201)
             expect(late.body.data.reply_to).toMatchObject({ deleted: true })

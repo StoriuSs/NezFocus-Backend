@@ -37,6 +37,30 @@ export async function openChannel(
 }
 
 /**
+ * Those among `userIds` who may view the text channel now, in the order
+ * given: members whose roles, the channel's privacy and the owner let them
+ * (D-17); a timed-out member still views (appendix B). Anyone else is left
+ * out: a mention of them reaches no one (D-164).
+ */
+export async function viewersOf(
+    checker: PermissionCheckerPort,
+    serverId: string,
+    channelId: string,
+    userIds: string[],
+    now: Date
+): Promise<string[]> {
+    const views = await Promise.all(
+        userIds.map(async (userId) => {
+            const access = await checker.access(serverId, userId)
+            const channel = access?.server.channels.find((candidate) => candidate.id === channelId)
+            if (!access || channel?.type !== 'text') return false
+            return (channelPermissions(access.server, access.member, channel, now) & Permission.VIEW_CHANNEL) !== 0n
+        })
+    )
+    return userIds.filter((_, index) => views[index])
+}
+
+/**
  * Pass only someone who may post in the open channel (REQ-ROLE-03, 04). A
  * timeout says so, and until when, before any other reason: the composer
  * shows it (D-54). The owner and ADMINISTRATOR post through a timeout

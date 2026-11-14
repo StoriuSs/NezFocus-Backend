@@ -137,6 +137,28 @@ describe('Roles over HTTP (integration)', () => {
         expect(outcome(await createRole('binh', serverId, 'Nhóm đề'))).toEqual([403, 'FORBIDDEN_ERROR'])
     })
 
+    it('gives any member the roles they may mention, with how many hold each, and no one outside (D-171)', async () => {
+        const { serverId, leadId } = await studyServer()
+        const mentionable = (who: Who) => as(who, api().get(url(serverId, '/roles/mentionable')))
+        const lead = expect.objectContaining({ id: leadId, name: 'Trưởng nhóm' })
+        expect((await mentionable('binh')).body.data.roles).not.toContainEqual(lead)
+
+        expect((await updateRole('an', serverId, leadId, { mentionable: true })).status).toBe(200)
+        const seen = (await mentionable('binh')).body.data.roles
+        expect(seen).toContainEqual(lead)
+        expect(seen.find((role: { id: string }) => role.id === leadId)).toEqual({
+            id: leadId,
+            name: 'Trưởng nhóm',
+            member_count: expect.any(Number)
+        })
+
+        // The owner may mention any role (MENTION_EVERYONE), never @everyone's own.
+        const all = (await mentionable('an')).body.data.roles.map((role: { name: string }) => role.name)
+        expect(all.length).toBeGreaterThanOrEqual(seen.length)
+        expect(all).not.toContain('@everyone')
+        expect(outcome(await mentionable('phong'))).toEqual([404, 'NOT_FOUND_ERROR'])
+    })
+
     it('holds a manager to roles below theirs and to permissions they hold (REQ-ROLE-02)', async () => {
         const { serverId, leadId } = await studyServer()
         // Trưởng nhóm also manages roles; Bình holds it.
