@@ -1,15 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Type } from 'class-transformer'
 import { IsBoolean, ValidateNested } from 'class-validator'
-import { MessageResponseDto } from './message.response.dto'
+import { ReadMessageResponseDto } from './read-message.response.dto'
 
 /** A page of history, oldest first (SRS 5.1). */
 export class MessagePageResponseDto {
     @Expose()
-    @ApiProperty({ type: [MessageResponseDto] })
+    @ApiProperty({ type: [ReadMessageResponseDto] })
     @ValidateNested({ each: true })
-    @Type(() => MessageResponseDto)
-    items: MessageResponseDto[]
+    @Type(() => ReadMessageResponseDto)
+    items: ReadMessageResponseDto[]
 
     /** Older messages exist: ask with `before` = the first id. */
     @Expose()

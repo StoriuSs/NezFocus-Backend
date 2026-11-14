@@ -3730,6 +3730,342 @@
           "messaging"
         ]
       }
+    },
+    "/api/v1/messages/{messageId}/reactions/{emoji}": {
+      "put": {
+        "operationId": "MessageController_react_v1",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "required": true,
+            "in": "path",
+            "description": "The longest standard emoji (a family with skin tones) is well under\nthis. Checked before the handler, so a forged longer one is refused\neven from someone timed out.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Give an emoji (one standard emoji, URL-encoded) to the message, told to\nthe channel as `reaction.added`; giving it again changes nothing. A new\nemoji needs ADD_REACTIONS and room under 20; a timeout refuses\n(SRS 1.71).",
+        "tags": [
+          "messaging"
+        ]
+      },
+      "delete": {
+        "operationId": "MessageController_unreact_v1",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "required": true,
+            "in": "path",
+            "description": "The longest standard emoji (a family with skin tones) is well under\nthis. Checked before the handler, so a forged longer one is refused\neven from someone timed out.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Take one's own emoji off, told as `reaction.removed`; one not given changes nothing.",
+        "tags": [
+          "messaging"
+        ]
+      },
+      "get": {
+        "operationId": "MessageController_reactors_v1",
+        "parameters": [
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "required": true,
+            "in": "path",
+            "description": "The longest standard emoji (a family with skin tones) is well under\nthis. Checked before the handler, so a forged longer one is refused\neven from someone timed out.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReactorsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The reaction's tooltip: the first three people to give the emoji, and how many did (SRS 1.71).",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/channels/{channelId}/pins": {
+      "get": {
+        "operationId": "PinController_list_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PinListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The pinned messages, the latest pinned first, with their reactions as the reader sees them.",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/channels/{channelId}/pins/{messageId}": {
+      "put": {
+        "operationId": "PinController_pin_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pin a regular message of the channel: told as `pins.updated`, with the\nsystem message \"<who> pinned a message\" as `message.created`\n(REQ-MSG-08). Pinning it again changes nothing; a 51st pin is\nMAX_PINS_REACHED.",
+        "tags": [
+          "messaging"
+        ]
+      },
+      "delete": {
+        "operationId": "PinController_unpin_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Unpin it, told as `pins.updated`; no system message (SRS 1.71).",
+        "tags": [
+          "messaging"
+        ]
+      }
     }
   },
   "info": {
@@ -5544,6 +5880,149 @@
           "deleted"
         ]
       },
+      "ReactionSummaryResponseDto": {
+        "type": "object",
+        "properties": {
+          "emoji": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "me": {
+            "type": "boolean",
+            "description": "The reader gave it: the chip shows so, and clicking takes it off."
+          }
+        },
+        "required": [
+          "emoji",
+          "count",
+          "me"
+        ]
+      },
+      "ReadMessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "`system`: made by the app (REQ-MSG-08), with no author.",
+            "enum": [
+              "regular",
+              "system"
+            ],
+            "type": "string"
+          },
+          "author": {
+            "nullable": true,
+            "description": "Null on a system message (D-168).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
+          },
+          "system_event": {
+            "type": "string",
+            "nullable": true,
+            "description": "What a system message reports (`member_joined`, `message_pinned`); null on a regular one."
+          },
+          "system_data": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one."
+          },
+          "system_user": {
+            "nullable": true,
+            "description": "That person, named and pictured like an author; null on a regular message, or one naming no one.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
+          },
+          "reply_to": {
+            "nullable": true,
+            "description": "The message this one answers; null if none (REQ-MSG-05).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RepliedMessageResponseDto"
+              }
+            ]
+          },
+          "edited_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Shown as \"edited\"; null if never edited."
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionSummaryResponseDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Plain text; empty on a system message."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "In the channel's pins (REQ-MSG-07)."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "author",
+          "system_event",
+          "system_data",
+          "system_user",
+          "reply_to",
+          "edited_at",
+          "reactions",
+          "id",
+          "channel_id",
+          "content",
+          "pinned",
+          "created_at"
+        ]
+      },
+      "MessagePageResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadMessageResponseDto"
+            }
+          },
+          "has_more_before": {
+            "type": "boolean",
+            "description": "Older messages exist: ask with `before` = the first id."
+          },
+          "has_more_after": {
+            "type": "boolean",
+            "description": "Newer messages exist: ask with `after` = the last id."
+          }
+        },
+        "required": [
+          "items",
+          "has_more_before",
+          "has_more_after"
+        ]
+      },
       "MessageResponseDto": {
         "type": "object",
         "properties": {
@@ -5574,7 +6053,17 @@
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, D-168); null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one."
+          },
+          "system_user": {
+            "nullable": true,
+            "description": "That person, named and pictured like an author; null on a regular message, or one naming no one.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
           },
           "reply_to": {
             "nullable": true,
@@ -5602,6 +6091,10 @@
             "type": "string",
             "description": "Plain text; empty on a system message."
           },
+          "pinned": {
+            "type": "boolean",
+            "description": "In the channel's pins (REQ-MSG-07)."
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -5612,36 +6105,14 @@
           "author",
           "system_event",
           "system_data",
+          "system_user",
           "reply_to",
           "edited_at",
           "id",
           "channel_id",
           "content",
+          "pinned",
           "created_at"
-        ]
-      },
-      "MessagePageResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MessageResponseDto"
-            }
-          },
-          "has_more_before": {
-            "type": "boolean",
-            "description": "Older messages exist: ask with `before` = the first id."
-          },
-          "has_more_after": {
-            "type": "boolean",
-            "description": "Newer messages exist: ask with `after` = the last id."
-          }
-        },
-        "required": [
-          "items",
-          "has_more_before",
-          "has_more_after"
         ]
       },
       "SendMessageRequestDto": {
@@ -5682,6 +6153,163 @@
         },
         "required": [
           "content"
+        ]
+      },
+      "ReactorResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name"
+        ]
+      },
+      "ReactorsResponseDto": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactorResponseDto"
+            }
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "users",
+          "count"
+        ]
+      },
+      "PinnedMessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "`system`: made by the app (REQ-MSG-08), with no author.",
+            "enum": [
+              "regular",
+              "system"
+            ],
+            "type": "string"
+          },
+          "author": {
+            "nullable": true,
+            "description": "Null on a system message (D-168).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
+          },
+          "system_event": {
+            "type": "string",
+            "nullable": true,
+            "description": "What a system message reports (`member_joined`, `message_pinned`); null on a regular one."
+          },
+          "system_data": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one."
+          },
+          "system_user": {
+            "nullable": true,
+            "description": "That person, named and pictured like an author; null on a regular message, or one naming no one.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageAuthorResponseDto"
+              }
+            ]
+          },
+          "reply_to": {
+            "nullable": true,
+            "description": "The message this one answers; null if none (REQ-MSG-05).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RepliedMessageResponseDto"
+              }
+            ]
+          },
+          "edited_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Shown as \"edited\"; null if never edited."
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionSummaryResponseDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Plain text; empty on a system message."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "In the channel's pins (REQ-MSG-07)."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "pinned_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "author",
+          "system_event",
+          "system_data",
+          "system_user",
+          "reply_to",
+          "edited_at",
+          "reactions",
+          "id",
+          "channel_id",
+          "content",
+          "pinned",
+          "created_at",
+          "pinned_at"
+        ]
+      },
+      "PinListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PinnedMessageResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       }
     }

@@ -7,7 +7,7 @@ import { MessageView } from '../services/message-views'
 export class MessageCreatedEvent {
     constructor(
         readonly message: MessageView,
-        /** The sender's own mark, so its tabs swap their "sending" copy for this one. */
-        readonly nonce: string
+        /** The sender's own mark, so its tabs swap their "sending" copy for this one; null on a system message. */
+        readonly nonce: string | null
     ) {}
 }

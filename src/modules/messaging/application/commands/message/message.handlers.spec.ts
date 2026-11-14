@@ -78,6 +78,8 @@ function world({ limited = false } = {}) {
                 systemData: null,
                 replyTo: replyOf(input.replyToId),
                 editedAt: null,
+                pinned: false,
+                systemUser: null,
                 createdAt: new Date('2026-10-18T20:02:00Z'),
                 deleted: false,
                 nonce: input.nonce
@@ -116,6 +118,8 @@ function world({ limited = false } = {}) {
             systemData: by ? null : { userId: 'chi' },
             replyTo: null,
             editedAt: null,
+            pinned: false,
+            systemUser: null,
             createdAt: new Date('2026-10-18T20:11:00Z'),
             deleted: false,
             nonce: by ? `seed-${saved.length + 1}` : null

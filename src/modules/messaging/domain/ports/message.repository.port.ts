@@ -35,6 +35,13 @@ export interface MessageRecord {
     systemData: Record<string, unknown> | null
     /** The message this one answers; null if none, or if that one was removed for good with its channel. */
     replyTo: RepliedMessage | null
+    /** In the channel's pins (REQ-MSG-07): the same for everyone, so events carry it. */
+    pinned: boolean
+    /**
+     * Whom a system message is about (`systemData.userId`, D-168), read like
+     * an author (names null once erased, REQ-AUTH-09); null on a regular message, or one naming no one.
+     */
+    systemUser: MessageAuthor | null
     editedAt: Date | null
     createdAt: Date
 }

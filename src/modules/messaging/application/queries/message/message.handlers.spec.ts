@@ -1,7 +1,7 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
-import { ChannelNotFoundError, MessageRecord, MessageRepositoryPort } from '../../../domain'
+import { ChannelNotFoundError, MessageRecord, MessageRepositoryPort, ReactionRepositoryPort } from '../../../domain'
 import { ListMessagesQuery } from './message.queries'
 import { ListMessagesHandler } from './message.handlers'
 
@@ -24,6 +24,8 @@ const message = (id: string, authorId: string | null, avatarKey: string | null =
     systemData: authorId ? null : { userId: 'dung' },
     replyTo: null,
     editedAt: null,
+    pinned: false,
+    systemUser: null,
     createdAt: new Date('2026-10-18T20:02:00Z')
 })
 
@@ -33,7 +35,10 @@ function world() {
             items: [
                 message('m1', 'binh', 'avatars/binh.webp'),
                 message('m2', 'binh', 'avatars/binh.webp'),
-                message('m3', null),
+                {
+                    ...message('m3', null),
+                    systemUser: { id: 'dung', username: 'dung', displayName: 'Dũng', avatarKey: 'avatars/dung.webp' }
+                },
                 {
                     ...message('m4', 'chi'),
                     replyTo: {
@@ -56,13 +61,28 @@ function world() {
         }))
     }
     const users = { avatarUrl: jest.fn(async (key: string | null) => (key ? `https://cdn.test/${key}` : null)) }
+    const reactions = {
+        summaries: jest.fn(
+            async () =>
+                new Map([
+                    [
+                        'm2',
+                        [
+                            { emoji: '👍', count: 3, me: true },
+                            { emoji: '🎉', count: 1, me: false }
+                        ]
+                    ]
+                ])
+        )
+    }
     const handler = new ListMessagesHandler(
         repository as unknown as MessageRepositoryPort,
+        reactions as unknown as ReactionRepositoryPort,
         channels,
         checker,
         users as unknown as UserDirectoryPort
     )
-    return { handler, repository, users }
+    return { handler, repository, reactions, users }
 }
 
 describe('ListMessagesHandler (SRS 5.1)', () => {
@@ -79,8 +99,26 @@ describe('ListMessagesHandler (SRS 5.1)', () => {
             ['m4', null]
         ])
         expect(page.items[3]?.replyTo?.author?.avatarUrl).toBe('https://cdn.test/avatars/binh.webp')
-        expect(users.avatarUrl).toHaveBeenCalledTimes(1)
+        expect(page.items[2]?.systemUser?.avatarUrl).toBe('https://cdn.test/avatars/dung.webp')
+        expect(users.avatarUrl).toHaveBeenCalledTimes(2)
         expect([page.hasMoreBefore, page.hasMoreAfter]).toEqual([true, false])
+    })
+
+    it('gives each message its reactions as the reader sees them, none for the others (REQ-MSG-05)', async () => {
+        const { handler, reactions } = world()
+
+        const page = await handler.execute(new ListMessagesQuery('binh', 'hoi-dap', { kind: 'latest' }, 4))
+
+        expect(reactions.summaries).toHaveBeenCalledWith(['m1', 'm2', 'm3', 'm4'], 'binh')
+        expect(page.items.map((item) => item.reactions)).toEqual([
+            [],
+            [
+                { emoji: '👍', count: 3, me: true },
+                { emoji: '🎉', count: 1, me: false }
+            ],
+            [],
+            []
+        ])
     })
 
     it('answers not found for a channel the member does not see', async () => {

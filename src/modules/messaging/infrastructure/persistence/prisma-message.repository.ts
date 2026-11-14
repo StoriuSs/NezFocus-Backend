@@ -10,58 +10,9 @@ import {
     NewMessage,
     StoredMessage
 } from '../../domain'
+import { MESSAGE, STORED, toRecordOf, toRecords, toStored } from './message.selections'
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
-
-const AUTHOR = { select: { id: true, username: true, displayName: true, avatarUrl: true } } as const
-
-/**
- * What the chat reads of a message: its author's name and picture key, and
- * the message it answers as it is now (edited, or deleted).
- */
-const MESSAGE = {
-    id: true,
-    channelId: true,
-    type: true,
-    content: true,
-    systemEvent: true,
-    systemData: true,
-    editedAt: true,
-    createdAt: true,
-    author: AUTHOR,
-    replyTo: { select: { id: true, content: true, deletedAt: true, author: AUTHOR } }
-} satisfies Prisma.MessageSelect
-
-type MessageRow = Prisma.MessageGetPayload<{ select: typeof MESSAGE }>
-type AuthorRow = NonNullable<MessageRow['author']>
-
-const toAuthor = (author: AuthorRow | null) =>
-    author && {
-        id: author.id,
-        username: author.username,
-        displayName: author.displayName,
-        avatarKey: author.avatarUrl
-    }
-
-const toRecord = ({ author, systemData, replyTo, ...row }: MessageRow): MessageRecord => ({
-    ...row,
-    author: toAuthor(author),
-    systemData: (systemData as Record<string, unknown> | null) ?? null,
-    // A deleted message is quoted by its id alone (REQ-MSG-05).
-    replyTo:
-        replyTo &&
-        (replyTo.deletedAt
-            ? { id: replyTo.id, author: null, content: '', deleted: true }
-            : { id: replyTo.id, author: toAuthor(replyTo.author), content: replyTo.content, deleted: false })
-})
-
-/** A message found by id or nonce: deleted ones too, saying so. */
-const STORED = { ...MESSAGE, deletedAt: true } satisfies Prisma.MessageSelect
-
-const toStored = ({ deletedAt, ...row }: Prisma.MessageGetPayload<{ select: typeof STORED }>): StoredMessage => ({
-    ...toRecord(row),
-    deleted: deletedAt !== null
-})
 
 /** What history pages show: a deleted message keeps its row (for answers to it), not its place in the list. */
 const LIVE = { deletedAt: null } as const
@@ -77,7 +28,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
     async create(message: NewMessage): Promise<{ message: MessageRecord; created: boolean; deleted: boolean }> {
         try {
             const row = await this.prisma.message.create({ data: message, select: MESSAGE })
-            return { message: toRecord(row), created: true, deleted: false }
+            return { message: await toRecordOf(this.prisma, row), created: true, deleted: false }
         } catch (error) {
             // The channel went between the permission check and now.
             if (prismaCode(error) === 'P2003') throw new ChannelNotFoundError(message.channelId)
@@ -95,12 +46,12 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
             where: { authorId_nonce: { authorId, nonce } },
             select: STORED
         })
-        return row && toStored(row)
+        return row && toStored(this.prisma, row)
     }
 
     async find(id: string): Promise<StoredMessage | null> {
         const row = await this.prisma.message.findUnique({ where: { id }, select: STORED })
-        return row && toStored(row)
+        return row && toStored(this.prisma, row)
     }
 
     async edit(id: string, content: string, at: Date): Promise<MessageRecord | null> {
@@ -110,7 +61,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
                 data: { content, editedAt: at },
                 select: MESSAGE
             })
-            return toRecord(row)
+            return await toRecordOf(this.prisma, row)
         } catch (error) {
             // Deleted (or gone with its channel) since the handler read it.
             if (prismaCode(error) === 'P2025') return null
@@ -179,7 +130,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
             take: limit + 1,
             select: MESSAGE
         })
-        return { items: rows.slice(0, limit).reverse().map(toRecord), more: rows.length > limit }
+        return { items: await toRecords(this.prisma, rows.slice(0, limit).reverse()), more: rows.length > limit }
     }
 
     /** Up to `limit` messages matching `id`, oldest first; `more` if there are others. */
@@ -190,7 +141,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
             take: limit + 1,
             select: MESSAGE
         })
-        return { items: rows.slice(0, limit).map(toRecord), more: rows.length > limit }
+        return { items: await toRecords(this.prisma, rows.slice(0, limit)), more: rows.length > limit }
     }
 
     private async exists(channelId: string, id: Prisma.StringFilter): Promise<boolean> {

@@ -91,7 +91,13 @@ export const MESSAGES = {
         MESSAGE_SENT: 'Message sent',
         MESSAGES_LISTED: 'Messages fetched',
         MESSAGE_EDITED: 'Message edited',
-        MESSAGE_DELETED: 'Message deleted'
+        MESSAGE_DELETED: 'Message deleted',
+        REACTION_ADDED: 'Reaction added',
+        REACTION_REMOVED: 'Reaction removed',
+        REACTORS_LISTED: 'Reactions fetched',
+        MESSAGE_PINNED: 'Message pinned',
+        MESSAGE_UNPINNED: 'Message unpinned',
+        PINS_LISTED: 'Pinned messages fetched'
     },
 
     // Health messages

@@ -5,17 +5,24 @@ import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ServersModule } from '@/modules/servers/servers.module'
 import { UsersModule } from '@/modules/users/users.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
-import { MESSAGE_REPOSITORY } from './domain'
+import { MESSAGE_REPOSITORY, PIN_REPOSITORY, REACTION_REPOSITORY } from './domain'
 import {
     MESSAGE_COMMAND_HANDLERS,
     MESSAGE_QUERY_HANDLERS,
+    PIN_COMMAND_HANDLERS,
+    PIN_QUERY_HANDLERS,
     PublishCreatedMessageHandler,
     PublishDeletedMessageHandler,
+    PublishPinsUpdatedHandler,
+    PublishReactionAddedHandler,
+    PublishReactionRemovedHandler,
     PublishUpdatedMessageHandler,
+    REACTION_COMMAND_HANDLERS,
+    REACTION_QUERY_HANDLERS,
     SEND_LIMIT
 } from './application'
-import { PrismaMessageRepository } from './infrastructure'
-import { MessageController, MessagingController } from './presentation'
+import { PrismaMessageRepository, PrismaPinRepository, PrismaReactionRepository } from './infrastructure'
+import { MessageController, MessagingController, PinController } from './presentation'
 
 /**
  * Messages in text channels (SRS 4.4): the only module that writes the
@@ -26,16 +33,25 @@ import { MessageController, MessagingController } from './presentation'
  */
 @Module({
     imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
-    controllers: [MessagingController, MessageController],
+    controllers: [MessagingController, MessageController, PinController],
     providers: [
         { provide: MESSAGE_REPOSITORY, useClass: PrismaMessageRepository },
+        { provide: REACTION_REPOSITORY, useClass: PrismaReactionRepository },
+        { provide: PIN_REPOSITORY, useClass: PrismaPinRepository },
         // RateLimiter comes from the global CacheModule.
         { provide: SEND_LIMIT, useExisting: RateLimiter },
         ...MESSAGE_COMMAND_HANDLERS,
         ...MESSAGE_QUERY_HANDLERS,
+        ...REACTION_COMMAND_HANDLERS,
+        ...REACTION_QUERY_HANDLERS,
+        ...PIN_COMMAND_HANDLERS,
+        ...PIN_QUERY_HANDLERS,
         PublishCreatedMessageHandler,
         PublishUpdatedMessageHandler,
-        PublishDeletedMessageHandler
+        PublishDeletedMessageHandler,
+        PublishReactionAddedHandler,
+        PublishReactionRemovedHandler,
+        PublishPinsUpdatedHandler
     ]
 })
 export class MessagingModule {}

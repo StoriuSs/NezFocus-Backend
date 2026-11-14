@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Transform, Type } from 'class-transformer'
-import { IsDate, IsIn, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { IsBoolean, IsDate, IsIn, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { MessageAuthorResponseDto } from './message-author.response.dto'
 import { RepliedMessageResponseDto } from './replied-message.response.dto'
 
@@ -40,7 +40,7 @@ export class MessageResponseDto {
     @IsString()
     systemEvent: string | null
 
-    /** Whom a system message is about (`{ user_id }`, D-168); null on a regular one. */
+    /** Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one. */
     @Expose()
     // As it is: an untyped object would otherwise come out empty, every key not @Expose()d.
     @Transform(({ obj }: { obj: { systemData?: unknown } }) => obj.systemData ?? null, { toClassOnly: true })
@@ -48,6 +48,14 @@ export class MessageResponseDto {
     @IsOptional()
     @IsObject()
     systemData: Record<string, unknown> | null
+
+    /** That person, named and pictured like an author; null on a regular message, or one naming no one. */
+    @Expose()
+    @ApiProperty({ type: MessageAuthorResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => MessageAuthorResponseDto)
+    systemUser: MessageAuthorResponseDto | null
 
     /** The message this one answers; null if none (REQ-MSG-05). */
     @Expose()
@@ -63,6 +71,11 @@ export class MessageResponseDto {
     @IsOptional()
     @IsDate()
     editedAt: Date | null
+
+    /** In the channel's pins (REQ-MSG-07). */
+    @Expose()
+    @IsBoolean()
+    pinned: boolean
 
     @Expose()
     @IsDate()

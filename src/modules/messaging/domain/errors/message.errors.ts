@@ -62,8 +62,11 @@ export class CannotDeleteMessageError extends DomainError {
  * - `reply_target`: a reply answers a regular message of the same channel
  *   (REQ-MSG-05). The client only answers messages it shows, so only a
  *   forged request gets here.
+ * - `system_message`: a system message takes no reaction and no pin
+ *   (SRS 1.71); it has no toolbar, so again only a forged request.
+ * - `emoji`: a reaction is exactly one standard emoji (SRS 1.71).
  */
-export type MessageRule = 'reply_target'
+export type MessageRule = 'reply_target' | 'system_message' | 'emoji'
 
 /** A message that breaks one of the rules above. */
 export class MessageRuleError extends DomainError {
@@ -74,5 +77,45 @@ export class MessageRuleError extends DomainError {
     constructor(rule: MessageRule) {
         super(`Message rule broken: ${rule}`)
         this.details = { rule }
+    }
+}
+
+/** A new emoji on a message without ADD_REACTIONS; one already there may still be clicked (SRS 1.71). */
+export class CannotReactError extends DomainError {
+    readonly kind = 'forbidden'
+    readonly errorKey = 'FORBIDDEN'
+
+    constructor() {
+        super('You cannot add a new reaction in this channel')
+    }
+}
+
+/** A 21st different emoji on one message (REQ-MSG-05). */
+export class MaxReactionsReachedError extends DomainError {
+    readonly kind = 'conflict'
+    readonly errorKey = 'MAX_REACTIONS_REACHED'
+
+    constructor() {
+        super('This message has as many different reactions as it can have')
+    }
+}
+
+/** Pinning, or unpinning, without MANAGE_MESSAGES (REQ-MSG-07). */
+export class CannotPinError extends DomainError {
+    readonly kind = 'forbidden'
+    readonly errorKey = 'FORBIDDEN'
+
+    constructor() {
+        super('You cannot pin messages in this channel')
+    }
+}
+
+/** A 51st pin in one channel (REQ-MSG-07). */
+export class MaxPinsReachedError extends DomainError {
+    readonly kind = 'conflict'
+    readonly errorKey = 'MAX_PINS_REACHED'
+
+    constructor() {
+        super('This channel has as many pinned messages as it can have')
     }
 }
