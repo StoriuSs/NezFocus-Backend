@@ -7,6 +7,10 @@
 export const THEMES = ['light', 'dark', 'system'] as const
 export type Theme = (typeof THEMES)[number]
 
+/** The statuses one chooses in their menu (REQ-AUTH-07, D-78). */
+export const PRESENCES = ['online', 'idle', 'dnd', 'invisible'] as const
+export type ChosenPresence = (typeof PRESENCES)[number]
+
 /** The languages of the interface and of the emails nobody asked for (D-64, D-132). */
 export const LANGUAGES = ['vi', 'en'] as const
 export type Language = (typeof LANGUAGES)[number]
@@ -32,6 +36,8 @@ export interface UserSettings {
     allowServerMemberMessages: boolean
     /** "Show study activity" (D-79). */
     showStudyActivity: boolean
+    /** The status chosen in their menu; what others see is the realtime module's (REQ-AUTH-07). */
+    presence: ChosenPresence
 }
 
 /** The settings, and when the zone may change again: null if it may now. */

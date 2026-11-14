@@ -13,8 +13,14 @@ import {
     ServerNotFoundError,
     timeoutForViewer
 } from '../../../domain'
+import { MemberPresence, PRESENCE_READER, PresenceReaderPort } from '../../ports'
 import { requireServerPermission } from '../../services/require-permission'
 import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
+
+/** A member as listed: with what others see of them (REQ-AUTH-07). */
+export interface ListedMember extends MemberListItem {
+    status: MemberPresence
+}
 
 @QueryHandler(ListRolesQuery)
 export class ListRolesHandler implements IQueryHandler<ListRolesQuery> {
@@ -62,27 +68,37 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
     constructor(
         @Inject(MEMBER_REPOSITORY) private readonly members: MemberRepositoryPort,
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
-        @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort
+        @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
+        @Inject(PRESENCE_READER) private readonly presence: PresenceReaderPort
     ) {}
 
     /**
      * Anyone in the server (D-152); anyone else learns only "not found". A
      * running timeout shows to all, its reason to those who may time people
-     * out and to the one timed out (D-154).
+     * out and to the one timed out (D-154). Each member comes with what
+     * others see of them, and the page may be of those online or offline,
+     * or put those online first (D-175).
      */
-    async execute({ userId, serverId, search }: ListMembersQuery): Promise<{ items: MemberListItem[]; total: number }> {
+    async execute({ userId, serverId, search }: ListMembersQuery): Promise<{ items: ListedMember[]; total: number }> {
         const access = await this.checker.access(serverId, userId)
         if (!access) throw new ServerNotFoundError(serverId)
         // Who is waiting to be deleted is no one else's business (D-161).
         if (search.transferableFrom !== null && access.server.ownerId !== userId) throw new NotOwnerError()
         const now = new Date()
         const mayModerate = (serverPermissions(access.server, access.member, now) & Permission.MODERATE_MEMBERS) !== 0n
-        const { items, total } = await this.members.search(serverId, search)
+        const shown = await this.presence.everyoneShown()
+        const { items, total } = await this.members.search(serverId, search, [...shown.keys()])
         // The repository gives the stored picture keys; the client needs addresses.
-        const shown = await Promise.all(
+        const pictured = await Promise.all(
             items.map(async (item) => ({ ...item, avatarUrl: await this.directory.avatarUrl(item.avatarUrl) }))
         )
-        return { items: shown.map((item) => timeoutForViewer(item, { userId, mayModerate }, now)), total }
+        return {
+            items: pictured.map((item) => ({
+                ...timeoutForViewer(item, { userId, mayModerate }, now),
+                status: shown.get(item.userId) ?? 'offline'
+            })),
+            total
+        }
     }
 }
 

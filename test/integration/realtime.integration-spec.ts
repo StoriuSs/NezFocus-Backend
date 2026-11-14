@@ -6,7 +6,8 @@ import { io, Socket } from 'socket.io-client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { RedisClientType } from 'redis'
 import { REDIS_CLIENT } from '@/shared/infrastructure/cache/redis-client.provider'
-import { EVENT_PUBLISHER, EventPublisherPort } from '@/modules/realtime'
+import { CommandBus } from '@nestjs/cqrs'
+import { EVENT_PUBLISHER, EventPublisherPort, SweepPresenceCommand } from '@/modules/realtime'
 import { bootApp, closeApp, completeAccount, cookieOf, FRONTEND, pair, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
@@ -15,7 +16,7 @@ import { testClientIp } from './targets'
  * a ticket bought with the access token opens one connection, once; the
  * connection is put in the rooms of its user, its servers and every text
  * channel it may view, and nothing else; a session that ends is told so and
- * cut off.
+ * cut off. Presence and typing travel the same way (REQ-AUTH-07, MSG-06).
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -277,6 +278,127 @@ describe('Realtime connection (integration)', () => {
             expect(await endingHears).toBeTruthy()
             expect(await keptHears).toBeUndefined()
             expect(kept.connected).toBe(true)
+        })
+    })
+
+    describe('presence (REQ-AUTH-07, D-174)', () => {
+        const redis = () => app.get<RedisClientType>(REDIS_CLIENT)
+        /** Nothing kept of them: earlier tests leave them online for 60 seconds. */
+        async function forget(...who: string[]) {
+            for (const id of who.map((name) => users[name].id)) {
+                await redis().del(`presence:sockets:${id}`)
+                await redis().zRem('presence:seen', id)
+                await redis().hDel('presence:shown', id)
+            }
+        }
+        const settings = (who: string, presence: string) =>
+            as(who, api().patch('/api/v1/users/me/settings')).send({ presence })
+        /** The next presence.updated about `who` that `socket` hears. */
+        function hearsPresenceOf(socket: Socket, who: string, within = 2000): Promise<string | undefined> {
+            return new Promise((resolve) => {
+                const timer = setTimeout(() => resolve(undefined), within)
+                const listener = (data: { user_id: string; status: string }) => {
+                    if (data.user_id !== users[who].id) return
+                    clearTimeout(timer)
+                    socket.off('presence.updated', listener)
+                    resolve(data.status)
+                }
+                socket.on('presence.updated', listener)
+            })
+        }
+
+        beforeEach(() => forget('an', 'binh'))
+        afterEach(async () => {
+            await settings('an', 'online')
+            await forget('an', 'binh')
+        })
+
+        it('tells the people of its servers when someone comes online, and says it in ready', async () => {
+            await serverWith('an', ['binh'])
+            const binh = await connectAs('binh')
+            const online = hearsPresenceOf(binh, 'an')
+
+            const { ready } = await connect(await ticketFor('an'))
+
+            expect(ready.status).toBe('online')
+            expect(await online).toBe('online')
+        })
+
+        it('turns away once the tab says it is unused, and online again with it in use', async () => {
+            await serverWith('an', ['binh'])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+
+            const away = hearsPresenceOf(binh, 'an')
+            an.emit('presence.idle', { idle: true })
+            expect(await away).toBe('idle')
+
+            // Taken once a second per socket (the gateway): a tab flipping it costs nothing more.
+            await new Promise((resolve) => setTimeout(resolve, 1100))
+            const back = hearsPresenceOf(binh, 'an')
+            an.emit('presence.idle', { idle: false })
+            expect(await back).toBe('online')
+        })
+
+        it('shows invisible as offline to others, at once', async () => {
+            await serverWith('an', ['binh'])
+            await connectAs('an')
+            const binh = await connectAs('binh')
+            const hidden = hearsPresenceOf(binh, 'an')
+
+            expect((await settings('an', 'invisible')).status).toBe(200)
+
+            expect(await hidden).toBe('offline')
+            expect((await connect(await ticketFor('an'))).ready.status).toBe('offline')
+        })
+
+        it('keeps someone whose tabs all closed online for 60 seconds, then the sweep takes them offline', async () => {
+            await serverWith('an', ['binh'])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+            const gone = hearsPresenceOf(binh, 'an', 1000)
+            an.disconnect()
+            expect(await gone).toBeUndefined()
+            expect(await redis().hGet('presence:shown', users.an.id)).toBe('online')
+
+            const offline = hearsPresenceOf(binh, 'an')
+            await app.get(CommandBus).execute(new SweepPresenceCommand(new Date(Date.now() + 61_000)))
+
+            expect(await offline).toBe('offline')
+            expect(await redis().exists(`presence:sockets:${users.an.id}`)).toBe(0)
+        })
+    })
+
+    describe('typing (REQ-MSG-06)', () => {
+        it('tells the channel who is typing, twice in 8 seconds at most from one tab', async () => {
+            const { generalId } = await serverWith('an', ['binh'])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+
+            const first = hears(binh, 'typing.started', 2000)
+            an.emit('typing.start', { channel_id: generalId })
+            expect(await first).toMatchObject({ channel_id: generalId, user: { id: users.an.id } })
+
+            // Once more at once (the message just sent), then no more.
+            const second = hears(binh, 'typing.started', 2000)
+            an.emit('typing.start', { channel_id: generalId })
+            expect(await second).toBeTruthy()
+            const third = hears(binh, 'typing.started')
+            an.emit('typing.start', { channel_id: generalId })
+            expect(await third).toBeUndefined()
+        })
+
+        it('tells nothing about a channel one may not see, or a malformed signal', async () => {
+            const { secretId } = await serverWith('an', ['binh'])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+            const listening = hears(an, 'typing.started')
+
+            binh.emit('typing.start', { channel_id: secretId })
+            binh.emit('typing.start', { channel_id: 'not-an-id' })
+
+            expect(await listening).toBeUndefined()
+            expect(binh.connected).toBe(true)
         })
     })
 })

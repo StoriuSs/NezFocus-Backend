@@ -1,6 +1,7 @@
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
-import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
+import { ChannelDirectoryPort, MembershipPort, RoleDirectoryPort } from '@/modules/servers'
+import type { Presence, PresencePort } from '@/modules/realtime'
 import { UserDirectoryPort } from '@/modules/users'
 import { RateLimitState } from '@/shared/types/rate-limit.type'
 import {
@@ -72,7 +73,7 @@ const ROLES = [
     { id: BAN_TO, name: 'Ban tổ chức', mentionable: false },
     { id: BAN_DAI, name: 'Ban điều hành câu lạc bộ học thuật khoa công nghệ thông tin', mentionable: false }
 ]
-const NO_MENTIONS = { mentionEveryone: false, mentionRoleIds: [], mentionUsers: [] }
+const NO_MENTIONS = { mentionEveryone: false, mentionHereUserIds: [], mentionRoleIds: [], mentionUsers: [] }
 /** A quoted message's mentions: none in these texts. */
 const QUOTED = { mentionRoleIds: [], mentionUsers: [] }
 
@@ -109,6 +110,7 @@ function world({ limited = false } = {}) {
                 pinned: false,
                 systemUser: null,
                 mentionEveryone: input.mentions.everyone,
+                mentionHereUserIds: input.mentions.hereUserIds,
                 mentionRoleIds: input.mentions.roleIds,
                 mentionUsers: [],
                 createdAt: new Date('2026-10-18T20:02:00Z'),
@@ -183,9 +185,42 @@ function world({ limited = false } = {}) {
         rolesOf: jest.fn(async (_serverId: string, ids: string[]) => ROLES.filter((role) => ids.includes(role.id)))
     }
     const bus = events as unknown as EventBus
+    // Who others see now: Bình is away, Giang does not disturb, Khách is in no server here; Dũng is offline.
+    const presence: PresencePort = {
+        everyoneShown: async () =>
+            new Map<string, Presence>([
+                ['binh', 'idle'],
+                [GIANG, 'dnd'],
+                [KHACH, 'online'],
+                ['chi', 'online']
+            ])
+    }
 
-    const sender = new SendMessageHandler(repository, channels, checker, limit, userDirectory, roles, bus)
-    const editor = new EditMessageHandler(repository, channels, checker, userDirectory, roles, bus)
+    // The server's members among those asked about: Khách is in no server here.
+    const membership = {
+        membersAmong: jest.fn(async (_serverId: string, ids: string[]) => ids.filter((id) => id !== KHACH))
+    } as unknown as MembershipPort
+    const sender = new SendMessageHandler(
+        repository,
+        channels,
+        checker,
+        limit,
+        userDirectory,
+        roles,
+        presence,
+        membership,
+        bus
+    )
+    const editor = new EditMessageHandler(
+        repository,
+        channels,
+        checker,
+        userDirectory,
+        roles,
+        presence,
+        membership,
+        bus
+    )
     const deleter = new DeleteMessageHandler(repository, channels, checker, bus)
     const send = (
         userId: string,
@@ -197,7 +232,7 @@ function world({ limited = false } = {}) {
     const edit = (userId: string, messageId: string, content: string) =>
         editor.execute(new EditMessageCommand(userId, messageId, content))
     const remove = (userId: string, messageId: string) => deleter.execute(new DeleteMessageCommand(userId, messageId))
-    return { send, edit, remove, seed, saved, repository, limit, events, users }
+    return { send, edit, remove, seed, saved, repository, limit, events, users, checker, membership }
 }
 
 describe('SendMessageHandler (REQ-MSG-01, REQ-MSG-10)', () => {
@@ -589,7 +624,7 @@ describe('Mentions when sending and editing (REQ-MSG-03, MSG-09, D-164, D-172)',
         expect(repository.edit).toHaveBeenCalledWith(
             answer.id,
             'Mình giữ chỗ cạnh bạn rồi',
-            { everyone: false, roleIds: [], userIds: [GIANG] },
+            { everyone: false, here: false, roleIds: [], userIds: [GIANG], hereUserIds: [] },
             expect.any(Date)
         )
     })
@@ -599,7 +634,49 @@ describe('Mentions when sending and editing (REQ-MSG-03, MSG-09, D-164, D-172)',
 
         await send('chi', `\`@everyone\` \`<@${GIANG}>\``)
 
-        expect(savedMentions(repository).mentions).toEqual({ everyone: false, roleIds: [], userIds: [] })
+        expect(savedMentions(repository).mentions).toEqual({
+            everyone: false,
+            here: false,
+            roleIds: [],
+            userIds: [],
+            hereUserIds: []
+        })
+    })
+
+    it('mentions with @here those who see the channel and are not offline as it is sent: away and do not disturb count (D-166)', async () => {
+        const { send, repository } = world()
+
+        await send('chi', '@here họp nhóm')
+        expect(savedMentions(repository).mentions).toMatchObject({ here: true, hereUserIds: ['binh', GIANG] })
+
+        // #ban-quan-ly is for moderators: only Chi, who sent it.
+        await send('chi', '@here', 'n2', 'ban-quan-ly')
+        expect(savedMentions(repository).mentions).toMatchObject({ here: true, hereUserIds: [] })
+    })
+
+    it('asks the permissions only of the server’s members among those online: one read narrows them (D-166)', async () => {
+        const { send, checker, membership } = world()
+        await send('chi', '@here họp nhóm')
+        expect(membership.membersAmong).toHaveBeenCalledWith('ot', ['binh', GIANG, KHACH])
+        expect(checker.access).not.toHaveBeenCalledWith('ot', KHACH)
+    })
+
+    it('keeps whom an @here reached when the message is edited; one added by the edit reaches who is here then (D-176)', async () => {
+        const { edit, seed, repository } = world()
+        const held = seed('hoi-dap', 'chi', '@here họp nhóm')
+        held.mentionHereUserIds = [DUNG]
+        await edit('chi', held.id, '@here họp nhóm lúc 21:00')
+        expect((repository.edit as jest.Mock).mock.calls.at(-1)![2]).toMatchObject({ hereUserIds: [DUNG] })
+
+        const plain = seed('hoi-dap', 'chi', 'họp nhóm')
+        await edit('chi', plain.id, '@here họp nhóm')
+        expect((repository.edit as jest.Mock).mock.calls.at(-1)![2]).toMatchObject({ hereUserIds: ['binh', GIANG] })
+    })
+
+    it('mentions no one with @here without MENTION_EVERYONE', async () => {
+        const { send, repository } = world()
+        await send('binh', '@here')
+        expect(savedMentions(repository).mentions).toMatchObject({ here: false, hereUserIds: [] })
     })
 
     it('writes the mentions of the new text when editing', async () => {
@@ -611,7 +688,7 @@ describe('Mentions when sending and editing (REQ-MSG-03, MSG-09, D-164, D-172)',
         expect(repository.edit).toHaveBeenCalledWith(
             row.id,
             `<@${GIANG}> giải câu 3?`,
-            { everyone: false, roleIds: [], userIds: [GIANG] },
+            { everyone: false, here: false, roleIds: [], userIds: [GIANG], hereUserIds: [] },
             expect.any(Date)
         )
     })

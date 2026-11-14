@@ -4,9 +4,10 @@ import {
     InvitePreviewSnapshot,
     InviteRecord,
     InviteRepositoryPort,
+    MemberRepositoryPort,
     MissingPermissionError
 } from '../../../domain'
-import { GuessLimitPort, IconStoragePort } from '../../ports'
+import { GuessLimitPort, IconStoragePort, PresenceReaderPort } from '../../ports'
 import { ListInvitesHandler, PreviewInviteHandler } from './invite.handlers'
 import { ListInvitesQuery, PreviewInviteQuery } from './invite.queries'
 
@@ -105,10 +106,22 @@ describe('PreviewInviteHandler', () => {
         ...extra
     })
 
+    // Who others see now; the repository counts those of them in the server.
+    const presence: PresenceReaderPort = {
+        everyoneShown: async () =>
+            new Map([
+                ['binh', 'idle'],
+                ['chi', 'online']
+            ])
+    }
+    const members = {
+        countAmong: jest.fn(async (_serverId: string, ids: string[]) => ids.length)
+    } as unknown as MemberRepositoryPort & { countAmong: jest.Mock }
+
     it('shows the server, the inviter and the target, and costs a good code nothing', async () => {
         const invites = repository({ preview: jest.fn(async () => snapshot()) })
         const limit = limiter()
-        const result = await new PreviewInviteHandler(invites, storage, limit).execute(
+        const result = await new PreviewInviteHandler(invites, storage, limit, members, presence).execute(
             new PreviewInviteQuery('k7Qm2xPa', 'hoi-dap', IP)
         )
         expect(result).toEqual({
@@ -117,12 +130,15 @@ describe('PreviewInviteHandler', () => {
                 id: 'ot',
                 name: 'Ôn thi Giải tích 2',
                 iconUrl: 'https://cdn.test/icons/ot.webp',
-                memberCount: 13
+                memberCount: 13,
+                onlineCount: 2
             },
             inviterName: 'An',
             channel: { id: 'hoi-dap', name: 'hoi-dap', type: 'text', isStudyRoom: false }
         })
         expect(invites.preview).toHaveBeenCalledWith('k7Qm2xPa', 'hoi-dap')
+        // Those online to others now (an invisible person is not shown), counted among the members.
+        expect(members.countAmong).toHaveBeenCalledWith('ot', ['binh', 'chi'])
         expect(limit.hit).not.toHaveBeenCalled()
     })
 
@@ -131,7 +147,7 @@ describe('PreviewInviteHandler', () => {
         const invites = repository({
             preview: jest.fn(async () => ({ ...plain, server: { ...plain.server, iconKey: null } }))
         })
-        const result = await new PreviewInviteHandler(invites, storage, limiter()).execute(
+        const result = await new PreviewInviteHandler(invites, storage, limiter(), members, presence).execute(
             new PreviewInviteQuery('k7Qm2xPa', null, IP)
         )
         expect(result.server.iconUrl).toBeNull()
@@ -147,7 +163,9 @@ describe('PreviewInviteHandler', () => {
             const invites = repository({ preview: jest.fn(async () => found) })
             const limit = limiter()
             await expect(
-                new PreviewInviteHandler(invites, storage, limit).execute(new PreviewInviteQuery(code, null, IP))
+                new PreviewInviteHandler(invites, storage, limit, members, presence).execute(
+                    new PreviewInviteQuery(code, null, IP)
+                )
             ).rejects.toBeInstanceOf(InviteInvalidError)
             expect(limit.hit).toHaveBeenCalledTimes(1)
         }

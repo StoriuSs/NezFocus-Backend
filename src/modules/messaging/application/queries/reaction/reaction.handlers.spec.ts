@@ -29,6 +29,7 @@ const stored = (id: string, channelId: string): StoredMessage => ({
     systemData: null,
     replyTo: null,
     mentionEveryone: false,
+    mentionHereUserIds: [],
     mentionRoleIds: [],
     mentionUsers: [],
     editedAt: null,

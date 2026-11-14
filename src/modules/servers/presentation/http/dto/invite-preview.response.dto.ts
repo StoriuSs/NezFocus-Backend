@@ -3,7 +3,7 @@ import { IsOptional, IsString, ValidateNested } from 'class-validator'
 import { InviteServerResponseDto } from './invite-server.response.dto'
 import { InviteTargetResponseDto } from './invite-target.response.dto'
 
-/** GET /invites/{code} (S-SRV-03). Online counts come with presence in M2 (D-143). */
+/** GET /invites/{code} (S-SRV-03): the server with its member and online counts. */
 export class InvitePreviewResponseDto {
     @Expose()
     @IsString()

@@ -24,6 +24,7 @@ const message = (id: string, authorId: string | null, avatarKey: string | null =
     systemData: authorId ? null : { userId: 'dung' },
     replyTo: null,
     mentionEveryone: false,
+    mentionHereUserIds: [],
     mentionRoleIds: [],
     mentionUsers: [],
     editedAt: null,

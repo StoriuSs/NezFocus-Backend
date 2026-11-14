@@ -17,11 +17,16 @@ export interface MemberListItem {
 /**
  * The columns the Members page sorts by (D-89): name; role, ranked by the
  * owner first, then the highest role held, no role last; the day they joined.
+ * Presence (D-175): those not offline first (`asc`), then by name; for the
+ * people suggested after @.
  */
-export const MEMBER_SORTS = ['name', 'role', 'joined_at'] as const
+export const MEMBER_SORTS = ['name', 'role', 'joined_at', 'presence'] as const
 export type MemberSort = (typeof MEMBER_SORTS)[number]
 export const SORT_ORDERS = ['asc', 'desc'] as const
 export type SortOrder = (typeof SORT_ORDERS)[number]
+/** The member panel's two groups (D-175): online is anyone not offline to others (away, do not disturb). */
+export const PRESENCE_FILTERS = ['online', 'offline'] as const
+export type PresenceFilter = (typeof PRESENCE_FILTERS)[number]
 
 export interface MemberSearch {
     /** Display name or username, ignoring case and accents. */
@@ -39,14 +44,24 @@ export interface MemberSearch {
     order: SortOrder
     page: number
     limit: number
+    /** Only those online, or only those offline, to others now (D-175). */
+    presence: PresenceFilter | null
 }
 
 export interface MemberRepositoryPort {
     /**
      * One page of the server's members in the order asked (D-89), with how
-     * many match in all.
+     * many match in all. `presentIds`: who is not offline to others now
+     * (presence), for the presence filter and sort (D-175).
      */
-    search(serverId: string, search: MemberSearch): Promise<{ items: MemberListItem[]; total: number }>
+    search(
+        serverId: string,
+        search: MemberSearch,
+        presentIds: string[]
+    ): Promise<{ items: MemberListItem[]; total: number }>
+
+    /** How many of the server's members are among `userIds`: an invite's online count (S-SRV-03). */
+    countAmong(serverId: string, userIds: string[]): Promise<number>
 }
 
 export const MEMBER_REPOSITORY = Symbol('MemberRepositoryPort')

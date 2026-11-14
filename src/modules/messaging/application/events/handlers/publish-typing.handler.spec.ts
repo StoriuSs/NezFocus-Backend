@@ -1,0 +1,97 @@
+import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
+import { EventPublisherPort, TypingSignalledEvent } from '@/modules/realtime'
+import { ChannelDirectoryPort } from '@/modules/servers'
+import { UserDirectoryPort } from '@/modules/users'
+import { LimitsUnavailableError } from '@/shared/domain'
+import { SendLimitPort } from '../../ports'
+import { TYPING_PER_TAB } from '../../rate-limits'
+import { PublishTypingHandler } from './publish-typing.handler'
+
+const HOI_DAP = '0190a0b0-0000-7000-8000-00000000c001'
+const THONG_BAO = '0190a0b0-0000-7000-8000-00000000c002'
+
+const server: AccessServer = {
+    ownerId: 'an',
+    roles: [{ id: 'everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true }],
+    channels: [
+        { id: HOI_DAP, type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
+        { id: THONG_BAO, type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers' }
+    ]
+}
+
+function world(options: { limited?: boolean; counterDown?: boolean } = {}) {
+    const told: { channelId: string; event: string; data: object }[] = []
+    const publisher = {
+        toChannel: (channelId: string, event: string, data: object) => told.push({ channelId, event, data })
+    } as unknown as EventPublisherPort
+    const channels: ChannelDirectoryPort = { serverIdOf: async () => 'ot' }
+    const checker: PermissionCheckerPort = {
+        access: async (_serverId, userId) => {
+            const timeoutUntil = userId === 'phong' ? new Date(Date.now() + 3600_000) : null
+            return { server, member: { userId, roleIds: [], timeoutUntil } }
+        }
+    }
+    const limit: SendLimitPort = {
+        hit: jest.fn(async () => {
+            if (options.counterDown) throw new LimitsUnavailableError()
+            return { count: 1, limited: options.limited ?? false, retryAfterSeconds: 8 }
+        }),
+        release: jest.fn()
+    }
+    const users = {
+        findById: async (id: string) => ({ id, username: `${id}.tran`, displayName: id === 'binh' ? 'Bình' : null }),
+        presenceOf: async (id: string) => (id === 'chi' ? 'invisible' : 'online')
+    } as unknown as UserDirectoryPort
+    const handler = new PublishTypingHandler(channels, checker, limit, users, publisher)
+    const type = (userId: string, channelId = HOI_DAP) =>
+        handler.handle(new TypingSignalledEvent(userId, 'socket-1', channelId))
+    return { told, type, limit }
+}
+
+describe('Someone typing (REQ-MSG-06)', () => {
+    it('tells the channel who is typing', async () => {
+        const { told, type, limit } = world()
+
+        await type('binh')
+
+        expect(told).toEqual([
+            {
+                channelId: HOI_DAP,
+                event: 'typing.started',
+                data: { channelId: HOI_DAP, user: { id: 'binh', username: 'binh.tran', displayName: 'Bình' } }
+            }
+        ])
+        expect(limit.hit).toHaveBeenCalledWith(TYPING_PER_TAB, `socket-1:${HOI_DAP}`)
+    })
+
+    it('tells nothing from someone who may not post there: managers only, or timed out', async () => {
+        const { told, type } = world()
+        await type('binh', THONG_BAO)
+        await type('phong')
+        expect(told).toEqual([])
+    })
+
+    it('counts a signal before anything is looked up: one refused costs no more than one told', async () => {
+        const { type, limit } = world({ limited: true })
+        await type('phong')
+        expect(limit.hit).toHaveBeenCalledTimes(1)
+    })
+
+    it('tells nothing from someone invisible: typing would show they are there', async () => {
+        const { told, type } = world()
+        await type('chi')
+        expect(told).toEqual([])
+    })
+
+    it('tells nothing past what one tab may say in one channel in 8 seconds', async () => {
+        const { told, type } = world({ limited: true })
+        await type('binh')
+        expect(told).toEqual([])
+    })
+
+    it('still tells while the counter cannot be reached', async () => {
+        const { told, type } = world({ counterDown: true })
+        await type('binh')
+        expect(told).toHaveLength(1)
+    })
+})

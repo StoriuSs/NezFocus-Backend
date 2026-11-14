@@ -1,10 +1,19 @@
 import { Inject } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, Permission, PermissionCheckerPort } from '@/modules/permissions'
-import { CHANNEL_DIRECTORY, ChannelDirectoryPort, ROLE_DIRECTORY, RoleDirectoryPort } from '@/modules/servers'
+import { PRESENCE, PresencePort } from '@/modules/realtime'
+import {
+    CHANNEL_DIRECTORY,
+    ChannelDirectoryPort,
+    MEMBERSHIP,
+    MembershipPort,
+    ROLE_DIRECTORY,
+    RoleDirectoryPort
+} from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
     CannotDeleteMessageError,
+    findMentions,
     MESSAGE_REPOSITORY,
     MessageNotFoundError,
     MessageRecord,
@@ -19,7 +28,7 @@ import { MessageDeletedEvent } from '../../events/message-deleted.event'
 import { MessageUpdatedEvent } from '../../events/message-updated.event'
 import { SEND_LIMIT, SendLimitPort } from '../../ports'
 import { openChannel, requireSending, timedOutUntil } from '../../services/channel-access'
-import { keptText, MentionWork, reachingViewers } from '../../services/mentions'
+import { keptText, MentionWork, Reach, reachingViewers } from '../../services/mentions'
 import { openMessage } from '../../services/message-access'
 import { MessageView, messageViews } from '../../services/message-views'
 import { countSending } from '../../services/sending-limits'
@@ -57,8 +66,15 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
         @Inject(SEND_LIMIT) private readonly limit: SendLimitPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(PRESENCE) private readonly presence: PresencePort,
+        @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
         private readonly events: EventBus
     ) {}
+
+    /** Whom a message reaches: permissions, presence and members (services/mentions.ts). */
+    private get reach(): Reach {
+        return { checker: this.permissions, presence: this.presence, membership: this.membership }
+    }
 
     async execute({ userId, channelId, content, nonce, replyToId }: SendMessageCommand): Promise<MessageView> {
         const now = new Date()
@@ -84,7 +100,7 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
         const counted = await countSending(this.limit, userId, channelId)
         let saved: Awaited<ReturnType<MessageRepositoryPort['create']>>
         try {
-            const mentions = await reachingViewers(this.permissions, work, kept.mentions)
+            const mentions = await reachingViewers(this.reach, work, kept.mentions)
             saved = await this.messages.create({
                 channelId,
                 authorId: userId,
@@ -126,8 +142,15 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(PRESENCE) private readonly presence: PresencePort,
+        @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
         private readonly events: EventBus
     ) {}
+
+    /** Whom a message reaches: permissions, presence and members (services/mentions.ts). */
+    private get reach(): Reach {
+        return { checker: this.permissions, presence: this.presence, membership: this.membership }
+    }
 
     async execute({ userId, messageId, content }: EditMessageCommand): Promise<MessageView> {
         const now = new Date()
@@ -155,7 +178,9 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
         const kept = await keptText(this.roles, work)
         if (message.content === kept.content) return (await views([message]))[0]
 
-        const mentions = await reachingViewers(this.permissions, work, kept.mentions)
+        // An @here that already reached people keeps them; one added now reaches who is here now (D-176).
+        const heldHere = findMentions(message.content).here ? message.mentionHereUserIds : undefined
+        const mentions = await reachingViewers(this.reach, work, kept.mentions, heldHere)
         const edited = await this.messages.edit(messageId, kept.content, mentions, now)
         if (!edited) throw new MessageNotFoundError(messageId)
         const [view] = await views([edited])

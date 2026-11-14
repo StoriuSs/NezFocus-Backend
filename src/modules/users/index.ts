@@ -18,6 +18,9 @@ export { UsernameTakenError } from './domain/errors/username.errors'
 // Events other modules may react to.
 export { AccountDeletedEvent } from './application/events/account-deleted.event'
 export { UserProfileUpdatedEvent } from './application/events/user-profile-updated.event'
+export { PresenceChosenEvent } from './application/events/presence-chosen.event'
+// The statuses one chooses in their menu (REQ-AUTH-07, D-78).
+export type { ChosenPresence } from './domain/user-settings.rules'
 
 // Run on a schedule by src/maintenance.
 export { SweepDeletedAccountsCommand } from './application/commands/sweep-deleted-accounts/sweep-deleted-accounts.command'

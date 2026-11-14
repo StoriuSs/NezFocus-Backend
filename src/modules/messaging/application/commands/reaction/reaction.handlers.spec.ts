@@ -54,6 +54,7 @@ function world({ noNewReactions = false } = {}) {
             systemData: type === 'regular' ? null : { userId: 'dung' },
             replyTo: null,
             mentionEveryone: false,
+            mentionHereUserIds: [],
             mentionRoleIds: [],
             mentionUsers: [],
             editedAt: null,

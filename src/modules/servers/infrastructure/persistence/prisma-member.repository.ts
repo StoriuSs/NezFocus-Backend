@@ -27,10 +27,13 @@ const USERNAME = Prisma.sql`lower(coalesce(u."username", ''))`
  * across pages. Role rank: the owner above every role, then the highest
  * position held, 0 for none.
  */
-function orderBy(sort: MemberSort, order: SortOrder): Prisma.Sql {
+function orderBy(sort: MemberSort, order: SortOrder, presentIds: string[]): Prisma.Sql {
     const way = order === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`
     const ties = Prisma.sql`${NAME} ASC, ${USERNAME} ASC, m."userId" ASC`
     switch (sort) {
+        case 'presence':
+            // Those shown first: false sorts before true, so ASC puts the absent ones first.
+            return Prisma.sql`(m."userId" = ANY(${presentIds}::text[])) ${order === 'asc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}, ${ties}`
         case 'name':
             return Prisma.sql`${NAME} ${way}, ${USERNAME} ASC, m."userId" ASC`
         case 'joined_at':
@@ -55,7 +58,8 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
      */
     async search(
         serverId: string,
-        { q, roleId, transferableFrom, sort, order, page, limit }: MemberSearch
+        { q, roleId, transferableFrom, sort, order, page, limit, presence }: MemberSearch,
+        presentIds: string[]
     ): Promise<{ items: MemberListItem[]; total: number }> {
         const where = Prisma.sql`
             m."serverId" = ${serverId}
@@ -70,6 +74,13 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
                 transferableFrom
                     ? Prisma.sql`AND m."userId" <> ${transferableFrom} AND u."deletionRequestedAt" IS NULL`
                     : Prisma.empty
+            }
+            ${
+                presence === 'online'
+                    ? Prisma.sql`AND m."userId" = ANY(${presentIds}::text[])`
+                    : presence === 'offline'
+                      ? Prisma.sql`AND NOT (m."userId" = ANY(${presentIds}::text[]))`
+                      : Prisma.empty
             }
             ${
                 q
@@ -89,7 +100,7 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
                 JOIN "User" u ON u."id" = m."userId"
                 JOIN "Server" s ON s."id" = m."serverId"
                 WHERE ${where}
-                ORDER BY ${orderBy(sort, order)}
+                ORDER BY ${orderBy(sort, order, presentIds)}
                 LIMIT ${limit} OFFSET ${(page - 1) * limit}
             `,
             this.prisma.$queryRaw<{ total: bigint }[]>`
@@ -97,5 +108,10 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
             `
         ])
         return { items: rows, total: Number(counted[0]?.total ?? 0n) }
+    }
+
+    async countAmong(serverId: string, userIds: string[]): Promise<number> {
+        if (userIds.length === 0) return 0
+        return this.prisma.member.count({ where: { serverId, userId: { in: userIds }, user: { deletedAt: null } } })
     }
 }

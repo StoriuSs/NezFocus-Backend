@@ -383,6 +383,20 @@ events through its `EVENT_PUBLISHER` port. It hears auth's
 its Redis adapter for several instances, is set up in
 `src/shared/infrastructure/websocket/redis-io-adapter.ts`.
 
+Presence lives here too (REQ-AUTH-07, ARCHITECTURE 3.3, D-174). Each tab's
+socket is kept in Redis (`redis-presence-store.adapter.ts`) as it connects,
+beats every 30 seconds (`heartbeat`), says it is unused (`presence.idle`)
+and closes; `application/services/presence.ts` works out what others see
+with `domain/presence.rules.ts` (the status chosen in users' settings, read
+through `USER_DIRECTORY.presenceOf`) and tells it as `presence.updated` to
+the person's servers. `presence-sweep` (src/maintenance, every 15 seconds)
+takes offline those not heard from for 60 seconds. Other modules read it:
+messaging through `PRESENCE` (@here), servers through its own
+`PRESENCE_READER` port, answered by the global `PresenceReaderModule` here
+(as D-160). Every change to one person runs under their short Redis lock
+(`underLock`). A tab's `typing.start` becomes `ReportTypingCommand`, whose
+handler publishes `TypingSignalledEvent`: typing is messaging's (D-176).
+
 `src/modules/messaging/` holds the messages of text channels (SRS 4.4),
 grouped by area like `servers`. `POST /channels/{id}/messages` asks servers'
 `CHANNEL_DIRECTORY` which server the channel is in, then
@@ -518,7 +532,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/users/          # Profiles, usernames, avatars, settings, deletion
 │   ├── modules/servers/        # Servers, channels, roles, invites, moderation
 │   ├── modules/permissions/    # What a member may do in a server, cached
-│   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events
+│   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events, presence
 │   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting

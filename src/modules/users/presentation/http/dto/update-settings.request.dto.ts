@@ -1,5 +1,5 @@
 import { ValidateIf } from 'class-validator'
-import { LANGUAGES, THEMES } from '@/modules/users/domain/user-settings.rules'
+import { LANGUAGES, PRESENCES, THEMES } from '@/modules/users/domain/user-settings.rules'
 import { OptionalChoiceField, OptionalSwitchField, TimeZoneField } from './settings.decorators'
 
 /**
@@ -53,4 +53,8 @@ export class UpdateSettingsRequestDto {
     /** "Show study activity" (D-79). */
     @OptionalSwitchField()
     showStudyActivity?: boolean
+
+    /** The status chosen in their menu (REQ-AUTH-07, D-78); others see it within 2 seconds. */
+    @OptionalChoiceField(PRESENCES)
+    presence?: (typeof PRESENCES)[number]
 }

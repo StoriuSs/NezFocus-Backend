@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
-import { MEMBER_SORTS, MemberSort, SORT_ORDERS, SortOrder } from '../../../domain'
+import { MEMBER_SORTS, MemberSort, PRESENCE_FILTERS, PresenceFilter, SORT_ORDERS, SortOrder } from '../../../domain'
 import { MAX_PAGE } from './shared/fields'
 
 /** GET /servers/{id}/members (D-152). */
@@ -44,7 +44,13 @@ export class MemberListQueryDto {
     @IsIn([10, 50, 100])
     limit?: number
 
-    /** name (default), role or joined_at (D-89). */
+    /** online or offline to others now: the member panel's two groups (D-175). */
+    @ApiPropertyOptional({ enum: PRESENCE_FILTERS })
+    @IsOptional()
+    @IsIn(PRESENCE_FILTERS)
+    presence?: PresenceFilter
+
+    /** name (default), role, joined_at (D-89), or presence: those online first (D-175). */
     @ApiPropertyOptional({ enum: MEMBER_SORTS })
     @IsOptional()
     @IsIn(MEMBER_SORTS)

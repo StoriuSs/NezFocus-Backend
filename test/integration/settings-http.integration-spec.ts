@@ -61,7 +61,8 @@ describe('Settings over HTTP (integration)', () => {
             notify_phase_changes: true,
             notification_prompt_dismissed: false,
             allow_server_member_messages: true,
-            show_study_activity: true
+            show_study_activity: true,
+            presence: 'online'
         })
     })
 

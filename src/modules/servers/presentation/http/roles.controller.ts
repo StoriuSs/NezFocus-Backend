@@ -10,6 +10,7 @@ import {
     CreateRoleCommand,
     DeleteRoleCommand,
     GrantRoleCommand,
+    ListedMember,
     ListMembersQuery,
     ListMentionableRolesQuery,
     ListRolesQuery,
@@ -18,7 +19,7 @@ import {
     RevokeRoleCommand,
     UpdateRoleCommand
 } from '../../application'
-import { MemberListItem, RoleListItem } from '../../domain'
+import { RoleListItem } from '../../domain'
 import {
     CreatedRoleResponseDto,
     CreateRoleRequestDto,
@@ -178,7 +179,7 @@ export class RolesController {
         const page = query.page ?? 1
         const limit = query.limit ?? MEMBERS_PER_PAGE
         const q = query.q?.trim() || null
-        const { items, total }: { items: MemberListItem[]; total: number } = await this.queryBus.execute(
+        const { items, total }: { items: ListedMember[]; total: number } = await this.queryBus.execute(
             new ListMembersQuery(user.id, serverId, {
                 q,
                 roleId: query.roleId ?? null,
@@ -186,7 +187,8 @@ export class RolesController {
                 sort: query.sort ?? 'name',
                 order: query.order ?? 'asc',
                 page,
-                limit
+                limit,
+                presence: query.presence ?? null
             })
         )
         return createResponse(

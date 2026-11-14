@@ -4,12 +4,14 @@ import { NestExpressApplication } from '@nestjs/platform-express'
 import request from 'supertest'
 import { io, Socket } from 'socket.io-client'
 import { MESSAGE_REPOSITORY, MessageRepositoryPort } from '@/modules/messaging/domain'
+import { RedisClientType } from 'redis'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { REDIS_CLIENT } from '@/shared/infrastructure/cache/redis-client.provider'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
 /** An edit that mentions no one. */
-const NO_MENTIONS = { everyone: false, roleIds: [], userIds: [] }
+const NO_MENTIONS = { everyone: false, here: false, roleIds: [], userIds: [], hereUserIds: [] }
 
 /**
  * Sending and reading messages through the whole app (REQ-MSG-01, REQ-MSG-05,
@@ -386,6 +388,26 @@ describe('Messages (integration)', () => {
             }
             helpersId = await role('Trợ giảng', true)
             organisersId = await role('Ban tổ chức', false)
+        })
+
+        it('reaches with @here the members online who see the channel, kept as they were when the message is edited (D-166, D-176)', async () => {
+            const redis = app.get<RedisClientType>(REDIS_CLIENT)
+            // Bình away, Chi online, Khánh online but in no server here; Dũng offline.
+            const shown = { [users.binh.id]: 'idle', [users.chi.id]: 'online', [users.khanh.id]: 'online' }
+            await redis.hSet('presence:shown', shown)
+            try {
+                const sent = await send('an', channelId, '@here họp nhóm')
+                expect(sent.status).toBe(201)
+                const reached = [users.binh.id, users.chi.id].sort()
+                expect([...sent.body.data.mention_here_user_ids].sort()).toEqual(reached)
+
+                await redis.hDel('presence:shown', users.chi.id)
+                const edited = await edit('an', sent.body.data.id, '@here họp nhóm lúc 21:00')
+                expect(edited.status).toBe(200)
+                expect([...edited.body.data.mention_here_user_ids].sort()).toEqual(reached)
+            } finally {
+                await redis.hDel('presence:shown', Object.keys(shown))
+            }
         })
 
         it('keeps what the author may mention, names it in history and to the channel, and saves who it is about', async () => {

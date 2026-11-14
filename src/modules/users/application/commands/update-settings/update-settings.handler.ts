@@ -1,5 +1,5 @@
 import { Inject } from '@nestjs/common'
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import {
     canonicalTimeZone,
     settingsView,
@@ -11,6 +11,7 @@ import {
     UserNotFoundError,
     UserSettingsRepositoryPort
 } from '@/modules/users/domain'
+import { PresenceChosenEvent } from '../../events/presence-chosen.event'
 import { UpdateSettingsCommand } from './update-settings.command'
 
 /**
@@ -18,11 +19,16 @@ import { UpdateSettingsCommand } from './update-settings.command'
  * choices save as sent. The time zone changes at most once every 24 hours
  * (REQ-AUTH-08): sending the zone already in use is no change and starts no
  * clock; a change too soon is refused with when it may happen, and nothing
- * else sent with it is saved.
+ * else sent with it is saved. A status chosen in the menu is told to the
+ * other modules once saved: the realtime module shows it to others
+ * (REQ-AUTH-07), and tells nothing when what they see is the same.
  */
 @CommandHandler(UpdateSettingsCommand)
 export class UpdateSettingsHandler implements ICommandHandler<UpdateSettingsCommand> {
-    constructor(@Inject(USER_SETTINGS_REPOSITORY) private readonly settings: UserSettingsRepositoryPort) {}
+    constructor(
+        @Inject(USER_SETTINGS_REPOSITORY) private readonly settings: UserSettingsRepositoryPort,
+        private readonly eventBus: EventBus
+    ) {}
 
     async execute({ userId, changes }: UpdateSettingsCommand): Promise<SettingsView> {
         const now = new Date()
@@ -39,7 +45,13 @@ export class UpdateSettingsHandler implements ICommandHandler<UpdateSettingsComm
 
         // The 24 hours are checked by the write itself, so two tabs at once cannot both change the zone.
         const updated = await this.settings.update(userId, rest, change)
-        if (updated) return settingsView(updated, now)
+        if (updated) {
+            // Each time it is sent, unchanged or not: of two tabs choosing at once, the last told is the last saved.
+            if (rest.presence !== undefined) {
+                this.eventBus.publish(new PresenceChosenEvent(userId, updated.presence))
+            }
+            return settingsView(updated, now)
+        }
 
         // Nothing matched: the zone changed too recently, or the account is gone.
         const latest = await this.settings.find(userId)

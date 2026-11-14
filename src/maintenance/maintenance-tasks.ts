@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config'
 import { ICommand } from '@nestjs/cqrs'
 import { CleanUpAuthCommand } from '@/modules/auth'
+import { SweepPresenceCommand } from '@/modules/realtime'
 import { CleanUpServersCommand } from '@/modules/servers'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
 
@@ -46,5 +47,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'servers-clean-up',
         everyMs: 24 * 60 * MINUTE_MS,
         command: (now) => new CleanUpServersCommand(now)
+    },
+    {
+        // Takes offline the people whose every tab closed or went silent
+        // 60 seconds ago (REQ-AUTH-07, D-174).
+        id: 'presence-sweep',
+        everyMs: 15 * 1000,
+        command: (now) => new SweepPresenceCommand(now)
     }
 ]

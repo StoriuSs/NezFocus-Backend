@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Expose } from 'class-transformer'
 import { IsBoolean, IsDate, IsIn, IsOptional, IsString } from 'class-validator'
-import { LANGUAGES, THEMES } from '@/modules/users/domain/user-settings.rules'
+import { LANGUAGES, PRESENCES, THEMES } from '@/modules/users/domain/user-settings.rules'
 
 /**
  * The signed-in user's settings, the same in every browser (SRS 7.1,
@@ -67,4 +67,10 @@ export class UserSettingsResponseDto {
     @Expose()
     @IsBoolean()
     showStudyActivity: boolean
+
+    /** The status chosen in their menu (D-78); what others see may differ (idle when every tab is unused). */
+    @Expose()
+    @ApiProperty({ enum: PRESENCES })
+    @IsIn(PRESENCES)
+    presence: (typeof PRESENCES)[number]
 }

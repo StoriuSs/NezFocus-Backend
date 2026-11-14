@@ -9,9 +9,18 @@ import {
     InviteRepositoryPort,
     InviteTarget,
     inviteTarget,
-    isLive
+    isLive,
+    MEMBER_REPOSITORY,
+    MemberRepositoryPort
 } from '../../../domain'
-import { GUESS_LIMIT, GuessLimitPort, ICON_STORAGE, IconStoragePort } from '../../ports'
+import {
+    GUESS_LIMIT,
+    GuessLimitPort,
+    ICON_STORAGE,
+    IconStoragePort,
+    PRESENCE_READER,
+    PresenceReaderPort
+} from '../../ports'
 import { requireServerPermission } from '../../services/require-permission'
 import { countingGuesses } from '../../services/invite-guesses'
 import { ListInvitesQuery, PreviewInviteQuery } from './invite.queries'
@@ -19,7 +28,8 @@ import { ListInvitesQuery, PreviewInviteQuery } from './invite.queries'
 /** The public invite page (S-SRV-03 › InviteCard). */
 export interface InvitePreview {
     code: string
-    server: { id: string; name: string; iconUrl: string | null; memberCount: number }
+    /** `onlineCount`: members not offline to others now; an invisible one is not counted (Q15, REQ-AUTH-07). */
+    server: { id: string; name: string; iconUrl: string | null; memberCount: number; onlineCount: number }
     /** Null when the creator has left or the account is deleted ("You're invited to", D-81). */
     inviterName: string | null
     channel: InviteTarget | null
@@ -43,7 +53,9 @@ export class PreviewInviteHandler implements IQueryHandler<PreviewInviteQuery> {
     constructor(
         @Inject(INVITE_REPOSITORY) private readonly invites: InviteRepositoryPort,
         @Inject(ICON_STORAGE) private readonly storage: IconStoragePort,
-        @Inject(GUESS_LIMIT) private readonly limit: GuessLimitPort
+        @Inject(GUESS_LIMIT) private readonly limit: GuessLimitPort,
+        @Inject(MEMBER_REPOSITORY) private readonly members: MemberRepositoryPort,
+        @Inject(PRESENCE_READER) private readonly presence: PresenceReaderPort
     ) {}
 
     /** Open to anyone: what is shown here is what the creator chose to send around. */
@@ -53,13 +65,15 @@ export class PreviewInviteHandler implements IQueryHandler<PreviewInviteQuery> {
             const found = INVITE_CODE_PATTERN.test(code) ? await this.invites.preview(code, channelId) : null
             if (!found || !isLive(found.invite, now)) throw new InviteInvalidError()
             const { server } = found
+            const shown = [...(await this.presence.everyoneShown()).keys()]
             return {
                 code,
                 server: {
                     id: server.id,
                     name: server.name,
                     iconUrl: server.iconKey ? await this.storage.getReadUrl(server.iconKey) : null,
-                    memberCount: server.memberCount
+                    memberCount: server.memberCount,
+                    onlineCount: await this.members.countAmong(server.id, shown)
                 },
                 inviterName: found.inviterName,
                 channel: inviteTarget(server, found.channel, now)

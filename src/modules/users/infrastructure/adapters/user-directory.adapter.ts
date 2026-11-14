@@ -1,5 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { displayNameFrom, UserEntity, UserRepositoryPort, USER_REPOSITORY } from '@/modules/users/domain'
+import {
+    ChosenPresence,
+    displayNameFrom,
+    UserEntity,
+    UserRepositoryPort,
+    UserSettingsRepositoryPort,
+    USER_REPOSITORY,
+    USER_SETTINGS_REPOSITORY
+} from '@/modules/users/domain'
 import {
     AccountCompletionInput,
     DirectoryUser,
@@ -28,7 +36,8 @@ const toDirectoryUser = (user: UserEntity): DirectoryUser => ({
 export class UserDirectory implements UserDirectoryPort {
     constructor(
         @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
-        @Inject(STORAGE) private readonly storage: StoragePort
+        @Inject(STORAGE) private readonly storage: StoragePort,
+        @Inject(USER_SETTINGS_REPOSITORY) private readonly settings: UserSettingsRepositoryPort
     ) {}
 
     async findByEmail(email: string): Promise<DirectoryUser | null> {
@@ -59,6 +68,10 @@ export class UserDirectory implements UserDirectoryPort {
 
     timeZoneOf(id: string): Promise<string | null> {
         return this.users.findTimeZone(id)
+    }
+
+    async presenceOf(id: string): Promise<ChosenPresence> {
+        return (await this.settings.find(id))?.presence ?? 'online'
     }
 
     async requestDeletion(id: string, at: Date): Promise<DirectoryUser | null> {

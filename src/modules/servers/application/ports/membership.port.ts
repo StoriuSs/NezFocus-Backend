@@ -19,6 +19,9 @@ export interface MembershipPort {
 
     /** The same servers, each with when the person joined it (the latest time, after leaving and coming back). */
     membershipsOf(userId: string): Promise<Membership[]>
+
+    /** Those of `userIds` who are members of the server, in no order: one read, however many are asked about (@here). */
+    membersAmong(serverId: string, userIds: string[]): Promise<string[]>
 }
 
 export const MEMBERSHIP = Symbol('MembershipPort')

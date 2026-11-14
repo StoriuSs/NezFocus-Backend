@@ -18,6 +18,7 @@ import {
     PublishReactionAddedHandler,
     PublishReactionRemovedHandler,
     PublishReadStateUpdatedHandler,
+    PublishTypingHandler,
     PublishUpdatedMessageHandler,
     REACTION_COMMAND_HANDLERS,
     REACTION_QUERY_HANDLERS,
@@ -38,8 +39,11 @@ import { MessageController, MessagingController, PinController, ReadStateControl
  * messaging tables. Asks servers which server a channel is in
  * (CHANNEL_DIRECTORY), permissions what someone may do there
  * (PERMISSION_CHECKER), when someone joined a server (MEMBERSHIP, for where
- * their unread starts), users for pictures as addresses (USER_DIRECTORY), and
- * tells the channel's sockets through realtime's EVENT_PUBLISHER.
+ * their unread starts, and which of the people online are in a server, for
+ * @here), users for pictures as addresses and the status chosen
+ * (USER_DIRECTORY), realtime who is online (PRESENCE), and tells the
+ * channel's sockets through realtime's EVENT_PUBLISHER. Typing comes from
+ * realtime's TypingSignalledEvent.
  */
 @Module({
     imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
@@ -66,6 +70,7 @@ import { MessageController, MessagingController, PinController, ReadStateControl
         PublishReactionRemovedHandler,
         PublishPinsUpdatedHandler,
         PublishReadStateUpdatedHandler,
+        PublishTypingHandler,
         MarkSentMessageReadHandler
     ]
 })

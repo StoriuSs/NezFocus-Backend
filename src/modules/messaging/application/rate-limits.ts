@@ -11,3 +11,10 @@ import { RateLimitRule } from '@/shared/types/rate-limit.type'
 export const MESSAGES_PER_CHANNEL: RateLimitRule = { name: 'messages-channel', limit: 5, windowMs: 5 * 1000 }
 /** At most 30 messages a minute from one person, all channels together. */
 export const MESSAGES_PER_PERSON: RateLimitRule = { name: 'messages-person', limit: 30, windowMs: 60 * 1000 }
+/**
+ * "Typing" from one tab in one channel (REQ-MSG-06): the client says it at
+ * most once in 8 seconds, and once more at once after a message is sent;
+ * twice in a fixed 8-second window leaves room for that one and for network
+ * jitter. Counted by the typing handler.
+ */
+export const TYPING_PER_TAB: RateLimitRule = { name: 'typing-tab', limit: 2, windowMs: 8 * 1000 }

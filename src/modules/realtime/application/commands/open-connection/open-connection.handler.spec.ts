@@ -44,6 +44,7 @@ function setup(options: { holder?: TicketHolder | null; servers?: string[]; revo
         }
     }
     const membership: MembershipPort = {
+        membersAmong: jest.fn(),
         serverIdsOf: async () => options.servers ?? ['study', 'left'],
         membershipsOf: jest.fn()
     }

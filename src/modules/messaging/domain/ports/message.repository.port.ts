@@ -49,6 +49,8 @@ export interface MessageRecord {
     systemUser: MessageAuthor | null
     /** @everyone, in effect (REQ-MSG-03). */
     mentionEveryone: boolean
+    /** Whom @here reached as it was sent (D-166): the client marks the message for them (REQ-MSG-09). */
+    mentionHereUserIds: string[]
     /** The roles mentioned in effect, in the order written (schema). */
     mentionRoleIds: string[]
     /**

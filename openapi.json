@@ -3043,16 +3043,30 @@
             }
           },
           {
+            "name": "presence",
+            "required": false,
+            "in": "query",
+            "description": "online or offline to others now: the member panel's two groups (D-175).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline"
+              ]
+            }
+          },
+          {
             "name": "sort",
             "required": false,
             "in": "query",
-            "description": "name (default), role or joined_at (D-89).",
+            "description": "name (default), role, joined_at (D-89), or presence: those online first (D-175).",
             "schema": {
               "type": "string",
               "enum": [
                 "name",
                 "role",
-                "joined_at"
+                "joined_at",
+                "presence"
               ]
             }
           },
@@ -4811,6 +4825,16 @@
             ],
             "type": "string"
           },
+          "presence": {
+            "description": "The status chosen in their menu (D-78); what others see may differ (idle when every tab is unused).",
+            "enum": [
+              "online",
+              "idle",
+              "dnd",
+              "invisible"
+            ],
+            "type": "string"
+          },
           "timezone": {
             "type": "string",
             "description": "An IANA zone name, in ICU's letter case (asia/tokyo is stored as Asia/Tokyo)."
@@ -4852,6 +4876,7 @@
         "required": [
           "language",
           "theme",
+          "presence",
           "timezone",
           "timezone_changeable_at",
           "phase_sound",
@@ -4918,6 +4943,16 @@
           "show_study_activity": {
             "type": "boolean",
             "description": "\"Show study activity\" (D-79)."
+          },
+          "presence": {
+            "description": "The status chosen in their menu (REQ-AUTH-07, D-78); others see it within 2 seconds.",
+            "enum": [
+              "online",
+              "idle",
+              "dnd",
+              "invisible"
+            ],
+            "type": "string"
           }
         }
       },
@@ -5521,13 +5556,18 @@
           },
           "member_count": {
             "type": "number"
+          },
+          "online_count": {
+            "type": "number",
+            "description": "Members not offline to others now; an invisible one is not counted (S-SRV-03 Q15, REQ-AUTH-07)."
           }
         },
         "required": [
           "id",
           "name",
           "icon_url",
-          "member_count"
+          "member_count",
+          "online_count"
         ]
       },
       "InviteTargetResponseDto": {
@@ -5773,6 +5813,16 @@
       "MemberResponseDto": {
         "type": "object",
         "properties": {
+          "status": {
+            "description": "What others see of them now (REQ-AUTH-07): someone invisible is offline.",
+            "enum": [
+              "online",
+              "idle",
+              "dnd",
+              "offline"
+            ],
+            "type": "string"
+          },
           "user_id": {
             "type": "string"
           },
@@ -5815,6 +5865,7 @@
           }
         },
         "required": [
+          "status",
           "user_id",
           "username",
           "display_name",
@@ -6154,6 +6205,13 @@
               }
             ]
           },
+          "mention_here_user_ids": {
+            "description": "Whom @here reached as it was sent (D-166): those not offline who saw the channel. The client marks it for them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "mention_users": {
             "description": "The people its <@id> tokens name, as they are now (D-171); an id of no account is left out.",
             "type": "array",
@@ -6237,6 +6295,7 @@
         "required": [
           "type",
           "author",
+          "mention_here_user_ids",
           "mention_users",
           "mention_roles",
           "system_event",
@@ -6297,6 +6356,13 @@
                 "$ref": "#/components/schemas/MessageAuthorResponseDto"
               }
             ]
+          },
+          "mention_here_user_ids": {
+            "description": "Whom @here reached as it was sent (D-166): those not offline who saw the channel. The client marks it for them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "mention_users": {
             "description": "The people its <@id> tokens name, as they are now (D-171); an id of no account is left out.",
@@ -6375,6 +6441,7 @@
         "required": [
           "type",
           "author",
+          "mention_here_user_ids",
           "mention_users",
           "mention_roles",
           "system_event",
@@ -6490,6 +6557,13 @@
               }
             ]
           },
+          "mention_here_user_ids": {
+            "description": "Whom @here reached as it was sent (D-166): those not offline who saw the channel. The client marks it for them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "mention_users": {
             "description": "The people its <@id> tokens name, as they are now (D-171); an id of no account is left out.",
             "type": "array",
@@ -6577,6 +6651,7 @@
         "required": [
           "type",
           "author",
+          "mention_here_user_ids",
           "mention_users",
           "mention_roles",
           "system_event",

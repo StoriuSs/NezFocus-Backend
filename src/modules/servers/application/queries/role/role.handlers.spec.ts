@@ -1,5 +1,6 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import { UserDirectoryPort } from '@/modules/users'
+import { PresenceReaderPort } from '../../ports'
 import { MemberRepositoryPort, MissingPermissionError, RoleRepositoryPort, ServerNotFoundError } from '../../../domain'
 import { ListMembersHandler, ListMentionableRolesHandler, ListRolesHandler } from './role.handlers'
 import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
@@ -14,6 +15,15 @@ const roles = [
 const pictures = {
     avatarUrl: jest.fn((key: string | null) => Promise.resolve(key && `https://files.example.test/${key}`))
 } as unknown as UserDirectoryPort
+
+/** Who others see now: Bình away, Chi online; everyone else offline. */
+const presence: PresenceReaderPort = {
+    everyoneShown: async () =>
+        new Map([
+            ['binh', 'idle'],
+            ['chi', 'online']
+        ])
+}
 
 const access = (userId: string, roleIds: string[] = []): ServerAccess => ({
     server: { ownerId: 'an', roles, channels: [] },
@@ -92,7 +102,8 @@ describe('ListMembersHandler (D-152)', () => {
         sort: 'name' as const,
         order: 'asc' as const,
         page: 1,
-        limit: 50
+        limit: 50,
+        presence: null
     }
     const page = { items: [], total: 0 }
 
@@ -102,10 +113,11 @@ describe('ListMembersHandler (D-152)', () => {
         const handler = new ListMembersHandler(
             directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort,
-            pictures
+            pictures,
+            presence
         )
         await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toEqual(page)
-        expect(directory.search).toHaveBeenCalledWith('ot', search)
+        expect(directory.search).toHaveBeenCalledWith('ot', search, ['binh', 'chi'])
     })
 
     it('answers NOT_FOUND to anyone outside, without searching', async () => {
@@ -114,7 +126,8 @@ describe('ListMembersHandler (D-152)', () => {
         const handler = new ListMembersHandler(
             directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort,
-            pictures
+            pictures,
+            presence
         )
         await expect(handler.execute(new ListMembersQuery('x', 'ot', search))).rejects.toThrow(ServerNotFoundError)
         expect(directory.search).not.toHaveBeenCalled()
@@ -132,11 +145,34 @@ describe('ListMembersHandler (D-152)', () => {
             const handler = new ListMembersHandler(
                 directory as unknown as MemberRepositoryPort,
                 checker as unknown as PermissionCheckerPort,
-                pictures
+                pictures,
+                presence
             )
             return (await handler.execute(new ListMembersQuery(viewer.member.userId, 'ot', search))).items[0]
         }
-        expect(await listFor(access('chi'))).toEqual({ ...dung, timeoutReason: null })
-        expect(await listFor(access('an'))).toEqual(dung)
+        expect(await listFor(access('chi'))).toEqual({ ...dung, timeoutReason: null, status: 'offline' })
+        expect(await listFor(access('an'))).toEqual({ ...dung, status: 'offline' })
+    })
+
+    it('gives each member what others see of them, offline for anyone not shown (REQ-AUTH-07, D-175)', async () => {
+        const members = [
+            { userId: 'binh', timeoutUntil: null },
+            { userId: 'dung', timeoutUntil: null }
+        ]
+        const directory = { search: jest.fn().mockResolvedValue({ items: members, total: 2 }) }
+        const checker = { access: jest.fn().mockResolvedValue(access('chi')) }
+        const handler = new ListMembersHandler(
+            directory as unknown as MemberRepositoryPort,
+            checker as unknown as PermissionCheckerPort,
+            pictures,
+            presence
+        )
+
+        const { items } = await handler.execute(new ListMembersQuery('chi', 'ot', { ...search, presence: 'online' }))
+
+        expect(items.map(({ userId, status }) => ({ userId, status }))).toEqual([
+            { userId: 'binh', status: 'idle' },
+            { userId: 'dung', status: 'offline' }
+        ])
     })
 })

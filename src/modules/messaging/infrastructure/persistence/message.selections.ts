@@ -22,6 +22,7 @@ export const MESSAGE = {
     systemEvent: true,
     systemData: true,
     mentionEveryone: true,
+    mentionHereUserIds: true,
     mentionRoleIds: true,
     editedAt: true,
     createdAt: true,

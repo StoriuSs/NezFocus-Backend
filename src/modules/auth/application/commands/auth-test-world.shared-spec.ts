@@ -143,6 +143,9 @@ class FakeDirectory implements UserDirectoryPort {
     async timeZoneOf(id: string) {
         return this.settings.get(id)?.timezone ?? null
     }
+    async presenceOf() {
+        return 'online' as const
+    }
     // Conditional, like the repository's statements.
     async requestDeletion(id: string, at: Date) {
         const user = this.users.get(id)

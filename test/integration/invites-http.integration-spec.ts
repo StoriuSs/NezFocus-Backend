@@ -117,7 +117,7 @@ describe('Invites over HTTP (integration)', () => {
         expect(res.status).toBe(200)
         expect(res.body.data).toEqual({
             code,
-            server: { id: serverId, name: 'Ôn thi Giải tích 2', icon_url: null, member_count: 1 },
+            server: { id: serverId, name: 'Ôn thi Giải tích 2', icon_url: null, member_count: 1, online_count: 0 },
             inviter_name: 'Ada',
             channel: { id: id('hoi-dap'), name: 'hoi-dap', type: 'text', is_study_room: false }
         })

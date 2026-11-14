@@ -43,6 +43,12 @@ export class MessageResponseDto {
     @IsBoolean()
     mentionEveryone: boolean
 
+    /** Whom @here reached as it was sent (D-166): those not offline who saw the channel. The client marks it for them. */
+    @Expose()
+    @ApiProperty({ type: [String] })
+    @IsString({ each: true })
+    mentionHereUserIds: string[]
+
     /** The people its <@id> tokens name, as they are now (D-171); an id of no account is left out. */
     @Expose()
     @ApiProperty({ type: [MentionedUserResponseDto] })

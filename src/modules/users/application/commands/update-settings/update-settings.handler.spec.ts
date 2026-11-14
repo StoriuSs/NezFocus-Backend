@@ -1,5 +1,7 @@
+import { EventBus } from '@nestjs/cqrs'
 import { UpdateSettingsHandler } from './update-settings.handler'
 import { UpdateSettingsCommand } from './update-settings.command'
+import { PresenceChosenEvent } from '../../events/presence-chosen.event'
 import {
     SettingsChanges,
     TIMEZONE_CHANGE_INTERVAL_MS,
@@ -54,13 +56,15 @@ describe('UpdateSettingsHandler', () => {
         notifyPhaseChanges: true,
         notificationPromptDismissed: false,
         allowServerMemberMessages: true,
-        showStudyActivity: true
+        showStudyActivity: true,
+        presence: 'online'
     })
 
     function world(settings: UserSettings | null = completed()) {
         const repo = new InMemorySettings()
         if (settings) repo.rows.set('user-1', settings)
-        return { repo, handler: new UpdateSettingsHandler(repo) }
+        const events = { publish: jest.fn() }
+        return { repo, events, handler: new UpdateSettingsHandler(repo, events as unknown as EventBus) }
     }
 
     const update = (handler: UpdateSettingsHandler, changes: UpdateSettingsCommand['changes']) =>
@@ -76,6 +80,25 @@ describe('UpdateSettingsHandler', () => {
 
         expect(view).toMatchObject({ theme: 'dark', phaseSound: false, showStudyActivity: false, language: 'vi' })
         expect(repo.rows.get('user-1')).toMatchObject({ theme: 'dark', allowServerMemberMessages: true })
+    })
+
+    it('tells the other modules a status chosen in the menu, once saved (REQ-AUTH-07)', async () => {
+        const { repo, events, handler } = world()
+
+        await update(handler, { presence: 'dnd' })
+
+        expect(repo.rows.get('user-1')).toMatchObject({ presence: 'dnd' })
+        expect(events.publish).toHaveBeenCalledWith(new PresenceChosenEvent('user-1', 'dnd'))
+    })
+
+    it('tells it each time one is sent, the same or not: of two tabs at once the last saved is the last told', async () => {
+        const { events, handler } = world()
+
+        await update(handler, { presence: 'online' })
+        await update(handler, { theme: 'dark' })
+
+        expect(events.publish).toHaveBeenCalledTimes(1)
+        expect(events.publish).toHaveBeenCalledWith(new PresenceChosenEvent('user-1', 'online'))
     })
 
     it('changes the zone at once after completing the account, and starts the 24 hours', async () => {

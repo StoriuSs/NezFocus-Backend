@@ -1,15 +1,39 @@
 import { Logger } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
-import { OnGatewayConnection, OnGatewayInit, WebSocketGateway, WebSocketServer } from '@nestjs/websockets'
+import {
+    ConnectedSocket,
+    MessageBody,
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnGatewayInit,
+    SubscribeMessage,
+    WebSocketGateway,
+    WebSocketServer
+} from '@nestjs/websockets'
+import { isUUID } from 'class-validator'
 import { Server, Socket } from 'socket.io'
 import { ERROR_TYPES } from '@/shared/constants/error-response'
 import { DomainError } from '@/shared/domain/domain-error'
-import { OpenConnectionCommand, OpenedConnection } from '@/modules/realtime/application'
+import {
+    ConnectPresenceCommand,
+    DisconnectPresenceCommand,
+    HeartbeatCommand,
+    OpenConnectionCommand,
+    OpenedConnection,
+    ReportIdleCommand,
+    ReportTypingCommand
+} from '@/modules/realtime/application'
+import type { Presence } from '@/modules/realtime/domain'
 
 /** What a socket carries once let in. */
 interface ConnectionData {
     connection?: OpenedConnection
+    /** When this socket last said it went unused or back (`presence.idle`), in ms. */
+    idleSaidAt?: number
 }
+
+/** `presence.idle` is taken at most this often per socket. */
+const IDLE_EVERY_MS = 1000
 
 /**
  * The socket.io endpoint (SRS 5.2, ARCHITECTURE 3.1): one connection per tab,
@@ -24,9 +48,16 @@ interface ConnectionData {
  *
  * Events go out through EVENT_PUBLISHER, not from here. CORS and the Redis
  * adapter come from RedisIoAdapter (configure-app.ts).
+ *
+ * A tab also sends light signals (SRS 5.2): `heartbeat`, `presence.idle`,
+ * `typing.start`. Each becomes one command. One that is malformed is
+ * ignored: the socket stays. `presence.idle` is taken at most once a second
+ * per socket: a tab flipping it costs its servers nothing more.
  */
 @WebSocketGateway()
-export class RealtimeGateway implements OnGatewayInit<Server>, OnGatewayConnection<Socket> {
+export class RealtimeGateway
+    implements OnGatewayInit<Server>, OnGatewayConnection<Socket>, OnGatewayDisconnect<Socket>
+{
     private readonly logger = new Logger(RealtimeGateway.name)
 
     @WebSocketServer()
@@ -57,8 +88,45 @@ export class RealtimeGateway implements OnGatewayInit<Server>, OnGatewayConnecti
             return
         }
         await socket.join(connection.rooms)
-        // Presence comes with L7, the study session with M4 (ARCHITECTURE 3.1 step 3).
-        socket.emit('ready', { server_time: new Date().toISOString() })
+        const status = await this.commandBus.execute<ConnectPresenceCommand, Presence>(
+            new ConnectPresenceCommand(connection.userId, socket.id)
+        )
+        // The study session comes with M4 (ARCHITECTURE 3.1 step 3).
+        socket.emit('ready', { server_time: new Date().toISOString(), status })
+    }
+
+    async handleDisconnect(socket: Socket): Promise<void> {
+        const { connection } = socket.data as ConnectionData
+        if (connection) await this.commandBus.execute(new DisconnectPresenceCommand(connection.userId, socket.id))
+    }
+
+    /** Every 30 seconds while the tab is open (ARCHITECTURE 3.3). */
+    @SubscribeMessage('heartbeat')
+    async heartbeat(@ConnectedSocket() socket: Socket): Promise<void> {
+        const { connection } = socket.data as ConnectionData
+        if (connection) await this.commandBus.execute(new HeartbeatCommand(connection.userId, socket.id))
+    }
+
+    /** `{ idle: true }` after 10 minutes unused, `{ idle: false }` once in use again (REQ-AUTH-07). */
+    @SubscribeMessage('presence.idle')
+    async idle(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<void> {
+        const { connection } = socket.data as ConnectionData
+        const data = socket.data as ConnectionData
+        const idle = (body as { idle?: unknown } | null)?.idle
+        if (!connection || typeof idle !== 'boolean') return
+        const now = Date.now()
+        if (now - (data.idleSaidAt ?? 0) < IDLE_EVERY_MS) return
+        data.idleSaidAt = now
+        await this.commandBus.execute(new ReportIdleCommand(connection.userId, socket.id, idle))
+    }
+
+    /** `{ channel_id }` while typing there (REQ-MSG-06); messaging decides whether it is told. */
+    @SubscribeMessage('typing.start')
+    async typing(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<void> {
+        const { connection } = socket.data as ConnectionData
+        const channelId = (body as { channel_id?: unknown } | null)?.channel_id
+        if (!connection || typeof channelId !== 'string' || !isUUID(channelId)) return
+        await this.commandBus.execute(new ReportTypingCommand(connection.userId, socket.id, channelId))
     }
 
     /** The error a refused handshake ends with, typed as the REST API types it. */

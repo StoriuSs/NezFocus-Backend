@@ -1,5 +1,7 @@
+import { ApiProperty } from '@nestjs/swagger'
 import { Expose } from 'class-transformer'
-import { IsBoolean, IsDate, IsOptional, IsString } from 'class-validator'
+import { IsBoolean, IsDate, IsIn, IsOptional, IsString } from 'class-validator'
+import { MEMBER_PRESENCES } from '../../../application/ports'
 
 export class MemberResponseDto {
     @Expose()
@@ -45,4 +47,10 @@ export class MemberResponseDto {
     @IsOptional()
     @IsString()
     timeoutReason: string | null
+
+    /** What others see of them now (REQ-AUTH-07): someone invisible is offline. */
+    @Expose()
+    @ApiProperty({ enum: MEMBER_PRESENCES })
+    @IsIn(MEMBER_PRESENCES)
+    status: (typeof MEMBER_PRESENCES)[number]
 }

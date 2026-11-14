@@ -2,7 +2,9 @@ import { randomUUID } from 'crypto'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { CommandBus, EventBus } from '@nestjs/cqrs'
 import request from 'supertest'
+import { RedisClientType } from 'redis'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { REDIS_CLIENT } from '@/shared/infrastructure/cache/redis-client.provider'
 import { CleanUpServersCommand } from '@/modules/servers'
 import { AccountDeletedEvent } from '@/modules/users'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
@@ -13,7 +15,8 @@ import { testClientIp } from './targets'
  * (REQ-SRV-05, D-76, D-91, D-121, D-160, D-161): each change holds from the
  * very next request, as the permission cache is told after the commit; the
  * account deletion asks the servers module; a deleted account leaves its
- * servers; the daily clean-up deletes for good after 30 days.
+ * servers; the daily clean-up deletes for good after 30 days. The members come with
+ * what others see of them, and filter and sort by it (D-175).
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -134,6 +137,45 @@ describe('Leaving, deleting and handing over a server over HTTP (integration)', 
             expect((await listed('an')).find((server) => server.id === serverId)?.member_count).toBe(3)
             await leave('chi', serverId)
             expect((await listed('binh')).find((server) => server.id === serverId)?.member_count).toBe(2)
+        })
+    })
+
+    describe('presence in the member list (REQ-AUTH-07, D-175)', () => {
+        const redis = () => app.get<RedisClientType>(REDIS_CLIENT)
+        /** What presence keeps of who others see: Bình away, Chi online, An offline. */
+        beforeEach(async () => {
+            await redis().hSet('presence:shown', { [users.binh.id]: 'idle', [users.chi.id]: 'online' })
+            await redis().hDel('presence:shown', users.an.id)
+        })
+        afterEach(() => redis().hDel('presence:shown', [users.binh.id, users.chi.id]))
+
+        it('gives each member what others see, and lists the online and the offline apart', async () => {
+            const { serverId } = await serverWith('an', ['binh', 'chi'])
+
+            const all = (await members('an', serverId)).body.data.items as { user_id: string; status: string }[]
+            expect(Object.fromEntries(all.map((item) => [item.user_id, item.status]))).toEqual({
+                [users.an.id]: 'offline',
+                [users.binh.id]: 'idle',
+                [users.chi.id]: 'online'
+            })
+
+            const online = (await members('an', serverId, '?presence=online')).body.data
+            expect(online.items.map((item: { user_id: string }) => item.user_id).sort()).toEqual(
+                [users.binh.id, users.chi.id].sort()
+            )
+            expect(online.meta.total_items).toBe(2)
+            expect(await memberIds('an', serverId, '?presence=offline')).toEqual([users.an.id])
+        })
+
+        it('puts those online first for the @ suggestions', async () => {
+            const { serverId } = await serverWith('an', ['binh', 'chi'])
+            expect((await memberIds('an', serverId, '?sort=presence')).at(-1)).toBe(users.an.id)
+        })
+
+        it('counts on the invite page the members online, not someone outside the server', async () => {
+            const { code } = await serverWith('an', ['binh'])
+            const preview = await anyone(api().get(`/api/v1/invites/${code}`))
+            expect(preview.body.data.server).toMatchObject({ member_count: 2, online_count: 1 })
         })
     })
 

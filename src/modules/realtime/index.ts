@@ -6,3 +6,13 @@
 
 // Send an event to a person, a server's members or a channel's viewers (SRS 5.2).
 export { EVENT_PUBLISHER, type EventPublisherPort } from './application/ports/event-publisher.port'
+
+// What others see of everyone not offline (REQ-AUTH-07), for @here (D-166).
+export { PRESENCE, type PresencePort } from './application/ports/presence.port'
+export type { Presence } from './domain/presence.rules'
+
+// A tab typing in a channel, handed on to messaging (REQ-MSG-06).
+export { TypingSignalledEvent } from './application/events/typing-signalled.event'
+
+// Run on a schedule by src/maintenance (D-174).
+export { SweepPresenceCommand } from './application/commands/presence/presence.commands'

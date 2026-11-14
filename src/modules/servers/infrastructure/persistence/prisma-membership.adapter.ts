@@ -11,6 +11,15 @@ export class PrismaMembership implements MembershipPort {
         return (await this.membershipsOf(userId)).map((membership) => membership.serverId)
     }
 
+    async membersAmong(serverId: string, userIds: string[]): Promise<string[]> {
+        if (userIds.length === 0) return []
+        const rows = await this.prisma.member.findMany({
+            where: { serverId, userId: { in: userIds }, user: { deletedAt: null } },
+            select: { userId: true }
+        })
+        return rows.map((row) => row.userId)
+    }
+
     async membershipsOf(userId: string): Promise<Membership[]> {
         return this.prisma.member.findMany({
             where: { userId, server: { deletedAt: null } },

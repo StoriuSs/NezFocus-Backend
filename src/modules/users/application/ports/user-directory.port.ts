@@ -1,3 +1,5 @@
+import type { ChosenPresence } from '@/modules/users/domain/user-settings.rules'
+
 /**
  * User Directory Port — what the users module offers other modules.
  *
@@ -5,7 +7,8 @@
  * instead of auth reading the users table, this module publishes the few
  * operations auth needs, in terms of a small record rather than the domain
  * entity. The dependency runs one way: auth depends on this interface; nothing
- * here knows auth exists. servers uses it too, for people's pictures.
+ * here knows auth exists. servers uses it too, for people's pictures, and
+ * realtime for the status one chose.
  */
 export interface DirectoryUser {
     id: string
@@ -79,6 +82,9 @@ export interface UserDirectoryPort {
 
     /** The time zone the account chose, to write dates in its emails. Null before it is completed. */
     timeZoneOf(id: string): Promise<string | null>
+
+    /** The status chosen in their menu (REQ-AUTH-07, D-78); online before the account is completed or once it is gone. */
+    presenceOf(id: string): Promise<ChosenPresence>
 
     /**
      * Record that the owner asked to delete the account (REQ-AUTH-09, D-141);

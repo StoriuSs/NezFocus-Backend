@@ -36,6 +36,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
                 data: {
                     ...message,
                     mentionEveryone: mentions.everyone,
+                    mentionHereUserIds: mentions.hereUserIds,
                     mentionRoleIds: mentions.roleIds,
                     mentions: { create: mentions.userIds.map((userId) => ({ userId })) }
                 },
@@ -85,6 +86,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
                         content,
                         editedAt: at,
                         mentionEveryone: mentions.everyone,
+                        mentionHereUserIds: mentions.hereUserIds,
                         mentionRoleIds: mentions.roleIds
                     },
                     select: MESSAGE

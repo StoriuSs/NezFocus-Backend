@@ -25,7 +25,8 @@ describe('Finding the mentions of a message (REQ-MSG-03, D-172)', () => {
             userIds: [BINH, CHI],
             roleIds: [LEADS],
             channelIds: [GENERAL],
-            everyone: true
+            everyone: true,
+            here: false
         })
     })
 
@@ -34,7 +35,8 @@ describe('Finding the mentions of a message (REQ-MSG-03, D-172)', () => {
             userIds: [],
             roleIds: [],
             channelIds: [],
-            everyone: false
+            everyone: false,
+            here: false
         })
     })
 
@@ -44,8 +46,9 @@ describe('Finding the mentions of a message (REQ-MSG-03, D-172)', () => {
         expect(findMentions('(@everyone!)').everyone).toBe(true)
     })
 
-    it('leaves @here as words until it comes with presence (M2 L7)', () => {
-        expect(findMentions('@here')).toEqual({ userIds: [], roleIds: [], channelIds: [], everyone: false })
+    it('takes @here as a word of its own, outside code (D-166)', () => {
+        expect(findMentions('(@here!)').here).toBe(true)
+        expect(findMentions('@hereby mail@here.example `@here`').here).toBe(false)
     })
 
     it('takes only well-formed ids', () => {
@@ -64,6 +67,14 @@ describe('Deciding what a message may mention (REQ-MSG-03, MSG-09, D-39, D-172)'
         expect(decideMentions('@everyone hi', facts()).mentions.everyone).toBe(false)
         expect(decideMentions('@everyone hi', facts()).content).toBe('@everyone hi')
         expect(decideMentions('@everyone hi', facts({ mayMentionEveryone: true })).mentions.everyone).toBe(true)
+    })
+
+    it('keeps @here only for someone with MENTION_EVERYONE, the people left to the caller (D-166)', () => {
+        expect(decideMentions('@here hi', facts()).mentions).toMatchObject({ here: false, hereUserIds: [] })
+        expect(decideMentions('@here hi', facts({ mayMentionEveryone: true })).mentions).toMatchObject({
+            here: true,
+            hereUserIds: []
+        })
     })
 
     it('writes a name with formatting marks as words, so it changes nothing after it', () => {

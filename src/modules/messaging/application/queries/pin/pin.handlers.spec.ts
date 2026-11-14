@@ -24,6 +24,7 @@ const record = (id: string, by: string): MessageRecord => ({
     systemData: null,
     replyTo: null,
     mentionEveryone: false,
+    mentionHereUserIds: [],
     mentionRoleIds: [],
     mentionUsers: [],
     editedAt: null,

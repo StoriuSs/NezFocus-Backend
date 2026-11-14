@@ -41,6 +41,7 @@ const message = (id: string, channelId: string, deleted = false): StoredMessage 
     systemUser: null,
     replyTo: null,
     mentionEveryone: false,
+    mentionHereUserIds: [],
     mentionRoleIds: [],
     mentionUsers: [],
     editedAt: null,
@@ -97,6 +98,7 @@ function world() {
         }))
     }
     const membership: MembershipPort = {
+        membersAmong: jest.fn(),
         serverIdsOf: jest.fn(),
         membershipsOf: jest.fn(async () => [{ serverId: 'ot', joinedAt: JOINED }])
     }

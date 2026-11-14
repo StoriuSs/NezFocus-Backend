@@ -109,9 +109,10 @@ model UserSettings {
   /// "Show study activity" (D-79).
   showStudyActivity         Boolean @default(true)
 
-  /// The status they chose (REQ-AUTH-07): online | do_not_disturb |
-  /// invisible. Idle and offline are worked out from their open tabs and
-  /// never stored (ARCHITECTURE 3.3).
+  /// The status they chose in their menu (REQ-AUTH-07, D-78): online | idle |
+  /// dnd | invisible. What others see is worked out from it and their open
+  /// tabs (realtime presence.rules.ts): an online one with every tab unused
+  /// shows idle, and nobody connected for 60 seconds shows offline.
   presence String @default("online")
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)

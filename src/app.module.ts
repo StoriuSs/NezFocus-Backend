@@ -59,7 +59,7 @@ import { UsersModule } from '@/modules/users/users.module'
 import { AuthModule } from '@/modules/auth/auth.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { ServerOwnershipModule, ServersModule } from '@/modules/servers/servers.module'
-import { RealtimeModule } from '@/modules/realtime/realtime.module'
+import { PresenceReaderModule, RealtimeModule } from '@/modules/realtime/realtime.module'
 import { MessagingModule } from '@/modules/messaging/messaging.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
@@ -178,6 +178,7 @@ import { RolesGuard } from '@/shared/presentation'
         // Answers auth's SERVER_OWNERSHIP port for every module (D-160).
         ServerOwnershipModule,
         RealtimeModule,
+        PresenceReaderModule,
         MessagingModule,
 
         // Every module's periodic jobs, on one schedule list

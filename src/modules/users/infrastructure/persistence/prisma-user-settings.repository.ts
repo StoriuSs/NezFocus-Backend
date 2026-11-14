@@ -3,6 +3,7 @@ import { UserSettings as SettingsRow } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
     LANGUAGES,
+    PRESENCES,
     SettingsChanges,
     THEMES,
     TimezoneChange,
@@ -10,7 +11,7 @@ import {
     UserSettingsRepositoryPort
 } from '@/modules/users/domain'
 
-/** The row as the domain sees it. Language and theme are text columns: anything unexpected reads as the default. */
+/** The row as the domain sees it. Language, theme and presence are text columns: anything unexpected reads as the default. */
 const toSettings = (row: SettingsRow): UserSettings => ({
     timezone: row.timezone,
     timezoneChangedAt: row.timezoneChangedAt,
@@ -24,7 +25,8 @@ const toSettings = (row: SettingsRow): UserSettings => ({
     notifyPhaseChanges: row.notifyPhaseChanges,
     notificationPromptDismissed: row.notificationPromptDismissed,
     allowServerMemberMessages: row.allowServerMemberMessages,
-    showStudyActivity: row.showStudyActivity
+    showStudyActivity: row.showStudyActivity,
+    presence: PRESENCES.find((known) => known === row.presence) ?? 'online'
 })
 
 /**
