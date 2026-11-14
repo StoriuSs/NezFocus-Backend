@@ -4115,6 +4115,104 @@
           "messaging"
         ]
       }
+    },
+    "/api/v1/me/read-states": {
+      "get": {
+        "operationId": "ReadStateController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReadStateListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every text channel the reader may view, with its unread and mentions counted up to 100.",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/channels/{channelId}/ack": {
+      "post": {
+        "operationId": "ReadStateController_ack_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AckChannelRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReadStateResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark the channel read up to a message of it, or its newest; never back.\nA channel one may not view, or a message not of it, is NOT_FOUND. Two\nmarks close together may be told back out of order: a client keeps the\nstate whose `last_read_id` is not behind the one it has (D-173).",
+        "tags": [
+          "messaging"
+        ]
+      }
     }
   },
   "info": {
@@ -6509,6 +6607,64 @@
         "required": [
           "items"
         ]
+      },
+      "ReadStateResponseDto": {
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "last_read_id": {
+            "type": "string",
+            "description": "The last message read: an id to compare others with, or to open the\nchannel around (`around`); maybe of a deleted message, or no message at\nall when the reader never marked the channel and stands where they\njoined the server (D-170)."
+          },
+          "unread_count": {
+            "type": "number",
+            "description": "Live messages after it not sent by the reader, counted up to 100 (D-173): over 99 shows as \"99+\".",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "mention_count": {
+            "type": "number",
+            "description": "Those of them about the reader (D-39, D-164, D-172), counted up to 100.",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "server_id",
+          "channel_id",
+          "last_read_id",
+          "unread_count",
+          "mention_count"
+        ]
+      },
+      "ReadStateListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReadStateResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AckChannelRequestDto": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "description": "The newest message of the channel the reader has seen (D-46), deleted\nor not. Left out: the channel's newest message (\"Mark as read\"). The\nmark only moves forward (D-173).",
+            "format": "uuid"
+          }
+        }
       }
     }
   }

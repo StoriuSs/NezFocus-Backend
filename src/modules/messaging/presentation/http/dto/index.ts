@@ -7,6 +7,7 @@
  */
 
 // Requests
+export { AckChannelRequestDto } from './ack-channel.request.dto'
 export { ChannelIdParamsDto } from './channel-id.params.dto'
 export { EditMessageRequestDto } from './edit-message.request.dto'
 export { MessageIdParamsDto } from './message-id.params.dto'
@@ -27,4 +28,6 @@ export { ReactionSummaryResponseDto } from './reaction-summary.response.dto'
 export { ReactorResponseDto } from './reactor.response.dto'
 export { ReactorsResponseDto } from './reactors.response.dto'
 export { ReadMessageResponseDto } from './read-message.response.dto'
+export { ReadStateListResponseDto } from './read-state-list.response.dto'
+export { ReadStateResponseDto } from './read-state.response.dto'
 export { RepliedMessageResponseDto } from './replied-message.response.dto'

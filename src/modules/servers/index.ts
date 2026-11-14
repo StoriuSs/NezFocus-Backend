@@ -5,8 +5,8 @@
  * from './servers.module'.
  */
 
-// Which servers someone is in, for the realtime module's rooms (SRS 5.2).
-export { MEMBERSHIP, type MembershipPort } from './application/ports/membership.port'
+// Which servers someone is in, for the realtime module's rooms (SRS 5.2), and since when (D-170).
+export { MEMBERSHIP, type Membership, type MembershipPort } from './application/ports/membership.port'
 // Which server a channel is in, for the messaging module's permission checks.
 export { CHANNEL_DIRECTORY, type ChannelDirectoryPort } from './application/ports/channel-directory.port'
 // The roles a message mentions: whether each may be, and their names (D-171).

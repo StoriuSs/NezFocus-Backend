@@ -338,6 +338,7 @@ servers/
 │   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, then clear the permission cache
 │   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP,
 │                               #   CHANNEL_DIRECTORY and ROLE_DIRECTORY, which this module answers for realtime and messaging
+│                               #   (MEMBERSHIP also says since when, for where unread starts)
 ├── infrastructure/
 │   ├── persistence/            # The Prisma repositories, auth's SERVER_OWNERSHIP answered (prisma-server-ownership.adapter.ts),
 │   │                           #   MEMBERSHIP, CHANNEL_DIRECTORY and ROLE_DIRECTORY answered (prisma-membership /
@@ -420,6 +421,16 @@ channel, never the sender (D-39, D-164). Every message comes with the people
 and roles it names, read as they are now (`mention_users`, `mention_roles`,
 D-171); servers' `GET /servers/{id}/roles/mentionable` lists the roles the
 composer may suggest.
+
+Unread is worked out when read (D-164): a `ReadState` row keeps only the last
+message read, and `read-state.controller.ts` answers `GET /me/read-states`
+(every text channel the person may view, server by server, from servers'
+`MEMBERSHIP` and `PERMISSION_CHECKER`) and `POST /channels/{id}/ack` (marks a
+message of the channel, never back; tells the person's other tabs
+`read_state.updated`). One SQL statement per server counts unread messages
+and mentions up to 100 (`prisma-read-state.repository.ts`); someone who never
+read a channel stands where they joined its server (`domain/read-state.rules.ts`,
+D-170). An event handler marks a sent message read for its author (D-173).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
@@ -508,7 +519,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/servers/        # Servers, channels, roles, invites, moderation
 │   ├── modules/permissions/    # What a member may do in a server, cached
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events
-│   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins
+│   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

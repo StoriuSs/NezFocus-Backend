@@ -138,7 +138,8 @@ function world({ limited = false } = {}) {
                 reply.replyTo = { id, author: null, content: '', deleted: true, mentionRoleIds: [], mentionUsers: [] }
             return true
         }),
-        page: jest.fn()
+        page: jest.fn(),
+        latestId: jest.fn()
     }
     /** A message already in a channel, by someone (or a system message when `by` is null). */
     const seed = (channelId: string, by: string | null, content = 'Ok, mình vào sớm giữ chỗ') => {

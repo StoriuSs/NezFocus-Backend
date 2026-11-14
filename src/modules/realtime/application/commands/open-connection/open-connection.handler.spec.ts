@@ -43,7 +43,10 @@ function setup(options: { holder?: TicketHolder | null; servers?: string[]; revo
             return { user: { id: AN } as never, sessionId: SESSION }
         }
     }
-    const membership: MembershipPort = { serverIdsOf: async () => options.servers ?? ['study', 'left'] }
+    const membership: MembershipPort = {
+        serverIdsOf: async () => options.servers ?? ['study', 'left'],
+        membershipsOf: jest.fn()
+    }
     // `left`: listed a moment ago, gone by the time it is checked.
     const checker: PermissionCheckerPort = {
         access: async (serverId) =>

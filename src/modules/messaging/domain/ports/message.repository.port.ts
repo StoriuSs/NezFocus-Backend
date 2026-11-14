@@ -112,6 +112,9 @@ export interface MessageRepositoryPort {
     findByNonce(authorId: string, nonce: string): Promise<StoredMessage | null>
     /** The message with this id, deleted ones included; null if there is none. */
     find(id: string): Promise<StoredMessage | null>
+
+    /** The newest message of the channel, deleted or not; null when it has none ("Mark as read", D-173). */
+    latestId(channelId: string): Promise<string | null>
     /**
      * Replace the text of a message not deleted, marked edited at `at`, and
      * what it mentions with it (its mention rows written again, D-164); null

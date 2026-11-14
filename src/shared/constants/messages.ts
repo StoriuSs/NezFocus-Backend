@@ -97,7 +97,9 @@ export const MESSAGES = {
         REACTORS_LISTED: 'Reactions fetched',
         MESSAGE_PINNED: 'Message pinned',
         MESSAGE_UNPINNED: 'Message unpinned',
-        PINS_LISTED: 'Pinned messages fetched'
+        PINS_LISTED: 'Pinned messages fetched',
+        READ_STATES_LISTED: 'Read states fetched',
+        CHANNEL_ACKED: 'Channel marked as read'
     },
 
     // Health messages

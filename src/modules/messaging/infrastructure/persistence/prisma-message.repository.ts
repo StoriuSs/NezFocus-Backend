@@ -67,6 +67,15 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         return row && toStored(this.prisma, row)
     }
 
+    async latestId(channelId: string): Promise<string | null> {
+        const row = await this.prisma.message.findFirst({
+            where: { channelId },
+            orderBy: { id: 'desc' },
+            select: { id: true }
+        })
+        return row?.id ?? null
+    }
+
     async edit(id: string, content: string, mentions: MessageMentions, at: Date): Promise<MessageRecord | null> {
         try {
             return await this.prisma.$transaction(async (tx) => {
