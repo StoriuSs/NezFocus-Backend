@@ -44,6 +44,7 @@ const message = (id: string, channelId: string, deleted = false): StoredMessage 
     mentionHereUserIds: [],
     mentionRoleIds: [],
     mentionUsers: [],
+    attachments: [],
     editedAt: null,
     pinned: false,
     createdAt: new Date('2026-11-14T20:30:00Z'),

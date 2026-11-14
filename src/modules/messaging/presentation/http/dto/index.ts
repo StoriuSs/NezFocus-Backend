@@ -8,15 +8,18 @@
 
 // Requests
 export { AckChannelRequestDto } from './ack-channel.request.dto'
+export { AttachmentIdParamsDto } from './attachment-id.params.dto'
 export { ChannelIdParamsDto } from './channel-id.params.dto'
 export { EditMessageRequestDto } from './edit-message.request.dto'
 export { MessageIdParamsDto } from './message-id.params.dto'
 export { MessageHistoryQueryDto } from './message-history.query.dto'
 export { PinParamsDto } from './pin.params.dto'
 export { ReactionParamsDto } from './reaction.params.dto'
+export { RequestUploadRequestDto } from './request-upload.request.dto'
 export { SendMessageRequestDto } from './send-message.request.dto'
 
 // Responses
+export { AttachmentResponseDto } from './attachment.response.dto'
 export { MentionedRoleResponseDto } from './mentioned-role.response.dto'
 export { MentionedUserResponseDto } from './mentioned-user.response.dto'
 export { MessageAuthorResponseDto } from './message-author.response.dto'
@@ -30,4 +33,8 @@ export { ReactorsResponseDto } from './reactors.response.dto'
 export { ReadMessageResponseDto } from './read-message.response.dto'
 export { ReadStateListResponseDto } from './read-state-list.response.dto'
 export { ReadStateResponseDto } from './read-state.response.dto'
+export { RepliedFilesResponseDto } from './replied-files.response.dto'
 export { RepliedMessageResponseDto } from './replied-message.response.dto'
+export { UploadFieldResponseDto } from './upload-field.response.dto'
+export { UploadFormResponseDto } from './upload-form.response.dto'
+export { UploadTicketResponseDto } from './upload-ticket.response.dto'

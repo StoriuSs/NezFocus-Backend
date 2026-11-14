@@ -1,6 +1,8 @@
 import { RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import { MessageAuthor, MessageRecord, ReactionSummary, RepliedMessage } from '../../domain'
+import { AttachmentStoragePort } from '../ports'
+import { attachmentView, AttachmentView } from './attachment-views'
 
 /** Who wrote a message, the picture as an address. */
 export interface MessageAuthorView {
@@ -29,7 +31,7 @@ export interface RepliedMessageView extends Omit<RepliedMessage, 'author' | 'men
 /** A message as the API and the socket give it. */
 export interface MessageView extends Omit<
     MessageRecord,
-    'author' | 'replyTo' | 'systemUser' | 'mentionUsers' | 'mentionRoleIds'
+    'author' | 'replyTo' | 'systemUser' | 'mentionUsers' | 'mentionRoleIds' | 'attachments'
 > {
     author: MessageAuthorView | null
     replyTo: RepliedMessageView | null
@@ -37,12 +39,15 @@ export interface MessageView extends Omit<
     mentionUsers: MentionedUserView[]
     /** Left out once deleted: the client shows its token as an unknown role. */
     mentionRoles: MentionedRoleView[]
+    /** Its files with links to them, in the order sent (REQ-MSG-04). */
+    attachments: AttachmentView[]
 }
 
-/** Where messageViews finds people's pictures and roles' names. */
+/** Where messageViews finds people's pictures, roles' names and files' links. */
 export interface MessageViewSources {
     users: UserDirectoryPort
     roles: RoleDirectoryPort
+    files: AttachmentStoragePort
 }
 
 /**
@@ -76,7 +81,7 @@ async function addressOf(users: UserDirectoryPort, key: string): Promise<string 
  * roles for the page.
  */
 export async function messageViews(
-    { users, roles }: MessageViewSources,
+    { users, roles, files }: MessageViewSources,
     serverId: string,
     records: MessageRecord[]
 ): Promise<MessageView[]> {
@@ -85,11 +90,13 @@ export async function messageViews(
     const roleIds = [
         ...new Set(records.flatMap((record) => [...record.mentionRoleIds, ...(record.replyTo?.mentionRoleIds ?? [])]))
     ]
-    const [urls, named] = await Promise.all([
+    const [urls, named, links] = await Promise.all([
         Promise.all(keys.map(async (key) => [key, await addressOf(users, key)] as const)).then(
             (pairs) => new Map(pairs)
         ),
-        roles.rolesOf(serverId, roleIds).then((found) => new Map(found.map((role) => [role.id, role.name])))
+        roles.rolesOf(serverId, roleIds).then((found) => new Map(found.map((role) => [role.id, role.name]))),
+        // Signing is local work, no request to the storage (S3StorageService.getSignedReadUrl).
+        Promise.all(records.map((record) => Promise.all(record.attachments.map((file) => attachmentView(files, file)))))
     ])
     const view = (author: MessageAuthor | null): MessageAuthorView | null =>
         author && {
@@ -108,7 +115,7 @@ export async function messageViews(
         })
     })
 
-    return records.map(({ author, replyTo, systemUser, mentionUsers, mentionRoleIds, ...message }) => ({
+    return records.map(({ author, replyTo, systemUser, mentionUsers, mentionRoleIds, ...message }, index) => ({
         ...message,
         author: view(author),
         replyTo: replyTo && {
@@ -116,9 +123,11 @@ export async function messageViews(
             author: view(replyTo.author),
             content: replyTo.content,
             deleted: replyTo.deleted,
+            files: replyTo.files,
             ...mentions(replyTo)
         },
         systemUser: view(systemUser),
-        ...mentions({ mentionUsers, mentionRoleIds })
+        ...mentions({ mentionUsers, mentionRoleIds }),
+        attachments: links[index]!
     }))
 }

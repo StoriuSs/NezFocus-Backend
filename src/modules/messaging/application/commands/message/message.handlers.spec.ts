@@ -24,6 +24,11 @@ import { MessageUpdatedEvent } from '../../events/message-updated.event'
 import { SendLimitPort } from '../../ports'
 import { DeleteMessageCommand, EditMessageCommand, SendMessageCommand } from './message.commands'
 import { DeleteMessageHandler, EditMessageHandler, SendMessageHandler } from './message.handlers'
+import { AttachmentStoragePort } from '../../ports'
+import { AttachmentNotFoundError, type AttachmentRepositoryPort } from '../../../domain'
+
+/** Links signed by name only: no storage in these tests. */
+const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
 
 const server: AccessServer = {
     ownerId: 'an',
@@ -75,7 +80,7 @@ const ROLES = [
 ]
 const NO_MENTIONS = { mentionEveryone: false, mentionHereUserIds: [], mentionRoleIds: [], mentionUsers: [] }
 /** A quoted message's mentions: none in these texts. */
-const QUOTED = { mentionRoleIds: [], mentionUsers: [] }
+const QUOTED = { mentionRoleIds: [], mentionUsers: [], files: { count: 0, images: 0 } }
 
 /**
  * One server: Bình a member, Chi a moderator (MANAGE_MESSAGES), Phong timed
@@ -90,7 +95,7 @@ function world({ limited = false } = {}) {
         const target = id ? byId(id) : undefined
         if (!target) return null
         return target.deleted
-            ? { id: target.id, author: null, content: '', deleted: true, mentionRoleIds: [], mentionUsers: [] }
+            ? { id: target.id, author: null, content: '', deleted: true, ...QUOTED }
             : { id: target.id, author: target.author, content: target.content, deleted: false, ...QUOTED }
     }
     const repository: MessageRepositoryPort = {
@@ -113,6 +118,16 @@ function world({ limited = false } = {}) {
                 mentionHereUserIds: input.mentions.hereUserIds,
                 mentionRoleIds: input.mentions.roleIds,
                 mentionUsers: [],
+                attachments: input.attachmentIds.map((id) => ({
+                    id,
+                    filename: `${id}.png`,
+                    size: 10,
+                    contentType: 'image/png',
+                    storageKey: `attachments/${id}`,
+                    thumbnailKey: null,
+                    width: 4,
+                    height: 3
+                })),
                 createdAt: new Date('2026-10-18T20:02:00Z'),
                 deleted: false,
                 nonce: input.nonce
@@ -137,7 +152,7 @@ function world({ limited = false } = {}) {
             Object.assign(row, { deleted: true, content: '' })
             // Replies now quote it by its id alone, as the repository reads them.
             for (const reply of saved.filter((other) => other.replyTo?.id === id))
-                reply.replyTo = { id, author: null, content: '', deleted: true, mentionRoleIds: [], mentionUsers: [] }
+                reply.replyTo = { id, author: null, content: '', deleted: true, ...QUOTED }
             return true
         }),
         page: jest.fn(),
@@ -158,6 +173,7 @@ function world({ limited = false } = {}) {
             pinned: false,
             systemUser: null,
             ...NO_MENTIONS,
+            attachments: [],
             createdAt: new Date('2026-10-18T20:11:00Z'),
             deleted: false,
             nonce: by ? `seed-${saved.length + 1}` : null
@@ -200,13 +216,31 @@ function world({ limited = false } = {}) {
     const membership = {
         membersAmong: jest.fn(async (_serverId: string, ids: string[]) => ids.filter((id) => id !== KHACH))
     } as unknown as MembershipPort
+    // No uploads in these: the file rules have their own tests (message-files).
+    // Bình's checked uploads, never sent: any id starting "f-".
+    const attachments = {
+        findMany: jest.fn(async (ids: string[]) =>
+            ids
+                .filter((id) => id.startsWith('f-'))
+                .map((id) => ({
+                    id,
+                    uploaderId: 'binh',
+                    messageId: null,
+                    position: null,
+                    completedAt: new Date(),
+                    createdAt: new Date()
+                }))
+        )
+    } as unknown as AttachmentRepositoryPort
     const sender = new SendMessageHandler(
         repository,
+        attachments,
         channels,
         checker,
         limit,
         userDirectory,
         roles,
+        FILES,
         presence,
         membership,
         bus
@@ -217,6 +251,7 @@ function world({ limited = false } = {}) {
         checker,
         userDirectory,
         roles,
+        FILES,
         presence,
         membership,
         bus
@@ -227,8 +262,9 @@ function world({ limited = false } = {}) {
         content: string,
         nonce = 'n1',
         channelId = 'hoi-dap',
-        replyToId: string | null = null
-    ) => sender.execute(new SendMessageCommand(userId, channelId, content, nonce, replyToId))
+        replyToId: string | null = null,
+        attachmentIds: string[] = []
+    ) => sender.execute(new SendMessageCommand(userId, channelId, content, nonce, replyToId, attachmentIds))
     const edit = (userId: string, messageId: string, content: string) =>
         editor.execute(new EditMessageCommand(userId, messageId, content))
     const remove = (userId: string, messageId: string) => deleter.execute(new DeleteMessageCommand(userId, messageId))
@@ -350,6 +386,46 @@ describe('SendMessageHandler (REQ-MSG-01, REQ-MSG-10)', () => {
     })
 })
 
+describe('Sending files (REQ-MSG-04, D-93)', () => {
+    it('sends a message of files alone, in the order given, each with its links', async () => {
+        const { send, repository } = world()
+
+        const message = await send('binh', '', 'n1', 'hoi-dap', null, ['f-2', 'f-1'])
+
+        expect(jest.mocked(repository.create).mock.calls[0][0].attachmentIds).toEqual(['f-2', 'f-1'])
+        expect(message.content).toBe('')
+        expect(message.attachments.map((file) => [file.id, file.url])).toEqual([
+            ['f-2', 'signed:attachments/f-2'],
+            ['f-1', 'signed:attachments/f-1']
+        ])
+    })
+
+    it('refuses a message with no text and no file, before counting it', async () => {
+        const { send, limit } = world()
+        await expect(send('binh', '', 'n1')).rejects.toEqual(new MessageRuleError('empty'))
+        expect(limit.hit).not.toHaveBeenCalled()
+    })
+
+    it('refuses a file that cannot be sent, naming it, before counting the message', async () => {
+        const { send, limit, repository } = world()
+        const error = await send('binh', 'Bài giải câu 4', 'n1', 'hoi-dap', null, ['f-1', 'someone-elses']).catch(
+            (e: unknown) => e
+        )
+        expect((error as AttachmentNotFoundError).details.attachmentIds).toEqual(['someone-elses'])
+        expect(limit.hit).not.toHaveBeenCalled()
+        expect(repository.create).not.toHaveBeenCalled()
+    })
+
+    it('lets the author take all the text out of a message that has files, and not of one without', async () => {
+        const { send, edit, seed } = world()
+        const withFiles = await send('binh', 'Ảnh bài giải', 'n1', 'hoi-dap', null, ['f-1'])
+        const plain = seed('hoi-dap', 'binh')
+
+        expect((await edit('binh', withFiles.id, '')).content).toBe('')
+        await expect(edit('binh', plain.id, '')).rejects.toEqual(new MessageRuleError('empty'))
+    })
+})
+
 describe('Replying (REQ-MSG-05, C-10 reply)', () => {
     it('answers a message of the channel, quoting who wrote it and what', async () => {
         const { send, seed } = world()
@@ -363,7 +439,8 @@ describe('Replying (REQ-MSG-05, C-10 reply)', () => {
             content: 'Ok, mình vào sớm giữ chỗ',
             deleted: false,
             mentionUsers: [],
-            mentionRoles: []
+            mentionRoles: [],
+            files: { count: 0, images: 0 }
         })
     })
 
@@ -380,7 +457,8 @@ describe('Replying (REQ-MSG-05, C-10 reply)', () => {
             content: '',
             deleted: true,
             mentionUsers: [],
-            mentionRoles: []
+            mentionRoles: [],
+            files: { count: 0, images: 0 }
         })
     })
 

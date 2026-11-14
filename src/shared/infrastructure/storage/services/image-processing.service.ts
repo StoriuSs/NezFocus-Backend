@@ -13,6 +13,9 @@ export interface ProcessedImage {
     height: number
     format: string
     size: number
+    /** The image given, upright (turned as its EXIF orientation says, as browsers show it). */
+    sourceWidth: number
+    sourceHeight: number
 }
 
 export interface ImageProcessingOptions {
@@ -170,7 +173,9 @@ export class ImageProcessingService {
                 width: info.width || 0,
                 height: info.height || 0,
                 format: info.format || 'webp',
-                size: buffer.length
+                size: buffer.length,
+                sourceWidth: metadata.autoOrient?.width ?? metadata.width ?? 0,
+                sourceHeight: metadata.autoOrient?.height ?? metadata.height ?? 0
             }
         } catch (error) {
             if (error instanceof CustomException) throw error

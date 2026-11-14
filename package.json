@@ -38,7 +38,7 @@
     "prepare": "husky || true",
     "docker:down:prod": "docker compose -f docker-compose.prod.yaml down",
     "test:services:up": "docker compose --env-file .env.development -f docker-compose.dev.yaml --profile testing up -d db redis rustfs rustfs-buckets mailpit",
-    "test:services:down": "docker compose -f docker-compose.dev.yaml --profile testing rm -sf rustfs rustfs-buckets",
+    "test:services:down": "docker compose -f docker-compose.dev.yaml --profile testing rm -sf rustfs-buckets",
     "test:integration": "node test/run-integration.cjs",
     "check:fast": "node scripts/constraints/lint-changed.mjs && node scripts/constraints/floor-guard.mjs && node scripts/constraints/secrets.mjs",
     "check:task": "pnpm check:fast && tsc --noEmit && pnpm test:structure && node scripts/constraints/coverage-changed.mjs",
@@ -59,6 +59,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.943.0",
+    "@aws-sdk/s3-presigned-post": "^3.1046.0",
     "@aws-sdk/s3-request-presigner": "^3.943.0",
     "@bull-board/api": "^6.20.2",
     "@bull-board/express": "^6.20.2",

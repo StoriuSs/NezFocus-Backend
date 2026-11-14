@@ -629,7 +629,8 @@ describe('Messages (integration)', () => {
                 content: '',
                 deleted: true,
                 mention_users: [],
-                mention_roles: []
+                mention_roles: [],
+                files: { count: 0, images: 0 }
             })
             const late = await reply('binh', channelId, 'Vẫn trả lời được', original.body.data.id)
             expect(late.status).toBe(201)

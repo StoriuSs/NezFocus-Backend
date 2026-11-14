@@ -4227,6 +4227,153 @@
           "messaging"
         ]
       }
+    },
+    "/api/v1/attachments": {
+      "post": {
+        "operationId": "AttachmentController_request_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUploadRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UploadTicketResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A form to upload one file for a channel, valid 15 minutes. Needs\nSEND_MESSAGES and ATTACH_FILES there (a timeout says until when); the\nname's extension must be of a type sent (UPLOAD_INVALID_TYPE, D-92,\nD-177), the size at most 25 MB (UPLOAD_FILE_TOO_LARGE).",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachmentId}/complete": {
+      "post": {
+        "operationId": "AttachmentController_complete_v1",
+        "parameters": [
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AttachmentResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The upload is done: its content is checked (D-93). Not what its name\nsays: the file is deleted (UPLOAD_INVALID_TYPE). Nothing uploaded yet:\nUPLOAD_FILE_NOT_FOUND. Done once, it answers the same again.",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachmentId}/url": {
+      "get": {
+        "operationId": "AttachmentController_links_v1",
+        "parameters": [
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AttachmentResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "New links to a file whose links ended: one in a channel the person views, or their own not sent yet.",
+        "tags": [
+          "messaging"
+        ]
+      }
     }
   },
   "info": {
@@ -6116,6 +6263,21 @@
           "name"
         ]
       },
+      "RepliedFilesResponseDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "images": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "images"
+        ]
+      },
       "RepliedMessageResponseDto": {
         "type": "object",
         "properties": {
@@ -6143,6 +6305,14 @@
               "$ref": "#/components/schemas/MentionedRoleResponseDto"
             }
           },
+          "files": {
+            "description": "How many files it has, and how many are images; none once deleted.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RepliedFilesResponseDto"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -6159,9 +6329,62 @@
           "author",
           "mention_users",
           "mention_roles",
+          "files",
           "id",
           "content",
           "deleted"
+        ]
+      },
+      "AttachmentResponseDto": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "number",
+            "nullable": true,
+            "description": "An image's size, upright, to keep its place before it loads (C-10); null for other files."
+          },
+          "height": {
+            "type": "number",
+            "nullable": true
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "An image's thumbnail (WebP, at most 720 x 640), for as long as `url`; null for other files."
+          },
+          "id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "size": {
+            "type": "number",
+            "description": "In bytes."
+          },
+          "content_type": {
+            "type": "string",
+            "description": "What its content was checked to be (D-93); text files are `text/plain; charset=utf-8` (D-177)."
+          },
+          "url": {
+            "type": "string",
+            "description": "Reads the file for an hour: shown in the browser for an image, a PDF,\nvideo or sound, downloaded for anything else (D-94). Past that,\n`GET /attachments/{id}/url` gives new links."
+          },
+          "download_url": {
+            "type": "string",
+            "description": "Saves the file under its name, for as long as `url`: `url` itself for a file that is only downloaded."
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "thumbnail_url",
+          "id",
+          "filename",
+          "size",
+          "content_type",
+          "url",
+          "download_url"
         ]
       },
       "ReactionSummaryResponseDto": {
@@ -6263,6 +6486,13 @@
             "nullable": true,
             "description": "Shown as \"edited\"; null if never edited."
           },
+          "attachments": {
+            "description": "Its files, in the order sent (REQ-MSG-04): images first is the client's to draw (C-10).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentResponseDto"
+            }
+          },
           "reactions": {
             "type": "array",
             "items": {
@@ -6303,6 +6533,7 @@
           "system_user",
           "reply_to",
           "edited_at",
+          "attachments",
           "reactions",
           "id",
           "channel_id",
@@ -6415,6 +6646,13 @@
             "nullable": true,
             "description": "Shown as \"edited\"; null if never edited."
           },
+          "attachments": {
+            "description": "Its files, in the order sent (REQ-MSG-04): images first is the client's to draw (C-10).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentResponseDto"
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -6449,6 +6687,7 @@
           "system_user",
           "reply_to",
           "edited_at",
+          "attachments",
           "id",
           "channel_id",
           "content",
@@ -6462,8 +6701,8 @@
         "properties": {
           "content": {
             "type": "string",
-            "description": "1-2000 characters, an emoji counting as one, once the blank around it is dropped.",
-            "minLength": 1,
+            "description": "At most 2000 characters, an emoji counting as one, once the blank around it is dropped; empty only with files.",
+            "minLength": 0,
             "maxLength": 2000
           },
           "nonce": {
@@ -6476,6 +6715,15 @@
             "type": "string",
             "description": "The message this one answers: a regular message of the same channel, deleted or not (REQ-MSG-05).",
             "format": "uuid"
+          },
+          "attachment_ids": {
+            "description": "Checked uploads of the sender's (`POST /attachments/{id}/complete`), in\nthe order they show: at most 10, each once (REQ-MSG-04). One that cannot\nbe sent (not checked, sent already, older than 24 hours) is named in\nUPLOAD_FILE_NOT_FOUND's `attachment_ids`.",
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         },
         "required": [
@@ -6489,7 +6737,7 @@
           "content": {
             "type": "string",
             "description": "1-2000 characters, an emoji counting as one, once the blank around it is dropped.",
-            "minLength": 1,
+            "minLength": 0,
             "maxLength": 2000
           }
         },
@@ -6615,6 +6863,13 @@
             "nullable": true,
             "description": "Shown as \"edited\"; null if never edited."
           },
+          "attachments": {
+            "description": "Its files, in the order sent (REQ-MSG-04): images first is the client's to draw (C-10).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentResponseDto"
+            }
+          },
           "reactions": {
             "type": "array",
             "items": {
@@ -6659,6 +6914,7 @@
           "system_user",
           "reply_to",
           "edited_at",
+          "attachments",
           "reactions",
           "id",
           "channel_id",
@@ -6740,6 +6996,86 @@
             "format": "uuid"
           }
         }
+      },
+      "UploadFieldResponseDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      },
+      "UploadFormResponseDto": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UploadFieldResponseDto"
+            }
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fields",
+          "url"
+        ]
+      },
+      "UploadTicketResponseDto": {
+        "type": "object",
+        "properties": {
+          "upload": {
+            "$ref": "#/components/schemas/UploadFormResponseDto"
+          },
+          "attachment_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The form is refused after this (15 minutes): ask for another."
+          }
+        },
+        "required": [
+          "upload",
+          "attachment_id",
+          "expires_at"
+        ]
+      },
+      "RequestUploadRequestDto": {
+        "type": "object",
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "description": "The channel the file is for: sending files there needs ATTACH_FILES (REQ-ROLE-03).",
+            "format": "uuid"
+          },
+          "filename": {
+            "type": "string",
+            "description": "The file's name; its extension says its type (D-92, D-177). Kept without\nfolders or control characters, at most 255 characters.",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "size": {
+            "type": "number",
+            "description": "In bytes: at most 25 MB (UPLOAD_FILE_TOO_LARGE), which the storage keeps too.",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "channel_id",
+          "filename",
+          "size"
+        ]
       }
     }
   }

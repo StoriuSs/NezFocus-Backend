@@ -1,3 +1,5 @@
+export * from './attachment-content.rules'
+export * from './attachment.rules'
 export * from './errors'
 export * from './mention.rules'
 export * from './message.rules'

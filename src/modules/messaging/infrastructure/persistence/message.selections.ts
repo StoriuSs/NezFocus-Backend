@@ -1,11 +1,26 @@
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { findMentions, MessageAuthor, MessageRecord, StoredMessage } from '../../domain'
+import { findMentions, MessageAuthor, MessageFile, MessageRecord, StoredMessage } from '../../domain'
 
 /** The client a Prisma transaction callback is given, for the helpers that run inside one. */
 export type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
 
 export const AUTHOR = { select: { id: true, username: true, displayName: true, avatarUrl: true } } as const
+
+/** A message's files in the order sent; only checked ones are ever in one (D-93). */
+const FILES = {
+    select: {
+        id: true,
+        filename: true,
+        size: true,
+        contentType: true,
+        storageKey: true,
+        thumbnailKey: true,
+        width: true,
+        height: true
+    },
+    orderBy: { position: 'asc' }
+} as const
 
 /**
  * What the chat reads of a message: its author's name and picture key, the
@@ -27,8 +42,18 @@ export const MESSAGE = {
     editedAt: true,
     createdAt: true,
     author: AUTHOR,
-    replyTo: { select: { id: true, content: true, deletedAt: true, mentionRoleIds: true, author: AUTHOR } },
-    pin: { select: { pinnedAt: true } }
+    replyTo: {
+        select: {
+            id: true,
+            content: true,
+            deletedAt: true,
+            mentionRoleIds: true,
+            author: AUTHOR,
+            attachments: { select: { width: true } }
+        }
+    },
+    pin: { select: { pinnedAt: true } },
+    attachments: FILES
 } satisfies Prisma.MessageSelect
 
 /** A message found by id or nonce: deleted ones too, saying so. */
@@ -62,8 +87,14 @@ const namedIn = (row: MessageRow): Named => ({
     answered: row.replyTo && !row.replyTo.deletedAt ? findMentions(row.replyTo.content).userIds : []
 })
 
+/** A file in a message: checked before it could be sent, so its type is known. */
+const toFile = ({ contentType, ...file }: MessageRow['attachments'][number]): MessageFile => ({
+    ...file,
+    contentType: contentType ?? 'application/octet-stream'
+})
+
 const toRecord = (
-    { author, systemData, replyTo, pin, ...row }: MessageRow,
+    { author, systemData, replyTo, pin, attachments, ...row }: MessageRow,
     named: Named,
     people: Map<string, AuthorRow>
 ): MessageRecord => {
@@ -83,18 +114,32 @@ const toRecord = (
         replyTo:
             replyTo &&
             (replyTo.deletedAt
-                ? { id: replyTo.id, author: null, content: '', deleted: true, mentionRoleIds: [], mentionUsers: [] }
+                ? {
+                      id: replyTo.id,
+                      author: null,
+                      content: '',
+                      deleted: true,
+                      mentionRoleIds: [],
+                      mentionUsers: [],
+                      files: { count: 0, images: 0 }
+                  }
                 : {
                       id: replyTo.id,
                       author: replyTo.author && toAuthor(replyTo.author),
                       content: replyTo.content,
                       deleted: false,
                       mentionRoleIds: replyTo.mentionRoleIds,
-                      mentionUsers: read(named.answered)
+                      mentionUsers: read(named.answered),
+                      // An image is the one kind of file with a size.
+                      files: {
+                          count: replyTo.attachments.length,
+                          images: replyTo.attachments.filter((file) => file.width !== null).length
+                      }
                   }),
         pinned: pin !== null,
         systemUser: person ? toAuthor(person) : null,
-        mentionUsers: read(named.own)
+        mentionUsers: read(named.own),
+        attachments: attachments.map(toFile)
     }
 }
 

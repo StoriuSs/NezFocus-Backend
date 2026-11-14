@@ -19,11 +19,14 @@ export function normaliseMessageContent(text: string): string {
 export const characterCount = (text: string) => [...text].length
 
 /**
- * A normalised message text: 1-2000 characters. Nothing left after
- * normalising is refused; once files can be sent, a message of files alone
- * will pass (D-93).
+ * A normalised message text: at most 2000 characters. It may be empty, when
+ * the message has files (`hasSomething`, D-93).
  */
 export function isMessageContent(text: string): boolean {
-    const length = characterCount(text)
-    return length >= 1 && length <= MAX_MESSAGE_LENGTH
+    return characterCount(text) <= MAX_MESSAGE_LENGTH
+}
+
+/** A message holds text or files, or is not one (REQ-MSG-01, D-93). */
+export function hasSomething(text: string, fileCount: number): boolean {
+    return characterCount(text) > 0 || fileCount > 0
 }

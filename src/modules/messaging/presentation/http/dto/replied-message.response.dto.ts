@@ -4,6 +4,7 @@ import { IsBoolean, IsOptional, IsString, ValidateNested } from 'class-validator
 import { MentionedRoleResponseDto } from './mentioned-role.response.dto'
 import { MentionedUserResponseDto } from './mentioned-user.response.dto'
 import { MessageAuthorResponseDto } from './message-author.response.dto'
+import { RepliedFilesResponseDto } from './replied-files.response.dto'
 
 /** The message a reply answers, as its reply line shows it (C-10 `reply`). */
 export class RepliedMessageResponseDto {
@@ -42,4 +43,11 @@ export class RepliedMessageResponseDto {
     @ValidateNested({ each: true })
     @Type(() => MentionedRoleResponseDto)
     mentionRoles: MentionedRoleResponseDto[]
+
+    /** How many files it has, and how many are images; none once deleted. */
+    @Expose()
+    @ApiProperty({ type: RepliedFilesResponseDto })
+    @ValidateNested()
+    @Type(() => RepliedFilesResponseDto)
+    files: RepliedFilesResponseDto
 }

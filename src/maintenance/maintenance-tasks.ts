@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config'
 import { ICommand } from '@nestjs/cqrs'
 import { CleanUpAuthCommand } from '@/modules/auth'
+import { CleanUpAttachmentsCommand } from '@/modules/messaging'
 import { SweepPresenceCommand } from '@/modules/realtime'
 import { CleanUpServersCommand } from '@/modules/servers'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
@@ -54,5 +55,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'presence-sweep',
         everyMs: 15 * 1000,
         command: (now) => new SweepPresenceCommand(now)
+    },
+    {
+        // Deletes the files no message holds: never sent, 25 hours after
+        // their upload, or let go by a deleted message (REQ-MSG-04).
+        id: 'attachments-clean-up',
+        everyMs: 60 * MINUTE_MS,
+        command: (now) => new CleanUpAttachmentsCommand(now)
     }
 ]

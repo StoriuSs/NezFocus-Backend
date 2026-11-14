@@ -293,8 +293,16 @@ export interface IStorageService {
     fileExists(filePath: string): Promise<boolean>
     getPublicUrl(filePath: string): string
     getSignedReadUrl(filePath: string, options?: SignedUrlOptions): Promise<string>
+    createUploadForm(filePath: string, options: UploadFormOptions): Promise<UploadForm>
+    getFileSize(filePath: string): Promise<number | null>
+    getFileRange(filePath: string, start: number, end: number): Promise<Buffer>
 }
 ```
+
+`SignedUrlOptions` takes `responseContentType` besides `responseContentDisposition`:
+a link answers with the type the content was checked to be, whatever the
+uploader sent. `createUploadForm` (a presigned POST, below) exists only on S3;
+the local storage throws.
 
 Both `S3StorageService` and `LocalStorageService` implement this. The DI container picks one based on `STORAGE_TYPE` (`s3` or `local`).
 
@@ -448,6 +456,22 @@ async getReadUrl(key: string): Promise<string> {
 
 The DB stores the bare key (`avatars/avatar-<userId>-<timestamp>-<random>.webp`), and every response that shows the avatar gets a fresh URL for it. `StoragePort.getReadUrl` always answers an absolute URL; the adapter maps it to `IStorageService.getSignedReadUrl`.
 
+### Direct upload (presigned POST) — what message attachments use
+
+Message attachments (messaging, D-165) are uploaded by the browser itself:
+`POST /attachments` answers a form from `createUploadForm` (S3 presigned
+POST, `@aws-sdk/s3-presigned-post`) whose policy holds `content-length-range`
+(1 byte to 25 MB) for one key for 15 minutes, so the storage refuses a bigger
+file before it is stored. The fields go back as a list of `{name, value}`:
+the response's keys are turned to snake_case, which would break
+`X-Amz-Signature` and its kind. The browser posts the fields, then the file as
+`file`, then calls `POST /attachments/{id}/complete`, which reads the parts it
+needs (`getFileSize`, `getFileRange`) and checks the content is what the name
+says. Unlike a PUT URL, a POST policy's signature does not cover the host; the
+form is still signed for the public endpoint, the address a browser reaches.
+The bucket needs CORS for the web origin (below); `docker-compose.dev.yaml`'s
+`rustfs-buckets` sets it in development.
+
 ### Direct upload (presigned PUT) — not shipped, sketched
 
 If you ever need to add a direct-upload endpoint (e.g. for large deliverables), the shape is:
@@ -520,7 +544,7 @@ Direct uploads need a CORS policy on the bucket. Minimal config:
 [
     {
         "AllowedHeaders": ["*"],
-        "AllowedMethods": ["PUT", "GET", "HEAD"],
+        "AllowedMethods": ["POST", "PUT", "GET", "HEAD"],
         "AllowedOrigins": ["https://app.example.com"],
         "ExposeHeaders": ["ETag"],
         "MaxAgeSeconds": 3600
@@ -528,7 +552,7 @@ Direct uploads need a CORS policy on the bucket. Minimal config:
 ]
 ```
 
-- `PUT` lets the browser upload via presigned URLs.
+- `POST` lets the browser upload with a presigned POST form (message attachments); `PUT` with presigned PUT URLs.
 - `GET` is only needed if the browser fetches from S3 via fetch/XHR (e.g., progress monitoring). For `<img src>` tags, CORS is not required.
 - `AllowedOrigins` should be your real frontend domain(s). Avoid `*` in production unless the bucket is genuinely public.
 - `ExposeHeaders: ETag` lets the browser see the uploaded object's ETag (useful for multipart upload coordination).

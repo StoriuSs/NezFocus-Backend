@@ -4,6 +4,10 @@ import { UserDirectoryPort } from '@/modules/users'
 import { ChannelNotFoundError, MessageRecord, MessageRepositoryPort, ReactionRepositoryPort } from '../../../domain'
 import { ListMessagesQuery } from './message.queries'
 import { ListMessagesHandler } from './message.handlers'
+import { AttachmentStoragePort } from '../../ports'
+
+/** Links signed by name only: no storage in these tests. */
+const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
 
 const server: AccessServer = {
     ownerId: 'an',
@@ -27,6 +31,7 @@ const message = (id: string, authorId: string | null, avatarKey: string | null =
     mentionHereUserIds: [],
     mentionRoleIds: [],
     mentionUsers: [],
+    attachments: [],
     editedAt: null,
     pinned: false,
     systemUser: null,
@@ -51,7 +56,8 @@ function world(roles: RoleDirectoryPort = { rolesOf: jest.fn(async () => []) }) 
                         content: 'Tin m1',
                         deleted: false,
                         mentionRoleIds: [],
-                        mentionUsers: []
+                        mentionUsers: [],
+                        files: { count: 0, images: 0 }
                     }
                 }
             ],
@@ -87,7 +93,8 @@ function world(roles: RoleDirectoryPort = { rolesOf: jest.fn(async () => []) }) 
         channels,
         checker,
         users as unknown as UserDirectoryPort,
-        roles
+        roles,
+        FILES
     )
     return { handler, repository, reactions, users }
 }

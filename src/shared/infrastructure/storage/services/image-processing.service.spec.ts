@@ -35,4 +35,17 @@ describe('ImageProcessingService', () => {
             decode.mockRestore()
         }
     })
+
+    it('says how big the image given was, upright as browsers show it, besides the size it was made', async () => {
+        // 400 wide, 200 high, stored on its side: orientation 6 shows it 200 wide, 400 high.
+        const input = await sharp({ create: { width: 400, height: 200, channels: 3, background: '#3a7' } })
+            .jpeg()
+            .withMetadata({ orientation: 6 })
+            .toBuffer()
+
+        const image = await new ImageProcessingService().processImage(input, { maxWidth: 100, maxHeight: 100 })
+
+        expect([image.sourceWidth, image.sourceHeight]).toEqual([200, 400])
+        expect([image.width, image.height]).toEqual([50, 100])
+    })
 })

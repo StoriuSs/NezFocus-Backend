@@ -1,12 +1,24 @@
 import { Module } from '@nestjs/common'
 import { CqrsModule } from '@nestjs/cqrs'
+import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
+import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ServersModule } from '@/modules/servers/servers.module'
 import { UsersModule } from '@/modules/users/users.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
-import { MESSAGE_REPOSITORY, PIN_REPOSITORY, REACTION_REPOSITORY, READ_STATE_REPOSITORY } from './domain'
 import {
+    ATTACHMENT_REPOSITORY,
+    MESSAGE_REPOSITORY,
+    PIN_REPOSITORY,
+    REACTION_REPOSITORY,
+    READ_STATE_REPOSITORY
+} from './domain'
+import {
+    ATTACHMENT_COMMAND_HANDLERS,
+    ATTACHMENT_QUERY_HANDLERS,
+    ATTACHMENT_STORAGE,
+    FILE_CLEANUP,
     MarkSentMessageReadHandler,
     MESSAGE_COMMAND_HANDLERS,
     MESSAGE_QUERY_HANDLERS,
@@ -27,12 +39,21 @@ import {
     SEND_LIMIT
 } from './application'
 import {
+    AttachmentStorage,
+    BullMqFileCleanup,
+    PrismaAttachmentRepository,
     PrismaMessageRepository,
     PrismaPinRepository,
     PrismaReactionRepository,
     PrismaReadStateRepository
 } from './infrastructure'
-import { MessageController, MessagingController, PinController, ReadStateController } from './presentation'
+import {
+    AttachmentController,
+    MessageController,
+    MessagingController,
+    PinController,
+    ReadStateController
+} from './presentation'
 
 /**
  * Messages in text channels (SRS 4.4): the only module that writes the
@@ -43,18 +64,33 @@ import { MessageController, MessagingController, PinController, ReadStateControl
  * @here), users for pictures as addresses and the status chosen
  * (USER_DIRECTORY), realtime who is online (PRESENCE), and tells the
  * channel's sockets through realtime's EVENT_PUBLISHER. Typing comes from
- * realtime's TypingSignalledEvent.
+ * realtime's TypingSignalledEvent. Files go to the storage under
+ * UploadService (ATTACHMENT_STORAGE); those no message holds are deleted
+ * through the file-cleanup queue, whose consumer lives in UploadModule.
  */
 @Module({
-    imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
-    controllers: [MessagingController, MessageController, PinController, ReadStateController],
+    imports: [
+        CqrsModule,
+        UploadModule,
+        PermissionsModule,
+        RealtimeModule,
+        ServersModule,
+        UsersModule,
+        registerQueues(QUEUES.FILE_CLEANUP)
+    ],
+    controllers: [MessagingController, MessageController, PinController, ReadStateController, AttachmentController],
     providers: [
         { provide: MESSAGE_REPOSITORY, useClass: PrismaMessageRepository },
+        { provide: ATTACHMENT_REPOSITORY, useClass: PrismaAttachmentRepository },
+        { provide: ATTACHMENT_STORAGE, useClass: AttachmentStorage },
+        { provide: FILE_CLEANUP, useClass: BullMqFileCleanup },
         { provide: REACTION_REPOSITORY, useClass: PrismaReactionRepository },
         { provide: PIN_REPOSITORY, useClass: PrismaPinRepository },
         { provide: READ_STATE_REPOSITORY, useClass: PrismaReadStateRepository },
         // RateLimiter comes from the global CacheModule.
         { provide: SEND_LIMIT, useExisting: RateLimiter },
+        ...ATTACHMENT_COMMAND_HANDLERS,
+        ...ATTACHMENT_QUERY_HANDLERS,
         ...MESSAGE_COMMAND_HANDLERS,
         ...MESSAGE_QUERY_HANDLERS,
         ...REACTION_COMMAND_HANDLERS,

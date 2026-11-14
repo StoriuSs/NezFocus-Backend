@@ -13,6 +13,7 @@ import {
     PinRepositoryPort,
     TimedOutError
 } from '../../../domain'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { PinsUpdatedEvent } from '../../events/pins-updated.event'
 import { timedOutUntil } from '../../services/channel-access'
@@ -56,6 +57,7 @@ export class PinMessageHandler implements ICommandHandler<PinMessageCommand> {
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
         private readonly events: EventBus
     ) {}
 
@@ -67,7 +69,9 @@ export class PinMessageHandler implements ICommandHandler<PinMessageCommand> {
         if (decision === 'already') return
         this.events.publish(new PinsUpdatedEvent(channelId, messageId, true))
         if (notice) {
-            const [view] = await messageViews({ users: this.users, roles: this.roles }, serverId, [notice])
+            const [view] = await messageViews({ users: this.users, roles: this.roles, files: this.files }, serverId, [
+                notice
+            ])
             this.events.publish(new MessageCreatedEvent(view, null))
         }
     }

@@ -976,6 +976,8 @@ That something is `DomainExceptionFilter`
 | `not_found` | 404 |
 | `conflict` | 409 |
 | `gone` | 410 |
+| `too_large` | 413 |
+| `unsupported_type` | 415 |
 | `unprocessable` | 422 |
 | `rate_limited` | 429 (with `Retry-After`) |
 | `unavailable` | 503 |

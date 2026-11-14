@@ -8,7 +8,9 @@ export class SendMessageCommand {
         /** Chosen by the client for this message, kept across its retries (REQ-MSG-10). */
         readonly nonce: string,
         /** The message it answers: a regular one of the same channel, deleted or not. */
-        readonly replyToId: string | null = null
+        readonly replyToId: string | null = null,
+        /** Checked uploads of the sender's, in the order they go in the message (REQ-MSG-04). */
+        readonly attachmentIds: string[] = []
     ) {}
 }
 

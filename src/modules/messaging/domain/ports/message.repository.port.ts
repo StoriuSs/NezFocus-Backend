@@ -1,4 +1,5 @@
 import { MessageMentions } from '../mention.rules'
+import type { MessageFile } from './attachment.repository.port'
 
 /** Who wrote a message, as the chat shows them. */
 export interface MessageAuthor {
@@ -25,6 +26,8 @@ export interface RepliedMessage {
     /** The roles it mentions in effect and the people its tokens name, as on a message; none once deleted (D-171). */
     mentionRoleIds: string[]
     mentionUsers: MessageAuthor[]
+    /** Its files: how many, and how many images (the line says "sent an image" when there is no text). */
+    files: { count: number; images: number }
 }
 
 /** A message as the chat reads it. */
@@ -59,6 +62,8 @@ export interface MessageRecord {
      * see the channel; an id of no account is left out.
      */
     mentionUsers: MessageAuthor[]
+    /** Its files, in the order sent (REQ-MSG-04); none once deleted. */
+    attachments: MessageFile[]
     editedAt: Date | null
     createdAt: Date
 }
@@ -77,6 +82,13 @@ export interface NewMessage {
     replyToId: string | null
     /** Decided by the application (`decideMentions`), those who cannot see the channel left out. */
     mentions: MessageMentions
+    /**
+     * Files the application found the author may send (`canAttach`), in the
+     * order they go in the message. Taken with it only if no other message
+     * took one meanwhile: else nothing is saved and AttachmentNotFoundError
+     * names those.
+     */
+    attachmentIds: string[]
 }
 
 /**

@@ -111,6 +111,9 @@ no filter to write:
 | `forbidden` | 403 |
 | `not_found` | 404 |
 | `conflict` | 409 |
+| `gone` | 410 |
+| `too_large` | 413 |
+| `unsupported_type` | 415 |
 | `unprocessable` | 422 |
 | `rate_limited` | 429, and `Retry-After` from the error's `retryAfterSeconds` |
 | `unavailable` | 503 |

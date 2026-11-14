@@ -19,6 +19,10 @@ import { MessageCreatedEvent } from '../../events/message-created.event'
 import { PinsUpdatedEvent } from '../../events/pins-updated.event'
 import { PinMessageCommand, UnpinMessageCommand } from './pin.commands'
 import { PinMessageHandler, UnpinMessageHandler } from './pin.handlers'
+import { AttachmentStoragePort } from '../../ports'
+
+/** Links signed by name only: no storage in these tests. */
+const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
 
 const server: AccessServer = {
     ownerId: 'an',
@@ -58,6 +62,7 @@ function world() {
             mentionHereUserIds: [],
             mentionRoleIds: [],
             mentionUsers: [],
+            attachments: [],
             editedAt: null,
             pinned: false,
             systemUser: null,
@@ -98,6 +103,7 @@ function world() {
                 mentionHereUserIds: [],
                 mentionRoleIds: [],
                 mentionUsers: [],
+                attachments: [],
                 editedAt: null,
                 pinned: false,
                 createdAt: new Date('2026-10-18T21:00:00Z')
@@ -138,6 +144,7 @@ function world() {
         checker,
         users,
         { rolesOf: jest.fn(async () => []) } as RoleDirectoryPort,
+        FILES,
         bus
     )
     const unpinner = new UnpinMessageHandler(repository, pins, channels, checker, bus)

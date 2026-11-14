@@ -65,11 +65,14 @@ export class CannotDeleteMessageError extends DomainError {
  * - `system_message`: a system message takes no reaction and no pin
  *   (SRS 1.71); it has no toolbar, so again only a forged request.
  * - `emoji`: a reaction is exactly one standard emoji (SRS 1.71).
- * - `length`: the text as kept is 1-2000 characters; a role the author may
- *   not mention, written as its name, can take a text past that
+ * - `length`: the text as kept is at most 2000 characters; a role the
+ *   author may not mention, written as its name, can take a text past that
  *   (REQ-MSG-03).
+ * - `empty`: a message holds text or files (REQ-MSG-01, D-93); an edit may
+ *   take all the text out of one with files.
+ * - `attachments`: at most 10 files in a message, each once (REQ-MSG-04).
  */
-export type MessageRule = 'reply_target' | 'system_message' | 'emoji' | 'length'
+export type MessageRule = 'reply_target' | 'system_message' | 'emoji' | 'length' | 'empty' | 'attachments'
 
 /** A message that breaks one of the rules above. */
 export class MessageRuleError extends DomainError {

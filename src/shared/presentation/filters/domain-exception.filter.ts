@@ -16,7 +16,9 @@ const STATUS_BY_KIND: Record<DomainErrorKind, HttpStatus> = {
     unprocessable: HttpStatus.UNPROCESSABLE_ENTITY,
     rate_limited: HttpStatus.TOO_MANY_REQUESTS,
     unavailable: HttpStatus.SERVICE_UNAVAILABLE,
-    gone: HttpStatus.GONE
+    gone: HttpStatus.GONE,
+    too_large: HttpStatus.PAYLOAD_TOO_LARGE,
+    unsupported_type: HttpStatus.UNSUPPORTED_MEDIA_TYPE
 }
 
 /**

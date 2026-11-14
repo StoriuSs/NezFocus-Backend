@@ -135,17 +135,16 @@ services:
   # ── Test and development storage: RustFS ────────────────────────────────
   #
   # An S3-compatible server, so the S3 code path runs without an AWS account:
-  # test/integration/s3-storage.integration-spec.ts, and avatars in
-  # development when STORAGE_TYPE=s3. Under the `testing` profile, so
-  # `pnpm docker:dev` does not start it; `pnpm test:services:up` does.
+  # test/integration/s3-storage.integration-spec.ts, avatars, and message
+  # attachments, which browsers upload straight to it (a presigned POST,
+  # D-165): local storage cannot take those, so development always runs it.
   #
   # RustFS, not MinIO: MinIO stopped publishing images (Docker Hub first, then
   # quay.io in September 2026). Any S3-compatible server works here — nothing
   # in the app is specific to one. Console: http://localhost:9101/rustfs/console/
   rustfs:
-    container_name: rustfs-nezfocus-web-test
+    container_name: rustfs-nezfocus-web
     image: rustfs/rustfs:1.0.0
-    profiles: [testing]
     environment:
       RUSTFS_ACCESS_KEY: ${TEST_S3_ACCESS_KEY:-rustfsadmin}
       RUSTFS_SECRET_KEY: ${TEST_S3_SECRET_KEY:-rustfsadmin123}
@@ -153,6 +152,10 @@ services:
     ports:
       - "127.0.0.1:${TEST_S3_PORT:-9100}:9000"          # S3 API
       - "127.0.0.1:${TEST_S3_CONSOLE_PORT:-9101}:9001"  # Web console
+    # Kept across restarts and recreations: development's files (avatars,
+    # attachments) and the bucket's CORS live here.
+    volumes:
+      - rustfs:/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9000/health/ready"]
       interval: 5s
@@ -160,13 +163,14 @@ services:
       retries: 20
     networks:
       - backend
+    restart: unless-stopped
 
-  # Creates AWS_S3_BUCKET (the development bucket) once RustFS is up, then
-  # exits. Creating one that exists is a no-op, so this runs every time. The
-  # same image, for its curl, which signs S3 requests itself (--aws-sigv4).
+  # Creates AWS_S3_BUCKET (the development bucket) once RustFS is up, and lets
+  # the web app (FRONTEND_URL) post files to it from the browser (CORS), then
+  # exits. Both are no-ops when already so, so this runs every time. The same
+  # image, for its curl, which signs S3 requests itself (--aws-sigv4).
   rustfs-buckets:
     image: rustfs/rustfs:1.0.0
-    profiles: [testing]
     depends_on:
       rustfs:
         condition: service_healthy
@@ -174,13 +178,19 @@ services:
       S3_ACCESS_KEY: ${TEST_S3_ACCESS_KEY:-rustfsadmin}
       S3_SECRET_KEY: ${TEST_S3_SECRET_KEY:-rustfsadmin123}
       BUCKET: ${AWS_S3_BUCKET:-}
+      WEB_ORIGIN: ${FRONTEND_URL:-http://localhost:3001}
     entrypoint: ["sh", "-c"]
     command:
       - >-
         [ -z "$$BUCKET" ] && { echo "AWS_S3_BUCKET is empty: no bucket to create"; exit 0; };
+        auth="$$S3_ACCESS_KEY:$$S3_SECRET_KEY";
         status=$$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 'aws:amz:us-east-1:s3'
-        -u "$$S3_ACCESS_KEY:$$S3_SECRET_KEY" -X PUT "http://rustfs:9000/$$BUCKET");
-        case "$$status" in 200|409) echo "bucket $$BUCKET is ready";; *) echo "could not create bucket $$BUCKET: HTTP $$status"; exit 1;; esac
+        -u "$$auth" -X PUT "http://rustfs:9000/$$BUCKET");
+        case "$$status" in 200|409) echo "bucket $$BUCKET is ready";; *) echo "could not create bucket $$BUCKET: HTTP $$status"; exit 1;; esac;
+        cors="<CORSConfiguration><CORSRule><AllowedOrigin>$$WEB_ORIGIN</AllowedOrigin><AllowedMethod>POST</AllowedMethod><AllowedMethod>GET</AllowedMethod><AllowedHeader>*</AllowedHeader><MaxAgeSeconds>3000</MaxAgeSeconds></CORSRule></CORSConfiguration>";
+        status=$$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 'aws:amz:us-east-1:s3'
+        -u "$$auth" -X PUT -H 'Content-Type: application/xml' --data "$$cors" "http://rustfs:9000/$$BUCKET?cors");
+        case "$$status" in 200|204) echo "$$WEB_ORIGIN may upload to $$BUCKET";; *) echo "could not set CORS on $$BUCKET: HTTP $$status"; exit 1;; esac
     restart: "no"
     networks:
       - backend
@@ -208,3 +218,4 @@ networks:
 
 volumes:
   db:
+  rustfs:

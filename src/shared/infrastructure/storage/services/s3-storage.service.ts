@@ -2,18 +2,33 @@ import { Injectable, HttpStatus } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import {
     S3Client,
+    CopyObjectCommand,
     PutObjectCommand,
     DeleteObjectCommand,
     GetObjectCommand,
     HeadObjectCommand
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { randomUUID } from 'crypto'
 import { extensionFor } from './file-extension'
 import { CustomException } from '@/shared/presentation/exceptions'
 import { ERROR_CODES, ERROR_TYPES } from '@/shared/constants'
 import { MESSAGES } from '@/shared/constants'
-import { IStorageService, UploadedFile, UploadOptions, SignedUrlOptions } from '../interfaces/storage.interface'
+import {
+    IStorageService,
+    UploadedFile,
+    UploadOptions,
+    SignedUrlOptions,
+    UploadForm,
+    UploadFormOptions
+} from '../interfaces/storage.interface'
+
+/** S3's answer for a key with no object: 404 on HEAD (no body, so no code), NoSuchKey on GET. */
+function isMissing(error: unknown): boolean {
+    const e = error as { name?: string; $metadata?: { httpStatusCode?: number } }
+    return e?.name === 'NotFound' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404
+}
 
 @Injectable()
 export class S3StorageService implements IStorageService {
@@ -348,10 +363,86 @@ export class S3StorageService implements IStorageService {
         const command = new GetObjectCommand({
             Bucket: this.bucket,
             Key: s3Key,
+            ...(options?.responseContentType ? { ResponseContentType: options.responseContentType } : {}),
             ResponseContentDisposition: options?.responseContentDisposition
         })
         return getSignedUrl(this.presignClient, command, {
             expiresIn: options?.expiresIn ?? 3600
         })
+    }
+
+    /**
+     * A presigned POST: the browser sends the file to the storage itself,
+     * which refuses one outside 1 byte to `maxBytes` (the policy's
+     * `content-length-range`), or posted after `expiresIn`, or to another key.
+     * Signed for the public endpoint, where the browser posts; the policy's
+     * signature does not cover the host, but the URL must be one it can reach.
+     */
+    async createUploadForm(filePath: string, options: UploadFormOptions): Promise<UploadForm> {
+        const { url, fields } = await createPresignedPost(this.presignClient, {
+            Bucket: this.bucket,
+            Key: this.extractS3Key(filePath),
+            Conditions: [['content-length-range', 1, options.maxBytes]],
+            Expires: options.expiresIn
+        })
+        return { url, fields }
+    }
+
+    async getFileSize(filePath: string): Promise<number | null> {
+        try {
+            const head = await this.s3Client.send(
+                new HeadObjectCommand({ Bucket: this.bucket, Key: this.extractS3Key(filePath) })
+            )
+            return head.ContentLength ?? 0
+        } catch (error) {
+            if (isMissing(error)) return null
+            throw error
+        }
+    }
+
+    async copyFile(fromPath: string, toPath: string): Promise<void> {
+        try {
+            await this.s3Client.send(
+                new CopyObjectCommand({
+                    Bucket: this.bucket,
+                    CopySource: `${this.bucket}/${this.extractS3Key(fromPath)}`,
+                    Key: this.extractS3Key(toPath)
+                })
+            )
+        } catch (error) {
+            if (!isMissing(error)) throw error
+            throw new CustomException({
+                code: ERROR_CODES.UPLOAD_FILE_NOT_FOUND,
+                type: ERROR_TYPES.UPLOAD_FILE_NOT_FOUND,
+                message: MESSAGES.UPLOAD.FILE_NOT_FOUND,
+                status: HttpStatus.NOT_FOUND
+            })
+        }
+    }
+
+    async getFileRange(filePath: string, start: number, end: number): Promise<Buffer> {
+        try {
+            const response = await this.s3Client.send(
+                new GetObjectCommand({
+                    Bucket: this.bucket,
+                    Key: this.extractS3Key(filePath),
+                    Range: `bytes=${start}-${end}`
+                })
+            )
+            return Buffer.from((await response.Body?.transformToByteArray()) ?? [])
+        } catch (error) {
+            // A range past the end of the file (an empty file has no byte 0): nothing there.
+            const e = error as { name?: string; $metadata?: { httpStatusCode?: number } }
+            if (e?.name === 'InvalidRange' || e?.$metadata?.httpStatusCode === 416) return Buffer.alloc(0)
+            if (isMissing(error)) {
+                throw new CustomException({
+                    code: ERROR_CODES.UPLOAD_FILE_NOT_FOUND,
+                    type: ERROR_TYPES.UPLOAD_FILE_NOT_FOUND,
+                    message: MESSAGES.UPLOAD.FILE_NOT_FOUND,
+                    status: HttpStatus.NOT_FOUND
+                })
+            }
+            throw error
+        }
     }
 }

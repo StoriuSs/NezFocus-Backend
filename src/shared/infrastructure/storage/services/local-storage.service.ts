@@ -1,13 +1,13 @@
 import { Injectable, HttpStatus } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { randomUUID } from 'crypto'
 import { extensionFor } from './file-extension'
 import { CustomException } from '@/shared/presentation/exceptions'
 import { ERROR_CODES, ERROR_TYPES } from '@/shared/constants'
 import { MESSAGES } from '@/shared/constants'
-import { IStorageService, UploadedFile, UploadOptions } from '../interfaces/storage.interface'
+import { IStorageService, UploadedFile, UploadOptions, UploadForm } from '../interfaces/storage.interface'
 
 @Injectable()
 export class LocalStorageService implements IStorageService {
@@ -212,5 +212,60 @@ export class LocalStorageService implements IStorageService {
      */
     async getSignedReadUrl(filePath: string): Promise<string> {
         return this.getPublicUrl(filePath)
+    }
+
+    /** Only S3 takes a file posted by the browser itself (D-165): local storage is for unit tests. */
+    async createUploadForm(): Promise<UploadForm> {
+        throw new CustomException({
+            code: ERROR_CODES.UPLOAD_FAILED,
+            type: ERROR_TYPES.UPLOAD_FAILED,
+            message: MESSAGES.UPLOAD.FAILED,
+            status: HttpStatus.INTERNAL_SERVER_ERROR,
+            cause: new Error('Local storage cannot take uploads straight from the browser: use STORAGE_TYPE=s3')
+        })
+    }
+
+    async copyFile(fromPath: string, toPath: string): Promise<void> {
+        const target = join(this.uploadDir, toPath)
+        await fs.mkdir(dirname(target), { recursive: true })
+        try {
+            await fs.copyFile(join(this.uploadDir, fromPath), target)
+        } catch {
+            throw new CustomException({
+                code: ERROR_CODES.UPLOAD_FILE_NOT_FOUND,
+                type: ERROR_TYPES.UPLOAD_FILE_NOT_FOUND,
+                message: MESSAGES.UPLOAD.FILE_NOT_FOUND,
+                status: HttpStatus.NOT_FOUND
+            })
+        }
+    }
+
+    async getFileSize(filePath: string): Promise<number | null> {
+        try {
+            return (await fs.stat(join(this.uploadDir, filePath))).size
+        } catch {
+            return null
+        }
+    }
+
+    async getFileRange(filePath: string, start: number, end: number): Promise<Buffer> {
+        let file: Awaited<ReturnType<typeof fs.open>>
+        try {
+            file = await fs.open(join(this.uploadDir, filePath), 'r')
+        } catch {
+            throw new CustomException({
+                code: ERROR_CODES.UPLOAD_FILE_NOT_FOUND,
+                type: ERROR_TYPES.UPLOAD_FILE_NOT_FOUND,
+                message: MESSAGES.UPLOAD.FILE_NOT_FOUND,
+                status: HttpStatus.NOT_FOUND
+            })
+        }
+        try {
+            const buffer = Buffer.alloc(end - start + 1)
+            const { bytesRead } = await file.read(buffer, 0, buffer.length, start)
+            return buffer.subarray(0, bytesRead)
+        } finally {
+            await file.close()
+        }
     }
 }

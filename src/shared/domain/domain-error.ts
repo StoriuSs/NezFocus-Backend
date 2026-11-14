@@ -13,6 +13,10 @@ export type DomainErrorKind =
     | 'unavailable'
     /** It existed and no longer does: an invite used up, out of time or revoked. */
     | 'gone'
+    /** A file bigger than it may be. */
+    | 'too_large'
+    /** A file that is not of a type taken, or not what its name says. */
+    | 'unsupported_type'
 
 /** A key present in both ERROR_CODES and ERROR_TYPES. */
 export type ErrorKey = keyof typeof ERROR_CODES & keyof typeof ERROR_TYPES

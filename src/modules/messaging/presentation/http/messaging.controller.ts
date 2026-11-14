@@ -67,7 +67,14 @@ export class MessagingController {
         @Body() dto: SendMessageRequestDto
     ): Promise<ServiceResponse<MessageResponseDto>> {
         const message: MessageView = await this.commandBus.execute(
-            new SendMessageCommand(user.id, channelId, dto.content, dto.nonce, dto.replyToId ?? null)
+            new SendMessageCommand(
+                user.id,
+                channelId,
+                dto.content,
+                dto.nonce,
+                dto.replyToId ?? null,
+                dto.attachmentIds ?? []
+            )
         )
         return createResponse(MESSAGES.MESSAGING.MESSAGE_SENT, validateAndTransform(MessageResponseDto, message))
     }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
+    AttachmentNotFoundError,
     ChannelNotFoundError,
     MessageCursor,
     MessageMentions,
@@ -28,21 +29,37 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
 
     async create({
         mentions,
+        attachmentIds,
         ...message
     }: NewMessage): Promise<{ message: MessageRecord; created: boolean; deleted: boolean }> {
         try {
-            // The message and its mention rows in one statement (D-164).
-            const row = await this.prisma.message.create({
-                data: {
-                    ...message,
-                    mentionEveryone: mentions.everyone,
-                    mentionHereUserIds: mentions.hereUserIds,
-                    mentionRoleIds: mentions.roleIds,
-                    mentions: { create: mentions.userIds.map((userId) => ({ userId })) }
-                },
-                select: MESSAGE
+            const record = await this.prisma.$transaction(async (tx) => {
+                // The message and its mention rows in one statement (D-164).
+                const { id } = await tx.message.create({
+                    data: {
+                        ...message,
+                        mentionEveryone: mentions.everyone,
+                        mentionHereUserIds: mentions.hereUserIds,
+                        mentionRoleIds: mentions.roleIds,
+                        mentions: { create: mentions.userIds.map((userId) => ({ userId })) }
+                    },
+                    select: { id: true }
+                })
+                // Each file only if it is in no message yet: of two sends of one file at once, the
+                // second waits for the first's row lock, then finds it taken, and saves nothing.
+                // Locked in id order, whatever order they show in: two sends never wait on each other.
+                const lost: string[] = []
+                for (const attachmentId of [...attachmentIds].sort()) {
+                    const { count } = await tx.attachment.updateMany({
+                        where: { id: attachmentId, uploaderId: message.authorId, messageId: null, position: null },
+                        data: { messageId: id, position: attachmentIds.indexOf(attachmentId) }
+                    })
+                    if (count === 0) lost.push(attachmentId)
+                }
+                if (lost.length) throw new AttachmentNotFoundError(lost)
+                return toRecordOf(tx, await tx.message.findUniqueOrThrow({ where: { id }, select: MESSAGE }))
             })
-            return { message: await toRecordOf(this.prisma, row), created: true, deleted: false }
+            return { message: record, created: true, deleted: false }
         } catch (error) {
             // The channel went between the permission check and now.
             if (prismaCode(error) === 'P2003') throw new ChannelNotFoundError(message.channelId)

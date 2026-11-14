@@ -27,6 +27,7 @@ export const MESSAGES = {
         DELETE_FAILED: 'Failed to delete the file',
         INVALID_FILE_TYPE: 'Invalid file type',
         FILE_TOO_LARGE: 'File size exceeds the limit',
+        FILE_NOT_FOUND: 'File not found',
         IMAGE_PROCESSING_FAILED: 'Failed to process image',
         IMAGE_PROCESSING_BUSY: 'Too many images are being processed right now. Please try again shortly.'
     },
@@ -99,7 +100,10 @@ export const MESSAGES = {
         MESSAGE_UNPINNED: 'Message unpinned',
         PINS_LISTED: 'Pinned messages fetched',
         READ_STATES_LISTED: 'Read states fetched',
-        CHANNEL_ACKED: 'Channel marked as read'
+        CHANNEL_ACKED: 'Channel marked as read',
+        UPLOAD_READY: 'Upload form issued',
+        UPLOAD_COMPLETED: 'File checked',
+        ATTACHMENT_LINKS: 'File links issued'
     },
 
     // Health messages

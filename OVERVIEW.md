@@ -423,6 +423,21 @@ message "<who> pinned a message" in that transaction. History and the pins
 read each message's reactions as the reader sees them (`me`); events carry
 `reaction.added` / `reaction.removed` / `pins.updated` instead.
 
+Files (REQ-MSG-04, `attachment.controller.ts`) go from the browser straight to
+the storage: `POST /attachments` checks the person may send files in the
+channel and the name's type (D-92, D-177) and answers an S3 presigned POST
+form (D-165) through `ATTACHMENT_STORAGE`, an adapter over `UploadService`;
+`POST /attachments/{id}/complete` reads what arrived and checks it with the
+pure `domain/attachment-content.rules.ts` (a signature, the names in an
+Office zip, UTF-8 text; an image is decoded for its thumbnail and size), and
+deletes a file that is not what its name says. A message takes up to 10
+checked files of its sender's, each once: the repository attaches them in
+the message's transaction, only those no message holds yet. Every message
+carries its files with read links that end after an hour (`GET
+/attachments/{id}/url` gives new ones). `attachments-clean-up`
+(src/maintenance, hourly) removes the files no message holds and queues their
+deletion on `file-cleanup`.
+
 Mentions are tokens in the text (`<@id>`, `<@&id>`, `<#id>`, `@everyone`).
 Sending and editing decide them in `application/services/mentions.ts`: the
 pure `domain/mention.rules.ts` finds the tokens where the client draws text
@@ -533,7 +548,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/servers/        # Servers, channels, roles, invites, moderation
 │   ├── modules/permissions/    # What a member may do in a server, cached
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events, presence
-│   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread
+│   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread, files
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

@@ -57,6 +57,7 @@ function world({ noNewReactions = false } = {}) {
             mentionHereUserIds: [],
             mentionRoleIds: [],
             mentionUsers: [],
+            attachments: [],
             editedAt: null,
             pinned: false,
             systemUser: null,

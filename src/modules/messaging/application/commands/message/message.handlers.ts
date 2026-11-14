@@ -12,7 +12,10 @@ import {
 } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
+    ATTACHMENT_REPOSITORY,
+    AttachmentRepositoryPort,
     CannotDeleteMessageError,
+    hasSomething,
     findMentions,
     MESSAGE_REPOSITORY,
     MessageNotFoundError,
@@ -26,10 +29,11 @@ import {
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { MessageDeletedEvent } from '../../events/message-deleted.event'
 import { MessageUpdatedEvent } from '../../events/message-updated.event'
-import { SEND_LIMIT, SendLimitPort } from '../../ports'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort, SEND_LIMIT, SendLimitPort } from '../../ports'
 import { openChannel, requireSending, timedOutUntil } from '../../services/channel-access'
 import { keptText, MentionWork, Reach, reachingViewers } from '../../services/mentions'
 import { openMessage } from '../../services/message-access'
+import { requireSendableFiles } from '../../services/message-files'
 import { MessageView, messageViews } from '../../services/message-views'
 import { countSending } from '../../services/sending-limits'
 import { DeleteMessageCommand, EditMessageCommand, SendMessageCommand } from './message.commands'
@@ -37,6 +41,11 @@ import { DeleteMessageCommand, EditMessageCommand, SendMessageCommand } from './
 /**
  * Permission, then the limits, then save, then tell the channel (REQ-MSG-01,
  * ARCHITECTURE 2.3).
+ *
+ * Files are checked before anything is counted (`requireSendableFiles`):
+ * ATTACH_FILES, and each the sender's own, checked, never sent, under 24
+ * hours old. A message holds text or files (D-93). The repository takes the
+ * files with the message only if no other message took one meanwhile.
  *
  * A nonce its author has used already answers with that message before
  * anything is counted (REQ-MSG-10): a retry after a lost answer, even long
@@ -61,11 +70,13 @@ import { DeleteMessageCommand, EditMessageCommand, SendMessageCommand } from './
 export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
     constructor(
         @Inject(MESSAGE_REPOSITORY) private readonly messages: MessageRepositoryPort,
+        @Inject(ATTACHMENT_REPOSITORY) private readonly attachments: AttachmentRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(SEND_LIMIT) private readonly limit: SendLimitPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
         @Inject(PRESENCE) private readonly presence: PresencePort,
         @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
         private readonly events: EventBus
@@ -76,12 +87,19 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
         return { checker: this.permissions, presence: this.presence, membership: this.membership }
     }
 
-    async execute({ userId, channelId, content, nonce, replyToId }: SendMessageCommand): Promise<MessageView> {
+    async execute({
+        userId,
+        channelId,
+        content,
+        nonce,
+        replyToId,
+        attachmentIds
+    }: SendMessageCommand): Promise<MessageView> {
         const now = new Date()
         const channel = await openChannel(this.channels, this.permissions, channelId, userId, now)
         requireSending(channel, now)
         const views = (records: MessageRecord[]) =>
-            messageViews({ users: this.users, roles: this.roles }, channel.serverId, records)
+            messageViews({ users: this.users, roles: this.roles, files: this.files }, channel.serverId, records)
 
         const sent = await this.messages.findByNonce(userId, nonce)
         if (sent && sent.channelId !== channelId) throw new NonceUsedElsewhereError()
@@ -94,8 +112,10 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
                 throw new MessageRuleError('reply_target')
             answeredAuthorId = answered.author?.id ?? null
         }
+        await requireSendableFiles(this.attachments, channel, userId, attachmentIds, now)
         const work: MentionWork = { channelId, channel, authorId: userId, content, answeredAuthorId, now }
         const kept = await keptText(this.roles, work)
+        if (!hasSomething(kept.content, attachmentIds.length)) throw new MessageRuleError('empty')
 
         const counted = await countSending(this.limit, userId, channelId)
         let saved: Awaited<ReturnType<MessageRepositoryPort['create']>>
@@ -107,7 +127,8 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
                 nonce,
                 replyToId,
                 content: kept.content,
-                mentions
+                mentions,
+                attachmentIds
             })
         } catch (error) {
             // Nothing was made (the channel went meanwhile, a permission read failed): nothing to count.
@@ -142,6 +163,7 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
         @Inject(PRESENCE) private readonly presence: PresencePort,
         @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
         private readonly events: EventBus
@@ -166,7 +188,7 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
         if (message.author?.id !== userId) throw new NotYourMessageError()
         requireSending(channel, now)
         const views = (records: MessageRecord[]) =>
-            messageViews({ users: this.users, roles: this.roles }, channel.serverId, records)
+            messageViews({ users: this.users, roles: this.roles, files: this.files }, channel.serverId, records)
         const work: MentionWork = {
             channelId: message.channelId,
             channel,
@@ -176,6 +198,8 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
             now
         }
         const kept = await keptText(this.roles, work)
+        // Its files stay: all the text may go from a message that has some (S-CHAT-01 `edit-mode`).
+        if (!hasSomething(kept.content, message.attachments.length)) throw new MessageRuleError('empty')
         if (message.content === kept.content) return (await views([message]))[0]
 
         // An @here that already reached people keeps them; one added now reaches who is here now (D-176).

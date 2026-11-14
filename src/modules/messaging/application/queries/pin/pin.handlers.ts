@@ -4,6 +4,7 @@ import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort, ROLE_DIRECTORY, RoleDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { PIN_REPOSITORY, PinRepositoryPort, REACTION_REPOSITORY, ReactionRepositoryPort } from '../../../domain'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
 import { openChannel } from '../../services/channel-access'
 import { messageViews, ReadMessageView, withReactions } from '../../services/message-views'
 import { ListPinsQuery } from './pin.queries'
@@ -26,7 +27,8 @@ export class ListPinsHandler implements IQueryHandler<ListPinsQuery> {
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
-        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort
+        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort
     ) {}
 
     async execute({ userId, channelId }: ListPinsQuery): Promise<PinnedMessageView[]> {
@@ -34,7 +36,7 @@ export class ListPinsHandler implements IQueryHandler<ListPinsQuery> {
         const pinned = await this.pins.list(channelId)
         const records = pinned.map((pin) => pin.message)
         const [views, summaries] = await Promise.all([
-            messageViews({ users: this.users, roles: this.roles }, serverId, records),
+            messageViews({ users: this.users, roles: this.roles, files: this.files }, serverId, records),
             this.reactions.summaries(
                 records.map((record) => record.id),
                 userId

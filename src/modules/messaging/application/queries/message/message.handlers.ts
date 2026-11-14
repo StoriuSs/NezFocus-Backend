@@ -4,6 +4,7 @@ import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort, ROLE_DIRECTORY, RoleDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { MESSAGE_REPOSITORY, MessageRepositoryPort, REACTION_REPOSITORY, ReactionRepositoryPort } from '../../../domain'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
 import { openChannel } from '../../services/channel-access'
 import { messageViews, ReadMessageView, withReactions } from '../../services/message-views'
 import { ListMessagesQuery } from './message.queries'
@@ -28,14 +29,15 @@ export class ListMessagesHandler implements IQueryHandler<ListMessagesQuery> {
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
-        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort
+        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort
     ) {}
 
     async execute({ userId, channelId, cursor, limit }: ListMessagesQuery): Promise<MessagePageView> {
         const { serverId } = await openChannel(this.channels, this.permissions, channelId, userId, new Date())
         const page = await this.messages.page(channelId, cursor, limit)
         const [views, summaries] = await Promise.all([
-            messageViews({ users: this.users, roles: this.roles }, serverId, page.items),
+            messageViews({ users: this.users, roles: this.roles, files: this.files }, serverId, page.items),
             this.reactions.summaries(
                 page.items.map((item) => item.id),
                 userId

@@ -4,11 +4,13 @@ import {
     UploadedFile,
     UploadOptions,
     SignedUrlOptions,
+    UploadForm,
+    UploadFormOptions,
     STORAGE_SERVICE
 } from './interfaces/storage.interface'
 import { ImageProcessingOptions, ImageProcessingService } from './services/image-processing.service'
 
-export { UploadedFile, UploadOptions, SignedUrlOptions } from './interfaces/storage.interface'
+export { UploadedFile, UploadOptions, SignedUrlOptions, UploadForm } from './interfaces/storage.interface'
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'image/gif']
 
@@ -72,7 +74,9 @@ export class UploadService {
         return {
             ...uploaded,
             width: processed.width,
-            height: processed.height
+            height: processed.height,
+            sourceWidth: processed.sourceWidth,
+            sourceHeight: processed.sourceHeight
         }
     }
 
@@ -105,7 +109,9 @@ export class UploadService {
         return {
             ...uploaded,
             width: processed.width,
-            height: processed.height
+            height: processed.height,
+            sourceWidth: processed.sourceWidth,
+            sourceHeight: processed.sourceHeight
         }
     }
 
@@ -144,6 +150,26 @@ export class UploadService {
      */
     async getSignedReadUrl(filePath: string, options?: SignedUrlOptions): Promise<string> {
         return this.storageService.getSignedReadUrl(filePath, options)
+    }
+
+    /** A form for a browser to upload one file to `filePath` itself. See IStorageService.createUploadForm. */
+    async createUploadForm(filePath: string, options: UploadFormOptions): Promise<UploadForm> {
+        return this.storageService.createUploadForm(filePath, options)
+    }
+
+    /** The stored file's size, or null when there is none. */
+    async getFileSize(filePath: string): Promise<number | null> {
+        return this.storageService.getFileSize(filePath)
+    }
+
+    /** A copy of a stored file at `toPath`, made by the storage. */
+    async copyFile(fromPath: string, toPath: string): Promise<void> {
+        return this.storageService.copyFile(fromPath, toPath)
+    }
+
+    /** Bytes `start` to `end` (included) of a stored file. */
+    async getFileRange(filePath: string, start: number, end: number): Promise<Buffer> {
+        return this.storageService.getFileRange(filePath, start, end)
     }
 
     /**

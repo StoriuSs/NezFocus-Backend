@@ -84,4 +84,73 @@ describe('S3StorageService (integration)', () => {
         expect(response.status).toBe(200)
         expect(Buffer.from(await response.arrayBuffer()).length).toBe(pngBuffer.length)
     })
+
+    describe('uploads straight from the browser (D-165)', () => {
+        /** Posts `bytes` with the form, as a browser does: the fields, then the file. */
+        async function postWith(form: { url: string; fields: Record<string, string> }, bytes: Uint8Array<ArrayBuffer>) {
+            const body = new FormData()
+            for (const [name, value] of Object.entries(form.fields)) body.append(name, value)
+            body.append('file', new Blob([bytes]))
+            return fetch(form.url, { method: 'POST', body })
+        }
+
+        it('takes a file within the size the form allows, and refuses one over it at the storage', async () => {
+            const key = `attachments/itest-${Date.now()}`
+            createdKeys.push(key)
+            const form = await storage.createUploadForm(key, { maxBytes: 1000, expiresIn: 60 })
+
+            expect((await postWith(form, new Uint8Array(2000))).status).toBe(400)
+            expect(await storage.getFileSize(key)).toBeNull()
+
+            expect((await postWith(form, new Uint8Array([1, 2, 3, 4, 5]))).status).toBe(204)
+            expect(await storage.getFileSize(key)).toBe(5)
+        })
+
+        it('reads only the bytes asked for, fewer at the end of the file, and none past it', async () => {
+            const key = `attachments/itest-range-${Date.now()}`
+            createdKeys.push(key)
+            await postWith(
+                await storage.createUploadForm(key, { maxBytes: 1000, expiresIn: 60 }),
+                new Uint8Array([9, 8, 7, 6])
+            )
+
+            expect([...(await storage.getFileRange(key, 1, 2))]).toEqual([8, 7])
+            expect([...(await storage.getFileRange(key, 2, 4095))]).toEqual([7, 6])
+            await expect(storage.getFileRange('attachments/none', 0, 10)).rejects.toMatchObject({ status: 404 })
+        })
+
+        it('copies a file within the bucket, so posting with the form again never reaches the copy', async () => {
+            const from = `uploads/itest-copy-${Date.now()}`
+            const to = `attachments/itest-copy-${Date.now()}`
+            createdKeys.push(from, to)
+            const form = await storage.createUploadForm(from, { maxBytes: 1000, expiresIn: 60 })
+            await postWith(form, new Uint8Array([1, 2, 3]))
+
+            await storage.copyFile(from, to)
+            await postWith(form, new Uint8Array([9, 9, 9, 9]))
+
+            expect([...(await storage.getFileRange(to, 0, 10))]).toEqual([1, 2, 3])
+            await expect(storage.copyFile('uploads/none', to)).rejects.toMatchObject({ status: 404 })
+        })
+
+        it('signs a link that answers with the type and disposition asked for, whatever was uploaded', async () => {
+            const key = `attachments/itest-link-${Date.now()}`
+            createdKeys.push(key)
+            await postWith(
+                await storage.createUploadForm(key, { maxBytes: 1000, expiresIn: 60 }),
+                new TextEncoder().encode('<b>hi</b>')
+            )
+
+            const res = await fetch(
+                await storage.getSignedReadUrl(key, {
+                    responseContentType: 'text/plain; charset=utf-8',
+                    responseContentDisposition: `attachment; filename="a.html"`
+                })
+            )
+
+            expect(res.status).toBe(200)
+            expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8')
+            expect(res.headers.get('content-disposition')).toBe('attachment; filename="a.html"')
+        })
+    })
 })

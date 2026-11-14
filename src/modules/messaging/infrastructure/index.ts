@@ -1,3 +1,6 @@
+export * from './adapters/attachment-storage.adapter'
+export * from './adapters/bullmq-file-cleanup.adapter'
+export * from './persistence/prisma-attachment.repository'
 export * from './persistence/prisma-message.repository'
 export * from './persistence/prisma-pin.repository'
 export * from './persistence/prisma-reaction.repository'

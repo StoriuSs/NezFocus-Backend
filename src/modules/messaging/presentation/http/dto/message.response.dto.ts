@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Transform, Type } from 'class-transformer'
 import { IsBoolean, IsDate, IsIn, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { AttachmentResponseDto } from './attachment.response.dto'
 import { MentionedRoleResponseDto } from './mentioned-role.response.dto'
 import { MentionedUserResponseDto } from './mentioned-user.response.dto'
 import { MessageAuthorResponseDto } from './message-author.response.dto'
@@ -106,6 +107,13 @@ export class MessageResponseDto {
     @Expose()
     @IsBoolean()
     pinned: boolean
+
+    /** Its files, in the order sent (REQ-MSG-04): images first is the client's to draw (C-10). */
+    @Expose()
+    @ApiProperty({ type: [AttachmentResponseDto] })
+    @ValidateNested({ each: true })
+    @Type(() => AttachmentResponseDto)
+    attachments: AttachmentResponseDto[]
 
     @Expose()
     @IsDate()

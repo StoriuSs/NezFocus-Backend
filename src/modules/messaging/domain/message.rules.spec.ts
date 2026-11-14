@@ -1,4 +1,4 @@
-import { isMessageContent, MAX_MESSAGE_LENGTH, normaliseMessageContent } from './message.rules'
+import { hasSomething, isMessageContent, MAX_MESSAGE_LENGTH, normaliseMessageContent } from './message.rules'
 
 describe('The text of a message (REQ-MSG-01)', () => {
     it('is kept composed (NFC), without the blank around it, the blank inside kept', () => {
@@ -16,7 +16,11 @@ describe('The text of a message (REQ-MSG-01)', () => {
         expect(isMessageContent(normaliseMessageContent(`${'a'.repeat(MAX_MESSAGE_LENGTH)}\n\n`))).toBe(true)
     })
 
-    it('needs some text', () => {
-        expect(isMessageContent(normaliseMessageContent(' \n\t '))).toBe(false)
+    it('needs some text, or a file (D-93)', () => {
+        const blank = normaliseMessageContent(' \n\t ')
+        expect(isMessageContent(blank)).toBe(true)
+        expect(hasSomething(blank, 0)).toBe(false)
+        expect(hasSomething(blank, 1)).toBe(true)
+        expect(hasSomething('a', 0)).toBe(true)
     })
 })
