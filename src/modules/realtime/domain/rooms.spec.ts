@@ -1,5 +1,5 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission } from '@/modules/permissions'
-import { serverRooms } from './rooms'
+import { roomMoves, serverRooms } from './rooms'
 
 const NOW = new Date('2026-11-13T10:00:00Z')
 const LATER = new Date('2026-11-13T11:00:00Z')
@@ -46,5 +46,24 @@ describe("A socket's rooms in one server (SRS 5.2, D-163)", () => {
     it('are the server alone when @everyone may view no channel', () => {
         const blind = server(EVERYONE_DEFAULT_PERMISSIONS & ~Permission.VIEW_CHANNEL)
         expect(serverRooms('s1', blind, member(), NOW)).toEqual(['server:s1'])
+    })
+})
+
+describe('Moving a socket when its server changes (D-178)', () => {
+    const CHANNELS = ['general', 'staff', 'news', 'lounge']
+
+    it('takes someone no longer in the server out of its room and the room of every channel', () => {
+        expect(roomMoves('s1', CHANNELS, [])).toEqual({
+            leave: ['server:s1', 'channel:general', 'channel:staff', 'channel:news', 'channel:lounge'],
+            join: []
+        })
+    })
+
+    it('keeps a member in what they may view and takes them out of the rest', () => {
+        const allowed = serverRooms('s1', server(), member(), NOW)
+        expect(roomMoves('s1', CHANNELS, allowed)).toEqual({
+            leave: ['channel:staff', 'channel:lounge'],
+            join: ['server:s1', 'channel:general', 'channel:news']
+        })
     })
 })

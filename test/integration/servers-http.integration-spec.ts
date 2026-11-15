@@ -195,6 +195,16 @@ describe('Servers over HTTP (integration)', () => {
         expect(owned.channels.map((c: { name: string }) => c.name)).toContain('phong-mod')
     })
 
+    it('answers one server as the list shows it to that member, and NOT_FOUND to anyone not in it (D-178)', async () => {
+        const server = (await create('an', { name: 'Đọc lại', template: 'standard' })).body.data
+        const one = await as('an', api().get(`/api/v1/servers/${server.id}`))
+        expect(one.status).toBe(200)
+        expect(one.body.data).toEqual((await list('an')).find((s: { id: string }) => s.id === server.id))
+
+        expect(typeOf(await as('phong', api().get(`/api/v1/servers/${server.id}`)))).toEqual([404, 'NOT_FOUND_ERROR'])
+        expect(typeOf(await as('an', api().get(`/api/v1/servers/${randomUUID()}`)))).toEqual([404, 'NOT_FOUND_ERROR'])
+    })
+
     it('takes an icon from the owner, not from a member without MANAGE_SERVER, nor from a stranger', async () => {
         const server = (await create('an', { name: 'Ôn thi', template: 'standard' })).body.data
 

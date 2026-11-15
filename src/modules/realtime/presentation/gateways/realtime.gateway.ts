@@ -21,7 +21,8 @@ import {
     OpenConnectionCommand,
     OpenedConnection,
     ReportIdleCommand,
-    ReportTypingCommand
+    ReportTypingCommand,
+    SettleRoomsCommand
 } from '@/modules/realtime/application'
 import type { Presence } from '@/modules/realtime/domain'
 
@@ -88,6 +89,8 @@ export class RealtimeGateway
             return
         }
         await socket.join(connection.rooms)
+        // What changed while it connected (D-178): moved again now that later moves find it.
+        await this.commandBus.execute(new SettleRoomsCommand(connection.userId, connection.rooms))
         const status = await this.commandBus.execute<ConnectPresenceCommand, Presence>(
             new ConnectPresenceCommand(connection.userId, socket.id)
         )

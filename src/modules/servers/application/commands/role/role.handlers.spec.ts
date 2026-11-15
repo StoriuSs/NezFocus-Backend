@@ -1,4 +1,7 @@
+import { EventBus } from '@nestjs/cqrs'
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCachePort } from '@/modules/permissions'
+import { MemberChangedEvent } from '../../events/member-changed.event'
+import { ServerChangedEvent } from '../../events/server-changed.event'
 import { RoleRepositoryPort, RoleState, RoleWrite, ServerNotFoundError } from '../../../domain'
 import {
     CreateRoleHandler,
@@ -59,8 +62,14 @@ function setUp(found = true) {
         serverChanged: jest.fn().mockResolvedValue(undefined),
         memberChanged: jest.fn().mockResolvedValue(undefined)
     }
-    const deps = [repository as unknown as RoleRepositoryPort, cache as unknown as PermissionCachePort] as const
-    return { written, repository, cache, deps }
+    const events = { publish: jest.fn() }
+    const deps = [
+        repository as unknown as RoleRepositoryPort,
+        cache as unknown as PermissionCachePort,
+        events as unknown as EventBus
+    ] as const
+    const published = () => events.publish.mock.calls.map(([event]) => event as unknown)
+    return { written, repository, cache, deps, published }
 }
 
 describe('role handlers', () => {
@@ -114,10 +123,78 @@ describe('role handlers', () => {
     })
 
     it('answers NOT_FOUND when the server is gone or they are not in it, telling the cache nothing', async () => {
-        const { cache, deps } = setUp(false)
+        const { cache, deps, published } = setUp(false)
         await expect(
             new UpdateRoleHandler(...deps).execute(new UpdateRoleCommand('an', 'ot', 'docs', { name: 'X' }))
         ).rejects.toThrow(ServerNotFoundError)
         expect(cache.serverChanged).not.toHaveBeenCalled()
+        expect(published()).toEqual([])
+    })
+
+    describe('tells the members after the commit (D-178)', () => {
+        it('a new role, which no one holds yet: no view changes', async () => {
+            const { deps, published } = setUp()
+            await new CreateRoleHandler(...deps).execute(new CreateRoleCommand('an', 'ot', 'Nhóm đề'))
+            expect(published()).toEqual([new ServerChangedEvent('ot', [{ topic: 'role', action: 'created' }], false)])
+        })
+
+        it('new permissions of a role, which may change who views what; a new name or order does not', async () => {
+            const powers = setUp()
+            await new UpdateRoleHandler(...powers.deps).execute(
+                new UpdateRoleCommand('an', 'ot', 'docs', { permissions: Permission.CONNECT })
+            )
+            expect(powers.published()).toEqual([
+                new ServerChangedEvent('ot', [{ topic: 'role', action: 'updated' }], true)
+            ])
+
+            const renamed = setUp()
+            await new UpdateRoleHandler(...renamed.deps).execute(
+                new UpdateRoleCommand('an', 'ot', 'docs', { name: 'Đề' })
+            )
+            expect(renamed.published()).toEqual([
+                new ServerChangedEvent('ot', [{ topic: 'role', action: 'updated' }], false)
+            ])
+
+            const moved = setUp()
+            await new ReorderRolesHandler(...moved.deps).execute(
+                new ReorderRolesCommand('an', 'ot', ['lead', 'docs'], ['docs', 'lead'])
+            )
+            expect(moved.published()).toEqual([
+                new ServerChangedEvent('ot', [{ topic: 'role', action: 'updated' }], false)
+            ])
+        })
+
+        it('a role deleted, its holders maybe losing a channel', async () => {
+            const { deps, published } = setUp()
+            await new DeleteRoleHandler(...deps).execute(new DeleteRoleCommand('an', 'ot', 'docs'))
+            // The roles under it move up: one event for both.
+            expect(published()).toEqual([
+                new ServerChangedEvent(
+                    'ot',
+                    [
+                        { topic: 'role', action: 'deleted' },
+                        { topic: 'role', action: 'updated' }
+                    ],
+                    true
+                )
+            ])
+        })
+
+        it('each member given or losing a role, and no one when nothing changed', async () => {
+            const given = setUp()
+            await new GrantRoleHandler(...given.deps).execute(new GrantRoleCommand('an', 'ot', 'docs', ['binh', 'chi']))
+            expect(given.published()).toEqual([
+                new MemberChangedEvent('ot', 'binh', 'updated'),
+                new MemberChangedEvent('ot', 'chi', 'updated')
+            ])
+
+            const taken = setUp()
+            await new RevokeRoleHandler(...taken.deps).execute(new RevokeRoleCommand('an', 'ot', 'lead', 'binh'))
+            expect(taken.published()).toEqual([new MemberChangedEvent('ot', 'binh', 'updated')])
+
+            const untouched = setUp()
+            await new RevokeRoleHandler(...untouched.deps).execute(new RevokeRoleCommand('an', 'ot', 'lead', 'chi'))
+            expect(untouched.published()).toEqual([])
+        })
     })
 })

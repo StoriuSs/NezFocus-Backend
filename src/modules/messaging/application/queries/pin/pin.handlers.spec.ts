@@ -46,7 +46,7 @@ function world() {
         ])
     }
     const reactions = { summaries: jest.fn(async () => new Map([['m3', [{ emoji: '👍', count: 4, me: true }]]])) }
-    const channels: ChannelDirectoryPort = { serverIdOf: jest.fn(async () => 'ot') }
+    const channels: ChannelDirectoryPort = { serverIdOf: jest.fn(async () => 'ot'), channelIdsOf: async () => [] }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => ({
             server,

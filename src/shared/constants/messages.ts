@@ -49,6 +49,7 @@ export const MESSAGES = {
     SERVER: {
         CREATED: 'Server created',
         LISTED: 'Servers fetched',
+        FOUND: 'Server fetched',
         UPDATED: 'Server saved',
         ICON_UPDATED: 'Server icon updated',
         ICON_REMOVED: 'Server icon removed',

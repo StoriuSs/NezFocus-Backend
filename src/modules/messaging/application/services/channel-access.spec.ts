@@ -23,7 +23,8 @@ const server: AccessServer = {
 /** Channels of server `ot`; members `an` (owner), `binh` and `phong`, `phong` timed out until LATER. */
 function world() {
     const channels: ChannelDirectoryPort = {
-        serverIdOf: jest.fn(async (id: string) => (server.channels.some((channel) => channel.id === id) ? 'ot' : null))
+        serverIdOf: jest.fn(async (id: string) => (server.channels.some((channel) => channel.id === id) ? 'ot' : null)),
+        channelIdsOf: async () => []
     }
     const members: Record<string, { roleIds: string[]; timeoutUntil: Date | null }> = {
         an: { roleIds: [], timeoutUntil: LATER },

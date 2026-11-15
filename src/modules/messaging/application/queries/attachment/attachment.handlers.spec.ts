@@ -45,7 +45,7 @@ const files = new Map(
 const handler = new GetAttachmentLinksHandler(
     { find: jest.fn(async (id: string) => files.get(id) ?? null) } as unknown as AttachmentRepositoryPort,
     { readLink: jest.fn(async (key: string) => `signed:${key}`) } as unknown as AttachmentStoragePort,
-    { serverIdOf: jest.fn(async () => 'ot') } as ChannelDirectoryPort,
+    { serverIdOf: jest.fn(async () => 'ot'), channelIdsOf: async () => [] } as ChannelDirectoryPort,
     {
         access: jest.fn(async (_serverId: string, userId: string) => ({
             server,

@@ -17,6 +17,10 @@ export const sessionRoom = (sessionId: string) => `session:${sessionId}`
 export const serverRoom = (serverId: string) => `server:${serverId}`
 export const channelRoom = (channelId: string) => `channel:${channelId}`
 
+/** The servers among a socket's rooms (`server:<id>`). */
+export const serverIdsIn = (rooms: string[]) =>
+    rooms.filter((room) => room.startsWith('server:')).map((room) => room.slice('server:'.length))
+
 /**
  * A member's rooms in one server: the server's, and each text channel they
  * may view, checked as opening the channel is (VIEW_CHANNEL from
@@ -33,4 +37,20 @@ export function serverRooms(serverId: string, server: AccessServer, member: Acce
         }
     }
     return rooms
+}
+
+/**
+ * Where a person's sockets go when their place in a server changes (D-178):
+ * into `allowed` (serverRooms; none once they are not in it), and out of the
+ * server's room and every room of its channels they are no longer allowed
+ * in. Leaving a room one is not in, or joining one again, does nothing.
+ */
+export function roomMoves(
+    serverId: string,
+    channelIds: string[],
+    allowed: string[]
+): { leave: string[]; join: string[] } {
+    const kept = new Set(allowed)
+    const leave = [serverRoom(serverId), ...channelIds.map(channelRoom)].filter((room) => !kept.has(room))
+    return { leave, join: allowed }
 }

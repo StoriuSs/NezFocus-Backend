@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common'
-import { CommandBus } from '@nestjs/cqrs'
+import { CommandBus, EventBus } from '@nestjs/cqrs'
 import { CurrentPasswordPort } from '@/modules/auth'
 import { EVERYONE_DEFAULT_PERMISSIONS, PermissionCachePort } from '@/modules/permissions'
 import { AccountDeletedEvent } from '@/modules/users'
@@ -13,6 +13,8 @@ import {
     ServerRepositoryPort
 } from '../../../domain'
 import { FileCleanupPort } from '../../ports'
+import { MemberChangedEvent } from '../../events/member-changed.event'
+import { ServerChangedEvent } from '../../events/server-changed.event'
 import { ForgetDeletedAccountHandler } from '../../events/handlers/forget-deleted-account.handler'
 import {
     CleanUpServersCommand,
@@ -73,27 +75,32 @@ function world(state: MembershipState | null) {
             async (serverId: string, userId: string) => void log.push(`memberChanged ${serverId} ${userId}`)
         )
     }
+    const events = {
+        publish: jest.fn((event: object) => void log.push(`publish ${event.constructor.name}`))
+    }
     return {
         log,
         written,
         servers: servers as unknown as ServerRepositoryPort,
-        cache: cache as unknown as PermissionCachePort
+        cache: cache as unknown as PermissionCachePort,
+        events: events as unknown as EventBus,
+        published: () => events.publish.mock.calls.map(([event]) => event as unknown)
     }
 }
 
 describe('LeaveServerHandler', () => {
     it('takes them out, then tells the cache they are no longer a member', async () => {
         const w = world(stateFor('binh'))
-        await new LeaveServerHandler(w.servers, w.cache).execute(new LeaveServerCommand('binh', 'ot'))
+        await new LeaveServerHandler(w.servers, w.cache, w.events).execute(new LeaveServerCommand('binh', 'ot'))
 
         expect(w.written).toEqual([{ kind: 'leave', userId: 'binh' }])
-        expect(w.log).toEqual(['commit', 'memberChanged ot binh'])
+        expect(w.log).toEqual(['commit', 'memberChanged ot binh', 'publish MemberChangedEvent'])
     })
 
     it('refuses the owner, and tells the cache nothing', async () => {
         const w = world(stateFor('an'))
         await expect(
-            new LeaveServerHandler(w.servers, w.cache).execute(new LeaveServerCommand('an', 'ot'))
+            new LeaveServerHandler(w.servers, w.cache, w.events).execute(new LeaveServerCommand('an', 'ot'))
         ).rejects.toThrow(OwnerCannotLeaveError)
         expect(w.log).toEqual([])
     })
@@ -101,7 +108,7 @@ describe('LeaveServerHandler', () => {
     it('answers not found when the server is gone or they are not in it', async () => {
         const w = world(null)
         await expect(
-            new LeaveServerHandler(w.servers, w.cache).execute(new LeaveServerCommand('binh', 'ot'))
+            new LeaveServerHandler(w.servers, w.cache, w.events).execute(new LeaveServerCommand('binh', 'ot'))
         ).rejects.toThrow(ServerNotFoundError)
     })
 })
@@ -109,25 +116,25 @@ describe('LeaveServerHandler', () => {
 describe('DeleteServerHandler', () => {
     it('deletes the server when the owner types its name, then tells the cache', async () => {
         const w = world(stateFor('an'))
-        await new DeleteServerHandler(w.servers, w.cache).execute(
+        await new DeleteServerHandler(w.servers, w.cache, w.events).execute(
             new DeleteServerCommand('an', 'ot', 'ON THI GIAI TICH 2')
         )
 
         expect(w.written).toEqual([{ kind: 'deleteServer' }])
-        expect(w.log).toEqual(['commit', 'serverChanged ot'])
+        expect(w.log).toEqual(['commit', 'serverChanged ot', 'publish ServerChangedEvent'])
     })
 
     it('refuses another name, and a member who is not the owner', async () => {
         const wrongName = world(stateFor('an'))
         await expect(
-            new DeleteServerHandler(wrongName.servers, wrongName.cache).execute(
+            new DeleteServerHandler(wrongName.servers, wrongName.cache, wrongName.events).execute(
                 new DeleteServerCommand('an', 'ot', 'ÔT')
             )
         ).rejects.toMatchObject({ errorKey: 'VALIDATION_ERROR', details: { rule: 'name_mismatch' } })
 
         const member = world(stateFor('binh'))
         await expect(
-            new DeleteServerHandler(member.servers, member.cache).execute(
+            new DeleteServerHandler(member.servers, member.cache, member.events).execute(
                 new DeleteServerCommand('binh', 'ot', 'Ôn thi Giải tích 2')
             )
         ).rejects.toThrow(NotOwnerError)
@@ -146,7 +153,12 @@ describe('TransferOwnershipHandler', () => {
                 if (!passwordRight) throw new Error('wrong password')
             })
         }
-        const handler = new TransferOwnershipHandler(w.servers, w.cache, passwords as unknown as CurrentPasswordPort)
+        const handler = new TransferOwnershipHandler(
+            w.servers,
+            w.cache,
+            w.events,
+            passwords as unknown as CurrentPasswordPort
+        )
         return { w, passwords, handler }
     }
 
@@ -157,7 +169,7 @@ describe('TransferOwnershipHandler', () => {
         expect(passwords.confirm).toHaveBeenCalledWith('an', 'Harbour-Lantern-42')
         expect(w.servers.changeMembership).toHaveBeenCalledWith('ot', 'an', 'binh', expect.any(Function))
         expect(w.written).toEqual([{ kind: 'transferOwnership', toUserId: 'binh' }])
-        expect(w.log).toEqual(['password', 'commit', 'serverChanged ot'])
+        expect(w.log).toEqual(['password', 'commit', 'serverChanged ot', 'publish ServerChangedEvent'])
     })
 
     it('changes nothing on a wrong password', async () => {
@@ -174,23 +186,29 @@ describe('ForgetDeletedMemberHandler (D-76)', () => {
     it('takes a deleted member out of the server, then tells the cache, and says it changed something', async () => {
         const w = world(stateFor('binh'))
         await expect(
-            new ForgetDeletedMemberHandler(w.servers, w.cache).execute(new ForgetDeletedMemberCommand('binh', 'ot'))
+            new ForgetDeletedMemberHandler(w.servers, w.cache, w.events).execute(
+                new ForgetDeletedMemberCommand('binh', 'ot')
+            )
         ).resolves.toBe(true)
-        expect(w.log).toEqual(['commit', 'memberChanged ot binh'])
+        expect(w.log).toEqual(['commit', 'memberChanged ot binh', 'publish MemberChangedEvent'])
     })
 
     it('deletes a server its deleted owner was alone in', async () => {
         const w = world(stateFor('an', { otherMembers: 0 }))
-        await new ForgetDeletedMemberHandler(w.servers, w.cache).execute(new ForgetDeletedMemberCommand('an', 'ot'))
+        await new ForgetDeletedMemberHandler(w.servers, w.cache, w.events).execute(
+            new ForgetDeletedMemberCommand('an', 'ot')
+        )
         expect(w.written).toEqual([{ kind: 'deleteServer' }])
-        expect(w.log).toEqual(['commit', 'serverChanged ot'])
+        expect(w.log).toEqual(['commit', 'serverChanged ot', 'publish ServerChangedEvent'])
     })
 
     it('reports, and leaves as it is, a server its deleted owner shares with others', async () => {
         const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
         const w = world(stateFor('an', { otherMembers: 2 }))
         await expect(
-            new ForgetDeletedMemberHandler(w.servers, w.cache).execute(new ForgetDeletedMemberCommand('an', 'ot'))
+            new ForgetDeletedMemberHandler(w.servers, w.cache, w.events).execute(
+                new ForgetDeletedMemberCommand('an', 'ot')
+            )
         ).resolves.toBe(false)
 
         expect(w.written).toEqual([])
@@ -354,5 +372,41 @@ describe('ForgetDeletedAccountHandler (AccountDeletedEvent, D-76)', () => {
         await expect(handler.handle(new AccountDeletedEvent('binh', true))).resolves.toBeUndefined()
         expect(error).toHaveBeenCalledTimes(1)
         error.mockRestore()
+    })
+})
+
+describe('membership changes told after the commit (D-178)', () => {
+    it('one who leaves, with no one removing them', async () => {
+        const w = world(stateFor('binh'))
+        await new LeaveServerHandler(w.servers, w.cache, w.events).execute(new LeaveServerCommand('binh', 'ot'))
+        expect(w.published()).toEqual([new MemberChangedEvent('ot', 'binh', 'left')])
+    })
+
+    it('a deleted server, and a handed-over one, where the owner sees every channel', async () => {
+        const deleted = world(stateFor('an'))
+        await new DeleteServerHandler(deleted.servers, deleted.cache, deleted.events).execute(
+            new DeleteServerCommand('an', 'ot', 'Ôn thi Giải tích 2')
+        )
+        expect(deleted.published()).toEqual([
+            new ServerChangedEvent('ot', [{ topic: 'server', action: 'deleted' }], true)
+        ])
+
+        const binh = { userId: 'binh', roleIds: [], timeoutUntil: null, pendingDeletion: false }
+        const handed = world(stateFor('an', { target: binh }))
+        const passwords = { confirm: jest.fn(async () => undefined) } as unknown as CurrentPasswordPort
+        await new TransferOwnershipHandler(handed.servers, handed.cache, handed.events, passwords).execute(
+            new TransferOwnershipCommand('an', 'ot', 'binh', 'Harbour-Lantern-42')
+        )
+        expect(handed.published()).toEqual([
+            new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], true)
+        ])
+    })
+
+    it('nothing when refused', async () => {
+        const w = world(stateFor('an'))
+        await expect(
+            new LeaveServerHandler(w.servers, w.cache, w.events).execute(new LeaveServerCommand('an', 'ot'))
+        ).rejects.toThrow(OwnerCannotLeaveError)
+        expect(w.published()).toEqual([])
     })
 })

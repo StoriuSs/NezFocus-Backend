@@ -1,6 +1,6 @@
 import { randomInt } from 'crypto'
 import { Inject, Logger } from '@nestjs/common'
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { Permission, PERMISSION_CHECKER, PermissionCheckerPort, serverPermissions } from '@/modules/permissions'
 import {
     decideJoin,
@@ -16,6 +16,8 @@ import {
     MissingPermissionError,
     newInviteCode
 } from '../../../domain'
+import { MemberChangedEvent } from '../../events/member-changed.event'
+import { ServerChangedEvent } from '../../events/server-changed.event'
 import { GUESS_LIMIT, GuessLimitPort, SYSTEM_MESSAGES, SystemMessagesPort } from '../../ports'
 import { requireServerPermission } from '../../services/require-permission'
 import { countingGuesses } from '../../services/invite-guesses'
@@ -24,11 +26,13 @@ import { AcceptInviteCommand, CreateInviteCommand, RevokeInviteCommand } from '.
 /** Tries at a code no link has yet; 57⁸ codes make a second try already rare. */
 const CODE_ATTEMPTS = 3
 
+/** A new link; their own unlimited one again when it may be (D-151), which tells no one: nothing changed. */
 @CommandHandler(CreateInviteCommand)
 export class CreateInviteHandler implements ICommandHandler<CreateInviteCommand> {
     constructor(
         @Inject(INVITE_REPOSITORY) private readonly invites: InviteRepositoryPort,
-        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort
+        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
+        private readonly events: EventBus
     ) {}
 
     async execute({ userId, serverId, settings }: CreateInviteCommand): Promise<InviteRecord> {
@@ -48,7 +52,11 @@ export class CreateInviteHandler implements ICommandHandler<CreateInviteCommand>
                 ...settings,
                 expiresAt: expiresAtFor(settings.maxAgeSeconds, now)
             }
-            if (await this.invites.insert(invite)) return { ...invite, uses: 0, createdAt: now }
+            if (await this.invites.insert(invite)) {
+                // The invites page of the other managers reads its list again (D-178).
+                this.events.publish(new ServerChangedEvent(serverId, [{ topic: 'invite', action: 'created' }], false))
+                return { ...invite, uses: 0, createdAt: now }
+            }
         }
         throw new Error(`No free invite code after ${CODE_ATTEMPTS} attempts`)
     }
@@ -58,7 +66,8 @@ export class CreateInviteHandler implements ICommandHandler<CreateInviteCommand>
 export class RevokeInviteHandler implements ICommandHandler<RevokeInviteCommand> {
     constructor(
         @Inject(INVITE_REPOSITORY) private readonly invites: InviteRepositoryPort,
-        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort
+        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
+        private readonly events: EventBus
     ) {}
 
     /**
@@ -80,6 +89,7 @@ export class RevokeInviteHandler implements ICommandHandler<RevokeInviteCommand>
         if (!own && !manages) throw new MissingPermissionError('MANAGE_SERVER')
 
         if (!(await this.invites.delete(code))) throw new InviteInvalidError()
+        this.events.publish(new ServerChangedEvent(invite.serverId, [{ topic: 'invite', action: 'deleted' }], false))
     }
 }
 
@@ -90,7 +100,8 @@ export class AcceptInviteHandler implements ICommandHandler<AcceptInviteCommand>
     constructor(
         @Inject(INVITE_REPOSITORY) private readonly invites: InviteRepositoryPort,
         @Inject(GUESS_LIMIT) private readonly limit: GuessLimitPort,
-        @Inject(SYSTEM_MESSAGES) private readonly messages: SystemMessagesPort
+        @Inject(SYSTEM_MESSAGES) private readonly messages: SystemMessagesPort,
+        private readonly events: EventBus
     ) {}
 
     /**
@@ -99,7 +110,9 @@ export class AcceptInviteHandler implements ICommandHandler<AcceptInviteCommand>
      *
      * The welcome message is posted after the commit; if that fails, they
      * have still joined, and are told so rather than shown an error (a retry
-     * would only find them a member).
+     * would only find them a member). The server hears of them first
+     * (D-178): their sockets go into its rooms, and a link used up leaves
+     * the invites page as it is read again.
      */
     async execute({ userId, code, ip }: AcceptInviteCommand): Promise<{ serverId: string; decision: JoinDecision }> {
         const result = await countingGuesses(this.limit, ip, () => {
@@ -107,6 +120,7 @@ export class AcceptInviteHandler implements ICommandHandler<AcceptInviteCommand>
             return this.invites.join(code, userId, decideJoin)
         })
         if (result.decision === 'join') {
+            this.events.publish(new MemberChangedEvent(result.serverId, userId, 'joined'))
             await this.messages.memberJoined(result.serverId, userId).catch((error: unknown) => {
                 this.logger.error(`Welcome message not posted for server ${result.serverId}: ${String(error)}`)
             })

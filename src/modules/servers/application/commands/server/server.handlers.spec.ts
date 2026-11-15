@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { EventBus } from '@nestjs/cqrs'
 import {
     AccessMember,
     AccessServer,
@@ -16,6 +17,8 @@ import {
     serverPlan,
     ServerRepositoryPort
 } from '../../../domain'
+import { MemberChangedEvent } from '../../events/member-changed.event'
+import { ServerChangedEvent } from '../../events/server-changed.event'
 import { FileCleanupPort, IconStoragePort } from '../../ports'
 import {
     CreateServerCommand,
@@ -33,7 +36,10 @@ import {
 describe('CreateServerHandler', () => {
     it('builds the chosen template for the creator, under the 100-server limit', async () => {
         const servers = { create: jest.fn().mockResolvedValue({ serverId: 'ot' }) }
-        const handler = new CreateServerHandler(servers as unknown as ServerRepositoryPort)
+        const handler = new CreateServerHandler(
+            servers as unknown as ServerRepositoryPort,
+            { publish: jest.fn() } as unknown as EventBus
+        )
 
         await expect(handler.execute(new CreateServerCommand('an', 'Ôn thi', 'study'))).resolves.toEqual({
             serverId: 'ot'
@@ -48,7 +54,10 @@ describe('CreateServerHandler', () => {
 
     it('answers MAX_SERVERS_REACHED when the repository refuses for the limit', async () => {
         const servers = { create: jest.fn().mockResolvedValue(null) }
-        const handler = new CreateServerHandler(servers as unknown as ServerRepositoryPort)
+        const handler = new CreateServerHandler(
+            servers as unknown as ServerRepositoryPort,
+            { publish: jest.fn() } as unknown as EventBus
+        )
 
         const refused = handler.execute(new CreateServerCommand('an', 'Thứ 101', 'standard'))
         await expect(refused).rejects.toThrow(MaxServersReachedError)
@@ -87,11 +96,13 @@ describe('UpdateServerHandler', () => {
             )
         }
         const cache = { serverChanged: jest.fn().mockResolvedValue(undefined) }
+        const events = { publish: jest.fn() }
         const handler = new UpdateServerHandler(
             servers as unknown as ServerRepositoryPort,
-            cache as unknown as PermissionCachePort
+            cache as unknown as PermissionCachePort,
+            events as unknown as EventBus
         )
-        return { handler, servers, cache, written }
+        return { handler, servers, cache, written, events }
     }
 
     it('decides the change under the server lock and carries out what it decided', async () => {
@@ -128,24 +139,30 @@ describe('UploadServerIconHandler', () => {
             getReadUrl: jest.fn().mockResolvedValue('https://cdn.test/new.webp')
         }
         const cleanup = { deleteFileLater: jest.fn().mockResolvedValue(undefined) }
+        const events = { publish: jest.fn() }
         const handler = new UploadServerIconHandler(
             checker as unknown as PermissionCheckerPort,
             servers as unknown as ServerRepositoryPort,
             storage as unknown as IconStoragePort,
-            cleanup as unknown as FileCleanupPort
+            cleanup as unknown as FileCleanupPort,
+            events as unknown as EventBus
         )
-        return { checker, servers, storage, cleanup, handler }
+        return { checker, servers, storage, cleanup, handler, events }
     }
 
     const command = (userId = 'an') => new UploadServerIconCommand(userId, 'ot', Buffer.from('image'))
 
     it('queues the icon it replaced and answers with a URL for the new one', async () => {
-        const { servers, storage, cleanup, handler } = setUp()
+        const { servers, storage, cleanup, handler, events } = setUp()
         servers.replaceIcon.mockResolvedValue({ previousIconKey: 'server-icons/old.webp' })
 
         await expect(handler.execute(command())).resolves.toEqual({ iconUrl: 'https://cdn.test/new.webp' })
         expect(cleanup.deleteFileLater).toHaveBeenCalledWith('server-icons/old.webp')
         expect(storage.deleteFile).not.toHaveBeenCalled()
+        // Told after the swap (D-178): the members read the server again.
+        expect(events.publish).toHaveBeenCalledWith(
+            new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], false)
+        )
     })
 
     it('leaves no file behind when the server is gone meanwhile, or the write fails', async () => {
@@ -198,20 +215,25 @@ describe('RemoveServerIconHandler', () => {
         }
         const servers = { replaceIcon: jest.fn() }
         const cleanup = { deleteFileLater: jest.fn().mockResolvedValue(undefined) }
+        const events = { publish: jest.fn() }
         const handler = new RemoveServerIconHandler(
             checker as unknown as PermissionCheckerPort,
             servers as unknown as ServerRepositoryPort,
-            cleanup as unknown as FileCleanupPort
+            cleanup as unknown as FileCleanupPort,
+            events as unknown as EventBus
         )
-        return { checker, servers, cleanup, handler }
+        return { checker, servers, cleanup, handler, events }
     }
 
     it('clears the icon and queues its file; without one it answers the same and queues nothing', async () => {
-        const { servers, cleanup, handler } = setUp()
+        const { servers, cleanup, handler, events } = setUp()
         servers.replaceIcon.mockResolvedValueOnce({ previousIconKey: 'server-icons/old.webp' })
         await handler.execute(new RemoveServerIconCommand('an', 'ot'))
         expect(servers.replaceIcon).toHaveBeenCalledWith('ot', null)
         expect(cleanup.deleteFileLater).toHaveBeenCalledWith('server-icons/old.webp')
+        expect(events.publish).toHaveBeenCalledWith(
+            new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], false)
+        )
 
         cleanup.deleteFileLater.mockClear()
         servers.replaceIcon.mockResolvedValueOnce({ previousIconKey: null })
@@ -231,5 +253,68 @@ describe('RemoveServerIconHandler', () => {
             MissingPermissionError
         )
         expect(servers.replaceIcon).not.toHaveBeenCalled()
+    })
+})
+
+describe('server changes told after the commit (D-178)', () => {
+    const changed = new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], false)
+    const publishedOn = (events: { publish: jest.Mock }) => events.publish.mock.calls.map(([event]) => event as unknown)
+
+    it("a new server, to its creator's own tabs, as their joining it", async () => {
+        const events = { publish: jest.fn() }
+        const servers = { create: jest.fn().mockResolvedValue({ serverId: 'ot' }) }
+        await new CreateServerHandler(
+            servers as unknown as ServerRepositoryPort,
+            events as unknown as EventBus
+        ).execute(new CreateServerCommand('an', 'Ôn thi', 'study'))
+        expect(publishedOn(events)).toEqual([new MemberChangedEvent('ot', 'an', 'joined')])
+    })
+
+    it('nothing when the limit refuses it', async () => {
+        const events = { publish: jest.fn() }
+        const servers = { create: jest.fn().mockResolvedValue(null) }
+        await expect(
+            new CreateServerHandler(servers as unknown as ServerRepositoryPort, events as unknown as EventBus).execute(
+                new CreateServerCommand('an', 'Thứ 101', 'standard')
+            )
+        ).rejects.toThrow(MaxServersReachedError)
+        expect(publishedOn(events)).toEqual([])
+    })
+
+    it('a new name, changing no view', async () => {
+        const events = { publish: jest.fn() }
+        const servers = {
+            changeLayout: jest.fn(async (_s: string, _u: string, decide: (s: LayoutState) => LayoutWrite[]) => {
+                decide({
+                    server: {
+                        id: 'ot',
+                        name: 'ÔT',
+                        iconKey: null,
+                        ownerId: 'an',
+                        welcomeChannelId: null,
+                        categories: [],
+                        channels: [],
+                        roles: [
+                            {
+                                id: 'e',
+                                name: '@everyone',
+                                permissions: EVERYONE_DEFAULT_PERMISSIONS,
+                                position: 0,
+                                isEveryone: true
+                            }
+                        ]
+                    },
+                    member: { userId: 'an', roleIds: [], timeoutUntil: null }
+                })
+                return { createdId: null }
+            })
+        }
+        const cache = { serverChanged: jest.fn() }
+        await new UpdateServerHandler(
+            servers as unknown as ServerRepositoryPort,
+            cache as unknown as PermissionCachePort,
+            events as unknown as EventBus
+        ).execute(new UpdateServerCommand('an', 'ot', { name: 'Ôn thi K22' }))
+        expect(publishedOn(events)).toEqual([changed])
     })
 })

@@ -86,8 +86,8 @@ describe('moderationReason', () => {
 
 describe('planKick', () => {
     it('puts out someone ranked below', () => {
-        expect(planKick(as(binh, dung), 'dung', null, NOW)).toEqual([{ kind: 'kick', userId: 'dung' }])
-        expect(planKick(as(binh, chi), 'chi', 'Spam', NOW)).toEqual([{ kind: 'kick', userId: 'chi' }])
+        expect(planKick(as(binh, dung), 'dung', null, NOW)).toEqual([{ kind: 'kick', userId: 'dung', reason: null }])
+        expect(planKick(as(binh, chi), 'chi', 'Spam', NOW)).toEqual([{ kind: 'kick', userId: 'chi', reason: 'Spam' }])
     })
 
     it('needs KICK_MEMBERS', () => {
@@ -108,7 +108,7 @@ describe('planKick', () => {
     })
 
     it('lets the owner put out anyone else, an administrator included', () => {
-        expect(planKick(as(an, tuan), 'tuan', null, NOW)).toEqual([{ kind: 'kick', userId: 'tuan' }])
+        expect(planKick(as(an, tuan), 'tuan', null, NOW)).toEqual([{ kind: 'kick', userId: 'tuan', reason: null }])
     })
 
     it('answers not found for someone not in the server', () => {

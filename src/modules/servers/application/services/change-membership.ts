@@ -1,4 +1,5 @@
 import { Inject } from '@nestjs/common'
+import { EventBus } from '@nestjs/cqrs'
 import { PERMISSION_CACHE, PermissionCachePort } from '@/modules/permissions'
 import {
     MembershipState,
@@ -7,6 +8,8 @@ import {
     ServerNotFoundError,
     ServerRepositoryPort
 } from '../../domain'
+import { MemberChangedEvent } from '../events/member-changed.event'
+import { ServerChangedEvent } from '../events/server-changed.event'
 
 /**
  * What each write changes in the permission cache (D-146), told after the
@@ -27,6 +30,27 @@ const TELL_CACHE: {
     deleteServer: (cache, serverId) => cache.serverChanged(serverId)
 }
 
+/**
+ * What the members are told of each write (D-178): one who left; a new owner,
+ * who sees every channel; a deleted server, which no one sees any more.
+ */
+const TOLD: {
+    [K in MembershipWrite['kind']]: (
+        serverId: string,
+        write: Extract<MembershipWrite, { kind: K }>
+    ) => ServerChangedEvent | MemberChangedEvent
+} = {
+    leave: (serverId, write) => new MemberChangedEvent(serverId, write.userId, 'left'),
+    transferOwnership: (serverId) => new ServerChangedEvent(serverId, [{ topic: 'server', action: 'updated' }], true),
+    deleteServer: (serverId) => new ServerChangedEvent(serverId, [{ topic: 'server', action: 'deleted' }], true)
+}
+
+const told = (serverId: string, write: MembershipWrite) =>
+    (TOLD[write.kind] as (serverId: string, write: MembershipWrite) => ServerChangedEvent | MemberChangedEvent)(
+        serverId,
+        write
+    )
+
 const tellCache = (cache: PermissionCachePort, serverId: string, write: MembershipWrite) =>
     (TELL_CACHE[write.kind] as (cache: PermissionCachePort, serverId: string, write: MembershipWrite) => Promise<void>)(
         cache,
@@ -39,12 +63,14 @@ const tellCache = (cache: PermissionCachePort, serverId: string, write: Membersh
  * rule (REQ-SRV-05): run it in the locked transaction
  * (ServerRepositoryPort.changeMembership), answer NOT_FOUND when the server
  * is gone or they are not in it, and tell the permission cache after the
- * commit, so the next request already sees the change (D-146).
+ * commit, so the next request already sees the change (D-146); then the
+ * members (D-178).
  */
 export abstract class ChangeMembership {
     constructor(
         @Inject(SERVER_REPOSITORY) private readonly servers: ServerRepositoryPort,
-        @Inject(PERMISSION_CACHE) private readonly cache: PermissionCachePort
+        @Inject(PERMISSION_CACHE) private readonly cache: PermissionCachePort,
+        private readonly events: EventBus
     ) {}
 
     /** The writes carried out, for a caller with something to say about them. */
@@ -62,6 +88,7 @@ export abstract class ChangeMembership {
         })
         if (!done) throw new ServerNotFoundError(serverId)
         await Promise.all(writes.map((write) => tellCache(this.cache, serverId, write)))
+        for (const write of writes) this.events.publish(told(serverId, write))
         return writes
     }
 }

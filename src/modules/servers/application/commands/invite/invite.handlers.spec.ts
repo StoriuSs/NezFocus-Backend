@@ -1,3 +1,4 @@
+import { EventBus } from '@nestjs/cqrs'
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import {
     InviteInvalidError,
@@ -7,6 +8,8 @@ import {
     MissingPermissionError,
     ServerNotFoundError
 } from '../../../domain'
+import { MemberChangedEvent } from '../../events/member-changed.event'
+import { ServerChangedEvent } from '../../events/server-changed.event'
 import { GuessLimitPort, SystemMessagesPort } from '../../ports'
 import { AcceptInviteHandler, CreateInviteHandler, RevokeInviteHandler } from './invite.handlers'
 import { AcceptInviteCommand, CreateInviteCommand, RevokeInviteCommand } from './invite.commands'
@@ -62,6 +65,10 @@ const repository = (overrides: Partial<InviteRepositoryPort> = {}) =>
         ...overrides
     }) as unknown as jest.Mocked<InviteRepositoryPort>
 
+/** An event bus that keeps what was published. */
+const bus = () => ({ publish: jest.fn() }) as unknown as jest.Mocked<EventBus>
+const publishedOn = (events: jest.Mocked<EventBus>) => events.publish.mock.calls.map(([event]) => event as unknown)
+
 const limiter = () => {
     const state = { count: 0, limited: false, retryAfterSeconds: 42 }
     return {
@@ -76,7 +83,7 @@ describe('CreateInviteHandler', () => {
     it('hands out their own unlimited link again when it may be (D-151)', async () => {
         const own = record()
         const invites = repository({ latestOwnUnlimited: jest.fn(async () => own) })
-        const handler = new CreateInviteHandler(invites, checker(members))
+        const handler = new CreateInviteHandler(invites, checker(members), bus())
         const result = await handler.execute(
             new CreateInviteCommand('an', 'ot', { maxAgeSeconds: 7 * DAY, maxUses: null })
         )
@@ -88,7 +95,7 @@ describe('CreateInviteHandler', () => {
     it('makes a new link with its expiry when none may be handed out again', async () => {
         const stale = record({ expiresAt: new Date(Date.now() + DAY * 1000) })
         const invites = repository({ latestOwnUnlimited: jest.fn(async () => stale) })
-        const handler = new CreateInviteHandler(invites, checker(members))
+        const handler = new CreateInviteHandler(invites, checker(members), bus())
         const before = Date.now()
         const result = await handler.execute(new CreateInviteCommand('an', 'ot', { maxAgeSeconds: DAY, maxUses: null }))
         expect(result.code).not.toBe(stale.code)
@@ -98,7 +105,7 @@ describe('CreateInviteHandler', () => {
 
     it('never looks for a link to hand out again when uses are limited', async () => {
         const invites = repository()
-        const handler = new CreateInviteHandler(invites, checker(members))
+        const handler = new CreateInviteHandler(invites, checker(members), bus())
         const result = await handler.execute(new CreateInviteCommand('an', 'ot', { maxAgeSeconds: null, maxUses: 1 }))
         expect(invites.latestOwnUnlimited).not.toHaveBeenCalled()
         expect(result).toMatchObject({ maxUses: 1, expiresAt: null })
@@ -107,12 +114,16 @@ describe('CreateInviteHandler', () => {
     it('draws another code when one is taken, and gives up after three', async () => {
         const taken = repository({ insert: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true) })
         const settings = { maxAgeSeconds: null, maxUses: 5 }
-        await new CreateInviteHandler(taken, checker(members)).execute(new CreateInviteCommand('an', 'ot', settings))
+        await new CreateInviteHandler(taken, checker(members), bus()).execute(
+            new CreateInviteCommand('an', 'ot', settings)
+        )
         expect(taken.insert).toHaveBeenCalledTimes(2)
 
         const full = repository({ insert: jest.fn(async () => false) })
         await expect(
-            new CreateInviteHandler(full, checker(members)).execute(new CreateInviteCommand('an', 'ot', settings))
+            new CreateInviteHandler(full, checker(members), bus()).execute(
+                new CreateInviteCommand('an', 'ot', settings)
+            )
         ).rejects.toThrow('No free invite code')
         expect(full.insert).toHaveBeenCalledTimes(3)
     })
@@ -121,10 +132,12 @@ describe('CreateInviteHandler', () => {
         const closed = checker(members, EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CREATE_INVITE)
         const settings = { maxAgeSeconds: null, maxUses: null }
         await expect(
-            new CreateInviteHandler(repository(), closed).execute(new CreateInviteCommand('phong', 'ot', settings))
+            new CreateInviteHandler(repository(), closed, bus()).execute(
+                new CreateInviteCommand('phong', 'ot', settings)
+            )
         ).rejects.toBeInstanceOf(MissingPermissionError)
         await expect(
-            new CreateInviteHandler(repository(), checker(members)).execute(
+            new CreateInviteHandler(repository(), checker(members), bus()).execute(
                 new CreateInviteCommand('stranger', 'ot', settings)
             )
         ).rejects.toBeInstanceOf(ServerNotFoundError)
@@ -133,7 +146,7 @@ describe('CreateInviteHandler', () => {
 
 describe('RevokeInviteHandler', () => {
     const members = { an: [], binh: [], tuan: [Permission.MANAGE_SERVER], phong: [] as bigint[] }
-    const handler = (invites: InviteRepositoryPort) => new RevokeInviteHandler(invites, checker(members))
+    const handler = (invites: InviteRepositoryPort) => new RevokeInviteHandler(invites, checker(members), bus())
     const binhs = record({ creatorId: 'binh' })
 
     it('lets the creator or someone with MANAGE_SERVER revoke', async () => {
@@ -179,7 +192,7 @@ describe('AcceptInviteHandler', () => {
             join: jest.fn(async (_code, _userId, decide) => ({ serverId: 'ot', decision: decide(facts, new Date()) }))
         })
         const posted = messages()
-        const result = await new AcceptInviteHandler(invites, limiter(), posted).execute(
+        const result = await new AcceptInviteHandler(invites, limiter(), posted, bus()).execute(
             new AcceptInviteCommand('binh', 'k7Qm2xPa', IP)
         )
         expect(result).toEqual({ serverId: 'ot', decision: 'join' })
@@ -192,7 +205,9 @@ describe('AcceptInviteHandler', () => {
         const posted = messages()
         posted.memberJoined.mockRejectedValue(new Error('down'))
         await expect(
-            new AcceptInviteHandler(invites, limiter(), posted).execute(new AcceptInviteCommand('binh', 'k7Qm2xPa', IP))
+            new AcceptInviteHandler(invites, limiter(), posted, bus()).execute(
+                new AcceptInviteCommand('binh', 'k7Qm2xPa', IP)
+            )
         ).resolves.toEqual({ serverId: 'ot', decision: 'join' })
     })
 
@@ -201,7 +216,7 @@ describe('AcceptInviteHandler', () => {
             join: jest.fn(async () => ({ serverId: 'ot', decision: 'already_member' as const }))
         })
         const posted = messages()
-        await new AcceptInviteHandler(invites, limiter(), posted).execute(
+        await new AcceptInviteHandler(invites, limiter(), posted, bus()).execute(
             new AcceptInviteCommand('binh', 'k7Qm2xPa', IP)
         )
         expect(posted.memberJoined).not.toHaveBeenCalled()
@@ -210,8 +225,63 @@ describe('AcceptInviteHandler', () => {
     it('refuses a malformed code without reading anything', async () => {
         const invites = repository()
         await expect(
-            new AcceptInviteHandler(invites, limiter(), messages()).execute(new AcceptInviteCommand('binh', 'k7Q', IP))
+            new AcceptInviteHandler(invites, limiter(), messages(), bus()).execute(
+                new AcceptInviteCommand('binh', 'k7Q', IP)
+            )
         ).rejects.toBeInstanceOf(InviteInvalidError)
         expect(invites.join).not.toHaveBeenCalled()
+    })
+})
+
+describe('invites told to the server after the commit (D-178)', () => {
+    const members = { an: [], binh: [] as bigint[] }
+
+    it('a new link, but not their own unlimited one handed out again', async () => {
+        const fresh = bus()
+        await new CreateInviteHandler(repository(), checker(members), fresh).execute(
+            new CreateInviteCommand('an', 'ot', { maxAgeSeconds: DAY, maxUses: 5 })
+        )
+        expect(publishedOn(fresh)).toEqual([
+            new ServerChangedEvent('ot', [{ topic: 'invite', action: 'created' }], false)
+        ])
+
+        const again = bus()
+        const own = repository({ latestOwnUnlimited: jest.fn(async () => record()) })
+        await new CreateInviteHandler(own, checker(members), again).execute(
+            new CreateInviteCommand('an', 'ot', { maxAgeSeconds: 7 * DAY, maxUses: null })
+        )
+        expect(publishedOn(again)).toEqual([])
+    })
+
+    it('a link revoked', async () => {
+        const events = bus()
+        const invites = repository({ find: jest.fn(async () => record()) })
+        await new RevokeInviteHandler(invites, checker(members), events).execute(
+            new RevokeInviteCommand('an', 'k7Qm2xPa')
+        )
+        expect(publishedOn(events)).toEqual([
+            new ServerChangedEvent('ot', [{ topic: 'invite', action: 'deleted' }], false)
+        ])
+    })
+
+    it('someone who joined through a link, and no one for a member coming back', async () => {
+        const joined = bus()
+        const invites = repository({ join: jest.fn(async () => ({ serverId: 'ot', decision: 'join' as const })) })
+        await new AcceptInviteHandler(
+            invites,
+            limiter(),
+            { memberJoined: jest.fn(async () => undefined) } as never,
+            joined
+        ).execute(new AcceptInviteCommand('binh', 'k7Qm2xPa', IP))
+        expect(publishedOn(joined)).toEqual([new MemberChangedEvent('ot', 'binh', 'joined')])
+
+        const back = bus()
+        const member = repository({
+            join: jest.fn(async () => ({ serverId: 'ot', decision: 'already_member' as const }))
+        })
+        await new AcceptInviteHandler(member, limiter(), { memberJoined: jest.fn() } as never, back).execute(
+            new AcceptInviteCommand('binh', 'k7Qm2xPa', IP)
+        )
+        expect(publishedOn(back)).toEqual([])
     })
 })

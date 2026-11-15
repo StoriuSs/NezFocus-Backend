@@ -69,6 +69,23 @@ export class ServersController {
     }
 
     /**
+     * One of their servers as the list shows it to them: what a member reads
+     * again when an event says the server changed (D-178), the channels they
+     * may see and what they may do. Not in it, or gone: NOT_FOUND.
+     */
+    @Get(':serverId')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(ServerResponseDto)
+    async one(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId }: ServerIdParamsDto
+    ): Promise<ServiceResponse<ServerResponseDto>> {
+        const [item]: ServerListItem[] = await this.queryBus.execute(new ListMyServersQuery(user.id, serverId))
+        if (!item) throw new ServerNotFoundError(serverId)
+        return createResponse(MESSAGES.SERVER.FOUND, presentServer(item))
+    }
+
+    /**
      * A new server from a template (S-SRV-01). Answers with the server as the
      * list shows it, so the client adds it to the rail and opens its first
      * text channel without another request.

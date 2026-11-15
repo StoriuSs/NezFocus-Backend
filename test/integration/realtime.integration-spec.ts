@@ -401,4 +401,141 @@ describe('Realtime connection (integration)', () => {
             expect(binh.connected).toBe(true)
         })
     })
+
+    describe('live changes to servers (D-178)', () => {
+        const send = (who: string, method: 'post' | 'patch' | 'put' | 'delete', path: string, body: object = {}) =>
+            as(who, api()[method](`/api/v1/servers/${path}`))
+                .set('Idempotency-Key', randomUUID())
+                .send(body)
+
+        /** Whether each socket hears a probe sent to the room right now. */
+        async function inRoom(sockets: Socket[], send: (event: string) => void) {
+            const event = `probe.${randomUUID().slice(0, 8)}`
+            const listening = sockets.map((socket) => hears(socket, event))
+            send(event)
+            return heard(listening)
+        }
+
+        /** Whether the socket stops hearing the room within two seconds. */
+        async function outWithin(socket: Socket, send: (event: string) => void) {
+            const until = Date.now() + 2000
+            while (Date.now() < until) if (!(await inRoom([socket], send))[0]) return true
+            return false
+        }
+
+        it('puts someone who joins in the rooms of the server first, then tells everyone in it', async () => {
+            const { serverId, generalId } = await serverWith('an', [])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+            const invite = await send('an', 'post', `${serverId}/invites`, { max_age_seconds: null, max_uses: null })
+            const told = [hears(an, 'member.joined', 3000), hears(binh, 'member.joined', 3000)]
+
+            const joined = await as('binh', api().post(`/api/v1/invites/${invite.body.data.code}/accept`))
+
+            expect(joined.status).toBe(200)
+            const news = { server_id: serverId, user_id: users.binh.id }
+            expect(await Promise.all(told)).toEqual([news, news])
+            expect(await inRoom([binh], (event) => publisher.toChannel(generalId, event, {}))).toEqual([true])
+        })
+
+        it('tells the one kicked why, takes them out of the server and its channels, and tells the others without why', async () => {
+            const { serverId, generalId } = await serverWith('an', ['binh'])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+            const toBinh = hears(binh, 'member.left', 3000)
+            const toAn = hears(an, 'member.left', 3000)
+
+            const kicked = await as('an', api().delete(`/api/v1/servers/${serverId}/members/${users.binh.id}`)).send({
+                reason: 'Spam'
+            })
+
+            expect(kicked.status).toBe(200)
+            expect(await toBinh).toEqual({
+                server_id: serverId,
+                user_id: users.binh.id,
+                removed_by: 'kick',
+                reason: 'Spam'
+            })
+            expect(await toAn).toEqual({ server_id: serverId, user_id: users.binh.id })
+            expect(await inRoom([binh], (event) => publisher.toServer(serverId, event, {}))).toEqual([false])
+            expect(await inRoom([binh], (event) => publisher.toChannel(generalId, event, {}))).toEqual([false])
+        })
+
+        it('moves a member into a private channel when it opens to everyone, and out when it closes again', async () => {
+            const { serverId, secretId } = await serverWith('an', ['binh'])
+            const binh = await connectAs('binh')
+            const probeSecret = (event: string) => publisher.toChannel(secretId, event, {})
+
+            const opened = hears(binh, 'channel.updated', 3000)
+            expect((await send('an', 'patch', `${serverId}/channels/${secretId}`, { is_private: false })).status).toBe(
+                200
+            )
+            expect(await opened).toEqual({ server_id: serverId })
+            expect(await inRoom([binh], probeSecret)).toEqual([true])
+
+            const closed = hears(binh, 'channel.updated', 3000)
+            const shut = await send('an', 'patch', `${serverId}/channels/${secretId}`, {
+                is_private: true,
+                view_role_ids: []
+            })
+            expect(shut.status).toBe(200)
+            expect(await closed).toEqual({ server_id: serverId })
+            expect(await inRoom([binh], probeSecret)).toEqual([false])
+        })
+
+        it('moves only the member given a role that may view a private channel', async () => {
+            const { serverId, secretId } = await serverWith('an', ['binh'])
+            const role = await send('an', 'post', `${serverId}/roles`, { name: 'Ban cán sự' })
+            const roleId: string = role.body.data.role_id
+            await send('an', 'patch', `${serverId}/channels/${secretId}`, { is_private: true, view_role_ids: [roleId] })
+            const binh = await connectAs('binh')
+            const updated = hears(binh, 'member.updated', 3000)
+
+            expect(
+                (await send('an', 'put', `${serverId}/roles/${roleId}/members`, { user_ids: [users.binh.id] })).status
+            ).toBe(200)
+
+            expect(await updated).toEqual({ server_id: serverId, user_id: users.binh.id })
+            expect(await inRoom([binh], (event) => publisher.toChannel(secretId, event, {}))).toEqual([true])
+        })
+
+        it('tells a new channel, a new role and a new invite by the server alone, naming nothing', async () => {
+            const { serverId } = await serverWith('an', ['binh'])
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+            const told = [
+                hears(binh, 'channel.created', 3000),
+                hears(an, 'role.created', 3000),
+                hears(an, 'invite.created', 3000)
+            ]
+
+            await send('an', 'post', `${serverId}/channels`, {
+                type: 'text',
+                name: 'bi-mat',
+                is_private: true,
+                view_role_ids: []
+            })
+            await send('an', 'post', `${serverId}/roles`, { name: 'Nhóm đề' })
+            await send('an', 'post', `${serverId}/invites`, { max_age_seconds: 3600, max_uses: 5 })
+
+            const news = { server_id: serverId }
+            expect(await Promise.all(told)).toEqual([news, news, news])
+        })
+
+        it('tells everyone a server was deleted, then takes their sockets out of its rooms', async () => {
+            const { serverId, generalId } = await serverWith('an', ['binh'])
+            const binh = await connectAs('binh')
+            const told = hears(binh, 'server.deleted', 3000)
+
+            const deleted = await as('an', api().delete(`/api/v1/servers/${serverId}`)).send({
+                name: 'Ôn thi Giải tích 2'
+            })
+
+            expect(deleted.status).toBe(200)
+            expect(await told).toEqual({ server_id: serverId })
+            // Told first, then moved: give the move a moment.
+            expect(await outWithin(binh, (event) => publisher.toServer(serverId, event, {}))).toBe(true)
+            expect(await inRoom([binh], (event) => publisher.toChannel(generalId, event, {}))).toEqual([false])
+        })
+    })
 })

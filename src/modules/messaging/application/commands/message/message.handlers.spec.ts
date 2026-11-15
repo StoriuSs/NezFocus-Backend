@@ -182,7 +182,8 @@ function world({ limited = false } = {}) {
         return row
     }
     const channels: ChannelDirectoryPort = {
-        serverIdOf: jest.fn(async (id) => (CHANNELS.includes(id) ? 'ot' : null))
+        serverIdOf: jest.fn(async (id) => (CHANNELS.includes(id) ? 'ot' : null)),
+        channelIdsOf: async () => []
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => {

@@ -30,7 +30,8 @@ export interface ModerationState {
 }
 
 export type ModerationWrite =
-    | { kind: 'kick'; userId: string }
+    // The reason is kept by no one (D-156): it goes with the event to the one kicked (S-MOD-02).
+    | { kind: 'kick'; userId: string; reason: string | null }
     | { kind: 'ban'; userId: string; reason: string | null; bannedById: string }
     | { kind: 'timeOut'; userId: string; until: Date; reason: string | null }
     | { kind: 'endTimeout'; userId: string }
@@ -72,9 +73,9 @@ export function moderationReason(typed: string | null | undefined): string | nul
  */
 export function planKick(state: ModerationState, userId: string, reason: string | null, now: Date): ModerationWrite[] {
     requirePermission(state, 'KICK_MEMBERS', now)
-    moderationReason(reason)
+    const kept = moderationReason(reason)
     requireTarget(state, userId)
-    return [{ kind: 'kick', userId }]
+    return [{ kind: 'kick', userId, reason: kept }]
 }
 
 /**

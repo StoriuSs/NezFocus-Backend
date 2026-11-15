@@ -14,4 +14,9 @@ export class PrismaChannelDirectory implements ChannelDirectoryPort {
         })
         return row?.serverId ?? null
     }
+
+    async channelIdsOf(serverId: string): Promise<string[]> {
+        const rows = await this.prisma.channel.findMany({ where: { serverId }, select: { id: true } })
+        return rows.map((row) => row.id)
+    }
 }

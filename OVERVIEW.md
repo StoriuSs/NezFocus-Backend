@@ -334,8 +334,10 @@ servers/
 ├── application/
 │   ├── commands/<area>/        # <area>.commands.ts + <area>.handlers.ts, for server, channel-layout, invite, role, moderation
 │   ├── queries/<area>/         # The same, for server, invite, role, moderation
+│   ├── events/                 # ServerChangedEvent, MemberChangedEvent: published after each commit, for realtime (D-178)
 │   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users)
-│   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, then clear the permission cache
+│   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, clear the
+│   │                           #   permission cache, then publish what changed
 │   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP,
 │                               #   CHANNEL_DIRECTORY and ROLE_DIRECTORY, which this module answers for realtime and messaging
 │                               #   (MEMBERSHIP also says since when, for where unread starts)
@@ -346,7 +348,8 @@ servers/
 │   │                           #   the shared select (membership.selections.ts) and row locks (server-locks.ts)
 │   └── adapters/               # Icon storage, BullMQ clean-up, the system messages not written yet
 ├── presentation/http/          # Five controllers by area, the presenter, one DTO class per file
-├── index.ts                    # What other modules may import: MEMBERSHIP, CHANNEL_DIRECTORY, ROLE_DIRECTORY, the daily clean-up's command
+├── index.ts                    # What other modules may import: MEMBERSHIP, CHANNEL_DIRECTORY, ROLE_DIRECTORY, the two events,
+│                               #   the daily clean-up's command
 └── servers.module.ts           # ServersModule, and the global ServerOwnershipModule (D-160)
 ```
 
@@ -379,7 +382,12 @@ rooms: the person's, the session's, each server (servers' `MEMBERSHIP`) and
 each text channel they may view (`PERMISSION_CHECKER`). Other modules send
 events through its `EVENT_PUBLISHER` port. It hears auth's
 `SessionsEndedEvent` (every way a session ends goes through auth's
-`SessionEnds`) and cuts those sessions' sockets off. socket.io itself, with
+`SessionEnds`) and cuts those sessions' sockets off. It hears servers'
+`ServerChangedEvent` and `MemberChangedEvent` (D-178): it moves the
+sockets concerned into the rooms they may be in now (`SOCKET_ROOMS`,
+`application/services/room-moves.ts`, the same `serverRooms` rule as on
+connecting) and tells the members `<topic>.<action> {server_id}`, after
+which each reads the server again. socket.io itself, with
 its Redis adapter for several instances, is set up in
 `src/shared/infrastructure/websocket/redis-io-adapter.ts`.
 

@@ -1,5 +1,5 @@
 import { Inject, Logger } from '@nestjs/common'
-import { CommandBus, CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { CommandBus, CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { CURRENT_PASSWORD, CurrentPasswordPort } from '@/modules/auth'
 import { PERMISSION_CACHE, PERMISSION_CHECKER, PermissionCachePort, PermissionCheckerPort } from '@/modules/permissions'
 import {
@@ -16,6 +16,8 @@ import {
     serverPlan,
     ServerRepositoryPort
 } from '../../../domain'
+import { MemberChangedEvent } from '../../events/member-changed.event'
+import { ServerChangedEvent } from '../../events/server-changed.event'
 import { FILE_CLEANUP, FileCleanupPort, ICON_STORAGE, IconStoragePort } from '../../ports'
 import { ChangeLayout } from '../../services/change-layout'
 import { ChangeMembership } from '../../services/change-membership'
@@ -39,11 +41,15 @@ const CLEAN_UP_BATCH = 200
 /**
  * A new server from a template, its creator the owner and first member
  * (REQ-SRV-01, REQ-STUDY-08). Nothing to tell the permission cache: it never
- * holds a server or a membership that did not exist (D-146).
+ * holds a server or a membership that did not exist (D-146). Told as the
+ * creator joining it (D-178), which reaches their other tabs.
  */
 @CommandHandler(CreateServerCommand)
 export class CreateServerHandler implements ICommandHandler<CreateServerCommand> {
-    constructor(@Inject(SERVER_REPOSITORY) private readonly servers: ServerRepositoryPort) {}
+    constructor(
+        @Inject(SERVER_REPOSITORY) private readonly servers: ServerRepositoryPort,
+        private readonly events: EventBus
+    ) {}
 
     async execute({ userId, name, template }: CreateServerCommand): Promise<{ serverId: string }> {
         const created = await this.servers.create({
@@ -53,6 +59,7 @@ export class CreateServerHandler implements ICommandHandler<CreateServerCommand>
             maxServers: MAX_SERVERS_PER_USER
         })
         if (!created) throw new MaxServersReachedError()
+        this.events.publish(new MemberChangedEvent(created.serverId, userId, 'joined'))
         return created
     }
 }
@@ -81,7 +88,8 @@ export class UploadServerIconHandler implements ICommandHandler<UploadServerIcon
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(SERVER_REPOSITORY) private readonly servers: ServerRepositoryPort,
         @Inject(ICON_STORAGE) private readonly storage: IconStoragePort,
-        @Inject(FILE_CLEANUP) private readonly cleanup: FileCleanupPort
+        @Inject(FILE_CLEANUP) private readonly cleanup: FileCleanupPort,
+        private readonly events: EventBus
     ) {}
 
     async execute({ userId, serverId, file }: UploadServerIconCommand): Promise<{ iconUrl: string }> {
@@ -103,6 +111,7 @@ export class UploadServerIconHandler implements ICommandHandler<UploadServerIcon
         }
 
         await forgetFile(this.cleanup, replaced.previousIconKey)
+        this.events.publish(iconChanged(serverId))
         return { iconUrl: await this.storage.getReadUrl(iconKey) }
     }
 }
@@ -113,7 +122,8 @@ export class RemoveServerIconHandler implements ICommandHandler<RemoveServerIcon
     constructor(
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(SERVER_REPOSITORY) private readonly servers: ServerRepositoryPort,
-        @Inject(FILE_CLEANUP) private readonly cleanup: FileCleanupPort
+        @Inject(FILE_CLEANUP) private readonly cleanup: FileCleanupPort,
+        private readonly events: EventBus
     ) {}
 
     async execute({ userId, serverId }: RemoveServerIconCommand): Promise<void> {
@@ -121,8 +131,13 @@ export class RemoveServerIconHandler implements ICommandHandler<RemoveServerIcon
         const replaced = await this.servers.replaceIcon(serverId, null)
         if (!replaced) throw new ServerNotFoundError(serverId)
         await forgetFile(this.cleanup, replaced.previousIconKey)
+        this.events.publish(iconChanged(serverId))
     }
 }
+
+/** A new icon or none: the members read the server again (D-178); no view changes. */
+const iconChanged = (serverId: string) =>
+    new ServerChangedEvent(serverId, [{ topic: 'server', action: 'updated' }], false)
 
 /** Out of the server (REQ-SRV-05); the owner hands it over first. */
 @CommandHandler(LeaveServerCommand)
@@ -154,9 +169,10 @@ export class TransferOwnershipHandler extends ChangeMembership implements IComma
     constructor(
         @Inject(SERVER_REPOSITORY) servers: ServerRepositoryPort,
         @Inject(PERMISSION_CACHE) cache: PermissionCachePort,
+        events: EventBus,
         @Inject(CURRENT_PASSWORD) private readonly passwords: CurrentPasswordPort
     ) {
-        super(servers, cache)
+        super(servers, cache, events)
     }
 
     async execute({ userId, serverId, toUserId, password }: TransferOwnershipCommand): Promise<void> {

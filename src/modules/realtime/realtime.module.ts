@@ -15,9 +15,14 @@ import {
     PRESENCE,
     PRESENCE_COMMAND_HANDLERS,
     PRESENCE_STORE,
+    PublishMemberChangeHandler,
+    PublishServerChangeHandler,
+    RoomMoves,
+    SettleRoomsHandler,
+    SOCKET_ROOMS,
     TICKET_STORE
 } from './application'
-import { RedisPresenceStore, RedisTicketStore, SocketIoEventPublisher } from './infrastructure'
+import { RedisPresenceStore, RedisTicketStore, SocketIoEventPublisher, SocketIoRooms } from './infrastructure'
 import { RealtimeController, RealtimeGateway } from './presentation'
 
 /**
@@ -26,10 +31,12 @@ import { RealtimeController, RealtimeGateway } from './presentation'
  * EVENT_PUBLISHER every other module sends events through.
  *
  * Presence too (ARCHITECTURE 3.3): each tab's signals, the sweep, and
- * PRESENCE for other modules to read.
+ * PRESENCE for other modules to read. And the servers module's changes,
+ * told to the members, their sockets moved between rooms (D-178).
  *
  * REDIS_CLIENT comes from the global CacheModule; PRINCIPAL from auth,
- * MEMBERSHIP from servers, PERMISSION_CHECKER from permissions,
+ * MEMBERSHIP, CHANNEL_DIRECTORY and the two change events from servers,
+ * PERMISSION_CHECKER from permissions,
  * USER_DIRECTORY (the status one chose) from users.
  */
 @Module({
@@ -42,12 +49,18 @@ import { RealtimeController, RealtimeGateway } from './presentation'
         { provide: PRESENCE, useExisting: RedisPresenceStore },
         SocketIoEventPublisher,
         { provide: EVENT_PUBLISHER, useExisting: SocketIoEventPublisher },
+        SocketIoRooms,
+        { provide: SOCKET_ROOMS, useExisting: SocketIoRooms },
+        RoomMoves,
         IssueTicketHandler,
         OpenConnectionHandler,
         ReportTypingHandler,
+        SettleRoomsHandler,
         DisconnectEndedSessionsHandler,
         ...PRESENCE_COMMAND_HANDLERS,
         AnnounceChosenPresenceHandler,
+        PublishServerChangeHandler,
+        PublishMemberChangeHandler,
         RealtimeGateway
     ],
     exports: [EVENT_PUBLISHER, PRESENCE]
@@ -55,12 +68,14 @@ import { RealtimeController, RealtimeGateway } from './presentation'
 export class RealtimeModule implements OnModuleInit {
     constructor(
         private readonly gateway: RealtimeGateway,
-        private readonly publisher: SocketIoEventPublisher
+        private readonly publisher: SocketIoEventPublisher,
+        private readonly rooms: SocketIoRooms
     ) {}
 
     /** The gateway's server exists by now (Nest starts gateways before this hook). */
     onModuleInit(): void {
         this.publisher.attach(this.gateway.server)
+        this.rooms.attach(this.gateway.server)
     }
 }
 

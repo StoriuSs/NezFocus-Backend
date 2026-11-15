@@ -1481,6 +1481,53 @@
       }
     },
     "/api/v1/servers/{serverId}": {
+      "get": {
+        "operationId": "ServersController_one_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ServerResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One of their servers as the list shows it to them: what a member reads\nagain when an event says the server changed (D-178), the channels they\nmay see and what they may do. Not in it, or gone: NOT_FOUND.",
+        "tags": [
+          "servers"
+        ]
+      },
       "patch": {
         "operationId": "ServersController_update_v1",
         "parameters": [

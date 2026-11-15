@@ -90,7 +90,8 @@ function world() {
         )
     } as unknown as MessageRepositoryPort
     const channels: ChannelDirectoryPort = {
-        serverIdOf: jest.fn(async (id: string) => (server.channels.some((c) => c.id === id) ? 'ot' : null))
+        serverIdOf: jest.fn(async (id: string) => (server.channels.some((c) => c.id === id) ? 'ot' : null)),
+        channelIdsOf: async () => []
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => ({

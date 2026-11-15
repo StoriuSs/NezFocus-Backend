@@ -24,7 +24,7 @@ function world(options: { limited?: boolean; counterDown?: boolean } = {}) {
     const publisher = {
         toChannel: (channelId: string, event: string, data: object) => told.push({ channelId, event, data })
     } as unknown as EventPublisherPort
-    const channels: ChannelDirectoryPort = { serverIdOf: async () => 'ot' }
+    const channels: ChannelDirectoryPort = { serverIdOf: async () => 'ot', channelIdsOf: async () => [] }
     const checker: PermissionCheckerPort = {
         access: async (_serverId, userId) => {
             const timeoutUntil = userId === 'phong' ? new Date(Date.now() + 3600_000) : null
