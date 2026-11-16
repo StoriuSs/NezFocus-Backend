@@ -8,6 +8,7 @@
 
 // Requests
 export { BanListQueryDto } from './ban-list.query.dto'
+export { BanMemberRequestDto } from './ban-member.request.dto'
 export { CategoryNameRequestDto } from './category-name.request.dto'
 export { CreateChannelRequestDto } from './create-channel.request.dto'
 export { CreateInviteRequestDto } from './create-invite.request.dto'

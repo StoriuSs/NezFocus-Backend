@@ -11,7 +11,9 @@ export const QUEUES = {
     /** Deletes stored files nothing references any more. */
     FILE_CLEANUP: 'file-cleanup',
     /** Every module's periodic jobs (src/maintenance/maintenance-tasks.ts). */
-    MAINTENANCE: 'maintenance'
+    MAINTENANCE: 'maintenance',
+    /** Messaging's own work: deleting a banned member's recent messages (D-181). */
+    MESSAGING: 'messaging'
 } as const
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES]

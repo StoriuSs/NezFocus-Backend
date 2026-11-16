@@ -3445,7 +3445,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ModerationReasonRequestDto"
+                "$ref": "#/components/schemas/BanMemberRequestDto"
               }
             }
           }
@@ -3479,7 +3479,7 @@
             "bearer": []
           }
         ],
-        "summary": "Out of the server and kept out (BAN_MEMBERS); only someone in it (D-155).",
+        "summary": "Out of the server and kept out (BAN_MEMBERS); only someone in it (D-155).\nTheir messages of the last day or week go soon after, by a job (D-181).",
         "tags": [
           "servers"
         ]
@@ -6230,6 +6230,26 @@
           "items",
           "meta"
         ]
+      },
+      "BanMemberRequestDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 512
+          },
+          "delete_message_days": {
+            "type": "number",
+            "description": "How many days of their messages go: 0 (none, when left out), 1 or 7.",
+            "enum": [
+              0,
+              1,
+              7
+            ],
+            "default": 0
+          }
+        }
       },
       "RealtimeTicketResponseDto": {
         "type": "object",

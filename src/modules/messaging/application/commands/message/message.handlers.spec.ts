@@ -20,10 +20,21 @@ import {
 } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { MessageDeletedEvent } from '../../events/message-deleted.event'
+import { MessagesBulkDeletedEvent } from '../../events/messages-bulk-deleted.event'
 import { MessageUpdatedEvent } from '../../events/message-updated.event'
 import { SendLimitPort } from '../../ports'
-import { DeleteMessageCommand, EditMessageCommand, SendMessageCommand } from './message.commands'
-import { DeleteMessageHandler, EditMessageHandler, SendMessageHandler } from './message.handlers'
+import {
+    DeleteMessageCommand,
+    DeleteRecentMessagesCommand,
+    EditMessageCommand,
+    SendMessageCommand
+} from './message.commands'
+import {
+    DeleteMessageHandler,
+    DeleteRecentMessagesHandler,
+    EditMessageHandler,
+    SendMessageHandler
+} from './message.handlers'
 import { AttachmentStoragePort } from '../../ports'
 import { AttachmentNotFoundError, type AttachmentRepositoryPort } from '../../../domain'
 
@@ -157,7 +168,8 @@ function world({ limited = false } = {}) {
         }),
         page: jest.fn(),
         latestId: jest.fn(),
-        createMemberJoined: jest.fn()
+        createMemberJoined: jest.fn(),
+        removeRecent: jest.fn()
     }
     /** A message already in a channel, by someone (or a system message when `by` is null). */
     const seed = (channelId: string, by: string | null, content = 'Ok, mình vào sớm giữ chỗ') => {
@@ -780,6 +792,81 @@ describe('Mentions when sending and editing (REQ-MSG-03, MSG-09, D-164, D-172)',
         await edit('binh', row.id, `Hỏi <@&${BAN_TO}>`)
 
         expect(repository.edit).not.toHaveBeenCalled()
+        expect(events.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('DeleteRecentMessagesHandler (D-181)', () => {
+    /** The batch: what one transaction deletes, and one event tells. */
+    const DELETE_BATCH = 100
+    const FROM = new Date('2026-11-09T09:00:00Z')
+    const TO = new Date('2026-11-16T09:00:00Z')
+    const ids = (prefix: string, count: number) => Array.from({ length: count }, (_, i) => `${prefix}-${i}`)
+
+    /** ÔT has #hoi-dap (a full batch of Khánh's messages, then 2 more), #tai-lieu (1) and a voice channel (none). */
+    function world() {
+        const batches: Record<string, string[][]> = {
+            'hoi-dap': [ids('h', DELETE_BATCH), ['h-a', 'h-b']],
+            'tai-lieu': [['t-0']],
+            'phong-hoc': []
+        }
+        const messages = {
+            removeRecent: jest.fn(async (channelId: string) => batches[channelId].shift() ?? [])
+        } as unknown as jest.Mocked<MessageRepositoryPort>
+        const channels = {
+            channelIdsOf: jest.fn(async () => ['hoi-dap', 'tai-lieu', 'phong-hoc'])
+        } as unknown as ChannelDirectoryPort
+        const events = { publish: jest.fn() }
+        const handler = new DeleteRecentMessagesHandler(messages, channels, events as unknown as EventBus)
+        return { handler, messages, channels, events }
+    }
+
+    it('deletes their messages of the window channel by channel, a batch at a time, until a batch is short', async () => {
+        const { handler, messages, channels } = world()
+
+        await handler.execute(new DeleteRecentMessagesCommand('ot', 'khanh', FROM, TO))
+
+        expect(channels.channelIdsOf).toHaveBeenCalledWith('ot')
+        const calls = messages.removeRecent.mock.calls
+        expect(calls.map(([channelId]) => channelId)).toEqual(['hoi-dap', 'hoi-dap', 'tai-lieu', 'phong-hoc'])
+        for (const [, authorId, window, , limit, at] of calls) {
+            expect([authorId, window, limit]).toEqual(['khanh', { from: FROM, to: TO }, DELETE_BATCH])
+            expect(at).toBeInstanceOf(Date)
+        }
+    })
+
+    it('starts each batch after the last message of the one before, each channel from the start', async () => {
+        const { handler, messages } = world()
+
+        await handler.execute(new DeleteRecentMessagesCommand('ot', 'khanh', FROM, TO))
+
+        expect(messages.removeRecent.mock.calls.map(([, , , after]) => after)).toEqual([
+            null,
+            `h-${DELETE_BATCH - 1}`,
+            null,
+            null
+        ])
+    })
+
+    it('tells each channel which messages went, a batch per event, nothing for a channel with none', async () => {
+        const { handler, events } = world()
+
+        await handler.execute(new DeleteRecentMessagesCommand('ot', 'khanh', FROM, TO))
+
+        expect(events.publish.mock.calls.map(([event]) => event)).toEqual([
+            new MessagesBulkDeletedEvent('hoi-dap', ids('h', DELETE_BATCH)),
+            new MessagesBulkDeletedEvent('hoi-dap', ['h-a', 'h-b']),
+            new MessagesBulkDeletedEvent('tai-lieu', ['t-0'])
+        ])
+    })
+
+    it('a batch that fails stops the job, for the queue to run it again (what is deleted stays deleted)', async () => {
+        const { handler, messages, events } = world()
+        messages.removeRecent.mockRejectedValueOnce(new Error('connection lost'))
+
+        await expect(handler.execute(new DeleteRecentMessagesCommand('ot', 'khanh', FROM, TO))).rejects.toThrow(
+            'connection lost'
+        )
         expect(events.publish).not.toHaveBeenCalled()
     })
 })

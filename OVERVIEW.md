@@ -446,6 +446,17 @@ carries its files with read links that end after an hour (`GET
 (src/maintenance, hourly) removes the files no message holds and queues their
 deletion on `file-cleanup`.
 
+A ban may delete the member's messages of the last day or week (D-181):
+servers' `MemberChangedEvent` carries the window, and
+`DeleteBannedMessagesLaterHandler` queues a job on messaging's own
+`messaging` queue (`MESSAGE_PURGE`, a BullMQ adapter). `MessagingJobsConsumer`
+(`presentation/consumers/`) sends `DeleteRecentMessagesCommand`, which goes
+through the server's channels (servers' `CHANNEL_DIRECTORY`) and deletes
+100 messages at a time, each as a delete from the menu (the repository's
+`removeRecent`, rows locked), telling each batch to its channel as
+`message.bulk_deleted`. A failed batch fails the job, and the queue runs it
+again.
+
 Mentions are tokens in the text (`<@id>`, `<@&id>`, `<#id>`, `@everyone`).
 Sending and editing decide them in `application/services/mentions.ts`: the
 pure `domain/mention.rules.ts` finds the tokens where the client draws text

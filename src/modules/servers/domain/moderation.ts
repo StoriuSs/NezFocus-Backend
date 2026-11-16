@@ -19,6 +19,19 @@ import {
 export const TIMEOUT_SECONDS = [60, 300, 600, 3600, 86_400, 604_800] as const
 /** The longest reason for a kick, ban or timeout. */
 export const REASON_MAX_LENGTH = 512
+/** How many days of their messages a ban deletes (REQ-ROLE-04, 04 `ban-confirm`): none, the last day, the last week. */
+export const DELETE_MESSAGE_DAYS = [0, 1, 7] as const
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * The messages a ban deletes: those the one banned sent from `from` to `to`,
+ * the moment of the ban, so any sent after being let back in stay (D-181).
+ */
+export interface MessageWindow {
+    from: Date
+    to: Date
+}
 
 export interface ModerationState {
     server: ServerSnapshot
@@ -32,7 +45,8 @@ export interface ModerationState {
 export type ModerationWrite =
     // The reason is kept by no one (D-156): it goes with the event to the one kicked (S-MOD-02).
     | { kind: 'kick'; userId: string; reason: string | null }
-    | { kind: 'ban'; userId: string; reason: string | null; bannedById: string }
+    // Their messages are deleted later, by messaging, after the commit (D-181).
+    | { kind: 'ban'; userId: string; reason: string | null; bannedById: string; deleteMessages: MessageWindow | null }
     | { kind: 'timeOut'; userId: string; until: Date; reason: string | null }
     | { kind: 'endTimeout'; userId: string }
     | { kind: 'unban'; userId: string }
@@ -80,13 +94,26 @@ export function planKick(state: ModerationState, userId: string, reason: string 
 
 /**
  * Out of the server and kept out until unbanned, with the reason, the day and
- * who banned. Only someone in the server (D-155).
+ * who banned. Only someone in the server (D-155). With 1 or 7 days, their
+ * messages of those days, up to now, are to be deleted (D-181).
  */
-export function planBan(state: ModerationState, userId: string, reason: string | null, now: Date): ModerationWrite[] {
+export function planBan(
+    state: ModerationState,
+    userId: string,
+    reason: string | null,
+    deleteMessageDays: number,
+    now: Date
+): ModerationWrite[] {
     requirePermission(state, 'BAN_MEMBERS', now)
     const kept = moderationReason(reason)
+    if (!(DELETE_MESSAGE_DAYS as readonly number[]).includes(deleteMessageDays)) {
+        throw new ModerationRuleError('delete_days_invalid')
+    }
     requireTarget(state, userId)
-    return [{ kind: 'ban', userId, reason: kept, bannedById: state.member.userId }]
+    const deleteMessages = deleteMessageDays
+        ? { from: new Date(now.getTime() - deleteMessageDays * DAY_MS), to: now }
+        : null
+    return [{ kind: 'ban', userId, reason: kept, bannedById: state.member.userId, deleteMessages }]
 }
 
 /** Back in with any valid invite. No rank: the one banned holds no role any more. */

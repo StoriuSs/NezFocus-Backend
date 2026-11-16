@@ -13,12 +13,14 @@ export class KickMemberCommand {
     ) {}
 }
 
+/** With 1 or 7 days, their messages of those days go too (D-181). */
 export class BanMemberCommand {
     constructor(
         public readonly userId: string,
         public readonly serverId: string,
         public readonly targetId: string,
-        public readonly reason: string | null
+        public readonly reason: string | null,
+        public readonly deleteMessageDays: number
     ) {}
 }
 

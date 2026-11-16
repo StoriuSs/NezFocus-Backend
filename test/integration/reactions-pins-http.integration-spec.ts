@@ -430,4 +430,83 @@ describe('Reactions and pins (integration)', () => {
             expect((await reactors('dung', messageId, '👍')).body.data.count).toBe(1)
         })
     })
+
+    // Last: Chi leaves the server for good.
+    describe('banned with their recent messages (D-181)', () => {
+        it('a job deletes the regular messages they sent that week, with their pin, reactions and mentions, telling each channel', async () => {
+            const day = 24 * 60 * 60 * 1000
+            const at = (ms: number) => async (id: string) => {
+                await prisma.message.update({ where: { id }, data: { createdAt: new Date(ms) } })
+                return id
+            }
+            const pinned = await send('chi', generalId, 'Đáp án đề giữa kỳ, inbox mình')
+            const elsewhere = await send('chi', otherId, 'Ai cần đáp án thì nhắn')
+            const lastWeek = await send('chi', generalId, 'Bán đề').then(at(Date.now() - 6 * day))
+            const older = await send('chi', generalId, 'Chào cả nhà').then(at(Date.now() - 8 * day))
+            // After the ban (let back in meanwhile): not the ban's to delete.
+            const later = await send('chi', generalId, 'Mình xin lỗi').then(at(Date.now() + 60_000))
+            const others = await send('an', generalId, 'Không mua bán đề trong server')
+            const reply = await prisma.message.create({
+                data: {
+                    channelId: generalId,
+                    authorId: users.binh.id,
+                    content: 'Báo rồi',
+                    nonce: randomUUID(),
+                    replyToId: pinned
+                },
+                select: { id: true }
+            })
+            expect((await pin('an', generalId, pinned)).status).toBe(200)
+            expect((await react('binh', pinned, '😡')).status).toBe(200)
+            await prisma.messageMention.create({
+                data: { messageId: pinned, channelId: generalId, userId: users.binh.id }
+            })
+            const an = await connectAs('an')
+            const heard = collect(an, 'message.bulk_deleted')
+
+            const banned = await as('an', api().put(`/api/v1/servers/${serverId}/bans/${users.chi.id}`)).send({
+                delete_message_days: 7
+            })
+            expect(banned.status).toBe(200)
+
+            const gone = [pinned, elsewhere, lastWeek]
+            for (let tries = 0; tries < 50; tries++) {
+                const left = await prisma.message.count({ where: { id: { in: gone }, deletedAt: null } })
+                if (left === 0) break
+                await new Promise((resolve) => setTimeout(resolve, 200))
+            }
+            const rows = await prisma.message.findMany({
+                where: { id: { in: [...gone, older, later, others, reply.id] } },
+                select: { id: true, deletedAt: true, content: true, replyToId: true }
+            })
+            const deleted = rows.filter((row) => row.deletedAt).map((row) => row.id)
+            expect(deleted.sort()).toEqual([...gone].sort())
+            expect(rows.filter((row) => row.deletedAt).every((row) => row.content === '')).toBe(true)
+            expect(rows.find((row) => row.id === reply.id)?.replyToId).toBe(pinned)
+
+            expect((await pins('an', generalId)).body.data.items).toEqual([])
+            expect(await prisma.reaction.count({ where: { messageId: pinned } })).toBe(0)
+            expect(await prisma.messageMention.count({ where: { messageId: pinned } })).toBe(0)
+            // Their "joined the server" stays: only regular messages have an author to delete by (D-168).
+            expect(
+                await prisma.message.count({
+                    where: { type: 'system', systemData: { path: ['userId'], equals: users.chi.id }, deletedAt: null }
+                })
+            ).toBeGreaterThan(0)
+
+            // Each channel hears its batch (Chi's earlier messages here are in the week too), oldest first.
+            const events = (await heard()) as { channel_id: string; ids: string[] }[]
+            expect(events.map((event) => event.channel_id).sort()).toEqual([generalId, otherId].sort())
+            const general = events.find((event) => event.channel_id === generalId)!.ids
+            expect(general).toEqual(expect.arrayContaining([pinned, lastWeek]))
+            expect(general).not.toContain(older)
+            expect(general).not.toContain(later)
+            expect(general).toEqual([...general].sort())
+            expect(events.find((event) => event.channel_id === otherId)!.ids).toEqual([elsewhere])
+            const left = await prisma.message.count({
+                where: { id: { in: general }, deletedAt: null }
+            })
+            expect(left).toBe(0)
+        })
+    })
 })

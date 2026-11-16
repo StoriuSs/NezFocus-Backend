@@ -12,8 +12,8 @@ export class KickMemberHandler extends Moderate implements ICommandHandler<KickM
 
 @CommandHandler(BanMemberCommand)
 export class BanMemberHandler extends Moderate implements ICommandHandler<BanMemberCommand> {
-    async execute({ userId, serverId, targetId, reason }: BanMemberCommand): Promise<void> {
-        await this.change(serverId, userId, targetId, (s, now) => planBan(s, targetId, reason, now))
+    async execute({ userId, serverId, targetId, reason, deleteMessageDays }: BanMemberCommand): Promise<void> {
+        await this.change(serverId, userId, targetId, (s, now) => planBan(s, targetId, reason, deleteMessageDays, now))
     }
 }
 

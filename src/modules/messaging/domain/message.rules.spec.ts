@@ -1,4 +1,4 @@
-import { hasSomething, isMessageContent, MAX_MESSAGE_LENGTH, normaliseMessageContent } from './message.rules'
+import { firstIdAt, hasSomething, isMessageContent, MAX_MESSAGE_LENGTH, normaliseMessageContent } from './message.rules'
 
 describe('The text of a message (REQ-MSG-01)', () => {
     it('is kept composed (NFC), without the blank around it, the blank inside kept', () => {
@@ -22,5 +22,15 @@ describe('The text of a message (REQ-MSG-01)', () => {
         expect(hasSomething(blank, 0)).toBe(false)
         expect(hasSomething(blank, 1)).toBe(true)
         expect(hasSomething('a', 0)).toBe(true)
+    })
+})
+
+describe('firstIdAt (UUIDv7, ARCHITECTURE 2.4)', () => {
+    it('is the smallest id a message made in that millisecond can have, after every one made before', () => {
+        const at = new Date('2026-11-16T09:00:00.123Z')
+        const time = at.getTime().toString(16).padStart(12, '0')
+
+        expect(firstIdAt(at)).toBe(`${time.slice(0, 8)}-${time.slice(8)}-7000-8000-000000000000`)
+        expect(firstIdAt(new Date(at.getTime() - 1)) < firstIdAt(at)).toBe(true)
     })
 })

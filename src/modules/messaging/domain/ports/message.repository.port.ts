@@ -143,6 +143,21 @@ export interface MessageRepositoryPort {
      */
     remove(id: string, at: Date): Promise<boolean>
     /**
+     * Delete up to `limit` regular messages the author sent in the channel
+     * from `window.from` to `window.to`, oldest first and after the id
+     * `after` (the last of the batch before; null for the first), each as
+     * `remove` does, in one transaction (a ban's, D-181). Their ids; fewer
+     * than `limit` once none are left.
+     */
+    removeRecent(
+        channelId: string,
+        authorId: string,
+        window: { from: Date; to: Date },
+        after: string | null,
+        limit: number,
+        at: Date
+    ): Promise<string[]>
+    /**
      * Write "<userId> joined the server" in the channel (D-83): a system
      * message, who in `systemData` (D-168). Null if the channel is gone by
      * now (deleted since its server named it the welcome channel).

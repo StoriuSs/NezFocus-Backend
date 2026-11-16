@@ -245,7 +245,8 @@ This is the outermost entry point. It contains:
 - **HTTP Controllers:** Receive HTTP requests, create Commands/Queries, and dispatch them.
 - **DTOs:** Request/Response Data Transfer Objects (validation, serialization).
 - **Queue Consumers:** BullMQ workers that process background jobs, where a
-  module has some (`auth`'s `AuthJobsConsumer`; users has none: its sweep is
+  module has some (`auth`'s `AuthJobsConsumer`, `messaging`'s
+  `MessagingJobsConsumer`; users has none: its sweep is
   run by `src/maintenance`, its file clean-up by `UploadModule`).
 
 There are no per-module exception filters: one shared `DomainExceptionFilter`

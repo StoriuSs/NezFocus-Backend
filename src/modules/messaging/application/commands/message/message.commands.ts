@@ -31,3 +31,16 @@ export class DeleteMessageCommand {
         readonly messageId: string
     ) {}
 }
+
+/**
+ * Delete the regular messages a banned member sent in the server's channels
+ * from `from` to `to` (D-181), run by the messaging queue's job.
+ */
+export class DeleteRecentMessagesCommand {
+    constructor(
+        readonly serverId: string,
+        readonly userId: string,
+        readonly from: Date,
+        readonly to: Date
+    ) {}
+}

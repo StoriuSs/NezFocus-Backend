@@ -19,12 +19,15 @@ import {
     ATTACHMENT_COMMAND_HANDLERS,
     ATTACHMENT_QUERY_HANDLERS,
     ATTACHMENT_STORAGE,
+    DeleteBannedMessagesLaterHandler,
     FILE_CLEANUP,
     MarkSentMessageReadHandler,
+    MESSAGE_PURGE,
     MESSAGE_COMMAND_HANDLERS,
     MESSAGE_QUERY_HANDLERS,
     PIN_COMMAND_HANDLERS,
     PIN_QUERY_HANDLERS,
+    PublishBulkDeletedMessagesHandler,
     PublishCreatedMessageHandler,
     PublishDeletedMessageHandler,
     PublishPinsUpdatedHandler,
@@ -43,6 +46,7 @@ import {
 import {
     AttachmentStorage,
     BullMqFileCleanup,
+    BullMqMessagePurge,
     CommandBusSystemMessages,
     PrismaAttachmentRepository,
     PrismaMessageRepository,
@@ -54,6 +58,7 @@ import {
     AttachmentController,
     MessageController,
     MessagingController,
+    MessagingJobsConsumer,
     PinController,
     ReadStateController
 } from './presentation'
@@ -70,6 +75,8 @@ import {
  * realtime's TypingSignalledEvent. Files go to the storage under
  * UploadService (ATTACHMENT_STORAGE); those no message holds are deleted
  * through the file-cleanup queue, whose consumer lives in UploadModule.
+ * Deletes a banned member's recent messages when servers says so
+ * (MemberChangedEvent), through its own messaging queue (D-181).
  * Writes "X joined the server" when servers asks, through the global
  * SystemMessagesModule below (D-180).
  */
@@ -81,7 +88,7 @@ import {
         RealtimeModule,
         ServersModule,
         UsersModule,
-        registerQueues(QUEUES.FILE_CLEANUP)
+        registerQueues(QUEUES.FILE_CLEANUP, QUEUES.MESSAGING)
     ],
     controllers: [MessagingController, MessageController, PinController, ReadStateController, AttachmentController],
     providers: [
@@ -89,6 +96,7 @@ import {
         { provide: ATTACHMENT_REPOSITORY, useClass: PrismaAttachmentRepository },
         { provide: ATTACHMENT_STORAGE, useClass: AttachmentStorage },
         { provide: FILE_CLEANUP, useClass: BullMqFileCleanup },
+        { provide: MESSAGE_PURGE, useClass: BullMqMessagePurge },
         { provide: REACTION_REPOSITORY, useClass: PrismaReactionRepository },
         { provide: PIN_REPOSITORY, useClass: PrismaPinRepository },
         { provide: READ_STATE_REPOSITORY, useClass: PrismaReadStateRepository },
@@ -108,12 +116,15 @@ import {
         PublishCreatedMessageHandler,
         PublishUpdatedMessageHandler,
         PublishDeletedMessageHandler,
+        PublishBulkDeletedMessagesHandler,
         PublishReactionAddedHandler,
         PublishReactionRemovedHandler,
         PublishPinsUpdatedHandler,
         PublishReadStateUpdatedHandler,
         PublishTypingHandler,
-        MarkSentMessageReadHandler
+        MarkSentMessageReadHandler,
+        DeleteBannedMessagesLaterHandler,
+        MessagingJobsConsumer
     ]
 })
 export class MessagingModule {}

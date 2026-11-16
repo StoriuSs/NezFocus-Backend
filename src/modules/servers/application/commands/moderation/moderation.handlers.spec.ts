@@ -66,7 +66,7 @@ describe('moderation handlers', () => {
 
     it('bans and times out, clearing the cached member each time', async () => {
         const banned = setUp()
-        await new BanMemberHandler(...banned.deps).execute(new BanMemberCommand('an', 'ot', 'dung', null))
+        await new BanMemberHandler(...banned.deps).execute(new BanMemberCommand('an', 'ot', 'dung', null, 0))
         expect(banned.cache.memberChanged).toHaveBeenCalledWith('ot', 'dung')
 
         const timedOut = setUp()
@@ -104,8 +104,19 @@ describe('moderation handlers', () => {
             expect(kicked.published()).toEqual([new MemberChangedEvent('ot', 'dung', 'left', 'kick', 'Spam')])
 
             const banned = setUp()
-            await new BanMemberHandler(...banned.deps).execute(new BanMemberCommand('an', 'ot', 'dung', null))
+            await new BanMemberHandler(...banned.deps).execute(new BanMemberCommand('an', 'ot', 'dung', null, 0))
             expect(banned.published()).toEqual([new MemberChangedEvent('ot', 'dung', 'left', 'ban', null)])
+        })
+
+        it('a ban that deletes their recent messages says which, up to the ban (D-181)', async () => {
+            const banned = setUp()
+            const before = Date.now()
+            await new BanMemberHandler(...banned.deps).execute(new BanMemberCommand('an', 'ot', 'dung', null, 7))
+            const [event] = banned.published() as MemberChangedEvent[]
+            const { from, to } = event.deleteMessages!
+            expect(to.getTime()).toBeGreaterThanOrEqual(before)
+            expect(to.getTime()).toBeLessThanOrEqual(Date.now())
+            expect(to.getTime() - from.getTime()).toBe(7 * 24 * 60 * 60 * 1000)
         })
 
         it('one timed out is updated; a ban lifted is told to the ban list alone', async () => {

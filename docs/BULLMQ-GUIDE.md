@@ -86,7 +86,9 @@ Here is the flow for deleting an account:
      of ten seconds, then twenty, then forty, and so on.
 
 `AuthJobsConsumer` does the same for the `auth` queue: it sends the email,
-through the auth module's `AuthEmails`.
+through the auth module's `AuthEmails`. `MessagingJobsConsumer` does it for
+the `messaging` queue: it sends `DeleteRecentMessagesCommand`, which deletes a
+banned member's recent messages (D-181).
 
 ### Why is this better?
 

@@ -24,6 +24,8 @@ export {
     type ServerTopic
 } from './application/events/server-changed.event'
 export { MemberChangedEvent, type MemberAction, type RemovedBy } from './application/events/member-changed.event'
+// The messages a ban deletes, which messaging deletes (D-181).
+export { type MessageWindow } from './domain/moderation'
 
 // Run on a schedule by src/maintenance.
 export { CleanUpServersCommand } from './application/commands/server/server.commands'

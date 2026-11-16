@@ -28,6 +28,7 @@ import {
 } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { MessageDeletedEvent } from '../../events/message-deleted.event'
+import { MessagesBulkDeletedEvent } from '../../events/messages-bulk-deleted.event'
 import { MessageUpdatedEvent } from '../../events/message-updated.event'
 import { ATTACHMENT_STORAGE, AttachmentStoragePort, SEND_LIMIT, SendLimitPort } from '../../ports'
 import { openChannel, requireSending, timedOutUntil } from '../../services/channel-access'
@@ -36,7 +37,12 @@ import { openMessage } from '../../services/message-access'
 import { requireSendableFiles } from '../../services/message-files'
 import { MessageView, messageViews } from '../../services/message-views'
 import { countSending } from '../../services/sending-limits'
-import { DeleteMessageCommand, EditMessageCommand, SendMessageCommand } from './message.commands'
+import {
+    DeleteMessageCommand,
+    DeleteRecentMessagesCommand,
+    EditMessageCommand,
+    SendMessageCommand
+} from './message.commands'
 
 /**
  * Permission, then the limits, then save, then tell the channel (REQ-MSG-01,
@@ -255,4 +261,40 @@ export class DeleteMessageHandler implements ICommandHandler<DeleteMessageComman
     }
 }
 
-export const MESSAGE_COMMAND_HANDLERS = [SendMessageHandler, EditMessageHandler, DeleteMessageHandler]
+/** How many messages of one channel a ban's job deletes in one transaction, and tells in one event. */
+const DELETE_BATCH = 100
+
+/**
+ * A banned member's recent messages (D-181), each deleted as one deleted
+ * alone, a batch of one channel at a time, and each batch told to its
+ * channel. No permission to check: the ban was. A batch that fails fails the
+ * job, and the queue runs it again: what was deleted is not found again.
+ */
+@CommandHandler(DeleteRecentMessagesCommand)
+export class DeleteRecentMessagesHandler implements ICommandHandler<DeleteRecentMessagesCommand> {
+    constructor(
+        @Inject(MESSAGE_REPOSITORY) private readonly messages: MessageRepositoryPort,
+        @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
+        private readonly events: EventBus
+    ) {}
+
+    async execute({ serverId, userId, from, to }: DeleteRecentMessagesCommand): Promise<void> {
+        for (const channelId of await this.channels.channelIdsOf(serverId)) {
+            // Each batch from the last one deleted: the rows emptied stay in the index.
+            let after: string | null = null
+            let ids: string[]
+            do {
+                ids = await this.messages.removeRecent(channelId, userId, { from, to }, after, DELETE_BATCH, new Date())
+                if (ids.length) this.events.publish(new MessagesBulkDeletedEvent(channelId, ids))
+                after = ids.at(-1) ?? after
+            } while (ids.length === DELETE_BATCH)
+        }
+    }
+}
+
+export const MESSAGE_COMMAND_HANDLERS = [
+    SendMessageHandler,
+    EditMessageHandler,
+    DeleteMessageHandler,
+    DeleteRecentMessagesHandler
+]

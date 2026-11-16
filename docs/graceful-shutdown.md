@@ -429,7 +429,7 @@ export class CacheCleanupService implements OnApplicationShutdown {
 
 ### 4. Background jobs - the job in hand finishes
 
-The app also runs three BullMQ workers, one per queue
+The app also runs four BullMQ workers, one per queue
 ([`queues.ts`](../src/shared/infrastructure/queue/queues.ts)):
 
 | Queue | Consumer | Jobs |
@@ -437,6 +437,7 @@ The app also runs three BullMQ workers, one per queue
 | `auth` | `AuthJobsConsumer` | sign-in emails (`send-code`: a sign-up, reset or deletion code; security notices) |
 | `file-cleanup` | `FileCleanupConsumer` | deleting replaced and deleted avatars |
 | `maintenance` | `MaintenanceConsumer` | every periodic job: the deleted-account sweep, auth's hourly clean-up |
+| `messaging` | `MessagingJobsConsumer` | deleting a banned member's recent messages (`delete-recent`, a batch of 100 per transaction, D-181) |
 
 `@nestjs/bullmq` closes each worker in its own `onApplicationShutdown` hook,
 with `worker.close()`: the worker stops taking new jobs and **waits for the

@@ -125,6 +125,12 @@ describe('Moderation over HTTP (integration)', () => {
         expect(outcome(await ban('binh', serverId, 'dung'))).toEqual([403, 'FORBIDDEN_ERROR'])
         // Only someone in the server (D-155).
         expect(outcome(await ban('an', serverId, 'phong'))).toEqual([404, 'NOT_FOUND_ERROR'])
+        // A ban deletes none, the last day or the last week of their messages (D-181).
+        const twoDays = await as('an', api().put(url(serverId, `/bans/${users.dung.id}`))).send({
+            delete_message_days: 2
+        })
+        expect(outcome(twoDays)).toEqual([422, 'VALIDATION_ERROR'])
+        expect(await isMember('dung', serverId)).toBe(true)
 
         expect((await ban('an', serverId, 'dung', '  Bán đề thi có đáp án ')).status).toBe(200)
         expect(await isMember('dung', serverId)).toBe(false)

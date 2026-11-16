@@ -4,6 +4,7 @@ import { PrismaService } from '@/shared/infrastructure/persistence/database/pris
 import {
     AttachmentNotFoundError,
     ChannelNotFoundError,
+    firstIdAt,
     MessageCursor,
     MessageMentions,
     MessagePage,
@@ -12,12 +13,37 @@ import {
     NewMessage,
     StoredMessage
 } from '../../domain'
-import { MESSAGE, STORED, toRecordOf, toRecords, toStored } from './message.selections'
+import { MESSAGE, STORED, toRecordOf, toRecords, toStored, Tx } from './message.selections'
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
 
 /** What history pages show: a deleted message keeps its row (for answers to it), not its place in the list. */
 const LIVE = { deletedAt: null } as const
+
+/** How far apart the app's clock (which makes ids) and the database's (createdAt) may be. */
+const CLOCK_MARGIN_MS = 60_000
+
+/** A message deleted: its row kept for the replies to it, emptied of everything else. */
+const emptied = (at: Date) => ({
+    deletedAt: at,
+    content: '',
+    mentionEveryone: false,
+    mentionHereUserIds: [],
+    mentionRoleIds: []
+})
+
+/**
+ * What goes with messages deleted, in their transaction: their mention rows,
+ * reactions and pins; their files keep their place, lose the message, and go
+ * with the next clean-up.
+ */
+async function letGo(tx: Tx, ids: string[]): Promise<void> {
+    const messageId = { in: ids }
+    await tx.messageMention.deleteMany({ where: { messageId } })
+    await tx.reaction.deleteMany({ where: { messageId } })
+    await tx.pin.deleteMany({ where: { messageId } })
+    await tx.attachment.updateMany({ where: { messageId }, data: { messageId: null } })
+}
 
 /**
  * Messages, read and written by id order (UUIDv7: id order is time order,
@@ -125,17 +151,39 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
     async remove(id: string, at: Date): Promise<boolean> {
         return this.prisma.$transaction(async (tx) => {
             // Only a live row: of two deletes at once, one empties it, the other learns it is gone.
-            const { count } = await tx.message.updateMany({
-                where: { id, ...LIVE },
-                data: { deletedAt: at, content: '', mentionEveryone: false, mentionHereUserIds: [], mentionRoleIds: [] }
-            })
+            const { count } = await tx.message.updateMany({ where: { id, ...LIVE }, data: emptied(at) })
             if (count === 0) return false
-            await tx.messageMention.deleteMany({ where: { messageId: id } })
-            await tx.reaction.deleteMany({ where: { messageId: id } })
-            await tx.pin.deleteMany({ where: { messageId: id } })
-            // Its files keep their place, lose the message, and go with the next clean-up.
-            await tx.attachment.updateMany({ where: { messageId: id }, data: { messageId: null } })
+            await letGo(tx, [id])
             return true
+        })
+    }
+
+    async removeRecent(
+        channelId: string,
+        authorId: string,
+        { from, to }: { from: Date; to: Date },
+        after: string | null,
+        limit: number,
+        at: Date
+    ): Promise<string[]> {
+        // The (authorId, id) index walked from here only: after the batch before, or from the
+        // window's first id, a minute early, as ids are made by the app and createdAt by the database.
+        const start = after ?? firstIdAt(new Date(from.getTime() - CLOCK_MARGIN_MS))
+        return this.prisma.$transaction(async (tx) => {
+            // Locked: a delete of one of them meanwhile waits, then finds it gone. Regular
+            // messages only: a system message has no author (D-168).
+            const rows = await tx.$queryRaw<{ id: string }[]>`
+                SELECT "id" FROM "Message"
+                WHERE "authorId" = ${authorId} AND "id" > ${start} AND "channelId" = ${channelId}
+                    AND "deletedAt" IS NULL AND "createdAt" BETWEEN ${from} AND ${to}
+                ORDER BY "id"
+                LIMIT ${limit}
+                FOR UPDATE`
+            const ids = rows.map((row) => row.id)
+            if (!ids.length) return ids
+            await tx.message.updateMany({ where: { id: { in: ids } }, data: emptied(at) })
+            await letGo(tx, ids)
+            return ids
         })
     }
 

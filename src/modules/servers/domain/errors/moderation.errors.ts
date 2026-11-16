@@ -14,9 +14,10 @@ export class BanNotFoundError extends DomainError {
  * Which rule of a kick, ban or timeout was broken (REQ-ROLE-04):
  * - `reason_too_long`: past 512 characters;
  * - `timeout_invalid`: not one of the six lengths;
- * - `target_admin`: they hold ADMINISTRATOR, take that role first (D-147).
+ * - `target_admin`: they hold ADMINISTRATOR, take that role first (D-147);
+ * - `delete_days_invalid`: a ban deletes 0, 1 or 7 days of messages (D-181).
  */
-export type ModerationRule = 'reason_too_long' | 'timeout_invalid' | 'target_admin'
+export type ModerationRule = 'reason_too_long' | 'timeout_invalid' | 'target_admin' | 'delete_days_invalid'
 
 /** A kick, ban or timeout that breaks one of their rules. `data.rule` says which. */
 export class ModerationRuleError extends DomainError {

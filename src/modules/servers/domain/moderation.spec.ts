@@ -122,25 +122,43 @@ describe('planKick', () => {
 
 describe('planBan', () => {
     it('bans with the reason trimmed and who banned', () => {
-        expect(planBan(as(an, dung), 'dung', '  Bán đề thi có đáp án ', NOW)).toEqual([
-            { kind: 'ban', userId: 'dung', reason: 'Bán đề thi có đáp án', bannedById: 'an' }
+        expect(planBan(as(an, dung), 'dung', '  Bán đề thi có đáp án ', 0, NOW)).toEqual([
+            { kind: 'ban', userId: 'dung', reason: 'Bán đề thi có đáp án', bannedById: 'an', deleteMessages: null }
         ])
-        expect(planBan(as(tuan, binh), 'binh', '', NOW)).toEqual([
-            { kind: 'ban', userId: 'binh', reason: null, bannedById: 'tuan' }
+        expect(planBan(as(tuan, binh), 'binh', '', 0, NOW)).toEqual([
+            { kind: 'ban', userId: 'binh', reason: null, bannedById: 'tuan', deleteMessages: null }
         ])
     })
 
     it('needs BAN_MEMBERS: kicking is not enough', () => {
-        expect(() => planBan(as(binh, dung), 'dung', null, NOW)).toThrow(MissingPermissionError)
+        expect(() => planBan(as(binh, dung), 'dung', null, 0, NOW)).toThrow(MissingPermissionError)
     })
 
     it('never reaches the owner or someone level with them', () => {
-        expect(() => planBan(as(tuan, an), 'an', null, NOW)).toThrow(RoleHierarchyError)
-        expect(() => planBan(as(tuan, member('tuan2', ['admin'])), 'tuan2', null, NOW)).toThrow(RoleHierarchyError)
+        expect(() => planBan(as(tuan, an), 'an', null, 0, NOW)).toThrow(RoleHierarchyError)
+        expect(() => planBan(as(tuan, member('tuan2', ['admin'])), 'tuan2', null, 0, NOW)).toThrow(RoleHierarchyError)
     })
 
     it('only someone in the server (D-155)', () => {
-        expect(() => planBan(as(an, null), 'khanh', null, NOW)).toThrow(MemberNotFoundError)
+        expect(() => planBan(as(an, null), 'khanh', null, 0, NOW)).toThrow(MemberNotFoundError)
+    })
+
+    it('deletes their messages of the last day or week up to now, when asked (D-181)', () => {
+        const day = 24 * 60 * 60 * 1000
+        expect(planBan(as(an, dung), 'dung', null, 1, NOW)[0]).toMatchObject({
+            deleteMessages: { from: new Date(NOW.getTime() - day), to: NOW }
+        })
+        expect(planBan(as(an, dung), 'dung', null, 7, NOW)[0]).toMatchObject({
+            deleteMessages: { from: new Date(NOW.getTime() - 7 * day), to: NOW }
+        })
+    })
+
+    it('refuses any other number of days', () => {
+        for (const days of [2, -1, 1.5, 30]) {
+            expect(() => planBan(as(an, dung), 'dung', null, days, NOW)).toThrow(
+                new ModerationRuleError('delete_days_invalid')
+            )
+        }
     })
 })
 

@@ -24,7 +24,8 @@ const TOLD: {
     ) => ServerChangedEvent | MemberChangedEvent
 } = {
     kick: (serverId, write) => new MemberChangedEvent(serverId, write.userId, 'left', 'kick', write.reason),
-    ban: (serverId, write) => new MemberChangedEvent(serverId, write.userId, 'left', 'ban', write.reason),
+    ban: (serverId, write) =>
+        new MemberChangedEvent(serverId, write.userId, 'left', 'ban', write.reason, write.deleteMessages),
     timeOut: (serverId, write) => new MemberChangedEvent(serverId, write.userId, 'updated'),
     endTimeout: (serverId, write) => new MemberChangedEvent(serverId, write.userId, 'updated'),
     unban: (serverId) => new ServerChangedEvent(serverId, [{ topic: 'ban', action: 'deleted' }], false)

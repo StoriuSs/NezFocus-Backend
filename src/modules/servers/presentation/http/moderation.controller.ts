@@ -15,6 +15,7 @@ import {
 import { BanListItem } from '../../domain'
 import {
     BanListQueryDto,
+    BanMemberRequestDto,
     BanPageResponseDto,
     ModerationReasonRequestDto,
     ServerIdParamsDto,
@@ -85,16 +86,21 @@ export class ModerationController {
         )
     }
 
-    /** Out of the server and kept out (BAN_MEMBERS); only someone in it (D-155). */
+    /**
+     * Out of the server and kept out (BAN_MEMBERS); only someone in it (D-155).
+     * Their messages of the last day or week go soon after, by a job (D-181).
+     */
     @Put('bans/:userId')
     @HttpCode(HttpStatus.OK)
     @ApiEnvelopeResponse(null)
     async ban(
         @CurrentUser() user: AuthenticatedUser,
         @Param() { serverId, userId }: ServerMemberParamsDto,
-        @Body() dto: ModerationReasonRequestDto
+        @Body() dto: BanMemberRequestDto
     ): Promise<ServiceResponse<null>> {
-        await this.commandBus.execute(new BanMemberCommand(user.id, serverId, userId, dto.reason ?? null))
+        await this.commandBus.execute(
+            new BanMemberCommand(user.id, serverId, userId, dto.reason ?? null, dto.deleteMessageDays ?? 0)
+        )
         return createResponse(MESSAGES.SERVER.MEMBER_BANNED, null)
     }
 

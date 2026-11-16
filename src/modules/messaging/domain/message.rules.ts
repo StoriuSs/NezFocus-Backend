@@ -30,3 +30,15 @@ export function isMessageContent(text: string): boolean {
 export function hasSomething(text: string, fileCount: number): boolean {
     return characterCount(text) > 0 || fileCount > 0
 }
+
+/**
+ * The smallest id of a message made at `at` (D-170, D-181). Ids are UUIDv7,
+ * whose first 48 bits are the time in milliseconds, so this is the id of that
+ * millisecond with every other bit as small as a UUIDv7 allows: every message
+ * made before sorts below it, every one made from then on above. No message
+ * has exactly these bits.
+ */
+export function firstIdAt(at: Date): string {
+    const time = at.getTime().toString(16).padStart(12, '0')
+    return `${time.slice(0, 8)}-${time.slice(8)}-7000-8000-000000000000`
+}
