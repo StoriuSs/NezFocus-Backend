@@ -30,12 +30,10 @@ import {
     ROLE_QUERY_HANDLERS,
     SERVER_COMMAND_HANDLERS,
     SERVER_EVENT_HANDLERS,
-    SERVER_QUERY_HANDLERS,
-    SYSTEM_MESSAGES
+    SERVER_QUERY_HANDLERS
 } from './application'
 import {
     BullMqFileCleanup,
-    NoSystemMessagesYet,
     PrismaChannelDirectory,
     PrismaInviteRepository,
     PrismaMemberRepository,
@@ -84,7 +82,6 @@ import {
         { provide: MODERATION_REPOSITORY, useClass: PrismaModerationRepository },
         // RateLimiter comes from the global CacheModule.
         { provide: GUESS_LIMIT, useExisting: RateLimiter },
-        { provide: SYSTEM_MESSAGES, useClass: NoSystemMessagesYet },
         { provide: MEMBERSHIP, useClass: PrismaMembership },
         { provide: CHANNEL_DIRECTORY, useClass: PrismaChannelDirectory },
         { provide: ROLE_DIRECTORY, useClass: PrismaRoleDirectory },

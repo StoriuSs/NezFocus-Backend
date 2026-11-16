@@ -165,7 +165,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
         code: string,
         userId: string,
         decide: (facts: JoinFacts, now: Date) => JoinDecision
-    ): Promise<{ serverId: string; decision: JoinDecision }> {
+    ): Promise<{ serverId: string; decision: JoinDecision; welcomeChannelId: string | null }> {
         return this.prisma.$transaction(async (tx) => {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${membershipsLock(userId)}, 0))`
 
@@ -176,8 +176,9 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
             // Shared: joins do not wait for each other, but a ban or a
             // deletion of the server waits for this join, and this join for them.
             const live = row
-                ? await tx.$queryRaw<{ id: string }[]>`
-                      SELECT "id" FROM "Server" WHERE "id" = ${row.serverId} AND "deletedAt" IS NULL FOR SHARE
+                ? await tx.$queryRaw<{ id: string; welcomeChannelId: string | null }[]>`
+                      SELECT "id", "welcomeChannelId" FROM "Server"
+                      WHERE "id" = ${row.serverId} AND "deletedAt" IS NULL FOR SHARE
                   `
                 : []
             if (!row || live.length === 0) throw new InviteInvalidError()
@@ -210,7 +211,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
                 if (used === 0) throw new InviteInvalidError()
                 await tx.member.create({ data: { serverId, userId } })
             }
-            return { serverId, decision }
+            return { serverId, decision, welcomeChannelId: live[0].welcomeChannelId }
         })
     }
 }

@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common'
+import { Global, Module } from '@nestjs/common'
 import { CqrsModule } from '@nestjs/cqrs'
 import { UploadModule } from '@/shared/infrastructure/storage/upload.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ServersModule } from '@/modules/servers/servers.module'
+import { SYSTEM_MESSAGES } from '@/modules/servers'
 import { UsersModule } from '@/modules/users/users.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
@@ -36,11 +37,13 @@ import {
     REACTION_QUERY_HANDLERS,
     READ_STATE_COMMAND_HANDLERS,
     READ_STATE_QUERY_HANDLERS,
-    SEND_LIMIT
+    SEND_LIMIT,
+    SYSTEM_MESSAGE_COMMAND_HANDLERS
 } from './application'
 import {
     AttachmentStorage,
     BullMqFileCleanup,
+    CommandBusSystemMessages,
     PrismaAttachmentRepository,
     PrismaMessageRepository,
     PrismaPinRepository,
@@ -67,6 +70,8 @@ import {
  * realtime's TypingSignalledEvent. Files go to the storage under
  * UploadService (ATTACHMENT_STORAGE); those no message holds are deleted
  * through the file-cleanup queue, whose consumer lives in UploadModule.
+ * Writes "X joined the server" when servers asks, through the global
+ * SystemMessagesModule below (D-180).
  */
 @Module({
     imports: [
@@ -99,6 +104,7 @@ import {
         ...PIN_QUERY_HANDLERS,
         ...READ_STATE_COMMAND_HANDLERS,
         ...READ_STATE_QUERY_HANDLERS,
+        ...SYSTEM_MESSAGE_COMMAND_HANDLERS,
         PublishCreatedMessageHandler,
         PublishUpdatedMessageHandler,
         PublishDeletedMessageHandler,
@@ -111,3 +117,18 @@ import {
     ]
 })
 export class MessagingModule {}
+
+/**
+ * The servers module's SYSTEM_MESSAGES port, answered by this one (D-180).
+ * Global, so ServersModule finds it without importing this module, which
+ * imports ServersModule: the code depends one way only, messaging on
+ * servers. The adapter only sends this module's command over the bus, so it
+ * needs nothing but CqrsModule. AppModule imports it.
+ */
+@Global()
+@Module({
+    imports: [CqrsModule],
+    providers: [{ provide: SYSTEM_MESSAGES, useClass: CommandBusSystemMessages }],
+    exports: [SYSTEM_MESSAGES]
+})
+export class SystemMessagesModule {}

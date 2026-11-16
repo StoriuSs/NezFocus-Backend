@@ -64,6 +64,8 @@ export interface InviteRepositoryPort {
      * - to join: count a use only while one is left and the link is in time
      *   (one statement, so two people racing for the last use cannot both
      *   get it: the loser is refused as invalid), then add the member.
+     * Gives the server's welcome channel as read under the same lock
+     * (null: it sends no welcome message, D-83).
      *
      * Lock order, for every transaction taking both: the person's memberships
      * lock first, then the Server row. One taking them the other way round
@@ -74,7 +76,7 @@ export interface InviteRepositoryPort {
         code: string,
         userId: string,
         decide: (facts: JoinFacts, now: Date) => JoinDecision
-    ): Promise<{ serverId: string; decision: JoinDecision }>
+    ): Promise<{ serverId: string; decision: JoinDecision; welcomeChannelId: string | null }>
 }
 
 /**

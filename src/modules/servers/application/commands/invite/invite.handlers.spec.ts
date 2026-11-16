@@ -186,10 +186,14 @@ describe('AcceptInviteHandler', () => {
     const messages = () =>
         ({ memberJoined: jest.fn(async () => undefined) }) as unknown as jest.Mocked<SystemMessagesPort>
 
-    it('joins by the rules of decideJoin and posts the welcome after the commit', async () => {
+    it('joins by the rules of decideJoin and posts the welcome after the commit, in the welcome channel', async () => {
         const facts: JoinFacts = { invite: record(), isMember: false, isBanned: false, serverCount: 2 }
         const invites = repository({
-            join: jest.fn(async (_code, _userId, decide) => ({ serverId: 'ot', decision: decide(facts, new Date()) }))
+            join: jest.fn(async (_code, _userId, decide) => ({
+                serverId: 'ot',
+                decision: decide(facts, new Date()),
+                welcomeChannelId: 'chao-mung'
+            }))
         })
         const posted = messages()
         const result = await new AcceptInviteHandler(invites, limiter(), posted, bus()).execute(
@@ -197,11 +201,26 @@ describe('AcceptInviteHandler', () => {
         )
         expect(result).toEqual({ serverId: 'ot', decision: 'join' })
         expect(invites.join).toHaveBeenCalledWith('k7Qm2xPa', 'binh', expect.any(Function))
-        expect(posted.memberJoined).toHaveBeenCalledWith('ot', 'binh')
+        expect(posted.memberJoined).toHaveBeenCalledWith('ot', 'binh', 'chao-mung')
+    })
+
+    it('posts nothing when the server sends no welcome message (D-83)', async () => {
+        const invites = repository({
+            join: jest.fn(async () => ({ serverId: 'ot', decision: 'join' as const, welcomeChannelId: null }))
+        })
+        const posted = messages()
+        await expect(
+            new AcceptInviteHandler(invites, limiter(), posted, bus()).execute(
+                new AcceptInviteCommand('binh', 'k7Qm2xPa', IP)
+            )
+        ).resolves.toEqual({ serverId: 'ot', decision: 'join' })
+        expect(posted.memberJoined).not.toHaveBeenCalled()
     })
 
     it('still answers joined when the welcome message fails', async () => {
-        const invites = repository({ join: jest.fn(async () => ({ serverId: 'ot', decision: 'join' as const })) })
+        const invites = repository({
+            join: jest.fn(async () => ({ serverId: 'ot', decision: 'join' as const, welcomeChannelId: 'chao-mung' }))
+        })
         const posted = messages()
         posted.memberJoined.mockRejectedValue(new Error('down'))
         await expect(
@@ -213,7 +232,11 @@ describe('AcceptInviteHandler', () => {
 
     it('posts nothing for a member coming back through a link', async () => {
         const invites = repository({
-            join: jest.fn(async () => ({ serverId: 'ot', decision: 'already_member' as const }))
+            join: jest.fn(async () => ({
+                serverId: 'ot',
+                decision: 'already_member' as const,
+                welcomeChannelId: 'chao-mung'
+            }))
         })
         const posted = messages()
         await new AcceptInviteHandler(invites, limiter(), posted, bus()).execute(
@@ -266,7 +289,9 @@ describe('invites told to the server after the commit (D-178)', () => {
 
     it('someone who joined through a link, and no one for a member coming back', async () => {
         const joined = bus()
-        const invites = repository({ join: jest.fn(async () => ({ serverId: 'ot', decision: 'join' as const })) })
+        const invites = repository({
+            join: jest.fn(async () => ({ serverId: 'ot', decision: 'join' as const, welcomeChannelId: 'chao-mung' }))
+        })
         await new AcceptInviteHandler(
             invites,
             limiter(),
@@ -277,7 +302,11 @@ describe('invites told to the server after the commit (D-178)', () => {
 
         const back = bus()
         const member = repository({
-            join: jest.fn(async () => ({ serverId: 'ot', decision: 'already_member' as const }))
+            join: jest.fn(async () => ({
+                serverId: 'ot',
+                decision: 'already_member' as const,
+                welcomeChannelId: 'chao-mung'
+            }))
         })
         await new AcceptInviteHandler(member, limiter(), { memberJoined: jest.fn() } as never, back).execute(
             new AcceptInviteCommand('binh', 'k7Qm2xPa', IP)

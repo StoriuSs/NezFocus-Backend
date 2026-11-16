@@ -60,7 +60,7 @@ import { AuthModule } from '@/modules/auth/auth.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { ServerOwnershipModule, ServersModule } from '@/modules/servers/servers.module'
 import { PresenceReaderModule, RealtimeModule } from '@/modules/realtime/realtime.module'
-import { MessagingModule } from '@/modules/messaging/messaging.module'
+import { MessagingModule, SystemMessagesModule } from '@/modules/messaging/messaging.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
 // Guards
@@ -180,6 +180,8 @@ import { RolesGuard } from '@/shared/presentation'
         RealtimeModule,
         PresenceReaderModule,
         MessagingModule,
+        // Answers servers' SYSTEM_MESSAGES port: "X joined the server" (D-180).
+        SystemMessagesModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

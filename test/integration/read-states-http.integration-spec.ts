@@ -146,6 +146,8 @@ describe('Read states (integration)', () => {
             .send({ type: 'text', name: 'ban-can-su', is_private: true, view_role_ids: [] })
         secretId = secret.body.data.id
 
+        // No welcome message (D-83): these count only An's messages around the join.
+        await prisma.server.update({ where: { id: serverId }, data: { welcomeChannelId: null } })
         beforeJoin = [await seed('an', generalId), await seed('an', generalId)]
         const invite = await as('an', api().post(`/api/v1/servers/${serverId}/invites`))
             .set('Idempotency-Key', randomUUID())

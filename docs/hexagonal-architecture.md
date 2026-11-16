@@ -725,7 +725,12 @@ Auth also publishes a port for another module, as users publishes
 password checked again when the servers module hands a server over, with
 wrong ones counted as when changing it. `ServerOwnershipPort` goes the other
 way: auth defines it, the servers module answers it through a small global
-module, so the code depends one way only, servers on auth (D-160).
+module, so the code depends one way only, servers on auth (D-160). The
+servers module's `SystemMessagesPort` ("X joined the server" in the welcome
+channel) is the second such pair: messaging, which imports servers, answers
+it through its global `SystemMessagesModule`, whose adapter
+(`CommandBusSystemMessages`) only sends messaging's own
+`PostMemberJoinedCommand` over the command bus (D-180).
 
 The auth handler tests replace these with in-memory fakes
 ([`auth-test-world.shared-spec.ts`](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)), which is the payoff of the ports: the

@@ -108,9 +108,11 @@ export class AcceptInviteHandler implements ICommandHandler<AcceptInviteCommand>
      * Joining adds no cache entry to clear: the permission cache never keeps
      * "not a member" (D-146), so the next check reads the new membership.
      *
-     * The welcome message is posted after the commit; if that fails, they
-     * have still joined, and are told so rather than shown an error (a retry
-     * would only find them a member). The server hears of them first
+     * The welcome message is posted after the commit, in the welcome channel
+     * read as they joined, and before the answer (D-180); none when the
+     * server sends none (D-83). If that fails, they have still joined, and
+     * are told so rather than shown an error (a retry would only find them a
+     * member). The server hears of them first
      * (D-178): their sockets go into its rooms, and a link used up leaves
      * the invites page as it is read again.
      */
@@ -119,13 +121,15 @@ export class AcceptInviteHandler implements ICommandHandler<AcceptInviteCommand>
             if (!INVITE_CODE_PATTERN.test(code)) throw new InviteInvalidError()
             return this.invites.join(code, userId, decideJoin)
         })
-        if (result.decision === 'join') {
-            this.events.publish(new MemberChangedEvent(result.serverId, userId, 'joined'))
-            await this.messages.memberJoined(result.serverId, userId).catch((error: unknown) => {
-                this.logger.error(`Welcome message not posted for server ${result.serverId}: ${String(error)}`)
-            })
+        const { serverId, decision, welcomeChannelId } = result
+        if (decision === 'join') {
+            this.events.publish(new MemberChangedEvent(serverId, userId, 'joined'))
+            if (welcomeChannelId)
+                await this.messages.memberJoined(serverId, userId, welcomeChannelId).catch((error: unknown) => {
+                    this.logger.error(`Welcome message not posted for server ${serverId}: ${String(error)}`)
+                })
         }
-        return result
+        return { serverId, decision }
     }
 }
 

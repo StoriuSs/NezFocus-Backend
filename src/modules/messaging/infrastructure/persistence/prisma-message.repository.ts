@@ -139,6 +139,20 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         })
     }
 
+    async createMemberJoined(channelId: string, userId: string): Promise<MessageRecord | null> {
+        try {
+            const row = await this.prisma.message.create({
+                data: { channelId, type: 'system', systemEvent: 'member_joined', systemData: { userId }, content: '' },
+                select: MESSAGE
+            })
+            return await toRecordOf(this.prisma, row)
+        } catch (error) {
+            // The channel deleted meanwhile (its foreign key): nothing to write in.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
     async page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage> {
         switch (cursor.kind) {
             case 'latest': {

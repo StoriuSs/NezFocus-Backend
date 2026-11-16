@@ -142,6 +142,12 @@ export interface MessageRepositoryPort {
      * it was deleted (or gone) already.
      */
     remove(id: string, at: Date): Promise<boolean>
+    /**
+     * Write "<userId> joined the server" in the channel (D-83): a system
+     * message, who in `systemData` (D-168). Null if the channel is gone by
+     * now (deleted since its server named it the welcome channel).
+     */
+    createMemberJoined(channelId: string, userId: string): Promise<MessageRecord | null>
     /** Up to `limit` messages of the channel from `cursor`; `around` splits them half before, half from the id on. */
     page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage>
 }

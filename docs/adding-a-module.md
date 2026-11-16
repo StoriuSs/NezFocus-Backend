@@ -455,7 +455,10 @@ servers; yet deleting an account must ask about servers. Auth defines that
 port (`SERVER_OWNERSHIP`), servers answers it, and gives it through a small
 `@Global()` module declared in `servers.module.ts` beside `ServersModule`
 (the table has one module file per module) and imported by `AppModule`
-(D-160). Ask the owner before adding another such pair.
+(D-160). Messaging answers servers' `SYSTEM_MESSAGES` the same way
+(`SystemMessagesModule` in `messaging.module.ts`, D-180); its adapter only
+sends messaging's own command over the bus, so the global module needs
+nothing but `CqrsModule`. Ask the owner before adding another such pair.
 
 `MODULES` at the top of `eslint.config.mjs` is every folder under
 `src/modules`, so from the module's first file a deep import into it from

@@ -171,6 +171,34 @@ describe('Invites over HTTP (integration)', () => {
         expect(outcome(await accept('tuan', open))).toEqual([410, 'INVITE_INVALID'])
     })
 
+    it('posts "X joined the server" in the welcome channel before answering; nothing when it sends none (D-83, D-180)', async () => {
+        const { serverId, id } = await studyServer()
+        const code: string = (await invite('an', serverId, null, null)).body.data.code
+        const history = (who: Who, channelId: string) =>
+            as(who, api().get(`/api/v1/channels/${channelId}/messages`)).then(
+                (res) => res.body.data.items as { type: string; system_event: string; system_user: { id: string } }[]
+            )
+
+        expect((await accept('binh', code)).status).toBe(200)
+        // Read right after the answer: already there, about Bình, for Bình too.
+        expect(await history('binh', id('chao-mung'))).toEqual([
+            expect.objectContaining({
+                type: 'system',
+                system_event: 'member_joined',
+                system_data: { user_id: users.binh.id },
+                system_user: expect.objectContaining({ id: users.binh.id })
+            })
+        ])
+        // Coming back through a link posts nothing more.
+        await accept('binh', code)
+        expect(await history('an', id('chao-mung'))).toHaveLength(1)
+
+        await prisma.server.update({ where: { id: serverId }, data: { welcomeChannelId: null } })
+        expect((await accept('tuan', code)).status).toBe(200)
+        const everywhere = await prisma.message.count({ where: { channel: { serverId }, type: 'system' } })
+        expect(everywhere).toBe(1)
+    })
+
     it('lets exactly one of two people racing take the last use', async () => {
         const { serverId } = await studyServer()
         const code: string = (await invite('an', serverId, null, 1)).body.data.code
@@ -229,6 +257,8 @@ describe('Invites over HTTP (integration)', () => {
             ]
         })
         await prisma.memberRole.create({ data: { serverId, userId: users.tuan.id, roleId: manager.id } })
+        // Written past the app: the cache may hold the server as it was made, read when An's sockets moved into it (D-178).
+        await app.get<PermissionCachePort>(PERMISSION_CACHE).serverChanged(serverId)
 
         // Bình holds CREATE_INVITE through @everyone (appendix B).
         const binhs: string = (await invite('binh', serverId, DAY, null)).body.data.code

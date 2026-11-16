@@ -13,6 +13,8 @@ export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from '.
 export { CHANNEL_DIRECTORY, type ChannelDirectoryPort } from './application/ports/channel-directory.port'
 // The roles a message mentions: whether each may be, and their names (D-171).
 export { ROLE_DIRECTORY, type DirectoryRole, type RoleDirectoryPort } from './application/ports/role-directory.port'
+// "X joined the server" in the welcome channel: answered by messaging (D-160 pattern, D-180).
+export { SYSTEM_MESSAGES, type SystemMessagesPort } from './application/ports/system-messages.port'
 
 // Changes to a server and its members, after the commit: realtime tells the members and moves their sockets (D-178).
 export {

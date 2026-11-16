@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import request from 'supertest'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { Permission } from '@/modules/permissions'
+import { Permission, PERMISSION_CACHE, PermissionCachePort } from '@/modules/permissions'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
@@ -77,6 +77,8 @@ describe('Moderation over HTTP (integration)', () => {
         const { code } = (await newInvite('an', serverId)).body.data as { code: string }
         for (const who of ['binh', 'chi', 'dung'] as const) expect((await join(who, code)).status).toBe(200)
         await prisma.memberRole.create({ data: { serverId, userId: users.binh.id, roleId: lead.id } })
+        // Written past the app: the cache may hold Bình as he joined, read when his sockets moved in (D-178).
+        await app.get<PermissionCachePort>(PERMISSION_CACHE).memberChanged(serverId, users.binh.id)
         return { serverId, code, leadId: lead.id }
     }
 
@@ -185,6 +187,7 @@ describe('Moderation over HTTP (integration)', () => {
     it('refuses to time out someone holding ADMINISTRATOR (D-147)', async () => {
         const { serverId, leadId } = await studyServer()
         await prisma.role.update({ where: { id: leadId }, data: { permissions: Permission.ADMINISTRATOR } })
+        await app.get<PermissionCachePort>(PERMISSION_CACHE).serverChanged(serverId)
         const res = await timeout('an', serverId, 'binh', 60)
         expect(outcome(res)).toEqual([422, 'VALIDATION_ERROR'])
         expect(res.body.data).toMatchObject({ rule: 'target_admin' })
