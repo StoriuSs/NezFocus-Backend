@@ -29,66 +29,78 @@ export class PrismaServerRepository implements ServerRepositoryPort {
             const server = await tx.server.create({ data: { name, ownerId }, select: { id: true } })
             const serverId = server.id
 
-            await tx.role.create({
-                data: {
-                    serverId,
-                    name: EVERYONE,
-                    nameKey: nameKey(EVERYONE),
-                    permissions: plan.everyonePermissions,
-                    position: 0,
-                    isEveryone: true
-                }
-            })
+            // One statement per table, not per row or group: an interactive
+            // transaction must end within 5 s, and every statement is a
+            // round trip while it holds the owner's lock.
             const roles = await tx.role.createManyAndReturn({
-                data: plan.roles.map((role, index) => ({
-                    serverId,
-                    name: role.name,
-                    nameKey: nameKey(role.name),
-                    permissions: role.permissions,
-                    position: index + 1
-                })),
-                select: { id: true, name: true }
+                data: [
+                    {
+                        serverId,
+                        name: EVERYONE,
+                        nameKey: nameKey(EVERYONE),
+                        permissions: plan.everyonePermissions,
+                        position: 0,
+                        isEveryone: true
+                    },
+                    ...plan.roles.map((role, index) => ({
+                        serverId,
+                        name: role.name,
+                        nameKey: nameKey(role.name),
+                        permissions: role.permissions,
+                        position: index + 1,
+                        isEveryone: false
+                    }))
+                ],
+                select: { id: true, name: true, isEveryone: true }
             })
 
             await tx.member.create({ data: { serverId, userId: ownerId } })
             const ownerRoles = plan.roles.filter((role) => role.givenToOwner).map((role) => role.name)
             await tx.memberRole.createMany({
                 data: roles
-                    .filter((role) => ownerRoles.includes(role.name))
+                    .filter((role) => !role.isEveryone && ownerRoles.includes(role.name))
                     .map((role) => ({ serverId, userId: ownerId, roleId: role.id }))
             })
 
-            let categoryPosition = 0
-            let welcomeChannelId: string | null = null
-            for (const group of plan.groups) {
-                const category = group.name
-                    ? await tx.category.create({
-                          data: {
-                              serverId,
-                              name: group.name,
-                              nameKey: nameKey(group.name),
-                              position: categoryPosition++
-                          },
-                          select: { id: true }
-                      })
-                    : null
-                const channels = await tx.channel.createManyAndReturn({
-                    data: group.channels.map((channel, position) => ({
-                        serverId,
-                        categoryId: category?.id ?? null,
-                        type: channel.type,
-                        name: channel.name,
-                        nameKey: nameKey(channel.name),
-                        position,
-                        sendMode: channel.sendMode,
-                        isStudyRoom: channel.isStudyRoom,
-                        taskBoardEnabled: channel.taskBoardEnabled
-                    })),
-                    select: { id: true, type: true, name: true }
-                })
-                const welcome = channels.find((c) => c.type === 'text' && c.name === plan.welcomeChannel)
-                welcomeChannelId ??= welcome?.id ?? null
-            }
+            // Categories numbered in display order; each group's channels then
+            // find theirs by that number (RETURNING promises no row order).
+            const named = plan.groups.filter((group) => group.name !== null)
+            const categories = await tx.category.createManyAndReturn({
+                data: named.map((group, position) => ({
+                    serverId,
+                    name: group.name as string,
+                    nameKey: nameKey(group.name as string),
+                    position
+                })),
+                select: { id: true, position: true }
+            })
+            const categoryAt = new Map(categories.map((category) => [category.position, category.id]))
+            const placed = plan.groups.flatMap((group) => {
+                const categoryId = group.name === null ? null : (categoryAt.get(named.indexOf(group)) ?? null)
+                return group.channels.map((channel, position) => ({ channel, categoryId, position }))
+            })
+            const channels = await tx.channel.createManyAndReturn({
+                data: placed.map(({ channel, categoryId, position }) => ({
+                    serverId,
+                    categoryId,
+                    type: channel.type,
+                    name: channel.name,
+                    nameKey: nameKey(channel.name),
+                    position,
+                    sendMode: channel.sendMode,
+                    isStudyRoom: channel.isStudyRoom,
+                    taskBoardEnabled: channel.taskBoardEnabled
+                })),
+                select: { id: true, categoryId: true, position: true }
+            })
+            // The plan's first text channel of that name, as the groups list it.
+            const welcome = placed.find(
+                ({ channel }) => channel.type === 'text' && channel.name === plan.welcomeChannel
+            )
+            const welcomeChannelId = welcome
+                ? (channels.find((c) => c.categoryId === welcome.categoryId && c.position === welcome.position)?.id ??
+                  null)
+                : null
             await tx.server.update({ where: { id: serverId }, data: { welcomeChannelId } })
 
             return { serverId }

@@ -83,7 +83,13 @@ describe('Servers over HTTP (integration)', () => {
         expect(BigInt(server.permissions)).toBe(ALL_PERMISSIONS)
         expect(server.categories.map((c: { name: string }) => c.name)).toEqual(['Thông tin', 'Phòng học'])
 
-        const channels: { id: string; name: string; type: string; is_study_room: boolean }[] = server.channels
+        const channels: {
+            id: string
+            name: string
+            type: string
+            is_study_room: boolean
+            category_id: string | null
+        }[] = server.channels
         expect(channels.filter((c) => c.type === 'text').map((c) => c.name)).toEqual([
             'chao-mung',
             'thong-bao',
@@ -92,6 +98,19 @@ describe('Servers over HTTP (integration)', () => {
             'viec-nhom'
         ])
         expect(channels.filter((c) => c.type === 'voice' && c.is_study_room)).toHaveLength(2)
+        // Each channel in its own category: the texts under Thông tin, the rooms under Phòng học.
+        const categoryName = new Map(
+            server.categories.map((c: { id: string; name: string }) => [c.id, c.name] as const)
+        )
+        expect(Object.fromEntries(channels.map((c) => [c.name, categoryName.get(c.category_id ?? '')]))).toEqual({
+            'chao-mung': 'Thông tin',
+            'thong-bao': 'Thông tin',
+            'tai-lieu': 'Thông tin',
+            'hoi-dap': 'Thông tin',
+            'viec-nhom': 'Thông tin',
+            'Phòng học im lặng': 'Phòng học',
+            'Phòng thảo luận nhóm': 'Phòng học'
+        })
         expect(server.welcome_channel_id).toBe(channels.find((c) => c.name === 'chao-mung')!.id)
 
         const stored = await prisma.server.findUniqueOrThrow({
