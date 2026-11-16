@@ -60,17 +60,20 @@ export class PrismaAttachmentRepository implements AttachmentRepositoryPort {
         await this.prisma.attachment.deleteMany({ where: { id, completedAt: null, messageId: null, position: null } })
     }
 
-    async takeForCleanUp(uploadedBefore: Date, limit: number): Promise<KeptFiles[]> {
+    async forCleanUp(uploadedBefore: Date, limit: number): Promise<KeptFiles[]> {
         // Both kinds hold no message: the partial index on createdAt WHERE messageId IS NULL finds them.
-        return this.prisma.$queryRaw<KeptFiles[]>`
-            DELETE FROM "Attachment"
-            WHERE "id" IN (
-                SELECT "id" FROM "Attachment"
-                WHERE "messageId" IS NULL AND ("position" IS NOT NULL OR "createdAt" < ${uploadedBefore})
-                ORDER BY "createdAt"
-                LIMIT ${limit}
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING "storageKey", "thumbnailKey"`
+        // No lock: two runs at once read the same rows, queue the same keys (one job each) and delete them once.
+        return this.prisma.attachment.findMany({
+            where: { messageId: null, OR: [{ position: { not: null } }, { createdAt: { lt: uploadedBefore } }] },
+            select: { id: true, storageKey: true, thumbnailKey: true },
+            orderBy: { createdAt: 'asc' },
+            take: limit
+        })
+    }
+
+    async purge(ids: string[]): Promise<void> {
+        if (ids.length === 0) return
+        // Such a file can no longer be sent (too old, or let go by a deleted message): messageId is checked anyway.
+        await this.prisma.attachment.deleteMany({ where: { id: { in: ids }, messageId: null } })
     }
 }

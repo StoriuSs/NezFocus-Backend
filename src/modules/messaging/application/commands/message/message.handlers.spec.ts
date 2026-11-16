@@ -536,6 +536,12 @@ describe('EditMessageHandler (REQ-MSG-05)', () => {
         await expect(edit('phong', message.id, 'Sửa')).rejects.toBeInstanceOf(TimedOutError)
     })
 
+    it("answers a timed-out member with the time-out before anything else: someone else's message, a system one", async () => {
+        const { edit, seed } = world()
+        await expect(edit('phong', seed('hoi-dap', 'binh').id, 'Sửa')).rejects.toBeInstanceOf(TimedOutError)
+        await expect(edit('phong', seed('hoi-dap', null).id, 'Sửa')).rejects.toBeInstanceOf(TimedOutError)
+    })
+
     it('refuses the author in a channel only managers may post in now', async () => {
         const { edit, seed } = world()
         const message = seed('thong-bao', 'binh')
@@ -601,6 +607,12 @@ describe('DeleteMessageHandler (REQ-MSG-05)', () => {
         const { remove, seed } = world()
         const message = seed('hoi-dap', 'phong')
         await expect(remove('phong', message.id)).rejects.toBeInstanceOf(TimedOutError)
+    })
+
+    it("answers a timed-out member with the time-out before anything else: a system message, someone else's", async () => {
+        const { remove, seed } = world()
+        await expect(remove('phong', seed('hoi-dap', null).id)).rejects.toBeInstanceOf(TimedOutError)
+        await expect(remove('phong', seed('hoi-dap', 'binh').id)).rejects.toBeInstanceOf(TimedOutError)
     })
 
     it('refuses a system message, even to the owner (REQ-MSG-08)', async () => {

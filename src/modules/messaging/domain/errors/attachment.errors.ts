@@ -1,5 +1,15 @@
 import { DomainError } from '@/shared/domain/domain-error'
 
+/** More than 60 upload forms in a minute from one person (application/rate-limits.ts). */
+export class UploadingTooFastError extends DomainError {
+    readonly kind = 'rate_limited'
+    readonly errorKey = 'RATE_LIMIT_EXCEEDED'
+
+    constructor(readonly retryAfterSeconds: number) {
+        super(`You are uploading files too fast. Try again in ${retryAfterSeconds} seconds.`)
+    }
+}
+
 /** Bigger than 25 MB (REQ-MSG-04). The storage refuses a bigger upload too (D-165). */
 export class AttachmentTooLargeError extends DomainError {
     readonly kind = 'too_large'

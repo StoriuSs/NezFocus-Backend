@@ -13,9 +13,10 @@ import {
     CLEAN_UP_AFTER_MS,
     FileType,
     NewAttachment,
-    TimedOutError
+    TimedOutError,
+    UploadingTooFastError
 } from '../../../domain'
-import { AttachmentStoragePort, FileCleanupPort } from '../../ports'
+import { AttachmentStoragePort, FileCleanupPort, SendLimitPort } from '../../ports'
 import { CleanUpAttachmentsCommand, CompleteUploadCommand, RequestUploadCommand } from './attachment.commands'
 import { CleanUpAttachmentsHandler, CompleteUploadHandler, RequestUploadHandler } from './attachment.handlers'
 
@@ -90,7 +91,8 @@ function world() {
         delete: jest.fn(async (id: string) => {
             if (!rows.get(id)?.completedAt) rows.delete(id)
         }),
-        takeForCleanUp: jest.fn()
+        forCleanUp: jest.fn(),
+        purge: jest.fn()
     }
     const storage: AttachmentStoragePort = {
         uploadForm: jest.fn(async (key: string) => {
@@ -127,7 +129,17 @@ function world() {
     const cleanup: FileCleanupPort = {
         deleteFileLater: jest.fn(async (key: string, afterMs?: number) => void later.push({ key, afterMs }))
     }
-    const requester = new RequestUploadHandler(attachments, storage, cleanup, channels, checker)
+    // One fixed window per person, never ending: what the 61st form in a minute meets.
+    const forms = new Map<string, number>()
+    const limit: SendLimitPort = {
+        hit: jest.fn(async (rule, subject: string) => {
+            const count = (forms.get(subject) ?? 0) + 1
+            forms.set(subject, count)
+            return { count, limited: count > rule.limit, retryAfterSeconds: 42 }
+        }),
+        release: jest.fn()
+    }
+    const requester = new RequestUploadHandler(attachments, storage, cleanup, channels, checker, limit)
     const completer = new CompleteUploadHandler(attachments, storage)
     const request = (userId: string, filename: string, size = 1000) =>
         requester.execute(new RequestUploadCommand(userId, 'hoi-dap', filename, size))
@@ -140,7 +152,7 @@ function world() {
         return ticket.attachmentId
     }
     const complete = (id: string, userId = 'chi') => completer.execute(new CompleteUploadCommand(userId, id))
-    return { rows, kept, order, later, attachments, storage, request, upload, complete, formKey }
+    return { rows, kept, order, later, attachments, storage, limit, request, upload, complete, formKey }
 }
 
 describe('RequestUploadHandler (REQ-MSG-04, D-165)', () => {
@@ -181,6 +193,22 @@ describe('RequestUploadHandler (REQ-MSG-04, D-165)', () => {
             AttachmentTooLargeError
         )
         expect(storage.uploadForm).not.toHaveBeenCalled()
+    })
+
+    it('refuses the 61st form in a minute from one person, saying when to try again; others still get one', async () => {
+        const { request, storage } = world()
+        for (let i = 0; i < 60; i++) await request('chi', `bai-${i}.pdf`)
+
+        await expect(request('chi', 'bai-60.pdf')).rejects.toEqual(new UploadingTooFastError(42))
+        expect(storage.uploadForm).toHaveBeenCalledTimes(60)
+        await expect(request('an', 'de-bai.pdf')).resolves.toBeDefined()
+    })
+
+    it('counts a form only once everything else is checked: a refused one costs nothing', async () => {
+        const { request, limit } = world()
+        await expect(request('binh', 'a.png')).rejects.toBeInstanceOf(CannotAttachError)
+        await expect(request('chi', 'run.bat')).rejects.toBeInstanceOf(AttachmentTypeError)
+        expect(limit.hit).not.toHaveBeenCalled()
     })
 })
 
@@ -321,24 +349,55 @@ describe('CompleteUploadHandler (D-93)', () => {
 })
 
 describe('CleanUpAttachmentsHandler (REQ-MSG-04)', () => {
+    const now = new Date('2026-11-14T12:00:00Z')
+
     it('takes the files no message holds in rounds, uploaded 25 hours ago, and deletes them and their thumbnails later', async () => {
-        const now = new Date('2026-11-14T12:00:00Z')
-        const full = Array.from({ length: 500 }, (_, i) => ({ storageKey: `attachments/${i}`, thumbnailKey: null }))
-        const takeForCleanUp = jest
-            .fn()
-            .mockResolvedValueOnce(full)
-            .mockResolvedValueOnce([{ storageKey: 'attachments/last', thumbnailKey: 'attachments/thumb-last.webp' }])
+        const full = Array.from({ length: 500 }, (_, i) => ({
+            id: `file-${i}`,
+            storageKey: `attachments/${i}`,
+            thumbnailKey: null
+        }))
+        const last = { id: 'file-last', storageKey: 'attachments/last', thumbnailKey: 'attachments/thumb-last.webp' }
+        const forCleanUp = jest.fn().mockResolvedValueOnce(full).mockResolvedValueOnce([last])
+        const purge = jest.fn(async () => undefined)
         const cleanup: FileCleanupPort = { deleteFileLater: jest.fn(async () => undefined) }
         const handler = new CleanUpAttachmentsHandler(
-            { takeForCleanUp } as unknown as AttachmentRepositoryPort,
+            { forCleanUp, purge } as unknown as AttachmentRepositoryPort,
             cleanup
         )
 
         await handler.execute(new CleanUpAttachmentsCommand(now))
 
-        expect(takeForCleanUp).toHaveBeenCalledTimes(2)
-        expect(takeForCleanUp).toHaveBeenCalledWith(new Date(now.getTime() - CLEAN_UP_AFTER_MS), 500)
+        expect(forCleanUp).toHaveBeenCalledTimes(2)
+        expect(forCleanUp).toHaveBeenCalledWith(new Date(now.getTime() - CLEAN_UP_AFTER_MS), 500)
         expect(cleanup.deleteFileLater).toHaveBeenCalledTimes(502)
         expect(cleanup.deleteFileLater).toHaveBeenLastCalledWith('attachments/thumb-last.webp')
+        expect(purge).toHaveBeenNthCalledWith(
+            1,
+            full.map((file) => file.id)
+        )
+        expect(purge).toHaveBeenNthCalledWith(2, ['file-last'])
+    })
+
+    it('queues the files before their rows go: a queue that fails keeps the rows for the next run', async () => {
+        const files = [
+            { id: 'file-1', storageKey: 'attachments/1', thumbnailKey: 'attachments/thumb-1.webp' },
+            { id: 'file-2', storageKey: 'attachments/2', thumbnailKey: null }
+        ]
+        const purge = jest.fn(async () => undefined)
+        const cleanup: FileCleanupPort = {
+            deleteFileLater: jest
+                .fn()
+                .mockResolvedValueOnce(undefined)
+                .mockRejectedValueOnce(new Error('Redis is down'))
+        }
+        const handler = new CleanUpAttachmentsHandler(
+            { forCleanUp: jest.fn(async () => files), purge } as unknown as AttachmentRepositoryPort,
+            cleanup
+        )
+
+        await expect(handler.execute(new CleanUpAttachmentsCommand(now))).rejects.toThrow('Redis is down')
+
+        expect(purge).not.toHaveBeenCalled()
     })
 })

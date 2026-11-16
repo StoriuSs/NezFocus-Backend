@@ -1,9 +1,9 @@
 import { LimitsUnavailableError } from '@/shared/domain'
 import { RateLimitRule, RateLimitState } from '@/shared/types/rate-limit.type'
-import { SendingTooFastError } from '../../domain'
+import { SendingTooFastError, UploadingTooFastError } from '../../domain'
 import { SendLimitPort } from '../ports'
-import { MESSAGES_PER_CHANNEL, MESSAGES_PER_PERSON } from '../rate-limits'
-import { countSending } from './sending-limits'
+import { MESSAGES_PER_CHANNEL, MESSAGES_PER_PERSON, UPLOADS_PER_PERSON } from '../rate-limits'
+import { countSending, countUpload } from './sending-limits'
 
 /** Fixed-window counters in memory, one window per rule and subject, all opening at 0. */
 function counters() {
@@ -88,5 +88,25 @@ describe('Sending limits (REQ-MSG-10)', () => {
     it('do not swallow other failures', async () => {
         const limit: SendLimitPort = { hit: jest.fn().mockRejectedValue(new Error('bug')), release: jest.fn() }
         await expect(countSending(limit, 'binh', 'hoi-dap')).rejects.toThrow('bug')
+    })
+})
+
+describe('Upload limit (5.4 of the M2 review)', () => {
+    it('allow 60 upload forms a minute per person, refusing the 61st with the wait', async () => {
+        expect([UPLOADS_PER_PERSON.limit, UPLOADS_PER_PERSON.windowMs]).toEqual([60, 60_000])
+        const { limit } = counters()
+        for (let i = 0; i < 60; i++) await countUpload(limit, 'chi')
+        await expect(countUpload(limit, 'chi')).rejects.toEqual(new UploadingTooFastError(60))
+        await expect(countUpload(limit, 'binh')).resolves.toBeUndefined()
+    })
+
+    it('let forms through uncounted while the counter cannot be reached, and not other failures', async () => {
+        const down: SendLimitPort = {
+            hit: jest.fn().mockRejectedValue(new LimitsUnavailableError()),
+            release: jest.fn()
+        }
+        await expect(countUpload(down, 'chi')).resolves.toBeUndefined()
+        const broken: SendLimitPort = { hit: jest.fn().mockRejectedValue(new Error('bug')), release: jest.fn() }
+        await expect(countUpload(broken, 'chi')).rejects.toThrow('bug')
     })
 })

@@ -45,8 +45,9 @@ export interface CheckedFile {
     height: number | null
 }
 
-/** Where a file and its thumbnail are kept. */
+/** A file the clean-up removes: its row, and where it and its thumbnail are kept. */
 export interface KeptFiles {
+    id: string
     storageKey: string
     thumbnailKey: string | null
 }
@@ -61,11 +62,13 @@ export interface AttachmentRepositoryPort {
     /** Forget an upload whose content was refused, unless it was checked meanwhile or is in a message. */
     delete(id: string): Promise<void>
     /**
-     * Remove up to `limit` files no message holds: let go by a deleted
-     * message, or never sent and uploaded before `uploadedBefore`. Returns
-     * what they kept, for the storage to delete.
+     * Up to `limit` files no message holds, oldest first: let go by a deleted
+     * message, or never sent and uploaded before `uploadedBefore`. Read only:
+     * their stored files are queued for deletion before `purge` drops the rows.
      */
-    takeForCleanUp(uploadedBefore: Date, limit: number): Promise<KeptFiles[]>
+    forCleanUp(uploadedBefore: Date, limit: number): Promise<KeptFiles[]>
+    /** Delete these files' rows, those still in no message. */
+    purge(ids: string[]): Promise<void>
 }
 
 export const ATTACHMENT_REPOSITORY = Symbol('AttachmentRepositoryPort')

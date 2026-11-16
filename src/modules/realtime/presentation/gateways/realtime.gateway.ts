@@ -24,13 +24,15 @@ import {
     ReportTypingCommand,
     SettleRoomsCommand
 } from '@/modules/realtime/application'
-import type { Presence } from '@/modules/realtime/domain'
+import { type Presence, takeSignal } from '@/modules/realtime/domain'
 
 /** What a socket carries once let in. */
 interface ConnectionData {
     connection?: OpenedConnection
     /** When this socket last said it went unused or back (`presence.idle`), in ms. */
     idleSaidAt?: number
+    /** When the signals it sent in the last window were taken, in ms (signal.rules.ts). */
+    signalsAt?: number[]
 }
 
 /** `presence.idle` is taken at most this often per socket. */
@@ -52,8 +54,11 @@ const IDLE_EVERY_MS = 1000
  *
  * A tab also sends light signals (SRS 5.2): `heartbeat`, `presence.idle`,
  * `typing.start`. Each becomes one command. One that is malformed is
- * ignored: the socket stays. `presence.idle` is taken at most once a second
- * per socket: a tab flipping it costs its servers nothing more.
+ * ignored: the socket stays. Before anything else, each is counted against
+ * one limit per socket for every signal (SIGNALS_PER_WINDOW): one over it is
+ * ignored the same way, costing no Redis and no SQL. `presence.idle` is also
+ * taken at most once a second per socket: a tab flipping it costs its
+ * servers nothing more.
  */
 @WebSocketGateway()
 export class RealtimeGateway
@@ -106,6 +111,7 @@ export class RealtimeGateway
     /** Every 30 seconds while the tab is open (ARCHITECTURE 3.3). */
     @SubscribeMessage('heartbeat')
     async heartbeat(@ConnectedSocket() socket: Socket): Promise<void> {
+        if (!this.takes(socket)) return
         const { connection } = socket.data as ConnectionData
         if (connection) await this.commandBus.execute(new HeartbeatCommand(connection.userId, socket.id))
     }
@@ -113,6 +119,7 @@ export class RealtimeGateway
     /** `{ idle: true }` after 10 minutes unused, `{ idle: false }` once in use again (REQ-AUTH-07). */
     @SubscribeMessage('presence.idle')
     async idle(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<void> {
+        if (!this.takes(socket)) return
         const { connection } = socket.data as ConnectionData
         const data = socket.data as ConnectionData
         const idle = (body as { idle?: unknown } | null)?.idle
@@ -126,10 +133,19 @@ export class RealtimeGateway
     /** `{ channel_id }` while typing there (REQ-MSG-06); messaging decides whether it is told. */
     @SubscribeMessage('typing.start')
     async typing(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<void> {
+        if (!this.takes(socket)) return
         const { connection } = socket.data as ConnectionData
         const channelId = (body as { channel_id?: unknown } | null)?.channel_id
         if (!connection || typeof channelId !== 'string' || !isUUID(channelId)) return
         await this.commandBus.execute(new ReportTypingCommand(connection.userId, socket.id, channelId))
+    }
+
+    /** Counts a signal of this socket: false when it is over the limit, to be ignored. */
+    private takes(socket: Socket): boolean {
+        const data = socket.data as ConnectionData
+        const { taken, takenAt } = takeSignal(data.signalsAt ?? [], Date.now())
+        data.signalsAt = takenAt
+        return taken
     }
 
     /** The error a refused handshake ends with, typed as the REST API types it. */

@@ -33,7 +33,8 @@ export class AttachmentController {
      * A form to upload one file for a channel, valid 15 minutes. Needs
      * SEND_MESSAGES and ATTACH_FILES there (a timeout says until when); the
      * name's extension must be of a type sent (UPLOAD_INVALID_TYPE, D-92,
-     * D-177), the size at most 25 MB (UPLOAD_FILE_TOO_LARGE).
+     * D-177), the size at most 25 MB (UPLOAD_FILE_TOO_LARGE). At most 60
+     * forms a minute per person (RATE_LIMIT_EXCEEDED, with Retry-After).
      */
     @Post()
     @HttpCode(HttpStatus.CREATED)

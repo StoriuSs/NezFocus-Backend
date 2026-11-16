@@ -1,8 +1,8 @@
 import { LimitsUnavailableError } from '@/shared/domain'
 import { RateLimitState } from '@/shared/types/rate-limit.type'
-import { SendingTooFastError } from '../../domain'
+import { SendingTooFastError, UploadingTooFastError } from '../../domain'
 import { SendLimitPort } from '../ports'
-import { MESSAGES_PER_CHANNEL, MESSAGES_PER_PERSON } from '../rate-limits'
+import { MESSAGES_PER_CHANNEL, MESSAGES_PER_PERSON, UPLOADS_PER_PERSON } from '../rate-limits'
 
 /** A message counted against the limits, and the way to take it back off them. */
 export interface Counted {
@@ -48,4 +48,14 @@ export async function countSending(limit: SendLimitPort, userId: string, channel
             if (person) await limit.release(MESSAGES_PER_PERSON, userId)
         }
     }
+}
+
+/**
+ * Count one upload form against UPLOADS_PER_PERSON, or refuse it with the
+ * wait. Uncounted while the counter cannot be reached, as messages are: a
+ * file is part of a message.
+ */
+export async function countUpload(limit: SendLimitPort, userId: string): Promise<void> {
+    const person = await unlessDown(() => limit.hit(UPLOADS_PER_PERSON, userId))
+    if (person?.limited) throw new UploadingTooFastError(person.retryAfterSeconds)
 }

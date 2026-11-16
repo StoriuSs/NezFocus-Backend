@@ -1,6 +1,6 @@
 import { RateLimitRule, RateLimitState } from '@/shared/types/rate-limit.type'
 
-/** Counts messages sent per person (REQ-MSG-10); RateLimiter in production. */
+/** Counts messages sent, and upload forms asked for, per person (REQ-MSG-10); RateLimiter in production. */
 export interface SendLimitPort {
     /** Count one message. */
     hit(rule: RateLimitRule, subject: string): Promise<RateLimitState>

@@ -41,11 +41,14 @@ import {
     AttachmentStoragePort,
     FILE_CLEANUP,
     FileCleanupPort,
+    SEND_LIMIT,
+    SendLimitPort,
     Thumbnail,
     UploadForm
 } from '../../ports'
 import { attachmentView, AttachmentView } from '../../services/attachment-views'
 import { openChannel, requireSending } from '../../services/channel-access'
+import { countUpload } from '../../services/sending-limits'
 import { CleanUpAttachmentsCommand, CompleteUploadCommand, RequestUploadCommand } from './attachment.commands'
 
 /** A form to upload one file, and the upload it is for. */
@@ -76,7 +79,8 @@ export class RequestUploadHandler implements ICommandHandler<RequestUploadComman
         @Inject(ATTACHMENT_STORAGE) private readonly storage: AttachmentStoragePort,
         @Inject(FILE_CLEANUP) private readonly cleanup: FileCleanupPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
-        @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort
+        @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
+        @Inject(SEND_LIMIT) private readonly limit: SendLimitPort
     ) {}
 
     async execute({ userId, channelId, filename, size }: RequestUploadCommand): Promise<UploadTicket> {
@@ -89,6 +93,8 @@ export class RequestUploadHandler implements ICommandHandler<RequestUploadComman
         if (!name || characterCount(name) > ATTACHMENT_NAME_MAX) throw new AttachmentNameError()
         if (!typeByName(name)) throw new AttachmentTypeError(name)
         if (size > ATTACHMENT_MAX_BYTES) throw new AttachmentTooLargeError()
+        // Counted last, as a message is: a form refused for another reason costs nothing.
+        await countUpload(this.limit, userId)
 
         const storageKey = attachmentKey(randomUUID())
         const uploadKey = uploadKeyOf(storageKey)
@@ -250,8 +256,10 @@ const CLEAN_UP_BATCH = 500
 /**
  * Every hour (src/maintenance): the files no message holds go, those never
  * sent once 25 hours old (an hour past the last moment one can be sent) and
- * those of deleted messages, their rows first, their stored files then
- * through the file-cleanup queue, retried there.
+ * those of deleted messages. Their stored files are queued first (the
+ * file-cleanup queue retries them), their rows deleted then, as servers does
+ * with icons: the row is the only record of the keys, so a queue that fails
+ * leaves the round for the next run (a file queued twice is one job).
  */
 @CommandHandler(CleanUpAttachmentsCommand)
 export class CleanUpAttachmentsHandler implements ICommandHandler<CleanUpAttachmentsCommand> {
@@ -263,11 +271,12 @@ export class CleanUpAttachmentsHandler implements ICommandHandler<CleanUpAttachm
     async execute({ now }: CleanUpAttachmentsCommand): Promise<void> {
         const before = new Date(now.getTime() - CLEAN_UP_AFTER_MS)
         for (;;) {
-            const taken = await this.attachments.takeForCleanUp(before, CLEAN_UP_BATCH)
+            const taken = await this.attachments.forCleanUp(before, CLEAN_UP_BATCH)
             for (const { storageKey, thumbnailKey } of taken) {
                 await this.cleanup.deleteFileLater(storageKey)
                 if (thumbnailKey) await this.cleanup.deleteFileLater(thumbnailKey)
             }
+            await this.attachments.purge(taken.map((file) => file.id))
             if (taken.length < CLEAN_UP_BATCH) return
         }
     }

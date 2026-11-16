@@ -190,6 +190,9 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
             userId,
             now
         )
+        // Timed out comes before any other reason, as when sending (REQ-MSG-05).
+        const until = timedOutUntil(channel, now)
+        if (until) throw new TimedOutError(until)
         // A system message has no author (D-168), so no one passes here.
         if (message.author?.id !== userId) throw new NotYourMessageError()
         requireSending(channel, now)
@@ -250,13 +253,14 @@ export class DeleteMessageHandler implements ICommandHandler<DeleteMessageComman
             userId,
             now
         )
-        if (message.type === 'system') throw new CannotDeleteMessageError()
+        // Timed out comes before any other reason, as when sending (REQ-MSG-05).
         const until = timedOutUntil(channel, now)
         if (until) throw new TimedOutError(until)
+        if (message.type === 'system') throw new CannotDeleteMessageError()
         const manages = (channel.permissions & Permission.MANAGE_MESSAGES) !== 0n
         if (!manages && message.author?.id !== userId) throw new CannotDeleteMessageError()
 
-        if (!(await this.messages.remove(messageId, now))) throw new MessageNotFoundError(messageId)
+        if (!(await this.messages.remove(messageId, message.channelId, now))) throw new MessageNotFoundError(messageId)
         this.events.publish(new MessageDeletedEvent(messageId, message.channelId))
     }
 }

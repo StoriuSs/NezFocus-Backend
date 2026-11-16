@@ -4318,7 +4318,7 @@
             "bearer": []
           }
         ],
-        "summary": "A form to upload one file for a channel, valid 15 minutes. Needs\nSEND_MESSAGES and ATTACH_FILES there (a timeout says until when); the\nname's extension must be of a type sent (UPLOAD_INVALID_TYPE, D-92,\nD-177), the size at most 25 MB (UPLOAD_FILE_TOO_LARGE).",
+        "summary": "A form to upload one file for a channel, valid 15 minutes. Needs\nSEND_MESSAGES and ATTACH_FILES there (a timeout says until when); the\nname's extension must be of a type sent (UPLOAD_INVALID_TYPE, D-92,\nD-177), the size at most 25 MB (UPLOAD_FILE_TOO_LARGE). At most 60\nforms a minute per person (RATE_LIMIT_EXCEEDED, with Retry-After).",
         "tags": [
           "messaging"
         ]

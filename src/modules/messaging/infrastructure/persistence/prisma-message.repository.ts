@@ -33,15 +33,16 @@ const emptied = (at: Date) => ({
 })
 
 /**
- * What goes with messages deleted, in their transaction: their mention rows,
- * reactions and pins; their files keep their place, lose the message, and go
- * with the next clean-up.
+ * What goes with messages deleted, all of one channel, in their transaction:
+ * their mention rows, reactions and pins; their files keep their place, lose
+ * the message, and go with the next clean-up.
  */
-async function letGo(tx: Tx, ids: string[]): Promise<void> {
+async function letGo(tx: Tx, channelId: string, ids: string[]): Promise<void> {
     const messageId = { in: ids }
     await tx.messageMention.deleteMany({ where: { messageId } })
     await tx.reaction.deleteMany({ where: { messageId } })
-    await tx.pin.deleteMany({ where: { messageId } })
+    // With the channel: Pin's key is (channelId, messageId), and no index starts with messageId.
+    await tx.pin.deleteMany({ where: { channelId, messageId } })
     await tx.attachment.updateMany({ where: { messageId }, data: { messageId: null } })
 }
 
@@ -148,12 +149,12 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         }
     }
 
-    async remove(id: string, at: Date): Promise<boolean> {
+    async remove(id: string, channelId: string, at: Date): Promise<boolean> {
         return this.prisma.$transaction(async (tx) => {
             // Only a live row: of two deletes at once, one empties it, the other learns it is gone.
-            const { count } = await tx.message.updateMany({ where: { id, ...LIVE }, data: emptied(at) })
+            const { count } = await tx.message.updateMany({ where: { id, channelId, ...LIVE }, data: emptied(at) })
             if (count === 0) return false
-            await letGo(tx, [id])
+            await letGo(tx, channelId, [id])
             return true
         })
     }
@@ -166,8 +167,10 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         limit: number,
         at: Date
     ): Promise<string[]> {
-        // The (authorId, id) index walked from here only: after the batch before, or from the
-        // window's first id, a minute early, as ids are made by the app and createdAt by the database.
+        // Each batch starts after the one before, or at the window's first id, a minute early, as ids
+        // are made by the app and createdAt by the database: the id > start bound keeps it to the window.
+        // Postgres reads it as a BitmapAnd of (channelId, id) from start and the author's entries of
+        // (authorId, nonce), so a batch costs more the more messages the author ever sent; measured at M7.
         const start = after ?? firstIdAt(new Date(from.getTime() - CLOCK_MARGIN_MS))
         return this.prisma.$transaction(async (tx) => {
             // Locked: a delete of one of them meanwhile waits, then finds it gone. Regular
@@ -182,7 +185,7 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
             const ids = rows.map((row) => row.id)
             if (!ids.length) return ids
             await tx.message.updateMany({ where: { id: { in: ids } }, data: emptied(at) })
-            await letGo(tx, ids)
+            await letGo(tx, channelId, ids)
             return ids
         })
     }

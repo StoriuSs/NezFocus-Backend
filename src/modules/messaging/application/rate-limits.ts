@@ -12,6 +12,13 @@ export const MESSAGES_PER_CHANNEL: RateLimitRule = { name: 'messages-channel', l
 /** At most 30 messages a minute from one person, all channels together. */
 export const MESSAGES_PER_PERSON: RateLimitRule = { name: 'messages-person', limit: 30, windowMs: 60 * 1000 }
 /**
+ * At most 60 upload forms a minute from one person (`POST /attachments`):
+ * each lets 25 MB into the storage, kept 25 hours if never sent. Two
+ * minutes of messages with 10 files each fit; a script asking in a loop
+ * does not.
+ */
+export const UPLOADS_PER_PERSON: RateLimitRule = { name: 'uploads-person', limit: 60, windowMs: 60 * 1000 }
+/**
  * "Typing" from one tab in one channel (REQ-MSG-06): the client says it at
  * most once in 8 seconds, and once more at once after a message is sent;
  * twice in a fixed 8-second window leaves room for that one and for network

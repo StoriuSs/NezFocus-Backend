@@ -577,8 +577,8 @@ describe('Messages (integration)', () => {
             const id: string = sent.body.data.id
             const repository = app.get<MessageRepositoryPort>(MESSAGE_REPOSITORY)
 
-            expect(await repository.remove(id, new Date())).toBe(true)
-            expect(await repository.remove(id, new Date())).toBe(false)
+            expect(await repository.remove(id, channelId, new Date())).toBe(true)
+            expect(await repository.remove(id, channelId, new Date())).toBe(false)
             expect(await repository.edit(id, 'Sửa sau khi xóa', NO_MENTIONS, new Date())).toBeNull()
         })
 
@@ -650,6 +650,93 @@ describe('Messages (integration)', () => {
             }
             expect(outcome(await remove('an', system.id))).toEqual([403, 'FORBIDDEN_ERROR'])
             await prisma.message.delete({ where: { id: system.id } })
+        })
+    })
+
+    /**
+     * What the migration holds on its own (20261113000000_messaging), checks
+     * and composite keys the code also keeps: rows written straight to the
+     * database, as a bug would, and each refused by its constraint. Without
+     * these a later migration could drop one and every other test stay green
+     * (12.2 of the M2 review).
+     */
+    describe('constraints of the database (20261113000000_messaging)', () => {
+        type DatabaseError = { meta?: { driverAdapterError?: { cause?: { originalMessage?: string } } } }
+        /** The constraint that refused a write, as Postgres names it; "written" when none did. */
+        const refusedBy = (write: Promise<unknown>): Promise<string> =>
+            write.then(
+                () => 'written',
+                (error: DatabaseError) => {
+                    const said = error.meta?.driverAdapterError?.cause?.originalMessage ?? String(error)
+                    return /constraint "([^"]+)"/.exec(said)?.[1] ?? said
+                }
+            )
+        const fileIds: string[] = []
+        /** A file of Bình's written straight to the table, kept for the clean-up after. */
+        const file = (shape: { messageId?: string; position?: number; width?: number; height?: number }) =>
+            prisma.attachment
+                .create({
+                    data: {
+                        uploaderId: users.binh.id,
+                        filename: 'a.png',
+                        size: 1,
+                        storageKey: `attachments/${randomUUID()}`,
+                        ...shape
+                    },
+                    select: { id: true }
+                })
+                .then((row) => void fileIds.push(row.id))
+
+        afterAll(async () => {
+            await prisma.attachment.deleteMany({ where: { id: { in: fileIds } } })
+        })
+
+        it('refuses a nonce one person already used, in any channel', async () => {
+            const nonce = randomUUID()
+            await prisma.message.create({ data: { channelId: generalId, authorId: users.binh.id, nonce } })
+            expect(
+                await refusedBy(
+                    prisma.message.create({ data: { channelId: secretId, authorId: users.binh.id, nonce } })
+                )
+            ).toBe('Message_authorId_nonce_key')
+        })
+
+        it('refuses a mention or a pin that names a message of another channel', async () => {
+            const [message] = await seed('binh', generalId, 1)
+            expect(
+                await refusedBy(
+                    prisma.messageMention.create({
+                        data: { messageId: message, channelId: secretId, userId: users.chi.id }
+                    })
+                )
+            ).toBe('MessageMention_channelId_messageId_fkey')
+            expect(await refusedBy(prisma.pin.create({ data: { messageId: message, channelId: secretId } }))).toBe(
+                'Pin_channelId_messageId_fkey'
+            )
+        })
+
+        it('refuses a system message with an author or a nonce, and a regular one with a system event (D-168)', async () => {
+            const system = { channelId: generalId, type: 'system', systemEvent: 'member_joined' } as const
+            for (const wrong of [
+                { ...system, authorId: users.binh.id },
+                { ...system, nonce: randomUUID() },
+                { channelId: generalId, authorId: users.binh.id, systemEvent: 'member_joined' as const }
+            ]) {
+                expect(await refusedBy(prisma.message.create({ data: wrong }))).toBe('Message_type_check')
+            }
+        })
+
+        it('refuses an 11th place in a message, an image with one size, and two files in one place', async () => {
+            const [message] = await seed('binh', generalId, 1)
+            expect(await refusedBy(file({ messageId: message, position: 10 }))).toBe('Attachment_shape_check')
+            expect(await refusedBy(file({ width: 1600 }))).toBe('Attachment_shape_check')
+            expect(await refusedBy(file({ messageId: message, position: 9, width: 1600, height: 900 }))).toBe('written')
+            expect(await refusedBy(file({ messageId: message, position: 9 }))).toBe('Attachment_messageId_position_key')
+        })
+
+        it('refuses to delete an account that still has messages: they are kept, not taken with it', async () => {
+            await seed('dung', generalId, 1)
+            expect(await refusedBy(prisma.user.delete({ where: { id: users.dung.id } }))).toBe('Message_authorId_fkey')
         })
     })
 })

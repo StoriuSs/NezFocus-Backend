@@ -141,7 +141,7 @@ export interface MessageRepositoryPort {
      * reactions and pin removed, its files let go for the clean-up. False if
      * it was deleted (or gone) already.
      */
-    remove(id: string, at: Date): Promise<boolean>
+    remove(id: string, channelId: string, at: Date): Promise<boolean>
     /**
      * Delete up to `limit` regular messages the author sent in the channel
      * from `window.from` to `window.to`, oldest first and after the id
