@@ -14,7 +14,7 @@ export class InvitePreviewResponseDto {
     @Type(() => InviteServerResponseDto)
     server: InviteServerResponseDto
 
-    /** Null: the creator has left or the account is deleted ("You're invited to", D-81). */
+    /** Null: the creator has left or the account is deleted, or waits to be ("You're invited to", D-81, D-182). */
     @Expose()
     @IsOptional()
     @IsString()

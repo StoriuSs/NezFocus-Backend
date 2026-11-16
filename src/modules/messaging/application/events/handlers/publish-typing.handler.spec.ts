@@ -39,7 +39,14 @@ function world(options: { limited?: boolean; counterDown?: boolean } = {}) {
         release: jest.fn()
     }
     const users = {
-        findById: async (id: string) => ({ id, username: `${id}.tran`, displayName: id === 'binh' ? 'Bình' : null }),
+        findById: async (id: string) => ({
+            id,
+            username: `${id}.tran`,
+            displayName: id === 'binh' ? 'Bình' : null,
+            deletedAt: null,
+            // Dũng asked to delete the account; a tab whose socket was not cut yet still signals.
+            deletionRequestedAt: id === 'dung' ? new Date() : null
+        }),
         presenceOf: async (id: string) => (id === 'chi' ? 'invisible' : 'online')
     } as unknown as UserDirectoryPort
     const handler = new PublishTypingHandler(channels, checker, limit, users, publisher)
@@ -80,6 +87,12 @@ describe('Someone typing (REQ-MSG-06)', () => {
     it('tells nothing from someone invisible: typing would show they are there', async () => {
         const { told, type } = world()
         await type('chi')
+        expect(told).toEqual([])
+    })
+
+    it('tells nothing from an account waiting to be deleted: others see it as deleted (D-182)', async () => {
+        const { told, type } = world()
+        await type('dung')
         expect(told).toEqual([])
     })
 

@@ -1,7 +1,7 @@
 import { Expose } from 'class-transformer'
 import { IsOptional, IsString } from 'class-validator'
 
-/** Names are null once their account is deleted. */
+/** Names and picture are null once their account is deleted, or while it waits to be (D-182). */
 export class BanPersonResponseDto {
     @Expose()
     @IsString()

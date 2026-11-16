@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { isHidden, PersonFacts, shownPerson } from '@/shared/domain'
+import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
 import {
     INVITE_LIST_LIMIT,
     InviteCreator,
@@ -70,9 +72,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
                 ...INVITE,
                 creator: {
                     select: {
-                        displayName: true,
-                        username: true,
-                        deletedAt: true,
+                        ...SHOWN_PERSON,
                         memberships: { where: { serverId }, select: { userId: true } }
                     }
                 }
@@ -103,7 +103,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
                         }
                     }
                 },
-                creator: { select: { displayName: true, username: true, deletedAt: true } }
+                creator: { select: SHOWN_PERSON }
             }
         })
         if (!row) return null
@@ -216,11 +216,10 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
     }
 }
 
-function creatorOf(
-    creator: { displayName: string | null; username: string | null; deletedAt: Date | null },
-    isMember: boolean
-): InviteCreator {
-    if (creator.deletedAt) return { state: 'deleted' }
+/** A deleted account, or one waiting to be, is shown as deleted (D-182). */
+function creatorOf(creator: PersonFacts, isMember: boolean): InviteCreator {
+    if (isHidden(creator)) return { state: 'deleted' }
     if (!isMember) return { state: 'left' }
-    return { state: 'member', displayName: creator.displayName, username: creator.username }
+    const { displayName, username } = shownPerson(creator)
+    return { state: 'member', displayName, username }
 }

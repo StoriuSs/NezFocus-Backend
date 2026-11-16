@@ -4,7 +4,7 @@ import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions
 import { EVENT_PUBLISHER, EventPublisherPort, TypingSignalledEvent } from '@/modules/realtime'
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
-import { DomainError, LimitsUnavailableError } from '@/shared/domain'
+import { DomainError, isHidden, LimitsUnavailableError } from '@/shared/domain'
 import { SEND_LIMIT, SendLimitPort } from '../../ports'
 import { TYPING_PER_TAB } from '../../rate-limits'
 import { openChannel, requireSending } from '../../services/channel-access'
@@ -16,8 +16,9 @@ import { openChannel, requireSending } from '../../services/channel-access'
  * so a signal refused later costs no more than one told; while the counter
  * cannot be reached it goes on, like a message (SRS 1.69). Told only for
  * someone who may post there now (a timeout or a channel only managers post
- * in says nothing) and not invisible: typing would show they are there
- * (D-176). Nothing is stored, and a signal that cannot be told is dropped
+ * in says nothing), not invisible: typing would show they are there
+ * (D-176), and not an account waiting to be deleted, which others see as
+ * deleted (D-182; a tab whose socket was not cut yet). Nothing is stored, and a signal that cannot be told is dropped
  * quietly: there is no one to answer.
  */
 @EventsHandler(TypingSignalledEvent)
@@ -40,7 +41,7 @@ export class PublishTypingHandler implements IEventHandler<TypingSignalledEvent>
             requireSending(channel, now)
             if ((await this.users.presenceOf(userId)) === 'invisible') return
             const user = await this.users.findById(userId)
-            if (!user) return
+            if (!user || isHidden(user)) return
             this.publisher.toChannel(channelId, 'typing.started', {
                 channelId,
                 user: { id: user.id, username: user.username, displayName: user.displayName }

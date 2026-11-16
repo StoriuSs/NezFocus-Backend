@@ -1,11 +1,14 @@
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { shownPerson } from '@/shared/domain'
+import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
 import { findMentions, MessageAuthor, MessageFile, MessageRecord, StoredMessage } from '../../domain'
 
 /** The client a Prisma transaction callback is given, for the helpers that run inside one. */
 export type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
 
-export const AUTHOR = { select: { id: true, username: true, displayName: true, avatarUrl: true } } as const
+/** A person as others see them: an account deleted, or waiting to be, has no name or picture (D-182). */
+export const AUTHOR = { select: SHOWN_PERSON } as const
 
 /** A message's files in the order sent; only checked ones are ever in one (D-93). */
 const FILES = {
@@ -63,12 +66,10 @@ export type MessageRow = Prisma.MessageGetPayload<{ select: typeof MESSAGE }>
 type StoredRow = Prisma.MessageGetPayload<{ select: typeof STORED }>
 type AuthorRow = NonNullable<MessageRow['author']>
 
-export const toAuthor = (author: AuthorRow): MessageAuthor => ({
-    id: author.id,
-    username: author.username,
-    displayName: author.displayName,
-    avatarKey: author.avatarUrl
-})
+export const toAuthor = (author: AuthorRow): MessageAuthor => {
+    const { id, username, displayName, avatarUrl } = shownPerson(author)
+    return { id, username, displayName, avatarKey: avatarUrl }
+}
 
 /** The person a system message is about (`systemData.userId`, D-168), if it names one. */
 const subjectOf = (row: Pick<MessageRow, 'type' | 'systemData'>): string | null => {

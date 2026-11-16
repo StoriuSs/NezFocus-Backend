@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { PersonFacts, shownPerson } from '@/shared/domain'
+import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
 import { BanListItem, BanPerson, ModerationRepositoryPort, ModerationState, ModerationWrite } from '../../domain'
 import { lockMembership, Tx } from './server-locks'
-
-const PERSON = { id: true, username: true, displayName: true, avatarUrl: true, deletedAt: true } as const
 
 @Injectable()
 export class PrismaModerationRepository implements ModerationRepositoryPort {
@@ -48,7 +48,12 @@ export class PrismaModerationRepository implements ModerationRepositoryPort {
         const [rows, total] = await Promise.all([
             this.prisma.ban.findMany({
                 where,
-                select: { reason: true, createdAt: true, user: { select: PERSON }, bannedBy: { select: PERSON } },
+                select: {
+                    reason: true,
+                    createdAt: true,
+                    user: { select: SHOWN_PERSON },
+                    bannedBy: { select: SHOWN_PERSON }
+                },
                 // Newest first (SRS 5.1); the id keeps two bans of one instant in one order across pages.
                 orderBy: [{ createdAt: 'desc' }, { userId: 'asc' }],
                 skip: (page - 1) * limit,
@@ -68,15 +73,10 @@ export class PrismaModerationRepository implements ModerationRepositoryPort {
     }
 }
 
-function person(user: {
-    id: string
-    username: string | null
-    displayName: string | null
-    avatarUrl: string | null
-    deletedAt: Date | null
-}): BanPerson {
-    if (user.deletedAt) return { userId: user.id, username: null, displayName: null, avatarUrl: null }
-    return { userId: user.id, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl }
+/** As others see them: a deleted account, or one waiting to be, has no name or picture (D-182). */
+function person(user: PersonFacts): BanPerson {
+    const { id, ...shown } = shownPerson(user)
+    return { userId: id, ...shown }
 }
 
 /** One write the domain decided, on someone it checked. */

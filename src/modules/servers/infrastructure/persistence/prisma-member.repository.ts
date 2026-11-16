@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
+import { hiddenSql, shownSql } from '@/shared/infrastructure/persistence/shown-person'
 import { MemberListItem, MemberRepositoryPort, MemberSearch, MemberSort, SortOrder } from '../../domain'
 
 interface MemberRow {
@@ -18,8 +19,16 @@ interface MemberRow {
 /** `%`, `_` and `\` typed in the box are looked for as themselves, not as patterns. */
 const literal = (text: string) => text.replace(/[\\%_]/g, (char) => `\\${char}`)
 
-const NAME = Prisma.sql`lower(unaccent(coalesce(u."displayName", u."username", '')))`
-const USERNAME = Prisma.sql`lower(coalesce(u."username", ''))`
+/**
+ * Names as others see them: an account waiting to be deleted has none (D-182),
+ * so no search finds it, and it sorts after everyone by name (HIDDEN first in
+ * every ORDER BY that goes by name).
+ */
+const SHOWN_NAME = shownSql('u', 'displayName')
+const SHOWN_USERNAME = shownSql('u', 'username')
+const HIDDEN = hiddenSql('u')
+const NAME = Prisma.sql`lower(unaccent(coalesce(${SHOWN_NAME}, ${SHOWN_USERNAME}, '')))`
+const USERNAME = Prisma.sql`lower(coalesce(${SHOWN_USERNAME}, ''))`
 
 /**
  * The ORDER BY of one sort (D-89). Ties go by name, then username, A → Z,
@@ -29,13 +38,13 @@ const USERNAME = Prisma.sql`lower(coalesce(u."username", ''))`
  */
 function orderBy(sort: MemberSort, order: SortOrder, presentIds: string[]): Prisma.Sql {
     const way = order === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`
-    const ties = Prisma.sql`${NAME} ASC, ${USERNAME} ASC, m."userId" ASC`
+    const ties = Prisma.sql`${HIDDEN} ASC, ${NAME} ASC, ${USERNAME} ASC, m."userId" ASC`
     switch (sort) {
         case 'presence':
             // Those shown first: false sorts before true, so ASC puts the absent ones first.
             return Prisma.sql`(m."userId" = ANY(${presentIds}::text[])) ${order === 'asc' ? Prisma.sql`DESC` : Prisma.sql`ASC`}, ${ties}`
         case 'name':
-            return Prisma.sql`${NAME} ${way}, ${USERNAME} ASC, m."userId" ASC`
+            return Prisma.sql`${HIDDEN} ASC, ${NAME} ${way}, ${USERNAME} ASC, m."userId" ASC`
         case 'joined_at':
             return Prisma.sql`m."joinedAt" ${way}, ${ties}`
         case 'role':
@@ -84,14 +93,15 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
             }
             ${
                 q
-                    ? Prisma.sql`AND (lower(unaccent(coalesce(u."displayName", ''))) LIKE lower(unaccent(${`%${literal(q)}%`}))
-                        OR lower(unaccent(coalesce(u."username", ''))) LIKE lower(unaccent(${`%${literal(q)}%`})))`
+                    ? Prisma.sql`AND (lower(unaccent(coalesce(${SHOWN_NAME}, ''))) LIKE lower(unaccent(${`%${literal(q)}%`}))
+                        OR lower(unaccent(coalesce(${SHOWN_USERNAME}, ''))) LIKE lower(unaccent(${`%${literal(q)}%`})))`
                     : Prisma.empty
             }
         `
         const [rows, counted] = await Promise.all([
             this.prisma.$queryRaw<MemberRow[]>`
-                SELECT m."userId", u."username", u."displayName", u."avatarUrl", m."joinedAt",
+                SELECT m."userId", ${SHOWN_USERNAME} AS "username", ${SHOWN_NAME} AS "displayName",
+                    ${shownSql('u', 'avatarUrl')} AS "avatarUrl", m."joinedAt",
                     m."timeoutUntil", m."timeoutReason",
                     (s."ownerId" = m."userId") AS "isOwner",
                     coalesce((SELECT array_agg(mr."roleId" ORDER BY mr."roleId") FROM "MemberRole" mr

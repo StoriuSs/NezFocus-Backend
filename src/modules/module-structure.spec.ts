@@ -184,3 +184,28 @@ describe('module structure (docs/adding-a-module.md, Names and places)', () => {
         })
     })
 })
+
+/**
+ * A person shown to someone else is read through shared/infrastructure/
+ * persistence/shown-person.ts (`SHOWN_PERSON`, `shownSql`), so an account
+ * waiting to be deleted shows as deleted everywhere (D-182). `users` and
+ * `auth` read one's own account and are left out; maintenance is looked at
+ * too. Caught: a Prisma select of a name or picture column, and a raw SQL
+ * column read of one (an `AS "displayName"` alias of shownSql is allowed).
+ * Not caught: a handler that reads a user from UserDirectoryPort, which asks
+ * `isHidden` itself (publish-typing.handler.ts).
+ */
+describe('people shown to others (D-182)', () => {
+    const OWN_ACCOUNT = new Set(['users', 'auth'])
+    const READS_A_PERSON = /(?:displayName|username|avatarUrl):\s*true|(?<!AS )"(?:displayName|username|avatarUrl)"/
+
+    it('are read through shown-person only: no module selects a name or picture column itself', () => {
+        // Paths relative to src/modules, with forward slashes: `servers/…`, `../maintenance/…`.
+        const folders = [...modules.filter((name) => !OWN_ACCOUNT.has(name)), '../maintenance']
+        const readers = folders
+            .flatMap((folder) => filesIn(join(MODULES_DIR, folder)).map((file) => `${folder}/${file}`))
+            .filter((file) => file.endsWith('.ts') && !isSpec(file))
+            .filter((file) => READS_A_PERSON.test(readFileSync(join(MODULES_DIR, file), 'utf8')))
+        expect(readers).toEqual([])
+    })
+})

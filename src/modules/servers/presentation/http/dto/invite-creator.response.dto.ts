@@ -1,7 +1,7 @@
 import { Expose } from 'class-transformer'
 import { IsIn, IsOptional, IsString } from 'class-validator'
 
-/** Who made a link; no name once they have left or the account is deleted (S-SET-04). */
+/** Who made a link; no name once they have left or the account is deleted, or waits to be (S-SET-04, D-182). */
 export class InviteCreatorResponseDto {
     @Expose()
     @IsIn(['member', 'left', 'deleted'])
