@@ -9,6 +9,7 @@ import {
     AnnounceChosenPresenceHandler,
     DisconnectEndedSessionsHandler,
     EVENT_PUBLISHER,
+    HideDeletedAccountPresenceHandler,
     IssueTicketHandler,
     OpenConnectionHandler,
     ReportTypingHandler,
@@ -59,6 +60,7 @@ import { RealtimeController, RealtimeGateway } from './presentation'
         DisconnectEndedSessionsHandler,
         ...PRESENCE_COMMAND_HANDLERS,
         AnnounceChosenPresenceHandler,
+        HideDeletedAccountPresenceHandler,
         PublishServerChangeHandler,
         PublishMemberChangeHandler,
         RealtimeGateway

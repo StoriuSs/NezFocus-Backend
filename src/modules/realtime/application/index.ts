@@ -22,5 +22,6 @@ export * from './events/typing-signalled.event'
 // Event handlers (the events are the auth, users and servers modules')
 export * from './events/handlers/disconnect-ended-sessions.handler'
 export * from './events/handlers/announce-chosen-presence.handler'
+export * from './events/handlers/hide-deleted-account-presence.handler'
 export * from './events/handlers/publish-server-change.handler'
 export * from './events/handlers/publish-member-change.handler'

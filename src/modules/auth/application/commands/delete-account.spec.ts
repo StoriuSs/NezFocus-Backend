@@ -5,6 +5,7 @@ import {
 } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
 import { CompleteAccountCommand, DeleteOwnAccountCommand, RestoreAccountCommand } from '..'
+import { AccountDeletionRequestedEvent } from '../events/account-deletion-requested.event'
 import { PASSWORD, setup, signIn, World } from './auth-test-world.shared-spec'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -78,6 +79,25 @@ describe('Asking to delete your own account', () => {
         expect(w.sessions.sessions.map((s) => s.revoked)).toEqual(['deletion-requested', 'deletion-requested'])
         expect(w.cache.endedSessions).toHaveLength(2)
         expect(w.cache.changedUsers).toContain(user.id)
+    })
+
+    it('tells the other modules, once every session ended, so it stops showing online at once (D-182)', async () => {
+        const w = setup()
+        const user = completedAccount(w)
+        await signIn(w)
+
+        await deleteWith(w, user.id, PASSWORD)
+
+        expect(w.published).toEqual([new AccountDeletionRequestedEvent(user.id)])
+    })
+
+    it('tells nothing on a wrong password', async () => {
+        const w = setup()
+        const user = completedAccount(w)
+
+        await expect(deleteWith(w, user.id, 'Sai-mat-khau-1')).rejects.toThrow(CurrentPasswordInvalidError)
+
+        expect(w.published).toEqual([])
     })
 
     it('emails the date it goes, in the account time zone, and nothing else', async () => {

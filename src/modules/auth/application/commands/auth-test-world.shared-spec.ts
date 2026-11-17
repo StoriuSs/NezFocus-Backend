@@ -573,6 +573,9 @@ export function setup() {
     } as never)
     const mailer = new FakeMailer()
     const events = new FakeEvents()
+    /** Events other modules would hear, besides sessions ending (an account waiting to be deleted). */
+    const published: object[] = []
+    const bus = { publish: (event: object) => void published.push(event) } as never
     const codeIssuer = new CodeIssuer(codes, tokens, mailer, settings)
     const sessionIssuer = new SessionIssuer(sessions, tokens, settings)
     const google = new FakeProvider()
@@ -592,6 +595,7 @@ export function setup() {
         codes,
         cache,
         sessionsEnded,
+        published,
         mailer,
         google,
         oauthState,
@@ -630,7 +634,8 @@ export function setup() {
             limiter,
             servers,
             mailer,
-            events
+            events,
+            bus
         ),
         restore: new RestoreAccountHandler(directory, cache, events),
         reset: new ResetPasswordHandler(

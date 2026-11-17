@@ -1,4 +1,5 @@
 import type { ChosenPresence, UserDirectoryPort } from '@/modules/users'
+import { AccountDeletionRequestedEvent } from '@/modules/auth'
 import type { MembershipPort } from '@/modules/servers'
 import { SILENCE_MS, type Presence } from '@/modules/realtime/domain'
 import type { EventPublisherPort, KeptPresence, PresenceStorePort } from '../../ports'
@@ -16,6 +17,7 @@ import {
     ReportIdleHandler,
     SweepPresenceHandler
 } from './presence.handlers'
+import { HideDeletedAccountPresenceHandler } from '../../events/handlers/hide-deleted-account-presence.handler'
 
 /** The Redis store, in memory, with the same meaning. */
 class MemoryPresence implements PresenceStorePort {
@@ -120,6 +122,8 @@ function world(chosen: ChosenPresence = 'online') {
         idle: (idle: boolean, socket = 'tab-1') =>
             new ReportIdleHandler(...deps).execute(new ReportIdleCommand('an', socket, idle)),
         sweep: () => new SweepPresenceHandler(...deps).execute(new SweepPresenceCommand(new Date(now))),
+        deletionRequested: () =>
+            new HideDeletedAccountPresenceHandler(...deps).handle(new AccountDeletionRequestedEvent('an')),
         /** The statuses told about An, in order (one per announcement: the servers' copies are the same). */
         told: () =>
             sent.filter((each) => each.to === 'server:s1').map((each) => (each.data as { status: string }).status)
@@ -236,6 +240,38 @@ describe('Every tab closed (REQ-AUTH-07, D-174)', () => {
         at(SILENCE_MS + 1)
         await sweep()
         expect(told()).toEqual(['online'])
+    })
+})
+
+describe('An account waiting to be deleted (D-182)', () => {
+    it('shows offline at once, not after the 60 seconds a closed tab is held for, and is forgotten', async () => {
+        const { connect, disconnect, deletionRequested, at, told, store } = world()
+        await connect()
+        await disconnect()
+
+        at(1000)
+        await deletionRequested()
+
+        expect(told()).toEqual(['online', 'offline'])
+        expect(store.people.has('an')).toBe(false)
+    })
+
+    it('stays offline when its tabs close only after: their sockets are cut a moment later', async () => {
+        const { connect, disconnect, deletionRequested, sweep, at, told } = world()
+        await connect()
+        await deletionRequested()
+        await disconnect()
+
+        at(1000)
+        await sweep()
+
+        expect(told()).toEqual(['online', 'offline'])
+    })
+
+    it('tells nothing of someone offline already', async () => {
+        const { deletionRequested, told } = world()
+        await deletionRequested()
+        expect(told()).toEqual([])
     })
 })
 

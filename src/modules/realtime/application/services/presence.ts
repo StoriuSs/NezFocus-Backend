@@ -72,6 +72,25 @@ export async function announcePresence(deps: PresenceDeps, userId: string, now: 
 }
 
 /**
+ * Someone who can have no tab any more (their account waits to be deleted,
+ * every session ended): offline now, rather than after the 60 seconds a
+ * closed tab is held for, and nothing of them kept (D-182: others see the
+ * account as deleted, not as someone here a moment ago). Told to their
+ * servers when they showed as anything else. A socket of theirs closing
+ * later finds them offline already and tells nothing. Run under the
+ * person's lock (`underLock`).
+ */
+export async function announceGone(deps: PresenceDeps, userId: string): Promise<void> {
+    const kept = await deps.store.read(userId)
+    if (kept.shown === 'offline' && kept.sockets.size === 0 && kept.lastSeenAt === 0) return
+    const serverIds = kept.shown === 'offline' ? [] : await deps.membership.serverIdsOf(userId)
+    await deps.store.show(userId, 'offline', { deadSocketIds: [...kept.sockets.keys()], forget: true })
+    for (const serverId of serverIds) {
+        deps.publisher.toServer(serverId, 'presence.updated', { userId, status: 'offline' })
+    }
+}
+
+/**
  * What every presence handler shares: its ports, the lock, and dropping a
  * signal with a warning while the store cannot be reached (presence is not
  * worth cutting a socket off for; the next signal after Redis is back puts

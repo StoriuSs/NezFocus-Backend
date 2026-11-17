@@ -1,4 +1,4 @@
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
+import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { Inject, Logger } from '@nestjs/common'
 import { DeleteOwnAccountCommand } from './delete-own-account.command'
 import { deletesAt, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
@@ -29,6 +29,7 @@ import { AUTH_RATE_LIMITS } from '../../rate-limits'
 import { withGuess } from '../../services/limits'
 import { afterCommit } from '../../services/after-commit'
 import { SessionEnds } from '../../services/session-ends'
+import { AccountDeletionRequestedEvent } from '../../events/account-deletion-requested.event'
 
 /** For an account with no settings row, which a completed one always has. */
 const FALLBACK_TIME_ZONE = 'UTC'
@@ -42,7 +43,8 @@ const FALLBACK_TIME_ZONE = 'UTC'
  * Nothing is deleted yet. The account waits 14 days, still live: every
  * session ends now (reason `deletion-requested`, so other devices can say
  * when it goes), and signing in again within the 14 days offers to restore
- * it. The users module's sweep deletes it once they are over. The owner is
+ * it. Other modules hear of it once the sessions are over
+ * (AccountDeletionRequestedEvent: the realtime module shows it offline now). The users module's sweep deletes it once they are over. The owner is
  * emailed the date, in the account's time zone.
  *
  * An Owner of servers with other members hands them over first (D-76). The
@@ -69,7 +71,8 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         @Inject(RATE_LIMIT) private readonly limiter: RateLimitPort,
         @Inject(SERVER_OWNERSHIP) private readonly servers: ServerOwnershipPort,
         @Inject(AUTH_MAILER) private readonly mailer: AuthMailerPort,
-        @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort
+        @Inject(AUTH_EVENTS) private readonly events: AuthEventsPort,
+        private readonly bus: EventBus
     ) {}
 
     async execute({ userId, password, language }: DeleteOwnAccountCommand): Promise<Date> {
@@ -96,6 +99,7 @@ export class DeleteOwnAccountHandler implements ICommandHandler<DeleteOwnAccount
         const email = user.email
         await afterCommit(this.logger, 'Account deletion request', [
             () => this.sessionEnds.ended(ended),
+            async () => this.bus.publish(new AccountDeletionRequestedEvent(userId)),
             () => this.cache.invalidateUser(userId),
             // Again: a tab still holding the cached session could make one until now.
             () => this.servers.revokeSoloServerInvites(userId),
