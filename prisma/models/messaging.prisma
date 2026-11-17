@@ -95,6 +95,10 @@ model Message {
   pin         Pin?
   mentions    MessageMention[]
 
+  // Owned by the notifications module (prisma/models/notifications.prisma);
+  // declared here only because Prisma needs both sides of a relation.
+  notifications Notification[]
+
   // History pages (before / after / around an id, D-48) and the latest
   // message of a channel. Also the target of the composite keys of
   // MessageMention and Pin: neither can name a message of another channel.

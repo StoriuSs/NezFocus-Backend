@@ -1,0 +1,89 @@
+// Owned by src/modules/notifications (SRS 4.8, 7.1; ARCHITECTURE 8): only it
+// writes them. Other modules make items through its NOTIFIER port (D-185).
+//
+// One row is one item of one person's inbox, also for a mention of many
+// people at once (D-183). Items are kept 90 days, read or not (SRS 7.3).
+// Ids are UUIDv7: the inbox is newest first and pages by id.
+
+/// What an item is about. Later milestones add values (friend requests and
+/// missed calls in M6, reports in M7). A check in the migration says which
+/// of the links below each one has.
+enum NotificationType {
+  /// Mentioned in a message, also through @everyone, @here or a role
+  /// (REQ-NOTIF-01). An answer that also mentions is this one.
+  mention
+  /// Someone answered my message.
+  reply
+  /// Someone else put me on a task (D-98).
+  task_assigned
+  /// A task is due in 24 hours or in 2 hours (REQ-TASK-04).
+  task_reminder
+  /// The last person on my task took themselves off, or left (D-95).
+  task_unassigned
+  /// The server is mine now (REQ-SRV-05).
+  owner_transferred
+  /// I was kicked, banned or timed out (REQ-ROLE-04). Still shown after I
+  /// left or was put out of the server.
+  moderation
+}
+
+/// An item of a person's inbox.
+model Notification {
+  id     String           @id @default(uuid(7))
+  userId String
+  user   User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  type   NotificationType
+
+  /// The server the item is about: every type so far has one. A server
+  /// removed for good (30 days after it is deleted) takes its items with it,
+  /// moderation items too (D-188).
+  serverId  String?
+  server    Server?  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  /// The channel of a message or a task item; the inbox hides it once I can
+  /// no longer see the channel (ARCHITECTURE 8).
+  channelId String?
+  channel   Channel? @relation(fields: [channelId, serverId], references: [id, serverId], onDelete: Cascade)
+  /// mention, reply: only the message is kept; its text is read when the
+  /// inbox is (D-184), so an edit shows. Deleting a message keeps its row
+  /// (messaging.prisma), so messaging removes the items itself when it
+  /// deletes one, the clean-up after a ban included; the key below only acts
+  /// when the channel goes.
+  messageId String?
+  message   Message? @relation(fields: [channelId, messageId], references: [channelId, id], onDelete: Cascade)
+  /// The three task items, tied to the task of the same channel. Deleting a
+  /// task deletes them in the same transaction, so its recipients can be told
+  /// (D-98).
+  taskId    String?
+  task      Task?    @relation(fields: [channelId, taskId], references: [channelId, id], onDelete: Cascade)
+  /// Who did it, when the item names them ("Minh giao cho bạn ..."). Never
+  /// on moderation items (REQ-ROLE-04 does not name the moderator; a check in
+  /// the migration).
+  actorId   String?
+  actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  /// What must stay as it was when the item was made, keys in camelCase:
+  /// task items keep the title and due date (D-98); moderation keeps the
+  /// action, the server's name, the end of a timeout and the reason.
+  data   Json      @default("{}")
+  readAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // One item per message and person (REQ-NOTIF-01), so a repeated write of a
+  // mention to many people makes no second item.
+  @@unique([userId, messageId])
+  // The inbox, newest first, a page at a time.
+  @@index([userId, id])
+  // Reading a channel marks its mention and reply items read up to a message
+  // (ARCHITECTURE 8).
+  @@index([userId, channelId, messageId])
+  // The composite keys: removing a message, a channel or a task.
+  @@index([channelId, messageId])
+  @@index([channelId, taskId])
+  @@index([serverId])
+  @@index([actorId])
+  // The daily clean-up of items older than 90 days. createdAt rather than a
+  // range of UUIDv7 ids: the cut-off is a time, and this needs no id made
+  // from it.
+  @@index([createdAt])
+}

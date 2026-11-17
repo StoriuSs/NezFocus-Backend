@@ -39,6 +39,10 @@ model Server {
   invites    Invite[]
   bans       Ban[]
 
+  // Owned by the notifications module (prisma/models/notifications.prisma);
+  // declared here only because Prisma needs both sides of a relation.
+  notifications Notification[]
+
   @@index([ownerId])
   @@index([deletedAt])
 }
@@ -125,6 +129,12 @@ model Channel {
   // here only because Prisma needs both sides of a relation.
   messages   Message[]
   readStates ReadState[]
+
+  // Owned by the tasks and notifications modules (prisma/models/tasks.prisma,
+  // notifications.prisma); declared here only because Prisma needs both sides
+  // of a relation.
+  tasks         Task[]
+  notifications Notification[]
 
   // No two channels of one kind share a name in the same category, or among
   // the channels outside any. The migration makes this index NULLS NOT

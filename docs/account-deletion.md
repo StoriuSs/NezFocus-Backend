@@ -336,6 +336,14 @@ losing messages. Files the account uploaded but never sent go with the
 24-hour attachment clean-up, like anyone's. Do not add a step that deletes
 these rows when an account is deleted.
 
+The tasks and notifications tables (M3) are the same. Tasks the account made
+and their history stay: `Task.creator`, `TaskEvent.actor` and
+`Notification.actor` are `onDelete: Restrict`. The tasks it was given do not
+keep it: the sweep takes the account out of every server, and someone who
+leaves a server is taken off its tasks; a task left with nobody tells its
+maker (REQ-TASK-04). Its own inbox items go with the 90-day inbox clean-up,
+like anyone's.
+
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.
 

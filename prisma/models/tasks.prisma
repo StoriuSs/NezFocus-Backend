@@ -1,0 +1,122 @@
+// Owned by src/modules/tasks (SRS 4.7, 7.1; ARCHITECTURE 7): only it writes
+// them.
+//
+// A task belongs to a text channel with its Task Board on (REQ-TASK-01). It
+// keeps its server too, tied to the channel by a composite key, so the
+// "Việc cần làm" page filters by server and drops the servers one has left
+// without reading the servers module's tables.
+//
+// Ids are UUIDv7 (ARCHITECTURE 2.4): ties on the due date go by id, which is
+// the order the tasks were made in (REQ-TASK-05).
+
+/// Free to move either way (SRS 7.2): todo <-> doing <-> done.
+enum TaskStatus {
+  todo
+  doing
+  done
+}
+
+/// What one line of a task's history says (REQ-TASK-03). data holds the
+/// rest, keys in camelCase like the columns.
+enum TaskEventKind {
+  /// data: {}.
+  created
+  /// data: { from, to }.
+  title_changed
+  /// data: {}: the history only says "edited the description".
+  description_changed
+  /// data: { from, to }, ISO times or null.
+  due_changed
+  /// data: { userId }.
+  assignee_added
+  /// data: { userId }.
+  assignee_removed
+  /// data: { from, to }, TaskStatus values. Undo is a change back (D-95).
+  status_changed
+}
+
+/// A task on a channel's Task Board.
+model Task {
+  id        String  @id @default(uuid(7))
+  serverId  String
+  channelId String
+  channel   Channel @relation(fields: [channelId, serverId], references: [id, serverId], onDelete: Cascade)
+  /// Accounts are never removed from the database (REQ-AUTH-09), so a task
+  /// never loses who made it.
+  creatorId String
+  creator   User    @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+
+  /// 1-200 characters, description at most 2000 (checked by the application).
+  title       String
+  /// The title without accents and in lower case ("đ" read as "d"), for the
+  /// search of D-97 (a trigram index below). Made by the application with
+  /// the same folding as the words searched for, so the two always match.
+  /// Written with the title.
+  titleSearch String
+  description String     @default("")
+  status      TaskStatus @default(todo)
+  /// Optional. Never in the past when it is set or changed, a check of the
+  /// application only (D-96): an old task keeps its passed date.
+  dueAt       DateTime?  @db.Timestamptz(6)
+  /// Set by the server when the task becomes done, emptied when it is
+  /// reopened (a check in the migration keeps it in step with status). Shows
+  /// "done on ..." and orders the done group, newest first (ARCHITECTURE 7).
+  completedAt DateTime?  @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  assignees     TaskAssignee[]
+  events        TaskEvent[]
+  // Owned by the notifications module (prisma/models/notifications.prisma);
+  // declared here only because Prisma needs both sides of a relation.
+  notifications Notification[]
+
+  // Target of the composite key of Notification: an item can never name a
+  // task of another channel.
+  @@unique([channelId, id])
+  // The board of a channel: its open tasks (at most 500, REQ-TASK-01) and the
+  // count behind that limit.
+  @@index([channelId, status])
+  // The done group of a board, newest first, a page at a time (D-97).
+  @@index([channelId, completedAt, id])
+  // My tasks with nobody on them ("Chưa giao", REQ-TASK-05).
+  @@index([creatorId, status])
+  // Search by a part of the title (D-97): trigrams let "contains" find the
+  // rows without reading every task. The pg_trgm extension is turned on by
+  // hand in the migration.
+  @@index([titleSearch(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// Someone a task is given to (REQ-TASK-02). The people of one task are
+/// listed in the order they were added (S-TASK-02).
+model TaskAssignee {
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("TaskAssignee", fields: [userId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([taskId, userId])
+  // "Việc cần làm": the tasks given to me.
+  @@index([userId])
+}
+
+/// One line of a task's history (REQ-TASK-03), written in the same
+/// transaction as the change (ARCHITECTURE 7). Newest first.
+model TaskEvent {
+  id      String        @id @default(uuid(7))
+  taskId  String
+  task    Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// Who did it. Empty when the app did: an assignee taken off because they
+  /// left the server (REQ-TASK-04).
+  actorId String?
+  actor   User?         @relation("TaskEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+  kind    TaskEventKind
+  data    Json          @default("{}")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([taskId, id])
+  @@index([actorId])
+}

@@ -161,6 +161,8 @@ were dropped; no `2xxxxx` code is sent any more.
 | `400102` | `AUTH_CODE_INVALID` | The emailed code is wrong (only the newest one works) |
 | `400103` | `AUTH_CODE_EXPIRED` | The code expired or had too many wrong tries: ask for a new one |
 | `400104` | `AUTH_CURRENT_PASSWORD_INVALID` | The current password, given to change it or delete the account, is wrong. Not a 401: the session is fine |
+| `400500` | `INVALID_TASK_ASSIGNEE` | Giving a task to someone who cannot see its channel |
+| `400501` | `INVALID_TASK_DUE_DATE` | A due date already passed, when a task is made or its due date changed |
 | `401000` | `AUTH_UNAUTHORIZED` | A 401 with no code of its own |
 | `401001` | `AUTH_INVALID_CREDENTIALS` | Wrong email or password (the same answer for an unknown address) |
 | `401003` | `AUTH_TOKEN_MISSING` | No `Authorization: Bearer` header on a protected route |
@@ -189,6 +191,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `409200` | `USERNAME_CONFLICT` | The username is taken |
 | `409400` | `MAX_PINS_REACHED` | Pinning a 51st message in a channel |
 | `409401` | `MAX_REACTIONS_REACHED` | A 21st different emoji on a message |
+| `409500` | `MAX_OPEN_TASKS_REACHED` | A 501st open task in a channel |
 | `410300` | `INVITE_INVALID` | An invite that expired, ran out of uses, was revoked, or whose server was deleted |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |

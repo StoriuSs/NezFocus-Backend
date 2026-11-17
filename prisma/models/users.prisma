@@ -70,6 +70,17 @@ model User {
   readStates      ReadState[]
   messageMentions MessageMention[]
 
+  // Owned by the tasks module (prisma/models/tasks.prisma); declared here only
+  // because Prisma needs both sides of a relation.
+  createdTasks    Task[]         @relation("TaskCreator")
+  taskAssignments TaskAssignee[] @relation("TaskAssignee")
+  taskEvents      TaskEvent[]    @relation("TaskEventActor")
+
+  // Owned by the notifications module (prisma/models/notifications.prisma);
+  // declared here only because Prisma needs both sides of a relation.
+  notifications   Notification[] @relation("NotificationRecipient")
+  notificationsBy Notification[] @relation("NotificationActor")
+
   @@index([username])
   @@index([deletedAt])
   @@index([deletionRequestedAt])

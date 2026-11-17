@@ -54,6 +54,14 @@ export const ERROR_TYPES = {
     // A message already has 20 different emoji (REQ-MSG-05).
     MAX_REACTIONS_REACHED: 'MAX_REACTIONS_REACHED',
 
+    // Task errors (SRS appendix A)
+    // An assignee who cannot see the task's channel (REQ-TASK-02).
+    INVALID_TASK_ASSIGNEE: 'INVALID_TASK_ASSIGNEE',
+    // A due date already passed, when a task is made or its due date changed (D-96).
+    INVALID_TASK_DUE_DATE: 'INVALID_TASK_DUE_DATE',
+    // A channel already has 500 open tasks (REQ-TASK-01).
+    MAX_OPEN_TASKS_REACHED: 'MAX_OPEN_TASKS_REACHED',
+
     // Realtime errors (SRS 5.2)
     // A socket offered no ticket, a made-up one, or one spent or out of time:
     // buy a new one (POST /realtime/ticket) and connect again.
@@ -141,6 +149,10 @@ export const ERROR_CODES = {
     BANNED_FROM_SERVER: '403303',
     MEMBER_TIMED_OUT: '403304',
 
+    // Task error codes (400)
+    INVALID_TASK_ASSIGNEE: '400500',
+    INVALID_TASK_DUE_DATE: '400501',
+
     // Gone (410)
     INVITE_INVALID: '410300',
 
@@ -153,6 +165,7 @@ export const ERROR_CODES = {
     USERNAME_CONFLICT: '409200',
     MAX_PINS_REACHED: '409400',
     MAX_REACTIONS_REACHED: '409401',
+    MAX_OPEN_TASKS_REACHED: '409500',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)
     UPLOAD_INVALID_FILE: '400002',
