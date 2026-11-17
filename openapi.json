@@ -4578,6 +4578,87 @@
         ]
       }
     },
+    "/api/v1/me/tasks": {
+      "get": {
+        "operationId": "MyTasksController_list_v1",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "done"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Only tasks whose title holds these words, whatever the accents and case (D-97).",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "required": false,
+            "in": "query",
+            "description": "With `status=done`: the last done task the client holds; left out, the first page.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "server",
+            "required": false,
+            "in": "query",
+            "description": "Only the tasks of this server; one is not in, or has no tasks of: none.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyTaskListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every task not done, each with its `group` by due date in the time zone\nof one's settings, with how many are done and how many are overdue or\ndue today (D-186); `status=done`: 50 done tasks, the latest done first,\nafter `before` (a task no longer among them is CONFLICT_ERROR: start\nagain). `server` keeps one server's, `q` searches titles whatever the\naccents and case (D-97).",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
     "/api/v1/tasks/{taskId}": {
       "get": {
         "operationId": "TasksController_get_v1",
@@ -7819,6 +7900,122 @@
         },
         "required": [
           "title"
+        ]
+      },
+      "MyTaskResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "type": "string"
+          },
+          "due_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When it became done; null while it is not (ARCHITECTURE 7)."
+          },
+          "assignees": {
+            "description": "In the order they were given the task; none: \"Chưa giao\".",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskAssigneeResponseDto"
+            }
+          },
+          "group": {
+            "nullable": true,
+            "description": "Overdue, today, the next 7 days (tomorrow to today + 6), later, no due\ndate: counted in the time zone of one's settings when the list was read\n(D-186). Null on a page of done tasks.",
+            "enum": [
+              "overdue",
+              "today",
+              "next_7_days",
+              "later",
+              "no_due"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Empty: none."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Moves on every change: of two copies of a task, the client keeps the later one."
+          },
+          "creator": {
+            "$ref": "#/components/schemas/TaskCreatorResponseDto"
+          }
+        },
+        "required": [
+          "status",
+          "due_at",
+          "completed_at",
+          "assignees",
+          "group",
+          "id",
+          "server_id",
+          "channel_id",
+          "title",
+          "description",
+          "created_at",
+          "updated_at",
+          "creator"
+        ]
+      },
+      "MyTaskListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MyTaskResponseDto"
+            }
+          },
+          "done_count": {
+            "type": "number",
+            "nullable": true,
+            "description": "The \"ĐÃ XONG — n\" heading; null on a page of done tasks."
+          },
+          "due_count": {
+            "type": "number",
+            "nullable": true,
+            "description": "The tasks overdue or due today: the rail's \"Việc\" badge (C-05); null on a page of done tasks."
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "done_count",
+          "due_count",
+          "has_more"
         ]
       },
       "UpdateTaskRequestDto": {

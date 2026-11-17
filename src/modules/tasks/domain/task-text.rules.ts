@@ -52,3 +52,9 @@ export function isTaskDescription(description: string): boolean {
 export function foldForSearch(text: string): string {
     return text.normalize('NFD').replace(/\p{M}/gu, '').replace(/đ/gi, 'd').toLowerCase().trim()
 }
+
+/** The words searched for, folded; nothing left of them is no search (null). */
+export function searchWordsOf(search: string | null): string | null {
+    const folded = search === null ? '' : foldForSearch(search)
+    return folded === '' ? null : folded
+}

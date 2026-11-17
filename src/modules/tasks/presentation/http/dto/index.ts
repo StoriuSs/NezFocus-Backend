@@ -10,12 +10,15 @@
 export { AssignTaskRequestDto } from './assign-task.request.dto'
 export { ChannelIdParamsDto } from './channel-id.params.dto'
 export { CreateTaskRequestDto } from './create-task.request.dto'
+export { MyTaskListQueryDto } from './my-task-list.query.dto'
 export { TaskAssigneeParamsDto } from './task-assignee.params.dto'
 export { TaskIdParamsDto } from './task-id.params.dto'
 export { TaskListQueryDto } from './task-list.query.dto'
 export { UpdateTaskRequestDto } from './update-task.request.dto'
 
 // Responses
+export { MyTaskListResponseDto } from './my-task-list.response.dto'
+export { MyTaskResponseDto } from './my-task.response.dto'
 export { TaskAssigneeResponseDto } from './task-assignee.response.dto'
 export { TaskCreatorResponseDto } from './task-creator.response.dto'
 export { TaskEventResponseDto } from './task-event.response.dto'

@@ -54,6 +54,18 @@ export interface TaskFilter {
     search: string | null
 }
 
+/**
+ * Whose tasks the To-do page lists (REQ-TASK-05): those given to `userId`
+ * and those they made and gave no one, in `channelIds` only (the channels
+ * they view with the board on, worked out by the application, D-186).
+ */
+export interface MineFilter {
+    userId: string
+    channelIds: string[]
+    /** Folded as titles are (foldForSearch); null: no search. */
+    search: string | null
+}
+
 /** The tasks of the Task Boards (REQ-TASK-01 to 03): Task, TaskAssignee and TaskEvent. */
 export interface TaskRepositoryPort {
     /**
@@ -99,6 +111,22 @@ export interface TaskRepositoryPort {
      * channel any more.
      */
     listDone(filter: TaskFilter, beforeId: string | null, limit: number): Promise<TaskRecord[] | 'stale'>
+
+    /** The servers of the tasks the To-do page could list for `userId`, done or not: where to look. */
+    serversOfMine(userId: string): Promise<string[]>
+
+    /** Their tasks not done, by due date, none last, then the order they were made in (REQ-TASK-05). */
+    listMineOpen(filter: MineFilter): Promise<TaskRecord[]>
+
+    /** How many of their tasks are done: the "ĐÃ XONG — n" heading. */
+    countMineDone(filter: MineFilter): Promise<number>
+
+    /**
+     * A page of their done tasks, the latest done first (D-97), after the
+     * task `beforeId` when given, one more than `limit`. `stale` when that
+     * task is not one of their done tasks any more.
+     */
+    listMineDone(filter: MineFilter, beforeId: string | null, limit: number): Promise<TaskRecord[] | 'stale'>
 
     /**
      * Take `userId` off every task of the server they are on (REQ-TASK-04,

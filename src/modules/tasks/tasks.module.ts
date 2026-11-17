@@ -8,6 +8,7 @@ import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { TASK_REPOSITORY } from './domain'
 import {
     ASSIGNEE_COMMAND_HANDLERS,
+    MINE_QUERY_HANDLERS,
     PublishCreatedTaskHandler,
     PublishDeletedTaskHandler,
     PublishUpdatedTaskHandler,
@@ -17,7 +18,7 @@ import {
     UnassignLeftMemberLaterHandler
 } from './application'
 import { BullMqTaskJobs, PrismaTaskRepository } from './infrastructure'
-import { BoardController, TasksController, TasksJobsConsumer } from './presentation'
+import { BoardController, MyTasksController, TasksController, TasksJobsConsumer } from './presentation'
 
 /**
  * The Task Boards of text channels (SRS 4.7): the only module that writes
@@ -26,18 +27,20 @@ import { BoardController, TasksController, TasksJobsConsumer } from './presentat
  * permissions what someone may do there and whether
  * the board is on (PERMISSION_CHECKER, D-189), users for pictures as
  * addresses (USER_DIRECTORY), and tells the channel's sockets through
- * realtime's EVENT_PUBLISHER. Its own `tasks` queue takes members who left a
+ * realtime's EVENT_PUBLISHER. Lists one's tasks from every server for the
+ * To-do page (`GET /me/tasks`). Its own `tasks` queue takes members who left a
  * server off its tasks (D-195).
  */
 @Module({
     imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule, registerQueues(QUEUES.TASKS)],
-    controllers: [BoardController, TasksController],
+    controllers: [BoardController, MyTasksController, TasksController],
     providers: [
         { provide: TASK_REPOSITORY, useClass: PrismaTaskRepository },
         { provide: TASK_JOBS, useClass: BullMqTaskJobs },
         ...TASK_COMMAND_HANDLERS,
         ...ASSIGNEE_COMMAND_HANDLERS,
         ...TASK_QUERY_HANDLERS,
+        ...MINE_QUERY_HANDLERS,
         PublishCreatedTaskHandler,
         PublishUpdatedTaskHandler,
         PublishDeletedTaskHandler,

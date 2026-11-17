@@ -1,5 +1,5 @@
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
-import { DONE_PAGE_SIZE, foldForSearch, HISTORY_PAGE_SIZE, StaleTaskCursorError, TaskFilter } from '../../../domain'
+import { DONE_PAGE_SIZE, HISTORY_PAGE_SIZE, searchWordsOf, StaleTaskCursorError, TaskFilter } from '../../../domain'
 import { openBoard, openTask } from '../../services/board-access'
 import { ReadBoard } from '../../services/read-board'
 import { TaskEventView, taskEventViews, TaskView, taskView, taskViews } from '../../services/task-views'
@@ -22,11 +22,11 @@ export interface TaskHistory {
     total: number
 }
 
-/** The words searched for, folded as titles are; nothing left of them is no search. */
-const searchOf = (channelId: string, search: string | null): TaskFilter => {
-    const folded = search === null ? '' : foldForSearch(search)
-    return { channelId, search: folded === '' ? null : folded }
-}
+/** The board's tasks, with the words searched for folded as titles are. */
+const searchOf = (channelId: string, search: string | null): TaskFilter => ({
+    channelId,
+    search: searchWordsOf(search)
+})
 
 /**
  * The tasks not done, by due date, none last, then the order they were made

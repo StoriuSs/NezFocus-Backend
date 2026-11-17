@@ -2,7 +2,16 @@ import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
-import { NewTask, TaskEventDraft, TaskFacts, TaskFilter, TaskRecord, TaskRepositoryPort, TaskWrite } from '../domain'
+import {
+    MineFilter,
+    NewTask,
+    TaskEventDraft,
+    TaskFacts,
+    TaskFilter,
+    TaskRecord,
+    TaskRepositoryPort,
+    TaskWrite
+} from '../domain'
 
 /*
  * One server for the tasks handler specs, in memory (spec 05 › thế giới N):
@@ -10,7 +19,7 @@ import { NewTask, TaskEventDraft, TaskFacts, TaskFilter, TaskRecord, TaskReposit
  * member and Khánh an ADMINISTRATOR, both timed out for an hour, Lan not a
  * member. Channels: #viec-nhom with
  * its Task Board on, #hoi-dap with it off, #bi-mat private to Quản lý việc
- * (board on), a voice room.
+ * (board on), a voice room. A server "cu" none of them is in any more.
  */
 
 export const NOW = new Date()
@@ -88,6 +97,13 @@ export function taskWorld() {
         history.get(task.id)!.push(...change.events.map((event) => ({ actorId, event })))
     }
 
+    /** Given to the reader, or made by them and given no one (REQ-TASK-05). */
+    const isMine = (task: TaskRecord & { creatorId: string }, userId: string) =>
+        task.assignees.some((assignee) => assignee.person.id === userId) ||
+        (task.creatorId === userId && task.assignees.length === 0)
+    const mineIn = ({ userId, channelIds }: MineFilter) =>
+        [...tasks.values()].filter((task) => channelIds.includes(task.channelId) && isMine(task, userId))
+
     const repository: TaskRepositoryPort = {
         create: jest.fn(async ({ serverId, channelId, creatorId }, draft: NewTask, decide: (open: number) => void) => {
             decide([...tasks.values()].filter((task) => task.channelId === channelId && task.status !== 'done').length)
@@ -137,6 +153,24 @@ export function taskWorld() {
                 [...tasks.values()].filter((task) => task.channelId === channelId && task.status === 'done').length
         ),
         listDone: jest.fn(),
+        serversOfMine: jest.fn(async (userId: string) => [
+            ...new Set([...tasks.values()].filter((task) => isMine(task, userId)).map((task) => task.serverId))
+        ]),
+        listMineOpen: jest.fn(async (filter: MineFilter) =>
+            mineIn(filter)
+                .filter((task) => task.status !== 'done')
+                .sort(
+                    (a, b) =>
+                        (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity) || a.id.localeCompare(b.id)
+                )
+        ),
+        countMineDone: jest.fn(
+            async (filter: MineFilter) => mineIn(filter).filter((task) => task.status === 'done').length
+        ),
+        listMineDone: jest.fn(async (filter: MineFilter, beforeId: string | null) => {
+            const done = mineIn(filter).filter((task) => task.status === 'done')
+            return beforeId && !done.some((task) => task.id === beforeId) ? ('stale' as const) : done
+        }),
         unassignLeftMember: jest.fn(async (serverId: string, userId: string) => {
             const changed = [...tasks.values()].filter(
                 (task) => task.serverId === serverId && task.assignees.some((assignee) => assignee.person.id === userId)
@@ -160,8 +194,8 @@ export function taskWorld() {
         channelIdsOf: async () => []
     }
     const checker: PermissionCheckerPort = {
-        access: jest.fn(async (_serverId: string, userId: string) =>
-            MEMBERS.includes(userId)
+        access: jest.fn(async (serverId: string, userId: string) =>
+            serverId !== 'cu' && MEMBERS.includes(userId)
                 ? {
                       server,
                       member: {
@@ -173,7 +207,10 @@ export function taskWorld() {
                 : null
         )
     }
-    const users = { avatarUrl: jest.fn(async () => null) } as unknown as UserDirectoryPort
+    const users = {
+        avatarUrl: jest.fn(async () => null),
+        timeZoneOf: jest.fn(async () => 'Asia/Ho_Chi_Minh')
+    } as unknown as UserDirectoryPort
     const events = { publish: jest.fn() }
 
     /** A task straight into memory, as if made earlier. */

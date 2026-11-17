@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
+    MineFilter,
     NewTask,
     planLeftServer,
     TaskEventRecord,
@@ -42,6 +43,22 @@ const likeLiteral = (words: string) => words.replace(/[\\%_]/g, (character) => `
 function matching({ channelId, search }: TaskFilter): Prisma.TaskWhereInput {
     return search ? { channelId, titleSearch: { contains: likeLiteral(search) } } : { channelId }
 }
+
+/**
+ * Which tasks the To-do page lists (REQ-TASK-05): given to the reader, or
+ * made by them and given no one, in the channels the application allows,
+ * with the folded words in their folded title.
+ */
+function mine({ userId, channelIds, search }: MineFilter): Prisma.TaskWhereInput {
+    return {
+        channelId: { in: channelIds },
+        OR: [{ assignees: { some: { userId } } }, { creatorId: userId, assignees: { none: {} } }],
+        ...(search ? { titleSearch: { contains: likeLiteral(search) } } : {})
+    }
+}
+
+/** Tasks not done: by due date, none last; ids are UUIDv7, so ties go by the order they were made in. */
+const OPEN_ORDER: Prisma.TaskOrderByWithRelationInput[] = [{ dueAt: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }]
 
 /** Task, TaskAssignee and TaskEvent: only the tasks module writes them (ARCHITECTURE 7). */
 @Injectable()
@@ -174,11 +191,44 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
     async listOpen(filter: TaskFilter): Promise<TaskRecord[]> {
         const rows = await this.prisma.task.findMany({
             where: { ...matching(filter), status: { not: 'done' } },
-            // Ids are UUIDv7: ties on the due date go by the order the tasks were made in.
-            orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+            orderBy: OPEN_ORDER,
             select: TASK
         })
         return rows.map(toTaskRecord)
+    }
+
+    async serversOfMine(userId: string): Promise<string[]> {
+        // Two indexed reads, deduplicated by the database: the tasks given to
+        // them (TaskAssignee by userId), and those they made for no one (Task
+        // by creatorId); Prisma's `distinct` would read every row into memory.
+        const rows = await this.prisma.$queryRaw<{ serverId: string }[]>`
+            SELECT t."serverId" FROM "TaskAssignee" a JOIN "Task" t ON t."id" = a."taskId"
+            WHERE a."userId" = ${userId}
+            UNION
+            SELECT t."serverId" FROM "Task" t
+            WHERE t."creatorId" = ${userId}
+              AND NOT EXISTS (SELECT 1 FROM "TaskAssignee" a WHERE a."taskId" = t."id")`
+        return rows.map((row) => row.serverId)
+    }
+
+    async listMineOpen(filter: MineFilter): Promise<TaskRecord[]> {
+        if (filter.channelIds.length === 0) return []
+        const rows = await this.prisma.task.findMany({
+            where: { ...mine(filter), status: { not: 'done' } },
+            orderBy: OPEN_ORDER,
+            select: TASK
+        })
+        return rows.map(toTaskRecord)
+    }
+
+    async countMineDone(filter: MineFilter): Promise<number> {
+        if (filter.channelIds.length === 0) return 0
+        return this.prisma.task.count({ where: { ...mine(filter), completedAt: { not: null } } })
+    }
+
+    async listMineDone(filter: MineFilter, beforeId: string | null, limit: number): Promise<TaskRecord[] | 'stale'> {
+        if (filter.channelIds.length === 0) return beforeId ? 'stale' : []
+        return this.donePage(mine(filter), beforeId, limit)
     }
 
     async countDone(filter: TaskFilter): Promise<number> {
@@ -186,11 +236,24 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
     }
 
     async listDone(filter: TaskFilter, beforeId: string | null, limit: number): Promise<TaskRecord[] | 'stale'> {
-        // completedAt, not status: the index (channelId, completedAt, id) is read backwards (M3 L1, EXPLAIN).
+        return this.donePage(matching(filter), beforeId, limit)
+    }
+
+    /**
+     * Done tasks of `which`, the latest done first, after the task `beforeId`
+     * (itself one of them, or `stale`), one more than `limit`. completedAt,
+     * not status: the index (channelId, completedAt, id) is read backwards
+     * (M3 L1, EXPLAIN).
+     */
+    private async donePage(
+        which: Prisma.TaskWhereInput,
+        beforeId: string | null,
+        limit: number
+    ): Promise<TaskRecord[] | 'stale'> {
         let after: Prisma.TaskWhereInput = {}
         if (beforeId) {
             const cursor = await this.prisma.task.findFirst({
-                where: { id: beforeId, channelId: filter.channelId, completedAt: { not: null } },
+                where: { AND: [which, { id: beforeId, completedAt: { not: null } }] },
                 select: { id: true, completedAt: true }
             })
             if (!cursor) return 'stale'
@@ -202,7 +265,8 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
             }
         }
         const rows = await this.prisma.task.findMany({
-            where: { ...matching(filter), completedAt: { not: null }, ...after },
+            // AND, not spread: `which` and `after` may each hold an OR.
+            where: { AND: [which, { completedAt: { not: null } }, after] },
             orderBy: [{ completedAt: 'desc' }, { id: 'desc' }],
             take: limit + 1,
             select: TASK

@@ -1,4 +1,10 @@
-import { channelPermissions, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
+import {
+    AccessChannel,
+    channelPermissions,
+    Permission,
+    PermissionCheckerPort,
+    ServerAccess
+} from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import {
     ChannelNotFoundError,
@@ -84,11 +90,27 @@ export async function openTask(
     }
 }
 
+/** Whether someone may view a channel of the server they are known in by the permission cache. */
+const views = (access: ServerAccess, channel: AccessChannel, now: Date): boolean =>
+    (channelPermissions(access.server, access.member, channel, now) & Permission.VIEW_CHANNEL) !== 0n
+
 /** Whether someone, as the permission cache knows them in a server, may view one of its channels now. */
 export function viewsChannel(access: ServerAccess | null, channelId: string, now: Date): boolean {
     const channel = access?.server.channels.find((candidate) => candidate.id === channelId)
     if (!access || !channel) return false
-    return (channelPermissions(access.server, access.member, channel, now) & Permission.VIEW_CHANNEL) !== 0n
+    return views(access, channel, now)
+}
+
+/**
+ * The Task Boards someone may open in a server now, as `openBoard` would
+ * let them (REQ-TASK-01, REQ-TASK-05): its text channels with the board on
+ * that they view. None in a server they are not in (`access` null).
+ */
+export function openBoardsOf(access: ServerAccess | null, now: Date): string[] {
+    if (!access) return []
+    return access.server.channels
+        .filter((channel) => channel.type === 'text' && channel.taskBoardEnabled && views(access, channel, now))
+        .map((channel) => channel.id)
 }
 
 /**

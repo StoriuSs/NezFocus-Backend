@@ -485,7 +485,7 @@ D-170). An event handler marks a sent message read for its author (D-173).
 
 `src/modules/tasks/` holds the Task Boards of text channels (SRS 4.7),
 grouped by area like `servers` (D-190): `commands/task/`, `commands/assignee/`,
-`queries/task/`. Every route opens the board first
+`queries/task/`, `queries/mine/`. Every board route opens the board first
 (`application/services/board-access.ts`): servers' `CHANNEL_DIRECTORY` for
 the server, then `PERMISSION_CHECKER`, whose cached channels say whether the
 board is on (D-189): a channel one may not view is the same 404 as none, a
@@ -507,7 +507,12 @@ queue (D-195): `UnassignLeftMemberLaterHandler` queues a job on servers'
 `MemberChangedEvent` (`TASK_JOBS`, a BullMQ adapter), and `TasksJobsConsumer`
 sends `UnassignLeftMemberCommand`, which takes them off every task of the
 server in one transaction with a line of history done by no one, unless they
-joined again meanwhile.
+joined again meanwhile. The To-do page's `GET /me/tasks` (`queries/mine/`,
+D-186) gathers one's tasks from every server: `services/my-boards.ts` reads
+the permission cache once per server one has tasks in for the channels one
+still views with the board on, the repository filters by them in one query,
+and `domain/due-group.rules.ts` puts each task not done in its group by due
+date in the time zone of one's settings.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

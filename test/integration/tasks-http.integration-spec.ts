@@ -15,7 +15,8 @@ import { testClientIp } from './targets'
  * what, the limit of 500 tasks not done held under concurrent requests, the
  * search without accents, the done group a page at a time, the history,
  * what the channel hears, and the people who lose the channel or leave the
- * server (D-194, D-195).
+ * server (D-194, D-195), and the To-do page that gathers one's tasks from every
+ * server (REQ-TASK-05, D-186).
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -487,6 +488,115 @@ describe('Task Boards (integration)', () => {
             )
             const left = await as('an', api().get(`/api/v1/tasks/${byBinh.body.data.id}`))
             expect(left.body.data.creator).toMatchObject({ id: users.binh.id, left_server: true })
+        })
+    })
+
+    describe('the To-do page (REQ-TASK-05, D-186)', () => {
+        const mine = (query = '') => as('lan', api().get(`/api/v1/me/tasks${query}`))
+
+        it('lists one’s tasks from every server one still views, grouped, counted, filtered and paged', async () => {
+            // Lan joins An's server, and makes one of her own ("Ôn thi Giải tích 2").
+            const invite = await as('an', api().post(`/api/v1/servers/${serverId}/invites`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ max_age_seconds: null, max_uses: null })
+            await as('lan', api().post(`/api/v1/invites/${invite.body.data.code}/accept`))
+            const own = await as('lan', api().post('/api/v1/servers'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Ôn thi Giải tích 2', template: 'standard' })
+            const ownId: string = own.body.data.id
+            const textChannel = async (who: Who, server: string, name: string) => {
+                const res = await as(who, api().post(`/api/v1/servers/${server}/channels`))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({ type: 'text', name, is_private: false, view_role_ids: [] })
+                await as(who, api().patch(`/api/v1/servers/${server}/channels/${res.body.data.id}`)).send({
+                    task_board_enabled: true
+                })
+                return res.body.data.id as string
+            }
+            const ownBoard = await textChannel('lan', ownId, 'viec-on-thi')
+            const hidden = await textChannel('an', serverId, 'sap-rieng-tu')
+
+            const given = await create('an', boardId, { title: 'Sửa lỗi đăng nhập', assignee_ids: [users.lan.id] })
+            const later = await create('an', boardId, {
+                title: 'Chuẩn bị demo cuối kỳ',
+                due_at: inHours(30 * 24),
+                assignee_ids: [users.lan.id]
+            })
+            const noDue = await create('lan', ownBoard, { title: 'Làm slide thuyết trình' })
+            const done = await create('lan', ownBoard, { title: 'Đọc tài liệu chương 5' })
+            await update('lan', done.body.data.id, { status: 'done' })
+            await create('an', boardId, { title: 'Việc của người khác', assignee_ids: [users.chi.id] })
+            await create('an', hidden, { title: 'Sắp riêng tư', assignee_ids: [users.lan.id] })
+            await as('an', api().patch(`/api/v1/servers/${serverId}/channels/${hidden}`)).send({ is_private: true })
+            // Past due: the API never sets a date already passed (D-96).
+            await prisma.task.update({
+                where: { id: given.body.data.id },
+                data: { dueAt: new Date(Date.now() - 3600_000) }
+            })
+
+            const all = await mine()
+            expect(all.status).toBe(200)
+            expect(all.body.data.items.map((task: { id: string; group: string }) => [task.id, task.group])).toEqual([
+                [given.body.data.id, 'overdue'],
+                [later.body.data.id, 'later'],
+                [noDue.body.data.id, 'no_due']
+            ])
+            expect(all.body.data).toMatchObject({ done_count: 1, due_count: 1, has_more: false })
+
+            expect(ids(await mine(`?server=${ownId}`))).toEqual([noDue.body.data.id])
+            expect(ids(await mine(`?server=${randomUUID()}`))).toEqual([])
+            expect(ids(await mine('?q=SUA%20loi'))).toEqual([given.body.data.id])
+
+            const donePage = await mine('?status=done')
+            expect(donePage.body.data).toMatchObject({ done_count: null, due_count: null, has_more: false })
+            expect(donePage.body.data.items.map((task: { id: string; group: null }) => [task.id, task.group])).toEqual([
+                [done.body.data.id, null]
+            ])
+
+            // 52 more done tasks of Lan's, and 3 done ones in the same channel given to An only, among them.
+            const base = Date.now() - 86_400_000
+            await prisma.task.createMany({
+                data: Array.from({ length: 52 }, (_, i) => ({
+                    serverId: ownId,
+                    channelId: ownBoard,
+                    creatorId: users.lan.id,
+                    title: `Xong ${i}`,
+                    titleSearch: `xong ${i}`,
+                    status: 'done' as const,
+                    completedAt: new Date(base + i * 1000)
+                }))
+            })
+            for (const i of [0, 1, 2]) {
+                await prisma.task.create({
+                    data: {
+                        serverId: ownId,
+                        channelId: ownBoard,
+                        creatorId: users.lan.id,
+                        title: `Của An ${i}`,
+                        titleSearch: `cua an ${i}`,
+                        status: 'done',
+                        completedAt: new Date(base + i * 1000 + 500),
+                        assignees: { create: { userId: users.an.id } }
+                    }
+                })
+            }
+            const first = await mine('?status=done')
+            expect(first.body.data.items).toHaveLength(50)
+            expect(first.body.data.has_more).toBe(true)
+            const second = await mine(`?status=done&before=${first.body.data.items[49].id}`)
+            const titles = (res: request.Response) => res.body.data.items.map((task: { title: string }) => task.title)
+            expect(titles(second)).toEqual(['Xong 2', 'Xong 1', 'Xong 0'])
+            expect([...titles(first), ...titles(second)].filter((title: string) => title.startsWith('Của An'))).toEqual(
+                []
+            )
+            expect((await mine()).body.data.done_count).toBe(53)
+
+            // A board turned off hides its tasks; a task one pages after that is gone from the list asks to start again.
+            await as('lan', api().patch(`/api/v1/servers/${ownId}/channels/${ownBoard}`)).send({
+                task_board_enabled: false
+            })
+            expect(ids(await mine())).toEqual([given.body.data.id, later.body.data.id])
+            expect(outcome(await mine(`?status=done&before=${done.body.data.id}`))).toEqual([409, 'CONFLICT_ERROR'])
         })
     })
 })
