@@ -33,6 +33,7 @@ export class PrismaAccessSource implements AccessSourcePort {
                         type: true,
                         isPrivate: true,
                         sendMode: true,
+                        taskBoardEnabled: true,
                         viewRoles: { select: { roleId: true } }
                     }
                 })

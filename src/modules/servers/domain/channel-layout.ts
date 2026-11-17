@@ -47,6 +47,8 @@ export interface ChannelEdit {
     sendMode?: SendMode
     isPrivate?: boolean
     viewRoleIds?: string[]
+    /** Text channels only (REQ-TASK-01): off hides its tasks, on shows them again. */
+    taskBoardEnabled?: boolean
 }
 
 /** One drop (D-149): it goes right after `afterId`, or first when that is null. */
@@ -72,6 +74,7 @@ export interface ChannelChanges {
     isPrivate?: boolean
     /** Replaces the whole set. */
     viewRoleIds?: string[]
+    taskBoardEnabled?: boolean
 }
 
 /** The server row itself (S-SET-01): its name, its welcome channel (null: none). */
@@ -272,6 +275,11 @@ export function planUpdateChannel(state: LayoutState, channelId: string, edit: C
     if (edit.sendMode !== undefined && edit.sendMode !== channel.sendMode) {
         if (channel.type !== 'text') throw new LayoutRuleError('not_for_type')
         changes.sendMode = edit.sendMode
+    }
+
+    if (edit.taskBoardEnabled !== undefined && edit.taskBoardEnabled !== channel.taskBoardEnabled) {
+        if (channel.type !== 'text') throw new LayoutRuleError('not_for_type')
+        changes.taskBoardEnabled = edit.taskBoardEnabled
     }
 
     if (edit.isPrivate !== undefined || edit.viewRoleIds !== undefined) {

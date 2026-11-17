@@ -21,10 +21,31 @@ const study: AccessServer = {
         { id: 'mod', permissions: Permission.MANAGE_MESSAGES, position: 1, isEveryone: false }
     ],
     channels: [
-        { id: 'general', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'staff', type: 'text', isPrivate: true, viewRoleIds: ['mod'], sendMode: 'everyone' },
-        { id: 'lounge', type: 'voice', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'news', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers' }
+        {
+            id: 'general',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'staff',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['mod'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'lounge',
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        { id: 'news', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers', taskBoardEnabled: false }
     ]
 }
 

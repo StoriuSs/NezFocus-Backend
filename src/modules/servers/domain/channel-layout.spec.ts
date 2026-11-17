@@ -272,6 +272,20 @@ describe('channel settings (S-SET-05)', () => {
         expect(planUpdateChannel(as(AN), 'phong-on', { sendMode: 'everyone' }, NOW)).toEqual([])
     })
 
+    it('turns the Task Board on and off on text channels only (REQ-TASK-01)', () => {
+        expect(planUpdateChannel(as(CHI), 'hoi-dap', { taskBoardEnabled: true }, NOW)).toEqual([
+            { kind: 'updateChannel', id: 'hoi-dap', changes: { taskBoardEnabled: true } }
+        ])
+        expect(planUpdateChannel(as(CHI), 'hoi-dap', { taskBoardEnabled: false }, NOW)).toEqual([])
+        expect(error(() => planUpdateChannel(as(AN), 'phong-on', { taskBoardEnabled: true }, NOW))).toBe(
+            'LayoutRuleError:not_for_type'
+        )
+        expect(planUpdateChannel(as(AN), 'phong-on', { taskBoardEnabled: false }, NOW)).toEqual([])
+        expect(error(() => planUpdateChannel(as(PHONG), 'hoi-dap', { taskBoardEnabled: true }, NOW))).toBe(
+            'MissingPermissionError'
+        )
+    })
+
     it('makes a channel private, changes its roles, and making it public clears them', () => {
         expect(planUpdateChannel(as(AN), 'hoi-dap', { isPrivate: true, viewRoleIds: ['lead'] }, NOW)).toEqual([
             { kind: 'updateChannel', id: 'hoi-dap', changes: { isPrivate: true, viewRoleIds: ['lead'] } }

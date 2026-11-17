@@ -1,9 +1,9 @@
 # Adding a module
 
-The repository has six feature modules: `users`, small enough to read in one
+The repository has seven feature modules: `users`, small enough to read in one
 sitting, `auth`, the same shape at full size, `servers`, whose use cases are
 grouped by area, `permissions`, a port the others ask, `realtime`, the
-sockets, and `messaging`, grouped by area like `servers`. This page builds a
+sockets, and `messaging` and `tasks`, grouped by area like `servers`. This page builds a
 new one
 — `orders` — so you can see every layer filled in once, in order, with the
 reasoning at each step.
@@ -247,7 +247,8 @@ src/modules/servers/application/
 
 `servers` does this for its five command areas (`server`, `channel-layout`,
 `invite`, `role`, `moderation`; four of them have queries, `channel-layout`
-has none), each folder named like the files in it;
+has none), each folder named like the files in it; `messaging` and `tasks`
+(`task`, `assignee`; D-190) too;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`
@@ -569,7 +570,10 @@ D-169).** Sending and editing build the message anyway, to send
 `SendMessageCommand` and `EditMessageCommand` return that view and the
 controller answers with it: no query reads the message again. Both the command and
 the history query build the view with the same function
-(`messaging/application/services/message-views.ts`).
+(`messaging/application/services/message-views.ts`). Every write to a task
+does the same (D-191): it tells the channel `task.created` / `task.updated`
+with the task, returns that view, and `GET /tasks/{id}` builds it with the
+same function (`tasks/application/services/task-views.ts`).
 
 If you find yourself adding a sixth argument to an existing command rather
 than writing a new one, that is usually two operations wearing a coat.

@@ -13,8 +13,22 @@ const server: AccessServer = {
     ownerId: 'an',
     roles: [{ id: 'everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true }],
     channels: [
-        { id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'ban-quan-ly', type: 'text', isPrivate: true, viewRoleIds: ['quan-ly'], sendMode: 'everyone' }
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'ban-quan-ly',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['quan-ly'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
     ]
 }
 

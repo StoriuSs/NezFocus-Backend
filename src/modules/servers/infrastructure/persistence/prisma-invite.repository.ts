@@ -122,6 +122,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
                       name: true,
                       isPrivate: true,
                       sendMode: true,
+                      taskBoardEnabled: true,
                       isStudyRoom: true,
                       viewRoles: { select: { roleId: true } }
                   }
@@ -146,6 +147,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
                 name: channel.name,
                 isPrivate: channel.isPrivate,
                 sendMode: channel.sendMode,
+                taskBoardEnabled: channel.taskBoardEnabled,
                 isStudyRoom: channel.isStudyRoom,
                 viewRoleIds: channel.viewRoles.map((view) => view.roleId)
             }

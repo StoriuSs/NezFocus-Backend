@@ -21,10 +21,31 @@ const server: AccessServer = {
         { id: 'quan-ly', permissions: 0n, position: 1, isEveryone: false }
     ],
     channels: [
-        { id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'trong', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'ban-quan-ly', type: 'text', isPrivate: true, viewRoleIds: ['quan-ly'], sendMode: 'everyone' },
-        { id: 'phong-hoc', type: 'voice', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' }
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        { id: 'trong', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone', taskBoardEnabled: false },
+        {
+            id: 'ban-quan-ly',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['quan-ly'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'phong-hoc',
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
     ]
 }
 

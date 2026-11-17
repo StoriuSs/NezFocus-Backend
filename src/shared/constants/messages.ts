@@ -107,6 +107,18 @@ export const MESSAGES = {
         ATTACHMENT_LINKS: 'File links issued'
     },
 
+    // Task Board messages
+    TASKS: {
+        TASKS_LISTED: 'Tasks fetched',
+        TASK_FETCHED: 'Task fetched',
+        TASK_CREATED: 'Task created',
+        TASK_UPDATED: 'Task updated',
+        TASK_DELETED: 'Task deleted',
+        TASK_ASSIGNED: 'People added to the task',
+        TASK_UNASSIGNED: 'Person taken off the task',
+        HISTORY_LISTED: 'Task history fetched'
+    },
+
     // Health messages
     HEALTH: {
         CHECK_SUCCESS: 'Health check successful'

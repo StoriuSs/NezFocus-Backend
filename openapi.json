@@ -4421,6 +4421,471 @@
           "messaging"
         ]
       }
+    },
+    "/api/v1/channels/{channelId}/tasks": {
+      "get": {
+        "operationId": "BoardController_list_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "done"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Only tasks whose title holds these words, whatever the accents and case (D-97).",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "required": false,
+            "in": "query",
+            "description": "With `status=done`: the last done task the client holds; left out, the first page.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every task not done, and how many are done (D-186); `status=done`: 50\ndone tasks, the latest done first, after `before` (a task no longer\ndone there is CONFLICT_ERROR: start again). `q` searches titles,\nwhatever the accents and case (D-97).",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "post": {
+        "operationId": "BoardController_create_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new task (CREATE_TASKS), told to the channel as `task.created`. A due\ndate already passed is INVALID_TASK_DUE_DATE, someone who cannot view\nthe channel INVALID_TASK_ASSIGNEE, a 501st task not done\nMAX_OPEN_TASKS_REACHED.",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{taskId}": {
+      "get": {
+        "operationId": "TasksController_get_v1",
+        "parameters": [
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The task as it is now: a link to it (`?task=`), an inbox item, a reminder.",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "patch": {
+        "operationId": "TasksController_update_v1",
+        "parameters": [
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Title, description and due date (the creator or MANAGE_TASKS), status\n(also anyone on it). Only what really changes is checked; a new due\ndate already passed is INVALID_TASK_DUE_DATE (D-96).",
+        "tags": [
+          "tasks"
+        ]
+      },
+      "delete": {
+        "operationId": "TasksController_delete_v1",
+        "parameters": [
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Gone for everyone (the creator or MANAGE_TASKS), told as `task.deleted`.",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/assignees": {
+      "post": {
+        "operationId": "TasksController_assign_v1",
+        "parameters": [
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignTaskRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "\"Thêm người\", or \"Tôi làm\" with one's own id: oneself by anyone who\nviews the channel, others by the creator, anyone on it or\nMANAGE_TASKS. Someone who cannot view the channel is\nINVALID_TASK_ASSIGNEE.",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/assignees/{userId}": {
+      "delete": {
+        "operationId": "TasksController_unassign_v1",
+        "parameters": [
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "\"Rút khỏi việc này\" with one's own id; another, by the creator or MANAGE_TASKS.",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{taskId}/history": {
+      "get": {
+        "operationId": "TasksController_history_v1",
+        "parameters": [
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/TaskHistoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Its history, newest first: the latest 200 lines and how many there are (REQ-TASK-03).",
+        "tags": [
+          "tasks"
+        ]
+      }
     }
   },
   "info": {
@@ -5579,6 +6044,10 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "task_board_enabled": {
+            "type": "boolean",
+            "description": "Text channels: off hides its tasks and stops their reminders; on shows them again (REQ-TASK-01)."
           }
         }
       },
@@ -7142,6 +7611,320 @@
           "channel_id",
           "filename",
           "size"
+        ]
+      },
+      "TaskAssigneeResponseDto": {
+        "type": "object",
+        "properties": {
+          "assigned_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "assigned_at",
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "TaskPersonResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "TaskResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "type": "string"
+          },
+          "due_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When it became done; null while it is not (ARCHITECTURE 7)."
+          },
+          "assignees": {
+            "description": "In the order they were given the task; none: \"Chưa giao\".",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskAssigneeResponseDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "description": "Empty: none."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Moves on every change: of two copies of a task, the client keeps the later one."
+          },
+          "creator": {
+            "$ref": "#/components/schemas/TaskPersonResponseDto"
+          }
+        },
+        "required": [
+          "status",
+          "due_at",
+          "completed_at",
+          "assignees",
+          "id",
+          "server_id",
+          "channel_id",
+          "title",
+          "description",
+          "created_at",
+          "updated_at",
+          "creator"
+        ]
+      },
+      "TaskListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskResponseDto"
+            }
+          },
+          "done_count": {
+            "type": "number",
+            "nullable": true,
+            "description": "The \"XONG — n\" heading; null on a page of done tasks."
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "done_count",
+          "has_more"
+        ]
+      },
+      "CreateTaskRequestDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null or left out: none.",
+            "maxLength": 2000
+          },
+          "due_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "Later than now; null or left out: no due date.",
+            "format": "date-time"
+          },
+          "assignee_ids": {
+            "nullable": true,
+            "description": "Members who view the channel; none: \"Chưa giao\".",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "UpdateTaskRequestDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "due_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "A new one must be later than now (D-96). Null: no due date.",
+            "format": "date-time"
+          },
+          "status": {
+            "enum": [
+              "todo",
+              "doing",
+              "done"
+            ],
+            "type": "string"
+          }
+        }
+      },
+      "AssignTaskRequestDto": {
+        "type": "object",
+        "properties": {
+          "user_ids": {
+            "description": "People already on it are skipped.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "user_ids"
+        ]
+      },
+      "TaskEventResponseDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "created",
+              "title_changed",
+              "description_changed",
+              "due_changed",
+              "assignee_added",
+              "assignee_removed",
+              "status_changed"
+            ],
+            "type": "string"
+          },
+          "actor": {
+            "nullable": true,
+            "description": "Null when the app did it (an assignee who left the server).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TaskPersonResponseDto"
+              }
+            ]
+          },
+          "subject": {
+            "nullable": true,
+            "description": "The person added or taken off; null for the other kinds.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TaskPersonResponseDto"
+              }
+            ]
+          },
+          "from": {
+            "type": "string",
+            "nullable": true,
+            "description": "Title, due date (an ISO time, null: none) or status before the change; null for the other kinds."
+          },
+          "to": {
+            "type": "string",
+            "nullable": true,
+            "description": "The same after the change."
+          },
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "actor",
+          "subject",
+          "from",
+          "to",
+          "id",
+          "created_at"
+        ]
+      },
+      "TaskHistoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskEventResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
         ]
       }
     }

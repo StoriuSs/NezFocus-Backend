@@ -23,7 +23,6 @@ export interface ChannelSnapshot extends AccessChannel {
     name: string
     position: number
     isStudyRoom: boolean
-    taskBoardEnabled: boolean
 }
 
 /** A server as stored, everything one member's view is made from. */

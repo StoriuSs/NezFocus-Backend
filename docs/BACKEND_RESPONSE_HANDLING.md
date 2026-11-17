@@ -126,6 +126,9 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | `401 AUTH_REFRESH_FAILED` | `reason`: why the session ended; with `account_deleted` while the account waits to be deleted, `deletes_at` |
 | `403 ACCOUNT_PENDING_DELETION` | `deletes_at`: when the account is deleted unless restored |
 | `409 OWNERSHIP_TRANSFER_REQUIRED` | `servers`: `[{ id, name, member_count }]`, the servers to hand over before deleting the account |
+| `403 MEMBER_TIMED_OUT` | `timeout_until`: when the timeout ends (messages, tasks) |
+| `403 FORBIDDEN_ERROR` (a Task Board) | `reason`: `task_board_disabled` when the channel's board is off, so the client says so rather than "you may not" |
+| `400 INVALID_TASK_ASSIGNEE` | `user_ids`: those who cannot view the task's channel |
 
 A password the policy refuses:
 
@@ -180,7 +183,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `403301` | `OWNER_CANNOT_LEAVE` | The owner leaving a server: transfer it first |
 | `403302` | `ROLE_HIERARCHY_VIOLATION` | Acting on a role or member ranked the same as or above oneself |
 | `403303` | `BANNED_FROM_SERVER` | Joining a server one is banned from |
-| `403304` | `MEMBER_TIMED_OUT` | Doing more than viewing while timed out (`data.until`) |
+| `403304` | `MEMBER_TIMED_OUT` | Doing more than viewing while timed out (`data.timeout_until`) |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
 | `404001` | `USER_NOT_FOUND` | No such user |
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |

@@ -101,6 +101,7 @@ describe('PreviewInviteHandler', () => {
             isPrivate: false,
             viewRoleIds: [],
             sendMode: 'everyone',
+            taskBoardEnabled: false,
             isStudyRoom: false
         },
         ...extra

@@ -23,6 +23,12 @@ export interface AccessChannel {
     viewRoleIds: string[]
     /** `managers`: only MANAGE_MESSAGES may post. */
     sendMode: 'everyone' | 'managers'
+    /**
+     * Text channels: whether its Task Board is on (REQ-TASK-01). Not a
+     * permission, but read with them by the tasks module, here and on the
+     * "Việc cần làm" page for every server, at no extra read (D-189).
+     */
+    taskBoardEnabled: boolean
 }
 
 /** What every check in a server needs to know about the server. */

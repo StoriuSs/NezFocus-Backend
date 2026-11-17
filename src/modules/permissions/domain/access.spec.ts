@@ -45,13 +45,48 @@ const server: AccessServer = {
         { id: 'voice', permissions: bits('CONNECT'), position: 1, isEveryone: false }
     ],
     channels: [
-        { id: 'general', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'staff', type: 'text', isPrivate: true, viewRoleIds: ['mod'], sendMode: 'everyone' },
-        { id: 'news', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers' },
-        { id: 'lounge', type: 'voice', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'vault', type: 'text', isPrivate: true, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'open', type: 'text', isPrivate: true, viewRoleIds: ['everyone'], sendMode: 'everyone' },
-        { id: 'podium', type: 'voice', isPrivate: false, viewRoleIds: [], sendMode: 'managers' }
+        {
+            id: 'general',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'staff',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['mod'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        { id: 'news', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers', taskBoardEnabled: false },
+        {
+            id: 'lounge',
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        { id: 'vault', type: 'text', isPrivate: true, viewRoleIds: [], sendMode: 'everyone', taskBoardEnabled: false },
+        {
+            id: 'open',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['everyone'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'podium',
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'managers',
+            taskBoardEnabled: false
+        }
     ]
 }
 

@@ -13,10 +13,38 @@ const server: AccessServer = {
         { id: 'truong-nhom', permissions: Permission.MANAGE_MESSAGES, position: 1, isEveryone: false }
     ],
     channels: [
-        { id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'thong-bao', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers' },
-        { id: 'ban-can-su', type: 'text', isPrivate: true, viewRoleIds: ['truong-nhom'], sendMode: 'everyone' },
-        { id: 'phong-hoc', type: 'voice', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' }
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'thong-bao',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'managers',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'ban-can-su',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['truong-nhom'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'phong-hoc',
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
     ]
 }
 

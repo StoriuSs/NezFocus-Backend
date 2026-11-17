@@ -7,8 +7,15 @@ const SERVER: AccessServer = {
     ownerId: 'chi',
     roles: [{ id: 'e', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true }],
     channels: [
-        { id: 'general', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'staff', type: 'text', isPrivate: true, viewRoleIds: [], sendMode: 'everyone' }
+        {
+            id: 'general',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        { id: 'staff', type: 'text', isPrivate: true, viewRoleIds: [], sendMode: 'everyone', taskBoardEnabled: false }
     ]
 }
 

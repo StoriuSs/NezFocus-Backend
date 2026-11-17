@@ -37,4 +37,10 @@ export class UpdateChannelRequestDto {
     @ArrayMaxSize(MAX_VIEW_ROLES)
     @IsUUID(undefined, { each: true })
     viewRoleIds?: string[]
+
+    /** Text channels: off hides its tasks and stops their reminders; on shows them again (REQ-TASK-01). */
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsBoolean()
+    taskBoardEnabled?: boolean
 }

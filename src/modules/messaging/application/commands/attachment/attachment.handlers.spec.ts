@@ -32,7 +32,16 @@ const server: AccessServer = {
         },
         { id: 'files', permissions: Permission.ATTACH_FILES, position: 1, isEveryone: false }
     ],
-    channels: [{ id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' }]
+    channels: [
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
+    ]
 }
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]

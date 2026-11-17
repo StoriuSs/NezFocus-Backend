@@ -9,7 +9,8 @@ const textChannel = (id: string, viewRoleIds: string[] = []) => ({
     type: 'text' as const,
     isPrivate: viewRoleIds.length > 0,
     viewRoleIds,
-    sendMode: 'everyone' as const
+    sendMode: 'everyone' as const,
+    taskBoardEnabled: false
 })
 
 /** ÔT: two public channels, one private to moderators, a voice room. NĐ: one channel. */
@@ -23,7 +24,14 @@ const servers: Record<string, AccessServer> = {
         channels: [
             textChannel('hoi-dap'),
             textChannel('ban-quan-ly', ['quan-ly']),
-            { id: 'phong-hoc', type: 'voice', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
+            {
+                id: 'phong-hoc',
+                type: 'voice',
+                isPrivate: false,
+                viewRoleIds: [],
+                sendMode: 'everyone',
+                taskBoardEnabled: false
+            },
             textChannel('tai-lieu')
         ]
     },

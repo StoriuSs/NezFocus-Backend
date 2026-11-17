@@ -10,7 +10,14 @@ const server = (staffRole: string | null): AccessServer => ({
         { id: 'staff', permissions: 0n, position: 1, isEveryone: false }
     ],
     channels: [
-        { id: 'staff', type: 'text', isPrivate: true, viewRoleIds: staffRole ? [staffRole] : [], sendMode: 'everyone' }
+        {
+            id: 'staff',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: staffRole ? [staffRole] : [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
     ]
 })
 const holding = (userId: string): ServerAccess => ({

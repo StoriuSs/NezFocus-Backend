@@ -144,6 +144,7 @@ describe('inviteTarget (D-150)', () => {
         isPrivate: false,
         viewRoleIds: [],
         sendMode: 'everyone',
+        taskBoardEnabled: false,
         name: 'Phòng thảo luận nhóm',
         isStudyRoom: true
     }

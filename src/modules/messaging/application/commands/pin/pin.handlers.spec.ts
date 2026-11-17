@@ -32,9 +32,30 @@ const server: AccessServer = {
         { id: 'admin', permissions: Permission.ADMINISTRATOR, position: 2, isEveryone: false }
     ],
     channels: [
-        { id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'tai-lieu', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'ban-quan-ly', type: 'text', isPrivate: true, viewRoleIds: ['quan-ly'], sendMode: 'everyone' }
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'tai-lieu',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'ban-quan-ly',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['quan-ly'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
     ]
 }
 

@@ -53,10 +53,38 @@ const server: AccessServer = {
         }
     ],
     channels: [
-        { id: 'hoi-dap', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'tai-lieu', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' },
-        { id: 'thong-bao', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'managers' },
-        { id: 'ban-quan-ly', type: 'text', isPrivate: true, viewRoleIds: ['quan-ly'], sendMode: 'everyone' }
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'tai-lieu',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'thong-bao',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'managers',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'ban-quan-ly',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['quan-ly'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
     ]
 }
 

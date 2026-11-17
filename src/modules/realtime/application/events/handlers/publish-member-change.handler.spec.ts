@@ -6,7 +6,16 @@ import { RoomMoves } from '../../services/room-moves'
 const SERVER: AccessServer = {
     ownerId: 'an',
     roles: [{ id: 'e', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true }],
-    channels: [{ id: 'general', type: 'text', isPrivate: false, viewRoleIds: [], sendMode: 'everyone' }]
+    channels: [
+        {
+            id: 'general',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
+    ]
 }
 
 /** Records, in order, what reaches the sockets: events told and rooms moved. */

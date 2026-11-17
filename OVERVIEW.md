@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with six modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through) and `messaging` (messages in channels, grouped by area like `servers`) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with seven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`) and `tasks` (the Task Boards of channels, grouped the same way) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -483,6 +483,24 @@ and mentions up to 100 (`prisma-read-state.repository.ts`); someone who never
 read a channel stands where they joined its server (`domain/read-state.rules.ts`,
 D-170). An event handler marks a sent message read for its author (D-173).
 
+`src/modules/tasks/` holds the Task Boards of text channels (SRS 4.7),
+grouped by area like `servers` (D-190): `commands/task/`, `commands/assignee/`,
+`queries/task/`. Every route opens the board first
+(`application/services/board-access.ts`): servers' `CHANNEL_DIRECTORY` for
+the server, then `PERMISSION_CHECKER`, whose cached channels say whether the
+board is on (D-189): a channel one may not view is the same 404 as none, a
+board that is off a 403 with `reason: task_board_disabled`, and a member timed
+out changes nothing (D-188). Who may change what, a due date still ahead
+(only when it changes, D-96) and the history each change writes are pure
+rules (`domain/task.rules.ts`) that the repository calls on the task under
+its row lock (`services/change-task.ts`), the shape of messaging's pins; the
+limit of 500 tasks not done a channel is counted under an advisory lock per
+channel. Titles are searched without accents through a folded copy
+(`titleSearch`, made by `domain/task-text.rules.ts`, a trigram index). Each
+write answers with the task as it now is, the same view `task.created` /
+`task.updated` carry to the channel's sockets (D-191); the done tasks come 50
+at a time after the last one the client holds.
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -572,6 +590,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/permissions/    # What a member may do in a server, cached
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events, presence
 │   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread, files
+│   ├── modules/tasks/          # Task Boards: tasks, the people on them, their history, search
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
@@ -633,8 +652,8 @@ an admin console for support staff. See
 [docs/auth/security.md](./docs/auth/security.md) for what it defends against,
 and what it does not.
 
-**Hexagonal and CQRS, for six modules.** It looks like a lot of
-folders for six features, and it is. The point is that the seventh, tenth and
+**Hexagonal and CQRS, for seven modules.** It looks like a lot of
+folders for seven features, and it is. The point is that the eighth, tenth and
 twentieth feature go in the same shape, and by then a `UsersService` would have
 been a thousand lines nobody wants to open. Learn it on the modules that are
 already here.

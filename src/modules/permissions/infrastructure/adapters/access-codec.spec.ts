@@ -16,7 +16,16 @@ describe('access codec', () => {
                     isEveryone: true
                 }
             ],
-            channels: [{ id: 'c', type: 'voice', isPrivate: true, viewRoleIds: ['e'], sendMode: 'managers' }]
+            channels: [
+                {
+                    id: 'c',
+                    type: 'voice',
+                    isPrivate: true,
+                    viewRoleIds: ['e'],
+                    sendMode: 'managers',
+                    taskBoardEnabled: false
+                }
+            ]
         }
         expect(decodeServer(viaJson(encodeServer(server)))).toEqual(server)
     })
