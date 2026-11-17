@@ -17,6 +17,11 @@ export class MemberListQueryDto {
     @IsUUID()
     roleId?: string
 
+    /** Only those who view this channel, for someone who views it (D-192, the task assignee picker). */
+    @IsOptional()
+    @IsUUID()
+    channelId?: string
+
     /**
      * true: only those the owner may hand the server to (S-SET-07, D-161): not
      * themselves, not an account waiting to be deleted. Owner only.

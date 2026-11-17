@@ -1,7 +1,13 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import { UserDirectoryPort } from '@/modules/users'
 import { PresenceReaderPort } from '../../ports'
-import { MemberRepositoryPort, MissingPermissionError, RoleRepositoryPort, ServerNotFoundError } from '../../../domain'
+import {
+    ChannelNotFoundError,
+    MemberRepositoryPort,
+    MissingPermissionError,
+    RoleRepositoryPort,
+    ServerNotFoundError
+} from '../../../domain'
 import { ListMembersHandler, ListMentionableRolesHandler, ListRolesHandler } from './role.handlers'
 import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
 
@@ -117,7 +123,45 @@ describe('ListMembersHandler (D-152)', () => {
             presence
         )
         await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toEqual(page)
-        expect(directory.search).toHaveBeenCalledWith('ot', search, ['binh', 'chi'])
+        expect(directory.search).toHaveBeenCalledWith('ot', { ...search, viewers: null }, ['binh', 'chi'])
+    })
+
+    it('lists only those who view a channel, for whoever views it, NOT_FOUND to the rest (D-192)', async () => {
+        const docsOnly = {
+            id: 'tai-lieu',
+            type: 'text' as const,
+            isPrivate: true,
+            viewRoleIds: ['docs'],
+            sendMode: 'everyone' as const,
+            taskBoardEnabled: true
+        }
+        const viewerAccess = (userId: string, roleIds: string[] = []): ServerAccess => ({
+            server: { ownerId: 'an', roles, channels: [docsOnly] },
+            member: { userId, roleIds, timeoutUntil: null }
+        })
+        const directory = { search: jest.fn().mockResolvedValue(page) }
+        const handlerFor = (viewer: ServerAccess) =>
+            new ListMembersHandler(
+                directory as unknown as MemberRepositoryPort,
+                { access: jest.fn().mockResolvedValue(viewer) } as unknown as PermissionCheckerPort,
+                pictures,
+                presence
+            )
+
+        await handlerFor(viewerAccess('binh', ['docs'])).execute(new ListMembersQuery('binh', 'ot', search, 'tai-lieu'))
+        expect(directory.search).toHaveBeenCalledWith('ot', { ...search, viewers: { anyOf: [], allOf: [['docs']] } }, [
+            'binh',
+            'chi'
+        ])
+
+        directory.search.mockClear()
+        await expect(
+            handlerFor(viewerAccess('chi')).execute(new ListMembersQuery('chi', 'ot', search, 'tai-lieu'))
+        ).rejects.toThrow(ChannelNotFoundError)
+        await expect(
+            handlerFor(viewerAccess('binh', ['docs'])).execute(new ListMembersQuery('binh', 'ot', search, 'khac'))
+        ).rejects.toThrow(ChannelNotFoundError)
+        expect(directory.search).not.toHaveBeenCalled()
     })
 
     it('answers NOT_FOUND to anyone outside, without searching', async () => {

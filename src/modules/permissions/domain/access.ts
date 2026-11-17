@@ -68,6 +68,36 @@ function holdsAnyOf(server: AccessServer, member: AccessMember, roleIds: string[
     return server.roles.some((role) => wanted.has(role.id) && (role.isEveryone || member.roleIds.includes(role.id)))
 }
 
+/**
+ * Who may view a channel, as roles a member must hold, for a query over many
+ * members (D-192): the owner, anyone holding one of `anyOf`, or anyone holding
+ * one of every set in `allOf`. `null`: every member. Steps 1 to 3 of
+ * channelPermissions; a timeout keeps VIEW_CHANNEL, so it changes nothing.
+ */
+export interface ChannelViewers {
+    anyOf: string[]
+    allOf: string[][]
+}
+
+export function channelViewers(server: AccessServer, channel: AccessChannel): ChannelViewers | null {
+    const everyone = server.roles.find((role) => role.isEveryone)
+    const everyoneBits = (everyone?.permissions ?? 0n) & ALL_PERMISSIONS
+    // 1. @everyone holding ADMINISTRATOR makes everyone all-powerful.
+    if ((everyoneBits & Permission.ADMINISTRATOR) !== 0n) return null
+    const others = server.roles.filter((role) => !role.isEveryone)
+    const holding = (bit: bigint) => others.filter((role) => (role.permissions & bit) !== 0n).map((role) => role.id)
+    const allOf: string[][] = []
+    // 3. A private channel: one of its roles, unless @everyone is one of them.
+    if (channel.isPrivate && !(everyone && channel.viewRoleIds.includes(everyone.id))) {
+        const wanted = new Set(channel.viewRoleIds)
+        allOf.push(others.filter((role) => wanted.has(role.id)).map((role) => role.id))
+    }
+    // 2. VIEW_CHANNEL from @everyone or from a role.
+    if ((everyoneBits & Permission.VIEW_CHANNEL) === 0n) allOf.push(holding(Permission.VIEW_CHANNEL))
+    if (allOf.length === 0) return null
+    return { anyOf: holding(Permission.ADMINISTRATOR), allOf }
+}
+
 /** Owner or ADMINISTRATOR: every permission, timeout or not (appendix B, step 1). */
 function isAllPowerful(server: AccessServer, member: AccessMember, roles: bigint): boolean {
     return member.userId === server.ownerId || (roles & Permission.ADMINISTRATOR) !== 0n

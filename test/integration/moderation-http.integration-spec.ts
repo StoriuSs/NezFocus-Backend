@@ -230,4 +230,61 @@ describe('Moderation over HTTP (integration)', () => {
             'VALIDATION_ERROR'
         ])
     })
+
+    it('lists only those who view a channel, for the task assignee picker (D-192)', async () => {
+        const { serverId, leadId } = await studyServer()
+        const created = await as('an', api().post(url(serverId, '/channels')))
+            .set('Idempotency-Key', randomUUID())
+            .send({ type: 'text', name: 'ban-can-su', is_private: true, view_role_ids: [leadId] })
+        const privateId: string = created.body.data.id
+        const general = await prisma.channel.findFirstOrThrow({ where: { serverId, isPrivate: false, type: 'text' } })
+        // Chi holds a role with ADMINISTRATOR, so she views every channel; Dũng holds nothing.
+        const admin = await prisma.role.create({
+            data: {
+                serverId,
+                name: 'Quản trị',
+                nameKey: 'quan tri',
+                permissions: Permission.ADMINISTRATOR,
+                position: 9
+            }
+        })
+        await prisma.memberRole.create({ data: { serverId, userId: users.chi.id, roleId: admin.id } })
+        await app.get<PermissionCachePort>(PERMISSION_CACHE).memberChanged(serverId, users.chi.id)
+        const viewers = async (who: Who, channelId: string) =>
+            (await members(who, serverId, `?channel_id=${channelId}`)).map((item) => item.user_id).sort()
+        const { an, binh, chi, dung } = users
+
+        expect(await viewers('binh', privateId)).toEqual([an.id, binh.id, chi.id].sort())
+        expect(await viewers('dung', general.id)).toEqual([an.id, binh.id, chi.id, dung.id].sort())
+        // Someone who does not view it, a channel of another place, a stranger: not found.
+        expect(outcome(await as('dung', api().get(url(serverId, `/members?channel_id=${privateId}`))))).toEqual([
+            404,
+            'NOT_FOUND_ERROR'
+        ])
+        expect(outcome(await as('an', api().get(url(serverId, `/members?channel_id=${randomUUID()}`))))).toEqual([
+            404,
+            'NOT_FOUND_ERROR'
+        ])
+        expect(outcome(await as('phong', api().get(url(serverId, `/members?channel_id=${general.id}`))))).toEqual([
+            404,
+            'NOT_FOUND_ERROR'
+        ])
+
+        // @everyone without VIEW_CHANNEL: only a role that grants it lets one see the channel.
+        await prisma.role.updateMany({
+            where: { serverId, OR: [{ isEveryone: true }, { id: leadId }] },
+            data: { permissions: { set: 0n } }
+        })
+        const reader = await prisma.role.create({
+            data: { serverId, name: 'Đọc', nameKey: 'doc', permissions: Permission.VIEW_CHANNEL, position: 1 }
+        })
+        await prisma.memberRole.create({ data: { serverId, userId: users.dung.id, roleId: reader.id } })
+        await app.get<PermissionCachePort>(PERMISSION_CACHE).serverChanged(serverId)
+        await app.get<PermissionCachePort>(PERMISSION_CACHE).memberChanged(serverId, users.dung.id)
+        expect(await viewers('dung', general.id)).toEqual([an.id, chi.id, dung.id].sort())
+        expect(outcome(await as('binh', api().get(url(serverId, `/members?channel_id=${general.id}`))))).toEqual([
+            404,
+            'NOT_FOUND_ERROR'
+        ])
+    })
 })

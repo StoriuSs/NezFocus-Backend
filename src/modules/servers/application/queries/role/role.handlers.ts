@@ -1,8 +1,17 @@
 import { Inject } from '@nestjs/common'
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
-import { Permission, PERMISSION_CHECKER, PermissionCheckerPort, serverPermissions } from '@/modules/permissions'
+import {
+    channelPermissions,
+    channelViewers,
+    ChannelViewers,
+    Permission,
+    PERMISSION_CHECKER,
+    PermissionCheckerPort,
+    serverPermissions
+} from '@/modules/permissions'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import {
+    ChannelNotFoundError,
     MEMBER_REPOSITORY,
     MemberListItem,
     MemberRepositoryPort,
@@ -77,17 +86,31 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
      * running timeout shows to all, its reason to those who may time people
      * out and to the one timed out (D-154). Each member comes with what
      * others see of them, and the page may be of those online or offline,
-     * or put those online first (D-175).
+     * or put those online first (D-175). With a channel, only those who view
+     * it, for someone who views it (D-192, the task assignee picker).
      */
-    async execute({ userId, serverId, search }: ListMembersQuery): Promise<{ items: ListedMember[]; total: number }> {
+    async execute({
+        userId,
+        serverId,
+        search,
+        channelId
+    }: ListMembersQuery): Promise<{ items: ListedMember[]; total: number }> {
         const access = await this.checker.access(serverId, userId)
         if (!access) throw new ServerNotFoundError(serverId)
         // Who is waiting to be deleted is no one else's business (D-161).
         if (search.transferableFrom !== null && access.server.ownerId !== userId) throw new NotOwnerError()
         const now = new Date()
+        let viewers: ChannelViewers | null = null
+        if (channelId !== null) {
+            const channel = access.server.channels.find((one) => one.id === channelId)
+            if (!channel || channelPermissions(access.server, access.member, channel, now) === 0n) {
+                throw new ChannelNotFoundError(channelId)
+            }
+            viewers = channelViewers(access.server, channel)
+        }
         const mayModerate = (serverPermissions(access.server, access.member, now) & Permission.MODERATE_MEMBERS) !== 0n
         const shown = await this.presence.everyoneShown()
-        const { items, total } = await this.members.search(serverId, search, [...shown.keys()])
+        const { items, total } = await this.members.search(serverId, { ...search, viewers }, [...shown.keys()])
         // The repository gives the stored picture keys; the client needs addresses.
         const pictured = await Promise.all(
             items.map(async (item) => ({ ...item, avatarUrl: await this.directory.avatarUrl(item.avatarUrl) }))

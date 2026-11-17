@@ -180,16 +180,21 @@ export class RolesController {
         const limit = query.limit ?? MEMBERS_PER_PAGE
         const q = query.q?.trim() || null
         const { items, total }: { items: ListedMember[]; total: number } = await this.queryBus.execute(
-            new ListMembersQuery(user.id, serverId, {
-                q,
-                roleId: query.roleId ?? null,
-                transferableFrom: query.transferable ? user.id : null,
-                sort: query.sort ?? 'name',
-                order: query.order ?? 'asc',
-                page,
-                limit,
-                presence: query.presence ?? null
-            })
+            new ListMembersQuery(
+                user.id,
+                serverId,
+                {
+                    q,
+                    roleId: query.roleId ?? null,
+                    transferableFrom: query.transferable ? user.id : null,
+                    sort: query.sort ?? 'name',
+                    order: query.order ?? 'asc',
+                    page,
+                    limit,
+                    presence: query.presence ?? null
+                },
+                query.channelId ?? null
+            )
         )
         return createResponse(
             MESSAGES.SERVER.MEMBERS_LISTED,

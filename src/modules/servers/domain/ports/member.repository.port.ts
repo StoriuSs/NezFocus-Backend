@@ -1,3 +1,5 @@
+import { ChannelViewers } from '@/modules/permissions'
+
 /** A member as the server's lists show them (S-SET-02 tab Members, D-152). */
 export interface MemberListItem {
     userId: string
@@ -46,7 +48,12 @@ export interface MemberSearch {
     limit: number
     /** Only those online, or only those offline, to others now (D-175). */
     presence: PresenceFilter | null
+    /** Only those who view a channel (D-192): see channelViewers. */
+    viewers: ChannelViewers | null
 }
+
+/** What a caller asks of the list; the handler works out `viewers` from a channel. */
+export type MemberListing = Omit<MemberSearch, 'viewers'>
 
 export interface MemberRepositoryPort {
     /**

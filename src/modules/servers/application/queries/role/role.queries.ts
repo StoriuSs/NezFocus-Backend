@@ -1,4 +1,4 @@
-import { MemberSearch } from '../../../domain'
+import { MemberListing } from '../../../domain'
 
 /*
  * Reading the roles and the members (REQ-ROLE-01, S-SET-02, S-SET-03, D-152).
@@ -21,11 +21,12 @@ export class ListMentionableRolesQuery {
     ) {}
 }
 
-/** The server's members, for anyone in it (D-152). */
+/** The server's members, for anyone in it (D-152); with `channelId`, only those who view that channel (D-192). */
 export class ListMembersQuery {
     constructor(
         public readonly userId: string,
         public readonly serverId: string,
-        public readonly search: MemberSearch
+        public readonly search: MemberListing,
+        public readonly channelId: string | null = null
     ) {}
 }

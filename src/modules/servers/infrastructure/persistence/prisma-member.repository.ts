@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
+import { ChannelViewers } from '@/modules/permissions'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { hiddenSql, shownSql } from '@/shared/infrastructure/persistence/shown-person'
 import { MemberListItem, MemberRepositoryPort, MemberSearch, MemberSort, SortOrder } from '../../domain'
@@ -29,6 +30,15 @@ const SHOWN_USERNAME = shownSql('u', 'username')
 const HIDDEN = hiddenSql('u')
 const NAME = Prisma.sql`lower(unaccent(coalesce(${SHOWN_NAME}, ${SHOWN_USERNAME}, '')))`
 const USERNAME = Prisma.sql`lower(coalesce(${SHOWN_USERNAME}, ''))`
+
+/** Holds one of these roles in the server. */
+const holdsOneOf = (roleIds: string[]) =>
+    Prisma.sql`EXISTS (SELECT 1 FROM "MemberRole" r
+        WHERE r."serverId" = m."serverId" AND r."userId" = m."userId" AND r."roleId" = ANY(${roleIds}::text[]))`
+
+/** Views the channel (D-192): the owner, one of `anyOf`, or one of every set in `allOf` (channelViewers). */
+const viewing = ({ anyOf, allOf }: ChannelViewers) =>
+    Prisma.sql`AND (s."ownerId" = m."userId" OR ${holdsOneOf(anyOf)} OR (${Prisma.join(allOf.map(holdsOneOf), ' AND ')}))`
 
 /**
  * The ORDER BY of one sort (D-89). Ties go by name, then username, A → Z,
@@ -67,7 +77,7 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
      */
     async search(
         serverId: string,
-        { q, roleId, transferableFrom, sort, order, page, limit, presence }: MemberSearch,
+        { q, roleId, transferableFrom, sort, order, page, limit, presence, viewers }: MemberSearch,
         presentIds: string[]
     ): Promise<{ items: MemberListItem[]; total: number }> {
         const where = Prisma.sql`
@@ -91,6 +101,7 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
                       ? Prisma.sql`AND NOT (m."userId" = ANY(${presentIds}::text[]))`
                       : Prisma.empty
             }
+            ${viewers ? viewing(viewers) : Prisma.empty}
             ${
                 q
                     ? Prisma.sql`AND (lower(unaccent(coalesce(${SHOWN_NAME}, ''))) LIKE lower(unaccent(${`%${literal(q)}%`}))
@@ -114,7 +125,10 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
                 LIMIT ${limit} OFFSET ${(page - 1) * limit}
             `,
             this.prisma.$queryRaw<{ total: bigint }[]>`
-                SELECT count(*) AS total FROM "Member" m JOIN "User" u ON u."id" = m."userId" WHERE ${where}
+                SELECT count(*) AS total FROM "Member" m
+                JOIN "User" u ON u."id" = m."userId"
+                JOIN "Server" s ON s."id" = m."serverId"
+                WHERE ${where}
             `
         ])
         return { items: rows, total: Number(counted[0]?.total ?? 0n) }

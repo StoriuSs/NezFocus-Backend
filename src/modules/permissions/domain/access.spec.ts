@@ -4,6 +4,8 @@ import {
     AccessMember,
     AccessServer,
     channelPermissions,
+    channelViewers,
+    ChannelViewers,
     outranksMember,
     outranksRole,
     permissionChangeAllowed,
@@ -347,5 +349,58 @@ describe('roleHandoutAllowed', () => {
 
     it('lets the owner hand out any role', () => {
         expect(roleHandoutAllowed(ALL_PERMISSIONS, role(bits('ADMINISTRATOR')))).toBe(true)
+    })
+})
+
+describe('channelViewers (D-192)', () => {
+    /** What the members query does with the answer: the owner, one of `anyOf`, or one of every set in `allOf`. */
+    const passes = (viewers: ChannelViewers | null, someone: AccessMember, ownerId: string) =>
+        viewers === null ||
+        someone.userId === ownerId ||
+        viewers.anyOf.some((id) => someone.roleIds.includes(id)) ||
+        (viewers.allOf.length > 0 && viewers.allOf.every((set) => set.some((id) => someone.roleIds.includes(id))))
+
+    const helperViews: AccessServer = {
+        ...blind,
+        roles: blind.roles.map((role) =>
+            role.id === 'helper' ? { ...role, permissions: role.permissions | Permission.VIEW_CHANNEL } : role
+        )
+    }
+    const everyoneRules: AccessServer = {
+        ...server,
+        roles: server.roles.map((role) =>
+            role.isEveryone ? { ...role, permissions: role.permissions | Permission.ADMINISTRATOR } : role
+        )
+    }
+    const roleIds = server.roles.filter((role) => !role.isEveryone).map((role) => role.id)
+    // Every set of roles, timed out or not, the owner, and a role id no longer on the server.
+    const everyone: AccessMember[] = [owner, member('gone', ['deleted-role'])]
+    for (let mask = 0; mask < 1 << roleIds.length; mask++) {
+        const held = roleIds.filter((_, index) => (mask & (1 << index)) !== 0)
+        everyone.push(member(`m${mask}`, held), member(`t${mask}`, held, LATER))
+    }
+
+    it.each([
+        ['the server', server],
+        ['@everyone without VIEW_CHANNEL', blind],
+        ['only one role with VIEW_CHANNEL', helperViews],
+        ['@everyone with ADMINISTRATOR', everyoneRules]
+    ])('picks out exactly those channelPermissions lets view, on %s', (_, place) => {
+        for (const channel of place.channels) {
+            const viewers = channelViewers(place, channel)
+            for (const someone of everyone) {
+                const views = channelPermissions(place, someone, channel, NOW) !== 0n
+                expect([channel.id, someone.userId, passes(viewers, someone, place.ownerId)]).toEqual([
+                    channel.id,
+                    someone.userId,
+                    views
+                ])
+            }
+        }
+    })
+
+    it('needs no condition when every member views the channel', () => {
+        expect(channelViewers(server, server.channels[0]!)).toBeNull()
+        expect(channelViewers(server, server.channels.find((c) => c.id === 'open')!)).toBeNull()
     })
 })
