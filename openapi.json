@@ -4977,6 +4977,116 @@
           "tasks"
         ]
       }
+    },
+    "/api/v1/me/notifications": {
+      "get": {
+        "operationId": "NotificationsController_list_v1",
+        "parameters": [
+          {
+            "name": "before",
+            "required": false,
+            "in": "query",
+            "description": "The oldest item the client holds; left out, the newest page.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "1-100; 50 when left out.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/NotificationListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A page of the inbox, newest first, older than `before`, with how many\nitems are unread: only those of channels one views now (REQ-NOTIF-03).",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/me/notifications/read": {
+      "post": {
+        "operationId": "NotificationsController_markRead_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkNotificationsReadRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/NotificationsReadResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Marks items read (REQ-NOTIF-02): `ids`, or `all` up to `before_id`, the\nnewest shown. The channels stay unread as they were (D-99). Marking\ntwice changes nothing, so no Idempotency-Key.",
+        "tags": [
+          "notifications"
+        ]
+      }
     }
   },
   "info": {
@@ -8169,6 +8279,261 @@
           "items",
           "total"
         ]
+      },
+      "NotificationActorResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "NotificationMentionedUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name"
+        ]
+      },
+      "NotificationMentionedRoleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "NotificationFilesResponseDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "images": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "images"
+        ]
+      },
+      "NotificationMessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "mention_users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationMentionedUserResponseDto"
+            }
+          },
+          "mention_roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationMentionedRoleResponseDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "files": {
+            "$ref": "#/components/schemas/NotificationFilesResponseDto"
+          }
+        },
+        "required": [
+          "mention_users",
+          "mention_roles",
+          "id",
+          "content",
+          "files"
+        ]
+      },
+      "NotificationResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "mention",
+              "reply",
+              "task_assigned",
+              "task_reminder",
+              "task_unassigned",
+              "owner_transferred",
+              "moderation"
+            ],
+            "type": "string"
+          },
+          "actor": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationActorResponseDto"
+              }
+            ]
+          },
+          "reason": {
+            "nullable": true,
+            "description": "A mention: by name, a role, @everyone or @here; null for a reply.",
+            "enum": [
+              "user",
+              "role",
+              "everyone",
+              "here"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationMessageResponseDto"
+              }
+            ]
+          },
+          "read_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Null while unread."
+          },
+          "id": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "channel_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "message_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "role_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "actor",
+          "reason",
+          "message",
+          "read_at",
+          "id",
+          "server_id",
+          "channel_id",
+          "message_id",
+          "role_id",
+          "created_at"
+        ]
+      },
+      "NotificationListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationResponseDto"
+            }
+          },
+          "unread_count": {
+            "type": "number",
+            "description": "Of the channels one views now, like the page."
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "unread_count",
+          "has_more"
+        ]
+      },
+      "NotificationsReadResponseDto": {
+        "type": "object",
+        "properties": {
+          "unread_count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "unread_count"
+        ]
+      },
+      "MarkNotificationsReadRequestDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "all": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "before_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
       }
     }
   }

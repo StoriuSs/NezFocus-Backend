@@ -239,6 +239,17 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         }
     }
 
+    async findLive(ids: string[]): Promise<MessageRecord[]> {
+        if (ids.length === 0) return []
+        const rows = await this.prisma.message.findMany({ where: { id: { in: ids }, ...LIVE }, select: MESSAGE })
+        return toRecords(this.prisma, rows)
+    }
+
+    async mentionedIn(messageId: string): Promise<string[]> {
+        const rows = await this.prisma.messageMention.findMany({ where: { messageId }, select: { userId: true } })
+        return rows.map((row) => row.userId)
+    }
+
     /** Up to `limit` messages older than `beforeId` (or the newest), oldest first; `more` if there are others. */
     private async older(channelId: string, beforeId: string | undefined, limit: number) {
         if (limit === 0) return { items: [], more: await this.exists(channelId, { lt: beforeId }) }

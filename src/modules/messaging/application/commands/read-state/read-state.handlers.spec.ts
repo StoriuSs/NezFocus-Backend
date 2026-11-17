@@ -87,6 +87,7 @@ function world() {
     const marks = new Map<string, string>()
     const asked: { userId: string; roleIds: string[]; channels: ReadScope[] }[] = []
     const readStates: ReadStateRepositoryPort = {
+        readersPast: jest.fn(),
         markRead: jest.fn(async (userId: string, channelId: string, messageId: string) => {
             const key = `${userId}:${channelId}`
             if (!marks.has(key) || marks.get(key)! < messageId) marks.set(key, messageId)
@@ -122,6 +123,7 @@ function world() {
     }
     const membership: MembershipPort = {
         membersAmong: jest.fn(),
+        channelMembers: jest.fn(),
         serverIdsOf: jest.fn(),
         membershipsOf: jest.fn(async () => [{ serverId: 'ot', joinedAt: JOINED }])
     }

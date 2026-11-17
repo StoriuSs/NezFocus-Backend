@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
-import { ChannelViewers } from '@/modules/permissions'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { hiddenSql, shownSql } from '@/shared/infrastructure/persistence/shown-person'
 import { MemberListItem, MemberRepositoryPort, MemberSearch, MemberSort, SortOrder } from '../../domain'
+import { viewing } from './channel-viewers'
 
 interface MemberRow {
     userId: string
@@ -30,15 +30,6 @@ const SHOWN_USERNAME = shownSql('u', 'username')
 const HIDDEN = hiddenSql('u')
 const NAME = Prisma.sql`lower(unaccent(coalesce(${SHOWN_NAME}, ${SHOWN_USERNAME}, '')))`
 const USERNAME = Prisma.sql`lower(coalesce(${SHOWN_USERNAME}, ''))`
-
-/** Holds one of these roles in the server. */
-const holdsOneOf = (roleIds: string[]) =>
-    Prisma.sql`EXISTS (SELECT 1 FROM "MemberRole" r
-        WHERE r."serverId" = m."serverId" AND r."userId" = m."userId" AND r."roleId" = ANY(${roleIds}::text[]))`
-
-/** Views the channel (D-192): the owner, one of `anyOf`, or one of every set in `allOf` (channelViewers). */
-const viewing = ({ anyOf, allOf }: ChannelViewers) =>
-    Prisma.sql`AND (s."ownerId" = m."userId" OR ${holdsOneOf(anyOf)} OR (${Prisma.join(allOf.map(holdsOneOf), ' AND ')}))`
 
 /**
  * The ORDER BY of one sort (D-89). Ties go by name, then username, A → Z,

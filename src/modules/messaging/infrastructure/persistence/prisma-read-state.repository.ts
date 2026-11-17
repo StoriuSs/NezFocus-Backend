@@ -66,4 +66,14 @@ export class PrismaReadStateRepository implements ReadStateRepositoryPort {
         `
         return rows
     }
+
+    async readersPast(channelId: string, userIds: string[], messageId: string): Promise<string[]> {
+        if (userIds.length === 0) return []
+        // Through the primary key (userId, channelId), one row per person asked.
+        const rows = await this.prisma.readState.findMany({
+            where: { channelId, userId: { in: userIds }, lastReadId: { gte: messageId } },
+            select: { userId: true }
+        })
+        return rows.map((row) => row.userId)
+    }
 }

@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config'
 import { ICommand } from '@nestjs/cqrs'
 import { CleanUpAuthCommand } from '@/modules/auth'
 import { CleanUpAttachmentsCommand } from '@/modules/messaging'
+import { CleanUpNotificationsCommand } from '@/modules/notifications'
 import { SweepPresenceCommand } from '@/modules/realtime'
 import { CleanUpServersCommand } from '@/modules/servers'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
@@ -62,5 +63,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'attachments-clean-up',
         everyMs: 60 * MINUTE_MS,
         command: (now) => new CleanUpAttachmentsCommand(now)
+    },
+    {
+        // Deletes the inbox items made more than 90 days ago, read or not
+        // (REQ-NOTIF-03).
+        id: 'notifications-clean-up',
+        everyMs: 24 * 60 * MINUTE_MS,
+        command: (now) => new CleanUpNotificationsCommand(now)
     }
 ]

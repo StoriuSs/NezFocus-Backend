@@ -165,6 +165,13 @@ export interface MessageRepositoryPort {
     createMemberJoined(channelId: string, userId: string): Promise<MessageRecord | null>
     /** Up to `limit` messages of the channel from `cursor`; `around` splits them half before, half from the id on. */
     page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage>
+    /** The messages among `ids` not deleted, in no order: what inbox items show (D-184). */
+    findLive(ids: string[]): Promise<MessageRecord[]>
+    /**
+     * Who the message's mention rows name (D-164): those mentioned by name and
+     * the author it answers, each viewing the channel when it was written.
+     */
+    mentionedIn(messageId: string): Promise<string[]>
 }
 
 export const MESSAGE_REPOSITORY = Symbol('MessageRepositoryPort')

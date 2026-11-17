@@ -6,7 +6,13 @@
  */
 
 // Which servers someone is in, for the realtime module's rooms (SRS 5.2), and since when (D-170).
-export { MEMBERSHIP, type Membership, type MembershipPort } from './application/ports/membership.port'
+export {
+    MEMBERSHIP,
+    type ChannelMemberFilter,
+    type MemberSince,
+    type Membership,
+    type MembershipPort
+} from './application/ports/membership.port'
 // Presence for the member list and invites: answered by realtime (D-160 pattern).
 export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from './application/ports/presence-reader.port'
 // Which server a channel is in, for the messaging module's permission checks; a server's channels, for realtime's rooms.

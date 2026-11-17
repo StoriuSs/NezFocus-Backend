@@ -119,6 +119,11 @@ export const MESSAGES = {
         HISTORY_LISTED: 'Task history fetched'
     },
 
+    NOTIFICATIONS: {
+        NOTIFICATIONS_LISTED: 'Notifications fetched',
+        NOTIFICATIONS_READ: 'Notifications marked read'
+    },
+
     // Health messages
     HEALTH: {
         CHECK_SUCCESS: 'Health check successful'

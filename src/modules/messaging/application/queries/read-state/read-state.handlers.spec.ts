@@ -74,6 +74,7 @@ function world() {
     }
     const membership: MembershipPort = {
         membersAmong: jest.fn(),
+        channelMembers: jest.fn(),
         serverIdsOf: jest.fn(),
         membershipsOf: jest.fn(async () => [
             { serverId: 'ot', joinedAt: JOINED_OT },

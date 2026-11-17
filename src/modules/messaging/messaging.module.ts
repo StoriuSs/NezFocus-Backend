@@ -6,6 +6,7 @@ import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ServersModule } from '@/modules/servers/servers.module'
 import { SYSTEM_MESSAGES } from '@/modules/servers'
+import { MESSAGE_PREVIEWS } from '@/modules/notifications'
 import { UsersModule } from '@/modules/users/users.module'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
@@ -25,6 +26,9 @@ import {
     MESSAGE_PURGE,
     MESSAGE_COMMAND_HANDLERS,
     MESSAGE_QUERY_HANDLERS,
+    NotifyChannelReadHandler,
+    NotifyDeletedMessagesHandler,
+    NotifyMessageMentionsHandler,
     PIN_COMMAND_HANDLERS,
     PIN_QUERY_HANDLERS,
     PublishBulkDeletedMessagesHandler,
@@ -52,7 +56,8 @@ import {
     PrismaMessageRepository,
     PrismaPinRepository,
     PrismaReactionRepository,
-    PrismaReadStateRepository
+    PrismaReadStateRepository,
+    QueryBusMessagePreviews
 } from './infrastructure'
 import {
     AttachmentController,
@@ -68,8 +73,8 @@ import {
  * messaging tables. Asks servers which server a channel is in
  * (CHANNEL_DIRECTORY), permissions what someone may do there
  * (PERMISSION_CHECKER), when someone joined a server (MEMBERSHIP, for where
- * their unread starts, and which of the people online are in a server, for
- * @here), users for pictures as addresses and the status chosen
+ * their unread starts, which of the people online are in a server, for
+ * @here, and who views a channel, for @everyone and @role), users for pictures as addresses and the status chosen
  * (USER_DIRECTORY), realtime who is online (PRESENCE), and tells the
  * channel's sockets through realtime's EVENT_PUBLISHER. Typing comes from
  * realtime's TypingSignalledEvent. Files go to the storage under
@@ -124,6 +129,9 @@ import {
         PublishTypingHandler,
         MarkSentMessageReadHandler,
         DeleteBannedMessagesLaterHandler,
+        NotifyMessageMentionsHandler,
+        NotifyDeletedMessagesHandler,
+        NotifyChannelReadHandler,
         MessagingJobsConsumer
     ]
 })
@@ -143,3 +151,19 @@ export class MessagingModule {}
     exports: [SYSTEM_MESSAGES]
 })
 export class SystemMessagesModule {}
+
+/**
+ * Notifications' MESSAGE_PREVIEWS port, answered by this module (D-198):
+ * the messages inbox items show. Global, so NotificationsModule finds it
+ * without importing this module, which calls NOTIFIER: the code depends one
+ * way only, messaging on notifications. The adapter only sends this
+ * module's query over the bus, so it needs nothing but CqrsModule.
+ * AppModule imports it.
+ */
+@Global()
+@Module({
+    imports: [CqrsModule],
+    providers: [{ provide: MESSAGE_PREVIEWS, useClass: QueryBusMessagePreviews }],
+    exports: [MESSAGE_PREVIEWS]
+})
+export class MessagePreviewsModule {}

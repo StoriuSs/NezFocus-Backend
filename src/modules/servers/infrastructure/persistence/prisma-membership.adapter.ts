@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
+import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { Membership, MembershipPort } from '../../application/ports'
+import { ChannelMemberFilter, MemberSince, Membership, MembershipPort } from '../../application/ports'
+import { holdsOneOf, viewing } from './channel-viewers'
 
 /** MembershipPort, answered from the Member table (its index on userId). */
 @Injectable()
@@ -18,6 +20,20 @@ export class PrismaMembership implements MembershipPort {
             select: { userId: true }
         })
         return rows.map((row) => row.userId)
+    }
+
+    async channelMembers(serverId: string, { viewers, roleIds, userIds }: ChannelMemberFilter): Promise<MemberSince[]> {
+        // Within the one server, through the Member primary key; the role checks are its MemberRole rows.
+        return this.prisma.$queryRaw<MemberSince[]>`
+            SELECT m."userId", m."joinedAt"
+            FROM "Member" m
+            JOIN "Server" s ON s."id" = m."serverId"
+            JOIN "User" u ON u."id" = m."userId"
+            WHERE m."serverId" = ${serverId} AND s."deletedAt" IS NULL AND u."deletedAt" IS NULL
+                ${viewers ? viewing(viewers) : Prisma.empty}
+                ${roleIds ? Prisma.sql`AND ${holdsOneOf(roleIds)}` : Prisma.empty}
+                ${userIds ? Prisma.sql`AND m."userId" = ANY(${userIds}::text[])` : Prisma.empty}
+        `
     }
 
     async membershipsOf(userId: string): Promise<Membership[]> {

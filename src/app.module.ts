@@ -60,7 +60,8 @@ import { AuthModule } from '@/modules/auth/auth.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { ServerOwnershipModule, ServersModule } from '@/modules/servers/servers.module'
 import { PresenceReaderModule, RealtimeModule } from '@/modules/realtime/realtime.module'
-import { MessagingModule, SystemMessagesModule } from '@/modules/messaging/messaging.module'
+import { MessagePreviewsModule, MessagingModule, SystemMessagesModule } from '@/modules/messaging/messaging.module'
+import { NotificationsModule, NotifierModule } from '@/modules/notifications/notifications.module'
 import { TasksModule } from '@/modules/tasks/tasks.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
@@ -183,7 +184,12 @@ import { RolesGuard } from '@/shared/presentation'
         MessagingModule,
         // Answers servers' SYSTEM_MESSAGES port: "X joined the server" (D-180).
         SystemMessagesModule,
+        // Answers notifications' MESSAGE_PREVIEWS port: the messages inbox items show (D-198).
+        MessagePreviewsModule,
         TasksModule,
+        NotificationsModule,
+        // Gives NOTIFIER to every module that puts items in an inbox (D-185).
+        NotifierModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

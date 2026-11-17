@@ -2,8 +2,8 @@ import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } fro
 import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import { ChannelNotFoundError, MessageRecord, MessageRepositoryPort, ReactionRepositoryPort } from '../../../domain'
-import { ListMessagesQuery } from './message.queries'
-import { ListMessagesHandler } from './message.handlers'
+import { ListMessagePreviewsQuery, ListMessagesQuery } from './message.queries'
+import { ListMessagePreviewsHandler, ListMessagesHandler } from './message.handlers'
 import { AttachmentStoragePort } from '../../ports'
 
 /** Links signed by name only: no storage in these tests. */
@@ -197,5 +197,65 @@ describe('ListMessagesHandler (SRS 5.1)', () => {
             handler.execute(new ListMessagesQuery('binh', 'ban-can-su', { kind: 'latest' }, 50))
         ).rejects.toBeInstanceOf(ChannelNotFoundError)
         expect(repository.page).not.toHaveBeenCalled()
+    })
+})
+
+describe('ListMessagePreviewsHandler (D-184, D-198)', () => {
+    it('gives the messages still there as inbox items show them: text as written, names now, files counted', async () => {
+        const live = {
+            ...message('m1', 'an'),
+            content: '<@binh> <@&tro-giang> xem ảnh',
+            mentionUsers: [{ id: 'binh', username: 'binh', displayName: 'Bình', avatarKey: 'b.png' }],
+            mentionRoleIds: ['tro-giang', 'da-xoa'],
+            attachments: [
+                {
+                    id: 'f1',
+                    filename: 'a.png',
+                    size: 1,
+                    contentType: 'image/png',
+                    storageKey: 'k1',
+                    thumbnailKey: null,
+                    width: 10,
+                    height: 10
+                },
+                {
+                    id: 'f2',
+                    filename: 'b.pdf',
+                    size: 1,
+                    contentType: 'application/pdf',
+                    storageKey: 'k2',
+                    thumbnailKey: null,
+                    width: null,
+                    height: null
+                }
+            ]
+        }
+        const repository = {
+            findLive: jest.fn(async () => [live, message('m2', 'chi')])
+        } as unknown as MessageRepositoryPort
+        const roles = { rolesOf: jest.fn(async () => [{ id: 'tro-giang', name: 'Trợ giảng', mentionable: true }]) }
+        const handler = new ListMessagePreviewsHandler(repository, roles as unknown as RoleDirectoryPort)
+
+        const previews = await handler.execute(
+            new ListMessagePreviewsQuery([
+                { id: 'm1', serverId: 'ot' },
+                { id: 'm2', serverId: 'cu' },
+                { id: 'm3', serverId: 'ot' }
+            ])
+        )
+
+        expect(repository.findLive).toHaveBeenCalledWith(['m1', 'm2', 'm3'])
+        expect(previews).toEqual([
+            {
+                id: 'm1',
+                content: '<@binh> <@&tro-giang> xem ảnh',
+                mentionUsers: [{ id: 'binh', username: 'binh', displayName: 'Bình' }],
+                mentionRoles: [{ id: 'tro-giang', name: 'Trợ giảng' }],
+                files: { count: 2, images: 1 }
+            },
+            { id: 'm2', content: 'Tin m2', mentionUsers: [], mentionRoles: [], files: { count: 0, images: 0 } }
+        ])
+        // Only the server whose messages mention roles is asked.
+        expect(roles.rolesOf.mock.calls).toEqual([['ot', ['tro-giang', 'da-xoa']]])
     })
 })

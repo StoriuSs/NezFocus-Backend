@@ -731,7 +731,12 @@ servers module's `SystemMessagesPort` ("X joined the server" in the welcome
 channel) is the second such pair: messaging, which imports servers, answers
 it through its global `SystemMessagesModule`, whose adapter
 (`CommandBusSystemMessages`) only sends messaging's own
-`PostMemberJoinedCommand` over the command bus (D-180).
+`PostMemberJoinedCommand` over the command bus (D-180). The notifications
+module has two more: `NOTIFIER`, which it defines and answers itself through
+the global `NotifierModule` so that messaging (and later tasks, servers) put
+items in an inbox without importing it (D-185); and `MESSAGE_PREVIEWS`, the
+messages its items show, which it defines and messaging answers with a query
+over the bus (`QueryBusMessagePreviews`, D-198).
 
 The auth handler tests replace these with in-memory fakes
 ([`auth-test-world.shared-spec.ts`](../src/modules/auth/application/commands/auth-test-world.shared-spec.ts)), which is the payoff of the ports: the

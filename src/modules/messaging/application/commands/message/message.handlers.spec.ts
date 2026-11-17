@@ -138,6 +138,8 @@ function world({ limited = false } = {}) {
             : { id: target.id, author: target.author, content: target.content, deleted: false, ...QUOTED }
     }
     const repository: MessageRepositoryPort = {
+        findLive: jest.fn(),
+        mentionedIn: jest.fn(),
         create: jest.fn(async (input: NewMessage) => {
             const existing = saved.find((row) => row.author?.id === input.authorId && row.nonce === input.nonce)
             if (existing) return { message: existing, created: false, deleted: existing.deleted }

@@ -32,6 +32,9 @@ export interface ReadStateRepositoryPort {
      * `roleIds`: the roles they hold there, for @role mentions.
      */
     states(userId: string, roleIds: string[], channels: ReadScope[]): Promise<ChannelReadState[]>
+
+    /** Those of `userIds` who marked the channel read at `messageId` or past it, in no order (D-199). */
+    readersPast(channelId: string, userIds: string[], messageId: string): Promise<string[]>
 }
 
 export const READ_STATE_REPOSITORY = Symbol('ReadStateRepositoryPort')

@@ -1,0 +1,226 @@
+import { EventBus } from '@nestjs/cqrs'
+import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
+import { MembershipPort } from '@/modules/servers'
+import { UserDirectoryPort } from '@/modules/users'
+import {
+    HeldMessageItem,
+    MessageItemsPlan,
+    MessagePlace,
+    NotificationRecord,
+    NotificationRepositoryPort,
+    RemovedNotification
+} from '../domain'
+import { MessagePreview, MessagePreviewsPort } from './ports'
+
+/*
+ * One server for the notifications handler specs, in memory (spec 06):
+ * "ot", An the owner, Bình a member, Chi holding "Quản lý". Channels:
+ * #hoi-dap, #bi-mat private to Quản lý. Lan is in no server. Server "cu" is
+ * one Bình left: his items there are hidden, not deleted.
+ */
+
+const server: AccessServer = {
+    ownerId: 'an',
+    roles: [
+        { id: 'everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true },
+        { id: 'quan-ly', permissions: Permission.MANAGE_MESSAGES, position: 1, isEveryone: false }
+    ],
+    channels: [
+        {
+            id: 'hoi-dap',
+            type: 'text',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        },
+        {
+            id: 'bi-mat',
+            type: 'text',
+            isPrivate: true,
+            viewRoleIds: ['quan-ly'],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }
+    ]
+}
+
+const MEMBERS = ['an', 'binh', 'chi']
+
+type Row = NotificationRecord & { actorId: string | null }
+
+/** The inbox, kept as the Prisma repository keeps it; ids rise like UUIDv7. */
+export function notificationWorld() {
+    const rows: Row[] = []
+    let made = 0
+    const nextId = () => `n${String(++made).padStart(3, '0')}`
+    const person = (id: string) => ({ id, username: id, displayName: id.toUpperCase(), avatarKey: `${id}.png` })
+    const removeIds = (ids: string[]): RemovedNotification[] => {
+        const removed: RemovedNotification[] = []
+        for (const id of ids) {
+            const index = rows.findIndex((row) => row.id === id)
+            if (index < 0) continue
+            const [row] = rows.splice(index, 1)
+            removed.push({ id: row!.id, userId: row!.userId, unread: row!.readAt === null })
+        }
+        return removed
+    }
+    const seen = (userId: string, channelIds: string[]) =>
+        rows.filter((row) => row.userId === userId && row.channelId !== null && channelIds.includes(row.channelId))
+
+    const repository: NotificationRepositoryPort = {
+        heldForMessage: jest.fn(
+            async (channelId: string, messageId: string): Promise<HeldMessageItem[]> =>
+                rows
+                    .filter((row) => row.channelId === channelId && row.messageId === messageId)
+                    .map((row) => ({
+                        id: row.id,
+                        userId: row.userId,
+                        type: row.type === 'reply' ? 'reply' : 'mention',
+                        reason: row.reason,
+                        roleId: row.roleId
+                    }))
+        ),
+        applyMessagePlan: jest.fn(
+            async (place: MessagePlace, plan: MessageItemsPlan, readerIds: ReadonlySet<string>, at: Date) => {
+                const added: Row[] = []
+                for (const item of plan.add) {
+                    if (rows.some((row) => row.userId === item.userId && row.messageId === place.messageId)) continue
+                    const row: Row = {
+                        id: nextId(),
+                        userId: item.userId,
+                        type: item.type,
+                        serverId: place.serverId,
+                        channelId: place.channelId,
+                        messageId: place.messageId,
+                        actorId: place.actorId,
+                        actor: person(place.actorId),
+                        reason: item.reason,
+                        roleId: item.roleId,
+                        readAt: readerIds.has(item.userId) ? at : null,
+                        createdAt: at
+                    }
+                    rows.push(row)
+                    added.push(row)
+                }
+                for (const change of plan.change) {
+                    const row = rows.find((candidate) => candidate.id === change.id)!
+                    Object.assign(row, { type: change.type, reason: change.reason, roleId: change.roleId })
+                }
+                return { added: [...added].reverse(), removed: removeIds(plan.remove) }
+            }
+        ),
+        removeForMessages: jest.fn(async (channelId: string, messageIds: string[]) =>
+            removeIds(
+                rows
+                    .filter((row) => row.channelId === channelId && messageIds.includes(row.messageId ?? ''))
+                    .map((row) => row.id)
+            )
+        ),
+        markReadUpTo: jest.fn(async (userId: string, channelId: string, messageId: string, at: Date) => {
+            const marked = rows.filter(
+                (row) =>
+                    row.userId === userId &&
+                    row.channelId === channelId &&
+                    (row.type === 'mention' || row.type === 'reply') &&
+                    row.messageId! <= messageId &&
+                    row.readAt === null
+            )
+            marked.forEach((row) => (row.readAt = at))
+            return marked.map((row) => row.id)
+        }),
+        markRead: jest.fn(async (userId: string, ids: string[], at: Date) => {
+            const marked = rows.filter((row) => row.userId === userId && ids.includes(row.id) && row.readAt === null)
+            marked.forEach((row) => (row.readAt = at))
+            return marked.map((row) => row.id)
+        }),
+        markAllRead: jest.fn(async (userId: string, beforeId: string, at: Date) => {
+            const marked = rows.filter((row) => row.userId === userId && row.id <= beforeId && row.readAt === null)
+            marked.forEach((row) => (row.readAt = at))
+            return marked.length
+        }),
+        page: jest.fn(async (userId: string, channelIds: string[], beforeId: string | null, limit: number) => {
+            const older = seen(userId, channelIds)
+                .filter((row) => beforeId === null || row.id < beforeId)
+                .sort((a, b) => (a.id < b.id ? 1 : -1))
+            return { items: older.slice(0, limit), more: older.length > limit }
+        }),
+        unreadCount: jest.fn(
+            async (userId: string, channelIds: string[]) =>
+                seen(userId, channelIds).filter((row) => row.readAt === null).length
+        ),
+        removeOlderThan: jest.fn(
+            async (cutoff: Date, limit: number) =>
+                removeIds(
+                    rows
+                        .filter((row) => row.createdAt < cutoff)
+                        .slice(0, limit)
+                        .map((row) => row.id)
+                ).length
+        )
+    }
+
+    /** Server "cu": Bình left it; his items there are kept, not shown. */
+    const servers: Record<string, string[]> = { ot: MEMBERS, cu: [] }
+    const membership: MembershipPort = {
+        serverIdsOf: jest.fn(async (userId: string) =>
+            Object.entries(servers)
+                .filter(([, members]) => members.includes(userId))
+                .map(([id]) => id)
+        ),
+        membershipsOf: jest.fn(),
+        membersAmong: jest.fn(),
+        channelMembers: jest.fn()
+    }
+    const checker: PermissionCheckerPort = {
+        access: jest.fn(async (serverId: string, userId: string) =>
+            servers[serverId]?.includes(userId)
+                ? { server, member: { userId, roleIds: userId === 'chi' ? ['quan-ly'] : [], timeoutUntil: null } }
+                : null
+        )
+    } as unknown as PermissionCheckerPort
+    const users = {
+        avatarUrl: jest.fn(async (key: string) => {
+            if (key === 'broken.png') throw new Error('cannot sign')
+            return `https://cdn/${key}`
+        })
+    } as unknown as UserDirectoryPort
+    /** The messages items show; one not here is deleted. */
+    const messages = new Map<string, MessagePreview>()
+    const previews: MessagePreviewsPort = {
+        previewsOf: jest.fn(async (asked: { id: string; serverId: string }[]) =>
+            asked.flatMap(({ id }) => {
+                const found = messages.get(id)
+                return found ? [found] : []
+            })
+        )
+    }
+    const eventBus = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
+
+    /** An item as if written earlier. */
+    const seed = (row: Partial<Row> & { userId: string; messageId: string }): Row => {
+        const full: Row = {
+            id: nextId(),
+            type: 'mention',
+            serverId: 'ot',
+            channelId: 'hoi-dap',
+            actorId: 'an',
+            actor: person('an'),
+            reason: 'user',
+            roleId: null,
+            readAt: null,
+            createdAt: new Date(),
+            ...row
+        }
+        rows.push(full)
+        return full
+    }
+    const say = (id: string, content = `tin ${id}`) =>
+        messages.set(id, { id, content, mentionUsers: [], mentionRoles: [], files: { count: 0, images: 0 } })
+
+    const deps = [repository, membership, checker, users, previews, eventBus] as const
+    const published = (type: new (...args: never[]) => unknown) =>
+        eventBus.publish.mock.calls.map(([event]) => event).filter((event) => event instanceof type)
+
+    return { rows, repository, membership, checker, users, previews, eventBus, deps, seed, say, published, servers }
+}

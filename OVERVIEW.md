@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with seven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`) and `tasks` (the Task Boards of channels, grouped the same way) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with eight modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way) and `notifications` (the inbox, which other modules write to through its `NOTIFIER` port) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -514,6 +514,23 @@ still views with the board on, the repository filters by them in one query,
 and `domain/due-group.rules.ts` puts each task not done in its group by due
 date in the time zone of one's settings.
 
+`src/modules/notifications/` holds the inbox (SRS 4.8), grouped by area:
+`commands/item/`, `commands/read/`, `queries/inbox/`. Other modules put items
+in only through its `NOTIFIER` port (D-185), given by the global
+`NotifierModule`: messaging's `NotifyMessageMentionsHandler` works out after
+a message is saved whom it is about (its mention rows, @here, and the
+members who view the channel for @everyone and @role, from servers'
+`MEMBERSHIP.channelMembers`), and `domain/notification.rules.ts` gives each
+one item for the strongest reason, never to the author, adding and taking
+off items when the message is edited (D-183, D-188). A deleted message takes
+its items with it, and every time a channel is read (ack, or sending there)
+its items up to there are read; one for a message already read is written
+read (D-199). The inbox reads the permission cache once per server for the
+channels one views now, so the page and the unread count filter alike
+(`services/inbox.ts`); the messages its items show come from
+`MESSAGE_PREVIEWS`, which messaging answers (D-198). Items older than 90
+days go with a daily maintenance task.
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -604,6 +621,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events, presence
 │   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread, files
 │   ├── modules/tasks/          # Task Boards: tasks, the people on them, their history, search
+│   ├── modules/notifications/  # The inbox: items from mentions and replies, read rules, the 90-day clean-up
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

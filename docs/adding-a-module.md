@@ -459,7 +459,12 @@ port (`SERVER_OWNERSHIP`), servers answers it, and gives it through a small
 (D-160). Messaging answers servers' `SYSTEM_MESSAGES` the same way
 (`SystemMessagesModule` in `messaging.module.ts`, D-180); its adapter only
 sends messaging's own command over the bus, so the global module needs
-nothing but `CqrsModule`. Ask the owner before adding another such pair.
+nothing but `CqrsModule`. Notifications defines and answers its own
+`NOTIFIER` (`NotifierModule` in `notifications.module.ts`, D-185), so
+messaging calls it without importing notifications; and it defines
+`MESSAGE_PREVIEWS`, which messaging answers through `MessagePreviewsModule`
+with a query over the bus (D-198): the code depends one way only, messaging
+on notifications. Ask the owner before adding another such pair.
 
 `MODULES` at the top of `eslint.config.mjs` is every folder under
 `src/modules`, so from the module's first file a deep import into it from
