@@ -499,7 +499,15 @@ channel. Titles are searched without accents through a folded copy
 (`titleSearch`, made by `domain/task-text.rules.ts`, a trigram index). Each
 write answers with the task as it now is, the same view `task.created` /
 `task.updated` carry to the channel's sockets (D-191); the done tasks come 50
-at a time after the last one the client holds.
+at a time after the last one the client holds. The view marks the people who
+no longer view the channel and a creator who left the server, read from the
+permission cache as it is built (`services/task-views.ts`, D-194). A member
+who leaves a server comes off its tasks through the module's own `tasks`
+queue (D-195): `UnassignLeftMemberLaterHandler` queues a job on servers'
+`MemberChangedEvent` (`TASK_JOBS`, a BullMQ adapter), and `TasksJobsConsumer`
+sends `UnassignLeftMemberCommand`, which takes them off every task of the
+server in one transaction with a line of history done by no one, unless they
+joined again meanwhile.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

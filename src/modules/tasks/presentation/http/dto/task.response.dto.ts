@@ -3,7 +3,7 @@ import { Expose, Type } from 'class-transformer'
 import { IsDate, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { TASK_STATUSES, TaskStatus } from '../../../domain'
 import { TaskAssigneeResponseDto } from './task-assignee.response.dto'
-import { TaskPersonResponseDto } from './task-person.response.dto'
+import { TaskCreatorResponseDto } from './task-creator.response.dto'
 
 /** One task, as the board, `GET /tasks/{id}`, every write and `task.created` / `task.updated` give it (D-191). */
 export class TaskResponseDto {
@@ -57,8 +57,8 @@ export class TaskResponseDto {
 
     @Expose()
     @ValidateNested()
-    @Type(() => TaskPersonResponseDto)
-    creator: TaskPersonResponseDto
+    @Type(() => TaskCreatorResponseDto)
+    creator: TaskCreatorResponseDto
 
     /** In the order they were given the task; none: "Chưa giao". */
     @Expose()

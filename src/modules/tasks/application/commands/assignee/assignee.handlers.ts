@@ -1,9 +1,14 @@
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
-import { planAssign, planUnassign } from '../../../domain'
+import { Inject } from '@nestjs/common'
+import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
+import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
+import { MEMBERSHIP, MembershipPort } from '@/modules/servers'
+import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
+import { planAssign, planUnassign, TASK_REPOSITORY, TaskRepositoryPort } from '../../../domain'
+import { TaskUpdatedEvent } from '../../events/task-updated.event'
 import { viewersOf } from '../../services/board-access'
 import { ChangeTask } from '../../services/change-task'
-import { TaskView } from '../../services/task-views'
-import { AssignTaskCommand, UnassignTaskCommand } from './assignee.commands'
+import { TaskView, taskViews } from '../../services/task-views'
+import { AssignTaskCommand, UnassignLeftMemberCommand, UnassignTaskCommand } from './assignee.commands'
 
 /**
  * People added to a task (REQ-TASK-02): oneself by anyone who views the
@@ -32,4 +37,35 @@ export class UnassignTaskHandler extends ChangeTask implements ICommandHandler<U
     }
 }
 
-export const ASSIGNEE_COMMAND_HANDLERS = [AssignTaskHandler, UnassignTaskHandler]
+/**
+ * A member who left the server, by themselves, kicked, banned or as a
+ * deleted account, taken off its tasks (REQ-TASK-04, D-195), each task told
+ * to its channel. One who joined again before the job ran keeps them: asked
+ * of the servers module's table (MEMBERSHIP), not the permission cache, which
+ * a failed clear could leave holding them, the job then ending with nothing
+ * done for good. One joining again between that read and the write still
+ * comes off (the same as leaving a moment later). The creator hears of a
+ * task left with no one on it at L7 (D-95).
+ *
+ * @returns how many tasks they were taken off
+ */
+@CommandHandler(UnassignLeftMemberCommand)
+export class UnassignLeftMemberHandler implements ICommandHandler<UnassignLeftMemberCommand> {
+    constructor(
+        @Inject(TASK_REPOSITORY) private readonly tasks: TaskRepositoryPort,
+        @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
+        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
+        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
+        private readonly events: EventBus
+    ) {}
+
+    async execute({ serverId, userId }: UnassignLeftMemberCommand): Promise<number> {
+        if ((await this.membership.membersAmong(serverId, [userId])).length > 0) return 0
+        const records = await this.tasks.unassignLeftMember(serverId, userId)
+        const views = await taskViews({ users: this.users, checker: this.checker }, records)
+        for (const view of views) this.events.publish(new TaskUpdatedEvent(view))
+        return views.length
+    }
+}
+
+export const ASSIGNEE_COMMAND_HANDLERS = [AssignTaskHandler, UnassignTaskHandler, UnassignLeftMemberHandler]

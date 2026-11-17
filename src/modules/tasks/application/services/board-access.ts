@@ -1,4 +1,4 @@
-import { channelPermissions, Permission, PermissionCheckerPort } from '@/modules/permissions'
+import { channelPermissions, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import {
     ChannelNotFoundError,
@@ -84,6 +84,13 @@ export async function openTask(
     }
 }
 
+/** Whether someone, as the permission cache knows them in a server, may view one of its channels now. */
+export function viewsChannel(access: ServerAccess | null, channelId: string, now: Date): boolean {
+    const channel = access?.server.channels.find((candidate) => candidate.id === channelId)
+    if (!access || !channel) return false
+    return (channelPermissions(access.server, access.member, channel, now) & Permission.VIEW_CHANNEL) !== 0n
+}
+
 /**
  * Those among `userIds` who may view the board's channel now (REQ-TASK-01):
  * the only people a task may be given to. A member timed out still views.
@@ -95,13 +102,9 @@ export async function viewersOf(
     now: Date
 ): Promise<Set<string>> {
     const views = await Promise.all(
-        [...new Set(userIds)].map(async (userId) => {
-            const access = await checker.access(serverId, userId)
-            const channel = access?.server.channels.find((candidate) => candidate.id === channelId)
-            if (!access || !channel) return null
-            const permissions = channelPermissions(access.server, access.member, channel, now)
-            return (permissions & Permission.VIEW_CHANNEL) !== 0n ? userId : null
-        })
+        [...new Set(userIds)].map(async (userId) =>
+            viewsChannel(await checker.access(serverId, userId), channelId, now) ? userId : null
+        )
     )
     return new Set(views.filter((userId): userId is string => userId !== null))
 }

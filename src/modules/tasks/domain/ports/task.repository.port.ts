@@ -100,6 +100,13 @@ export interface TaskRepositoryPort {
      */
     listDone(filter: TaskFilter, beforeId: string | null, limit: number): Promise<TaskRecord[] | 'stale'>
 
+    /**
+     * Take `userId` off every task of the server they are on (REQ-TASK-04,
+     * D-195), each task's row locked, as `planLeftServer` writes it: a line
+     * of history done by no one. The tasks as they now are.
+     */
+    unassignLeftMember(serverId: string, userId: string): Promise<TaskRecord[]>
+
     /** The newest `limit` lines of a task's history, newest first, and how many it has. */
     history(taskId: string, limit: number): Promise<{ items: TaskEventRecord[]; total: number }>
 }

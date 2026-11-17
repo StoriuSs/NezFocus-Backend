@@ -7630,6 +7630,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "views_channel": {
+            "type": "boolean",
+            "description": "False: still on the task but no longer views its channel (\"Mất quyền xem kênh\", D-194)."
+          },
           "id": {
             "type": "string"
           },
@@ -7648,15 +7652,20 @@
         },
         "required": [
           "assigned_at",
+          "views_channel",
           "id",
           "username",
           "display_name",
           "avatar_url"
         ]
       },
-      "TaskPersonResponseDto": {
+      "TaskCreatorResponseDto": {
         "type": "object",
         "properties": {
+          "left_server": {
+            "type": "boolean",
+            "description": "No longer a member of the task's server: \"(đã rời server)\", no presence (D-194)."
+          },
           "id": {
             "type": "string"
           },
@@ -7674,6 +7683,7 @@
           }
         },
         "required": [
+          "left_server",
           "id",
           "username",
           "display_name",
@@ -7735,7 +7745,7 @@
             "description": "Moves on every change: of two copies of a task, the client keeps the later one."
           },
           "creator": {
-            "$ref": "#/components/schemas/TaskPersonResponseDto"
+            "$ref": "#/components/schemas/TaskCreatorResponseDto"
           }
         },
         "required": [
@@ -7854,6 +7864,32 @@
         },
         "required": [
           "user_ids"
+        ]
+      },
+      "TaskPersonResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
         ]
       },
       "TaskEventResponseDto": {

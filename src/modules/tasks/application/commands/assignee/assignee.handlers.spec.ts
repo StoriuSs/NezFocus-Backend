@@ -1,8 +1,9 @@
 import { CannotChangeTaskError, InvalidTaskAssigneeError, TaskTimedOutError } from '../../../domain'
+import { MembershipPort } from '@/modules/servers'
 import { TaskUpdatedEvent } from '../../events/task-updated.event'
 import { taskWorld } from '../../task-test-world.shared-spec'
-import { AssignTaskCommand, UnassignTaskCommand } from './assignee.commands'
-import { AssignTaskHandler, UnassignTaskHandler } from './assignee.handlers'
+import { AssignTaskCommand, UnassignLeftMemberCommand, UnassignTaskCommand } from './assignee.commands'
+import { AssignTaskHandler, UnassignLeftMemberHandler, UnassignTaskHandler } from './assignee.handlers'
 
 describe('AssignTaskHandler (REQ-TASK-02)', () => {
     function setup() {
@@ -80,5 +81,66 @@ describe('UnassignTaskHandler (REQ-TASK-02)', () => {
         })
         await expect(unassign('binh', id, 'chi')).rejects.toBeInstanceOf(CannotChangeTaskError)
         await expect(unassign('an', id, 'chi')).resolves.toMatchObject({ assignees: [{ id: 'binh' }] })
+    })
+})
+
+describe('UnassignLeftMemberHandler (REQ-TASK-04, D-195)', () => {
+    const on = (...ids: string[]) =>
+        ids.map((id) => ({ person: { id, username: id, displayName: id, avatarKey: null }, assignedAt: new Date() }))
+
+    function setup(members: string[] = ['an', 'binh', 'chi', 'dung', 'khanh']) {
+        const world = taskWorld()
+        // The servers module's table, read now: not the permission cache.
+        const membership = {
+            membersAmong: jest.fn(async (_serverId: string, ids: string[]) => ids.filter((id) => members.includes(id)))
+        } as unknown as MembershipPort
+        const handler = new UnassignLeftMemberHandler(
+            world.repository,
+            membership,
+            world.checker,
+            world.users,
+            world.bus
+        )
+        return { ...world, handler }
+    }
+
+    it('takes someone who left off every task of the server, by no one, and tells each channel', async () => {
+        const { handler, seed, tasks, history, events } = setup()
+        const first = seed({ assignees: on('binh', 'lan') })
+        const second = seed({ channelId: 'bi-mat', assignees: on('lan') })
+        const elsewhere = seed({ serverId: 'other', assignees: on('lan') })
+        seed({ assignees: on('binh') })
+
+        await expect(handler.execute(new UnassignLeftMemberCommand('nd', 'lan'))).resolves.toBe(2)
+
+        expect(tasks.get(first)!.assignees.map((assignee) => assignee.person.id)).toEqual(['binh'])
+        expect(tasks.get(second)!.assignees).toEqual([])
+        expect(tasks.get(elsewhere)!.assignees).toHaveLength(1)
+        expect(history.get(second)).toEqual([
+            { actorId: null, event: { kind: 'assignee_removed', data: { userId: 'lan' } } }
+        ])
+        const told = events.publish.mock.calls.map(([event]) => (event as TaskUpdatedEvent).task)
+        expect(told.map((task) => task.id)).toEqual([first, second])
+        expect(told[0]!.assignees).toEqual([expect.objectContaining({ id: 'binh', viewsChannel: true })])
+    })
+
+    it('takes them off even while the permission cache still holds them as a member', async () => {
+        const { handler, seed, tasks } = setup(['an', 'chi', 'dung', 'khanh'])
+        const id = seed({ assignees: on('binh') })
+
+        // Bình left; the cache, not cleared, still answers for him.
+        await expect(handler.execute(new UnassignLeftMemberCommand('nd', 'binh'))).resolves.toBe(1)
+
+        expect(tasks.get(id)!.assignees).toEqual([])
+    })
+
+    it('leaves the tasks of someone who joined again before the job ran', async () => {
+        const { handler, seed, repository, events } = setup()
+        seed({ assignees: on('binh') })
+
+        await expect(handler.execute(new UnassignLeftMemberCommand('nd', 'binh'))).resolves.toBe(0)
+
+        expect(repository.unassignLeftMember).not.toHaveBeenCalled()
+        expect(events.publish).not.toHaveBeenCalled()
     })
 })

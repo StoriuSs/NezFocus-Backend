@@ -96,7 +96,8 @@ import {
         ...MODERATION_QUERY_HANDLERS,
         ...SERVER_EVENT_HANDLERS
     ],
-    // MEMBERSHIP: the realtime gateway puts a socket in its servers' rooms.
+    // MEMBERSHIP: the realtime gateway puts a socket in its servers' rooms; tasks
+    // checks that a member who left has not joined again (D-195).
     // CHANNEL_DIRECTORY: messaging learns whose permissions a channel follows.
     // ROLE_DIRECTORY: messaging checks and names the roles a message mentions.
     exports: [CHANNEL_DIRECTORY, MEMBERSHIP, ROLE_DIRECTORY]

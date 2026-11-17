@@ -59,7 +59,7 @@ const person = (id: string) => ({ id, username: id, displayName: id.toUpperCase(
 /** The tasks, their people and history, kept as the Prisma repository keeps them. */
 export function taskWorld() {
     const tasks = new Map<string, TaskRecord & { creatorId: string }>()
-    const history = new Map<string, { actorId: string; event: TaskEventDraft }[]>()
+    const history = new Map<string, { actorId: string | null; event: TaskEventDraft }[]>()
     let made = 0
 
     const factsOf = (task: TaskRecord & { creatorId: string }): TaskFacts => ({
@@ -137,6 +137,19 @@ export function taskWorld() {
                 [...tasks.values()].filter((task) => task.channelId === channelId && task.status === 'done').length
         ),
         listDone: jest.fn(),
+        unassignLeftMember: jest.fn(async (serverId: string, userId: string) => {
+            const changed = [...tasks.values()].filter(
+                (task) => task.serverId === serverId && task.assignees.some((assignee) => assignee.person.id === userId)
+            )
+            for (const task of changed) {
+                task.assignees = task.assignees.filter((assignee) => assignee.person.id !== userId)
+                history.get(task.id)!.push({
+                    actorId: null,
+                    event: { kind: 'assignee_removed', data: { userId } }
+                })
+            }
+            return changed.map((task) => ({ ...task }))
+        }),
         history: jest.fn()
     }
 

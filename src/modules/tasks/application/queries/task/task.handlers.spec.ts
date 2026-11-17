@@ -66,4 +66,32 @@ describe('GetTaskHandler, ListTaskHistoryHandler (S-TASK-02)', () => {
         await expect(get.execute(new GetTaskQuery('binh', id))).rejects.toBeInstanceOf(TaskNotFoundError)
         await expect(history.execute(new ListTaskHistoryQuery('binh', id))).rejects.toBeInstanceOf(TaskNotFoundError)
     })
+
+    it('marks who no longer views the channel and a creator who left the server (D-194)', async () => {
+        const world = taskWorld()
+        const assignee = (id: string) => ({
+            person: { id, username: id, displayName: id, avatarKey: null },
+            assignedAt: new Date()
+        })
+        const id = world.seed({
+            channelId: 'bi-mat',
+            creatorId: 'lan',
+            assignees: [assignee('chi'), assignee('binh'), assignee('khanh')]
+        })
+        world.seed({ creatorId: 'binh', assignees: [assignee('binh')] })
+
+        const task = await new GetTaskHandler(...world.ports).execute(new GetTaskQuery('chi', id))
+        const board = await new ListBoardTasksHandler(...world.ports).execute(
+            new ListBoardTasksQuery('binh', 'viec-nhom', null)
+        )
+
+        expect(task.creator).toMatchObject({ id: 'lan', leftServer: true })
+        expect(task.assignees.map((person) => [person.id, person.viewsChannel])).toEqual([
+            ['chi', true],
+            ['binh', false],
+            ['khanh', true]
+        ])
+        expect(board.items[0]!.creator.leftServer).toBe(false)
+        expect(board.items[0]!.assignees[0]!.viewsChannel).toBe(true)
+    })
 })

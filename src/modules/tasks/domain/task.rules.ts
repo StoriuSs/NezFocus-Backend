@@ -279,3 +279,18 @@ export function planUnassign(task: TaskFacts, actor: TaskActor, userId: string):
         events: [{ kind: 'assignee_removed', data: { userId } }]
     }
 }
+
+/**
+ * Someone who left the server, off a task they are on (REQ-TASK-04, D-195):
+ * no one did it, so its line of history has no actor ("{Tên} rời server nên
+ * không còn được giao"). The last one leaving makes it "Chưa giao"; telling
+ * its creator comes with the inbox (D-95, L7).
+ */
+export function planLeftServer(userId: string): TaskWrite {
+    return {
+        changes: {},
+        addAssigneeIds: [],
+        removeAssigneeIds: [userId],
+        events: [{ kind: 'assignee_removed', data: { userId } }]
+    }
+}

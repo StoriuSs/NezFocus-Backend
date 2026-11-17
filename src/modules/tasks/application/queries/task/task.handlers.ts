@@ -38,7 +38,7 @@ export class ListBoardTasksHandler extends ReadBoard implements IQueryHandler<Li
         await openBoard(this.sources, channelId, userId, new Date())
         const filter = searchOf(channelId, search)
         const [open, doneCount] = await Promise.all([this.tasks.listOpen(filter), this.tasks.countDone(filter)])
-        return { items: await taskViews(this.users, open), doneCount, hasMore: false }
+        return { items: await taskViews(this.viewSources, open), doneCount, hasMore: false }
     }
 }
 
@@ -54,7 +54,7 @@ export class ListDoneTasksHandler extends ReadBoard implements IQueryHandler<Lis
         const page = await this.tasks.listDone(searchOf(channelId, search), beforeId, DONE_PAGE_SIZE)
         if (page === 'stale') throw new StaleTaskCursorError(beforeId!)
         return {
-            items: await taskViews(this.users, page.slice(0, DONE_PAGE_SIZE)),
+            items: await taskViews(this.viewSources, page.slice(0, DONE_PAGE_SIZE)),
             doneCount: null,
             hasMore: page.length > DONE_PAGE_SIZE
         }
@@ -65,7 +65,7 @@ export class ListDoneTasksHandler extends ReadBoard implements IQueryHandler<Lis
 export class GetTaskHandler extends ReadBoard implements IQueryHandler<GetTaskQuery> {
     async execute({ userId, taskId }: GetTaskQuery): Promise<TaskView> {
         const { task } = await openTask(this.tasks, this.sources, taskId, userId, new Date())
-        return taskView(this.users, task)
+        return taskView(this.viewSources, task)
     }
 }
 

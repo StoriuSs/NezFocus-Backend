@@ -13,8 +13,9 @@ import { testClientIp } from './targets'
  * Task Boards through the whole app (REQ-TASK-01 to 03, SRS 5.1, D-96,
  * D-97, D-188, D-189, D-191): the switch in the channel settings, who may do
  * what, the limit of 500 tasks not done held under concurrent requests, the
- * search without accents, the done group a page at a time, the history, and
- * what the channel hears.
+ * search without accents, the done group a page at a time, the history,
+ * what the channel hears, and the people who lose the channel or leave the
+ * server (D-194, D-195).
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -424,6 +425,68 @@ describe('Task Boards (integration)', () => {
             // A status set again to what it is changes nothing and tells no one.
             expect((await updated()) as { task: { status: string } }[]).toHaveLength(3)
             expect(await deleted()).toEqual([{ task_id: id, channel_id: boardId }])
+        })
+    })
+
+    // Last: Bình leaves the server.
+    describe('people who lose the channel or leave the server (REQ-TASK-04, D-194, D-195)', () => {
+        it('marks who no longer views the channel, and takes off its tasks whoever leaves the server', async () => {
+            const res = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ type: 'text', name: 'nhom-nho', is_private: false, view_role_ids: [] })
+            const smallId: string = res.body.data.id
+            expect((await setBoard('an', smallId, true)).status).toBe(200)
+            const made = await create('an', smallId, {
+                title: 'Viết tài liệu API',
+                assignee_ids: [users.binh.id, users.chi.id, users.an.id]
+            })
+            const id: string = made.body.data.id
+            expect(made.body.data.assignees.map((person: { views_channel: boolean }) => person.views_channel)).toEqual([
+                true,
+                true,
+                true
+            ])
+            const byBinh = await create('binh', boardId, { title: 'Việc của Bình' })
+            expect(byBinh.body.data.creator).toMatchObject({ id: users.binh.id, left_server: false })
+
+            // Private, no role may view it: only An, the owner, still does.
+            await as('an', api().patch(`/api/v1/servers/${serverId}/channels/${smallId}`)).send({ is_private: true })
+            const lost = await as('an', api().get(`/api/v1/tasks/${id}`))
+            // Given at once: their order is by id.
+            expect(
+                Object.fromEntries(
+                    lost.body.data.assignees.map((person: { id: string; views_channel: boolean }) => [
+                        person.id,
+                        person.views_channel
+                    ])
+                )
+            ).toEqual({ [users.binh.id]: false, [users.chi.id]: false, [users.an.id]: true })
+
+            const an = await connectAs('an')
+            const updated = collect(an, 'task.updated')
+            expect((await as('binh', api().delete(`/api/v1/servers/${serverId}/members/me`))).status).toBe(200)
+
+            // The queue takes Bình off soon after the leave answered.
+            let people: string[] = []
+            for (let tries = 0; tries < 50; tries++) {
+                const task = await as('an', api().get(`/api/v1/tasks/${id}`))
+                people = task.body.data.assignees.map((person: { id: string }) => person.id)
+                if (!people.includes(users.binh.id)) break
+                await new Promise((resolve) => setTimeout(resolve, 100))
+            }
+            expect(people.sort()).toEqual([users.chi.id, users.an.id].sort())
+            const lines = await history('an', id)
+            expect(lines.body.data.items[0]).toMatchObject({
+                kind: 'assignee_removed',
+                actor: null,
+                subject: { id: users.binh.id }
+            })
+            // Each task Bình was on is told: this one, and those of the earlier tests.
+            expect((await updated()) as { task: { id: string } }[]).toEqual(
+                expect.arrayContaining([expect.objectContaining({ task: expect.objectContaining({ id }) })])
+            )
+            const left = await as('an', api().get(`/api/v1/tasks/${byBinh.body.data.id}`))
+            expect(left.body.data.creator).toMatchObject({ id: users.binh.id, left_server: true })
         })
     })
 })

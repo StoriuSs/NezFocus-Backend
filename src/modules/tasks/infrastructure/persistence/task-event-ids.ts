@@ -48,7 +48,7 @@ export function eventIds(count: number, at: Date, after: string | null): string[
 /** The rows of a write's history lines, after the task's last line (`after`, null for a new task). */
 export const eventRows = (
     taskId: string,
-    actorId: string,
+    actorId: string | null,
     events: TaskEventDraft[],
     at: Date,
     after: string | null

@@ -17,6 +17,7 @@ export { UpdateTaskRequestDto } from './update-task.request.dto'
 
 // Responses
 export { TaskAssigneeResponseDto } from './task-assignee.response.dto'
+export { TaskCreatorResponseDto } from './task-creator.response.dto'
 export { TaskEventResponseDto } from './task-event.response.dto'
 export { TaskHistoryResponseDto } from './task-history.response.dto'
 export { TaskListResponseDto } from './task-list.response.dto'

@@ -3,6 +3,7 @@ import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
     NewTask,
+    planLeftServer,
     TaskEventRecord,
     TaskFacts,
     TaskFilter,
@@ -129,6 +130,39 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
             // Its people, history and inbox items go with it (foreign keys, D-98).
             await tx.task.delete({ where: { id: taskId } })
             return true
+        })
+    }
+
+    async unassignLeftMember(serverId: string, userId: string): Promise<TaskRecord[]> {
+        const write = planLeftServer(userId)
+        return this.prisma.$transaction(async (tx) => {
+            // In id order, so two of these at once, or this and a change of one
+            // task, never wait on each other in turn.
+            const locked = await tx.$queryRaw<{ id: string }[]>`
+                SELECT t."id" FROM "Task" t
+                JOIN "TaskAssignee" a ON a."taskId" = t."id" AND a."userId" = ${userId}
+                WHERE t."serverId" = ${serverId}
+                ORDER BY t."id"
+                FOR UPDATE OF t
+            `
+            const ids = locked.map((row) => row.id)
+            if (ids.length === 0) return []
+            const now = new Date()
+            await tx.taskAssignee.deleteMany({
+                where: { userId: { in: write.removeAssigneeIds }, taskId: { in: ids } }
+            })
+            await tx.task.updateMany({ where: { id: { in: ids } }, data: { updatedAt: now } })
+            const lastLines = await tx.taskEvent.groupBy({
+                by: ['taskId'],
+                where: { taskId: { in: ids } },
+                _max: { id: true }
+            })
+            const last = new Map(lastLines.map((line) => [line.taskId, line._max.id]))
+            await tx.taskEvent.createMany({
+                data: ids.flatMap((taskId) => eventRows(taskId, null, write.events, now, last.get(taskId) ?? null))
+            })
+            const rows = await tx.task.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' }, select: TASK })
+            return rows.map(toTaskRecord)
         })
     }
 

@@ -43,7 +43,7 @@ export abstract class ChangeTask {
         const result = await this.tasks.change(taskId, userId, decide)
         // Deleted between opening it and now.
         if (!result) throw new TaskNotFoundError(taskId)
-        const view = await taskView(this.users, result.record)
+        const view = await taskView({ users: this.users, checker: this.checker }, result.record)
         if (result.changed) this.events.publish(new TaskUpdatedEvent(view))
         return view
     }

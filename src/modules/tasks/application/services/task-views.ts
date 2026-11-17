@@ -1,5 +1,7 @@
+import { PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import { UserDirectoryPort } from '@/modules/users'
 import { TaskEventKind, TaskEventRecord, TaskPerson, TaskRecord, TaskStatus } from '../../domain'
+import { viewsChannel } from './board-access'
 
 /** A person a task names, the picture as an address. */
 export interface TaskPersonView {
@@ -21,9 +23,20 @@ export interface TaskView {
     completedAt: Date | null
     createdAt: Date
     updatedAt: Date
-    creator: TaskPersonView
-    /** In the order they were given the task. */
-    assignees: (TaskPersonView & { assignedAt: Date })[]
+    /** `leftServer`: no longer a member of the task's server ("(đã rời server)", D-194). */
+    creator: TaskPersonView & { leftServer: boolean }
+    /**
+     * In the order they were given the task. `viewsChannel` false: still on
+     * it but no longer views its channel ("Mất quyền xem kênh", REQ-TASK-04,
+     * D-194).
+     */
+    assignees: (TaskPersonView & { assignedAt: Date; viewsChannel: boolean })[]
+}
+
+/** What building a task's view reads: the pictures, and where its people stand now (D-194). */
+export interface ViewSources {
+    users: UserDirectoryPort
+    checker: PermissionCheckerPort
 }
 
 /** A line of a task's history as the API gives it (REQ-TASK-03). */
@@ -59,25 +72,62 @@ async function personViews(users: UserDirectoryPort, people: (TaskPerson | null)
 }
 
 /**
+ * Where the people of these tasks stand now (D-194): each person's access
+ * to each server read once from the permission cache, however many tasks
+ * name them.
+ */
+async function standingOf(checker: PermissionCheckerPort, records: TaskRecord[], now: Date) {
+    const pairs = new Map<string, { serverId: string; userId: string }>()
+    for (const { serverId, creator, assignees } of records) {
+        for (const userId of [creator.id, ...assignees.map((assignee) => assignee.person.id)]) {
+            pairs.set(`${serverId} ${userId}`, { serverId, userId })
+        }
+    }
+    const reads = await Promise.all(
+        [...pairs].map(async ([key, { serverId, userId }]) => [key, await checker.access(serverId, userId)] as const)
+    )
+    const access = new Map<string, ServerAccess | null>(reads)
+    return {
+        inServer: (serverId: string, userId: string) => !!access.get(`${serverId} ${userId}`),
+        views: ({ serverId, channelId }: TaskRecord, userId: string) =>
+            viewsChannel(access.get(`${serverId} ${userId}`) ?? null, channelId, now)
+    }
+}
+
+/**
  * The records as the API and `task.*` give them. The commands and the
  * queries build them here alike, so a task reads the same however it came
  * (D-191).
  */
-export async function taskViews(users: UserDirectoryPort, records: TaskRecord[]): Promise<TaskView[]> {
-    const view = await personViews(
-        users,
-        records.flatMap((record) => [record.creator, ...record.assignees.map((assignee) => assignee.person)])
-    )
-    return records.map(({ creator, assignees, ...task }) => ({
-        ...task,
-        creator: view(creator),
-        assignees: assignees.map(({ person, assignedAt }) => ({ ...view(person), assignedAt }))
-    }))
+export async function taskViews(
+    { users, checker }: ViewSources,
+    records: TaskRecord[],
+    now = new Date()
+): Promise<TaskView[]> {
+    const [view, standing] = await Promise.all([
+        personViews(
+            users,
+            records.flatMap((record) => [record.creator, ...record.assignees.map((assignee) => assignee.person)])
+        ),
+        standingOf(checker, records, now)
+    ])
+    return records.map((record) => {
+        const { creator, assignees, ...task } = record
+        return {
+            ...task,
+            creator: { ...view(creator), leftServer: !standing.inServer(task.serverId, creator.id) },
+            assignees: assignees.map(({ person, assignedAt }) => ({
+                ...view(person),
+                assignedAt,
+                viewsChannel: standing.views(record, person.id)
+            }))
+        }
+    })
 }
 
 /** One task as a view. */
-export const taskView = async (users: UserDirectoryPort, record: TaskRecord): Promise<TaskView> =>
-    (await taskViews(users, [record]))[0]!
+export const taskView = async (sources: ViewSources, record: TaskRecord): Promise<TaskView> =>
+    (await taskViews(sources, [record]))[0]!
 
 /** History lines with their people's pictures as addresses. */
 export async function taskEventViews(users: UserDirectoryPort, records: TaskEventRecord[]): Promise<TaskEventView[]> {

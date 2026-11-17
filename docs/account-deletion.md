@@ -340,8 +340,8 @@ The tasks and notifications tables (M3) are the same. Tasks the account made
 and their history stay: `Task.creator`, `TaskEvent.actor` and
 `Notification.actor` are `onDelete: Restrict`. The tasks it was given do not
 keep it: the sweep takes the account out of every server, and someone who
-leaves a server is taken off its tasks; a task left with nobody tells its
-maker (REQ-TASK-04). Its own inbox items go with the 90-day inbox clean-up,
+leaves a server is taken off its tasks (the `tasks` queue, D-195); a task
+left with nobody tells its maker (REQ-TASK-04, M3 L7). Its own inbox items go with the 90-day inbox clean-up,
 like anyone's.
 
 There is no generic `SoftDeletableRepository` base class: the filtering is

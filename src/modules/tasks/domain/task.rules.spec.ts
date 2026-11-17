@@ -3,6 +3,7 @@ import {
     planAssign,
     planCreate,
     planEdit,
+    planLeftServer,
     planUnassign,
     requireDelete,
     requireOpenRoom,
@@ -211,5 +212,16 @@ describe('people on a task (REQ-TASK-02)', () => {
         const held = actor('binh', { timedOutUntil: until })
         expect(error(() => planUnassign(task(), held, 'binh'))).toBe('TaskTimedOutError')
         expect(error(() => planAssign(task(), held, ['binh'], viewers))).toBe('TaskTimedOutError')
+    })
+})
+
+describe('planLeftServer (REQ-TASK-04, D-195)', () => {
+    it('takes the person off with one line of history', () => {
+        expect(planLeftServer('lan')).toEqual({
+            changes: {},
+            addAssigneeIds: [],
+            removeAssigneeIds: ['lan'],
+            events: [{ kind: 'assignee_removed', data: { userId: 'lan' } }]
+        })
     })
 })

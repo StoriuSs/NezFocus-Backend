@@ -47,7 +47,7 @@ export class CreateTaskHandler implements ICommandHandler<CreateTaskCommand> {
         )
         // The channel went between opening it and now.
         if (!record) throw new ChannelNotFoundError(channelId)
-        const view = await taskView(this.users, record)
+        const view = await taskView({ users: this.users, checker: this.checker }, record)
         this.events.publish(new TaskCreatedEvent(view))
         return view
     }
