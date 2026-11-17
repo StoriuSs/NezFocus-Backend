@@ -63,12 +63,19 @@ export async function announcePresence(deps: PresenceDeps, userId: string, now: 
     if (shown === kept.shown && dead.length === 0 && !forget) return shown
     const serverIds = shown === kept.shown ? [] : await deps.membership.serverIdsOf(userId)
     await deps.store.show(userId, shown, { deadSocketIds: dead, forget })
-    if (shown !== kept.shown) {
-        const event = { userId, status: shown }
-        deps.publisher.toUser(userId, 'presence.updated', event)
-        for (const serverId of serverIds) deps.publisher.toServer(serverId, 'presence.updated', event)
-    }
+    if (shown !== kept.shown) tellPresence(deps, userId, shown, serverIds)
     return shown
+}
+
+/**
+ * Tells what others now see of someone, as `presence.updated`: to their own
+ * tabs and to every server they are in (ARCHITECTURE 3.3; friends come in
+ * M6, here, for every way presence changes).
+ */
+function tellPresence(deps: PresenceDeps, userId: string, status: Presence, serverIds: string[]): void {
+    const event = { userId, status }
+    deps.publisher.toUser(userId, 'presence.updated', event)
+    for (const serverId of serverIds) deps.publisher.toServer(serverId, 'presence.updated', event)
 }
 
 /**
@@ -85,9 +92,7 @@ export async function announceGone(deps: PresenceDeps, userId: string): Promise<
     if (kept.shown === 'offline' && kept.sockets.size === 0 && kept.lastSeenAt === 0) return
     const serverIds = kept.shown === 'offline' ? [] : await deps.membership.serverIdsOf(userId)
     await deps.store.show(userId, 'offline', { deadSocketIds: [...kept.sockets.keys()], forget: true })
-    for (const serverId of serverIds) {
-        deps.publisher.toServer(serverId, 'presence.updated', { userId, status: 'offline' })
-    }
+    if (kept.shown !== 'offline') tellPresence(deps, userId, 'offline', serverIds)
 }
 
 /**

@@ -44,7 +44,8 @@ const FALLBACK_TIME_ZONE = 'UTC'
  * session ends now (reason `deletion-requested`, so other devices can say
  * when it goes), and signing in again within the 14 days offers to restore
  * it. Other modules hear of it once the sessions are over
- * (AccountDeletionRequestedEvent: the realtime module shows it offline now). The users module's sweep deletes it once they are over. The owner is
+ * (AccountDeletionRequestedEvent: the realtime module shows it offline now).
+ * The users module's sweep deletes it once the 14 days are over. The owner is
  * emailed the date, in the account's time zone.
  *
  * An Owner of servers with other members hands them over first (D-76). The

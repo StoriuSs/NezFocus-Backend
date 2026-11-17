@@ -382,7 +382,10 @@ rooms: the person's, the session's, each server (servers' `MEMBERSHIP`) and
 each text channel they may view (`PERMISSION_CHECKER`). Other modules send
 events through its `EVENT_PUBLISHER` port. It hears auth's
 `SessionsEndedEvent` (every way a session ends goes through auth's
-`SessionEnds`) and cuts those sessions' sockets off. It hears servers'
+`SessionEnds`) and cuts those sessions' sockets off, and auth's
+`AccountDeletionRequestedEvent`: the account shows offline at once
+(`HideDeletedAccountPresenceHandler`, D-182), not after the 60 seconds a
+closed tab is held for. It hears servers'
 `ServerChangedEvent` and `MemberChangedEvent` (D-178): it moves the
 sockets concerned into the rooms they may be in now (`SOCKET_ROOMS`,
 `application/services/room-moves.ts`, the same `serverRooms` rule as on

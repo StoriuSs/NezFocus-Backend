@@ -89,6 +89,8 @@ describe('Asking to delete your own account', () => {
         await deleteWith(w, user.id, PASSWORD)
 
         expect(w.published).toEqual([new AccountDeletionRequestedEvent(user.id)])
+        // After the sessions ended: told offline before its sockets are cut, a heartbeat could bring it back.
+        expect(w.heard).toEqual(['SessionsEndedEvent', 'AccountDeletionRequestedEvent'])
     })
 
     it('tells nothing on a wrong password', async () => {

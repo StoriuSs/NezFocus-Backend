@@ -568,14 +568,24 @@ export function setup() {
     const cache = new FakeCache()
     /** What other modules would hear of sessions ending (the realtime module cuts their sockets off). */
     const sessionsEnded: string[][] = []
+    /** Every event other modules would hear, in the order they were published. */
+    const heard: string[] = []
     const sessionEnds = new SessionEnds(cache, {
-        publish: (event: { sessionIds: string[] }) => void sessionsEnded.push(event.sessionIds)
+        publish: (event: { sessionIds: string[] }) => {
+            sessionsEnded.push(event.sessionIds)
+            heard.push(event.constructor.name)
+        }
     } as never)
     const mailer = new FakeMailer()
     const events = new FakeEvents()
     /** Events other modules would hear, besides sessions ending (an account waiting to be deleted). */
     const published: object[] = []
-    const bus = { publish: (event: object) => void published.push(event) } as never
+    const bus = {
+        publish: (event: object) => {
+            published.push(event)
+            heard.push(event.constructor.name)
+        }
+    } as never
     const codeIssuer = new CodeIssuer(codes, tokens, mailer, settings)
     const sessionIssuer = new SessionIssuer(sessions, tokens, settings)
     const google = new FakeProvider()
@@ -596,6 +606,7 @@ export function setup() {
         cache,
         sessionsEnded,
         published,
+        heard,
         mailer,
         google,
         oauthState,
