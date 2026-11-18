@@ -2,6 +2,7 @@ import { CommandBus } from '@nestjs/cqrs'
 import {
     AddServerItemCommand,
     ReadChannelItemsCommand,
+    ReadRemovalItemsCommand,
     RemoveMessageItemsCommand,
     SyncMessageItemsCommand
 } from '../../application'
@@ -23,11 +24,13 @@ describe('CommandBusNotifier (D-185)', () => {
         expect(done).toBe(true)
         await notifier.messagesDeleted('hoi-dap', ['m1'])
         await notifier.channelRead('binh', 'hoi-dap', 'm1')
+        await notifier.memberJoined('ot', 'binh')
 
         expect(bus.execute.mock.calls).toEqual([
             [new SyncMessageItemsCommand(notice)],
             [new RemoveMessageItemsCommand('hoi-dap', ['m1'])],
-            [new ReadChannelItemsCommand('binh', 'hoi-dap', 'm1')]
+            [new ReadChannelItemsCommand('binh', 'hoi-dap', 'm1')],
+            [new ReadRemovalItemsCommand('binh', 'ot')]
         ])
     })
 

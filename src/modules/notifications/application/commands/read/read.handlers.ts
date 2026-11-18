@@ -1,7 +1,7 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs'
 import { NotificationsReadEvent } from '../../events/notifications-read.event'
 import { Inbox } from '../../services/inbox'
-import { MarkNotificationsReadCommand, ReadChannelItemsCommand } from './read.commands'
+import { MarkNotificationsReadCommand, ReadChannelItemsCommand, ReadRemovalItemsCommand } from './read.commands'
 
 /**
  * A channel read up to a message, its ReadState moved on (D-188): the
@@ -13,6 +13,23 @@ export class ReadChannelItemsHandler extends Inbox implements ICommandHandler<Re
     async execute({ userId, channelId, messageId }: ReadChannelItemsCommand): Promise<void> {
         const now = new Date()
         const ids = await this.notifications.markReadUpTo(userId, channelId, messageId, now)
+        if (ids.length === 0) return
+        this.eventBus.publish(new NotificationsReadEvent(userId, ids, null, await this.unreadCountOf(userId, now)))
+    }
+}
+
+/**
+ * Someone joined a server again, from a new invite after a kick (or a ban
+ * lifted): they know they were taken out, so their kick and ban items of it
+ * not read yet are read, on every tab (D-202). Without this, the Toast of a
+ * removal while away (11 S-MOD-02 › H1) would say it again once they leave.
+ * A timeout's item stays as it is. Nothing to mark, nothing said.
+ */
+@CommandHandler(ReadRemovalItemsCommand)
+export class ReadRemovalItemsHandler extends Inbox implements ICommandHandler<ReadRemovalItemsCommand> {
+    async execute({ userId, serverId }: ReadRemovalItemsCommand): Promise<void> {
+        const now = new Date()
+        const ids = await this.notifications.markRemovalsRead(userId, serverId, now)
         if (ids.length === 0) return
         this.eventBus.publish(new NotificationsReadEvent(userId, ids, null, await this.unreadCountOf(userId, now)))
     }
@@ -40,4 +57,4 @@ export class MarkNotificationsReadHandler extends Inbox implements ICommandHandl
     }
 }
 
-export const READ_COMMAND_HANDLERS = [ReadChannelItemsHandler, MarkNotificationsReadHandler]
+export const READ_COMMAND_HANDLERS = [ReadChannelItemsHandler, ReadRemovalItemsHandler, MarkNotificationsReadHandler]

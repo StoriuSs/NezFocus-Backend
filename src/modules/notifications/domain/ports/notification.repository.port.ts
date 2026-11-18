@@ -140,6 +140,9 @@ export interface NotificationRepositoryPort {
     /** Marks read the person's mention and reply items of the channel up to `messageId` (D-188); the ids marked. */
     markReadUpTo(userId: string, channelId: string, messageId: string, at: Date): Promise<string[]>
 
+    /** Marks read the person's kick and ban items of the server not read yet (D-202); the ids marked. */
+    markRemovalsRead(userId: string, serverId: string, at: Date): Promise<string[]>
+
     /** Marks read those of `ids` that are the person's and unread; the ids marked. */
     markRead(userId: string, ids: string[], at: Date): Promise<string[]>
 

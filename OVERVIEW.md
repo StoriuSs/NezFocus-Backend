@@ -337,7 +337,8 @@ servers/
 │   ├── events/                 # ServerChangedEvent, MemberChangedEvent: published after each commit, for realtime (D-178)
 │   │                           #   and the other modules that follow a server (messaging, tasks, notifications)
 │   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users); a moderation and a
-│   │                           #   server handed over go in the person's inbox through NOTIFIER (Notify* handlers)
+│   │                           #   server handed over go in the person's inbox through NOTIFIER (Notify* handlers), and
+│   │                           #   joining again reads one's old kick or ban there (NotifyJoinedMemberHandler, D-202)
 │   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, clear the
 │   │                           #   permission cache, then publish what changed
 │   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP,
@@ -532,7 +533,8 @@ date in the time zone of one's settings.
 which keep its title and due date as they were, D-98), `commands/server-item/`
 (a server handed over and a kick, ban or timeout, which keep the server's
 name; a kick or ban is read when the person has a tab open, D-187, D-201),
-`commands/read/`, `queries/inbox/`. Other modules put items
+`commands/read/` (the inbox's marks, a channel read, and a server joined
+again, which reads one's kick and ban items of it, D-202), `queries/inbox/`. Other modules put items
 in only through its `NOTIFIER` port (D-185), given by the global
 `NotifierModule`: messaging's `NotifyMessageMentionsHandler` works out after
 a message is saved whom it is about (its mention rows, @here, and the

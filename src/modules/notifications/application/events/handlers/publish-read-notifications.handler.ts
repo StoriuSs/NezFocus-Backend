@@ -5,7 +5,8 @@ import { NotificationsReadEvent } from '../notifications-read.event'
 
 /**
  * `notification.read` to every tab of the person (SRS 5.2, REQ-NOTIF-02):
- * read in the inbox, in the channel or by sending there alike.
+ * read in the inbox, in the channel or by sending there alike, and a kick or
+ * a ban read once the person joins that server again (D-202).
  */
 @EventsHandler(NotificationsReadEvent)
 export class PublishReadNotificationsHandler implements IEventHandler<NotificationsReadEvent> {

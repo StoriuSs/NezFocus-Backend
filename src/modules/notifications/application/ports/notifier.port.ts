@@ -82,6 +82,9 @@ export interface NotifierPort {
      * open app is read (D-187, D-201).
      */
     memberModerated(notice: ServerNotice, userId: string, moderation: ModerationNotice): Promise<void>
+
+    /** One joined a server (again): their kick and ban items of it not read yet are read (D-202). */
+    memberJoined(serverId: string, userId: string): Promise<void>
 }
 
 export const NOTIFIER = Symbol('NotifierPort')

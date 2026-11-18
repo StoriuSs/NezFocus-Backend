@@ -25,6 +25,7 @@ import {
     MEMBERSHIP,
     MODERATION_COMMAND_HANDLERS,
     MODERATION_QUERY_HANDLERS,
+    NotifyJoinedMemberHandler,
     NotifyModeratedMemberHandler,
     NotifyNewOwnerHandler,
     ROLE_COMMAND_HANDLERS,
@@ -62,8 +63,8 @@ import {
  * what changed (D-146). Asks the auth module for the password when a server
  * is handed over (CURRENT_PASSWORD, D-160), and the users module for
  * people's pictures as addresses (USER_DIRECTORY). Puts a moderation or a
- * server handed over in the person's inbox through the global NOTIFIER
- * (D-185).
+ * server handed over in the person's inbox through the global NOTIFIER, and
+ * tells it of one joining, whose old kick or ban is then read (D-185, D-202).
  */
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.
@@ -99,6 +100,7 @@ import {
         ...MODERATION_COMMAND_HANDLERS,
         ...MODERATION_QUERY_HANDLERS,
         ...SERVER_EVENT_HANDLERS,
+        NotifyJoinedMemberHandler,
         NotifyModeratedMemberHandler,
         NotifyNewOwnerHandler
     ],

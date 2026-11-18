@@ -1,7 +1,7 @@
 import { NotificationsReadEvent } from '../../events/notifications-read.event'
 import { notificationWorld } from '../../notification-test-world.shared-spec'
-import { MarkNotificationsReadCommand, ReadChannelItemsCommand } from './read.commands'
-import { MarkNotificationsReadHandler, ReadChannelItemsHandler } from './read.handlers'
+import { MarkNotificationsReadCommand, ReadChannelItemsCommand, ReadRemovalItemsCommand } from './read.commands'
+import { MarkNotificationsReadHandler, ReadChannelItemsHandler, ReadRemovalItemsHandler } from './read.handlers'
 
 describe('ReadChannelItemsHandler (D-188)', () => {
     it('marks read the mention and reply items of the channel up to the message, and tells every tab', async () => {
@@ -60,6 +60,48 @@ describe('MarkNotificationsReadHandler (REQ-NOTIF-02)', () => {
             new MarkNotificationsReadCommand('binh', { ids: ['n009'] })
         )
         expect(result).toEqual({ unreadCount: 1 })
+        expect(world.eventBus.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('ReadRemovalItemsHandler (D-202)', () => {
+    const moderation = (
+        userId: string,
+        serverId: string,
+        action: 'kick' | 'ban' | 'timeout',
+        readAt: Date | null = null
+    ) => ({
+        userId,
+        type: 'moderation' as const,
+        serverId,
+        channelId: null,
+        messageId: null,
+        reason: null,
+        actorId: null,
+        actor: null,
+        server: { name: 'ÔT', action, timeoutUntil: null, reason: null },
+        readAt
+    })
+
+    it('marks read the unread kicks and bans of the server one joined again, not a timeout, another server or person, and tells every tab', async () => {
+        const world = notificationWorld()
+        world.seed(moderation('binh', 'ot', 'kick'))
+        world.seed(moderation('binh', 'ot', 'ban'))
+        world.seed(moderation('binh', 'ot', 'timeout'))
+        world.seed(moderation('binh', 'nd', 'kick'))
+        world.seed(moderation('chi', 'ot', 'kick'))
+        await new ReadRemovalItemsHandler(...world.deps).execute(new ReadRemovalItemsCommand('binh', 'ot'))
+
+        expect(world.rows.map((row) => row.readAt !== null)).toEqual([true, true, false, false, false])
+        expect(world.published(NotificationsReadEvent)).toEqual([
+            new NotificationsReadEvent('binh', ['n001', 'n002'], null, 2)
+        ])
+    })
+
+    it('says nothing when there was none unread', async () => {
+        const world = notificationWorld()
+        world.seed(moderation('binh', 'ot', 'kick', new Date()))
+        await new ReadRemovalItemsHandler(...world.deps).execute(new ReadRemovalItemsCommand('binh', 'ot'))
         expect(world.eventBus.publish).not.toHaveBeenCalled()
     })
 })

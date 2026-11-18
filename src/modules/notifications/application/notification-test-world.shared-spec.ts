@@ -208,6 +208,18 @@ export function notificationWorld() {
             marked.forEach((row) => (row.readAt = at))
             return marked.map((row) => row.id)
         }),
+        markRemovalsRead: jest.fn(async (userId: string, serverId: string, at: Date) => {
+            const marked = rows.filter(
+                (row) =>
+                    row.userId === userId &&
+                    row.serverId === serverId &&
+                    row.type === 'moderation' &&
+                    (row.server?.action === 'kick' || row.server?.action === 'ban') &&
+                    row.readAt === null
+            )
+            marked.forEach((row) => (row.readAt = at))
+            return marked.map((row) => row.id)
+        }),
         markRead: jest.fn(async (userId: string, ids: string[], at: Date) => {
             const marked = rows.filter((row) => row.userId === userId && ids.includes(row.id) && row.readAt === null)
             marked.forEach((row) => (row.readAt = at))

@@ -7,6 +7,14 @@ export class ReadChannelItemsCommand {
     ) {}
 }
 
+/** Someone joined a server (again): their kick and ban items of it are read (D-202). */
+export class ReadRemovalItemsCommand {
+    constructor(
+        readonly userId: string,
+        readonly serverId: string
+    ) {}
+}
+
 /** What "mark read" names in the inbox (SRS 5.1): some items, or every one up to the newest shown. */
 export type ReadTarget = { ids: string[] } | { beforeId: string }
 

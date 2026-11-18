@@ -63,9 +63,10 @@ async function removeWhere(db: Tx | PrismaService, where: Prisma.Sql): Promise<R
 
 /**
  * The inbox. Pages walk Notification_userId_id_idx backwards (UUIDv7: id
- * order is time order); the unread count, Notification_unread_idx; reading a
- * channel, Notification_userId_channelId_messageId_idx; the clean-up,
- * Notification_createdAt_idx (EXPLAIN, M3 L1).
+ * order is time order); the unread count and a server joined again (its
+ * kicks and bans read), Notification_unread_idx; reading a channel,
+ * Notification_userId_channelId_messageId_idx; the clean-up,
+ * Notification_createdAt_idx (EXPLAIN, M3 L1, L8c).
  */
 @Injectable()
 export class PrismaNotificationRepository implements NotificationRepositoryPort {
@@ -220,6 +221,18 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
             UPDATE "Notification" SET "readAt" = ${at}
             WHERE "userId" = ${userId} AND "channelId" = ${channelId} AND "messageId" <= ${messageId}
                 AND "type" IN (${MESSAGE_TYPES}) AND "readAt" IS NULL
+            RETURNING "id"
+        `
+        return rows.map((row) => row.id)
+    }
+
+    async markRemovalsRead(userId: string, serverId: string, at: Date): Promise<string[]> {
+        // The person's unread rows (Notification_unread_idx), then the server, the type and the
+        // action kept in `data` (serverDataOf) as plain filters.
+        const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+            UPDATE "Notification" SET "readAt" = ${at}
+            WHERE "userId" = ${userId} AND "serverId" = ${serverId} AND "type" = 'moderation'::"NotificationType"
+                AND "data"->>'action' IN ('kick', 'ban') AND "readAt" IS NULL
             RETURNING "id"
         `
         return rows.map((row) => row.id)

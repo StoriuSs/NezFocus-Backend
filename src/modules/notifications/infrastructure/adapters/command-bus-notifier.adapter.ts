@@ -9,6 +9,7 @@ import {
     ModerationNotice,
     NotifierPort,
     ReadChannelItemsCommand,
+    ReadRemovalItemsCommand,
     RemoveMessageItemsCommand,
     ServerNotice,
     SyncMessageItemsCommand,
@@ -118,5 +119,9 @@ export class CommandBusNotifier implements NotifierPort {
                 userId
             )
         )
+    }
+
+    async memberJoined(serverId: string, userId: string): Promise<void> {
+        await this.commandBus.execute(new ReadRemovalItemsCommand(userId, serverId))
     }
 }

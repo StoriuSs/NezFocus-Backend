@@ -414,7 +414,7 @@ describe('Inbox (integration)', () => {
         })
     })
 
-    describe('items from servers (REQ-SRV-05, REQ-ROLE-04, D-187, D-201)', () => {
+    describe('items from servers (REQ-SRV-05, REQ-ROLE-04, D-187, D-201, D-202)', () => {
         /** A server of An's with these people in it, so taking them out leaves the others alone. */
         async function serverWith(name: string, members: Who[]): Promise<string> {
             const created = await as('an', api().post('/api/v1/servers'))
@@ -480,6 +480,51 @@ describe('Inbox (integration)', () => {
             const [banned] = await arrived('binh', id, 1)
             expect(banned).toMatchObject({ type: 'moderation', read_at: null, server: { action: 'ban', reason: null } })
             expect((await inbox('binh')).unread_count).toBe(before + 1)
+        })
+
+        it('reads the kicks and bans of a server once the person is in it again, a timeout and other servers left as they were (D-202)', async () => {
+            const kickedFrom = await serverWith('CLB Cờ vua', ['dung'])
+            const elsewhere = await serverWith('CLB Bóng bàn', ['dung'])
+            const bannedFrom = await serverWith('CLB Cầu lông', ['dung'])
+            await as('an', api().patch(member(kickedFrom, 'dung'))).send({ timeout_seconds: 60 })
+            await arrived('dung', kickedFrom, 1)
+            expect((await as('an', api().delete(member(kickedFrom, 'dung'))).send({ reason: 'Spam' })).status).toBe(200)
+            expect((await as('an', api().delete(member(elsewhere, 'dung'))).send({})).status).toBe(200)
+            expect(
+                (await as('an', api().put(`/api/v1/servers/${bannedFrom}/bans/${users.dung.id}`)).send({})).status
+            ).toBe(200)
+            const kicked = (await arrived('dung', kickedFrom, 2)).find((item) => item.server?.action === 'kick')!
+            const [other] = await arrived('dung', elsewhere, 1)
+            const [banned] = await arrived('dung', bannedFrom, 1)
+            expect([kicked.read_at, other!.read_at, banned!.read_at]).toEqual([null, null, null])
+            expect((await as('an', api().delete(`/api/v1/servers/${bannedFrom}/bans/${users.dung.id}`))).status).toBe(
+                200
+            )
+            const unread = (await inbox('dung')).unread_count
+            const dung = await connectAs('dung')
+            const heard = collect(dung, 'notification.read')
+
+            for (const id of [kickedFrom, bannedFrom]) {
+                const invite = await as('an', api().post(`/api/v1/servers/${id}/invites`))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({ max_age_seconds: null, max_uses: null })
+                expect((await as('dung', api().post(`/api/v1/invites/${invite.body.data.code}/accept`))).status).toBe(
+                    200
+                )
+            }
+
+            await eventually(
+                () => inbox('dung'),
+                (now) => [kicked.id, banned!.id].every((id) => !!now.items.find((item) => item.id === id)?.read_at)
+            )
+            const after = await inbox('dung')
+            const readOf = (id: string) => after.items.find((item) => item.id === id)?.read_at ?? null
+            const timedOut = (await itemsIn('dung', kickedFrom)).find((item) => item.server?.action === 'timeout')!
+            expect(timedOut.read_at).toBeNull()
+            expect(readOf(other!.id)).toBeNull()
+            expect(after.unread_count).toBe(unread - 2)
+            const said = (await heard()) as { ids: string[] }[]
+            expect(said.flatMap((event) => event.ids).sort()).toEqual([kicked.id, banned!.id].sort())
         })
 
         it('gives the new owner an unread item naming the old one, hidden once they leave the server', async () => {
