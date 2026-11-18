@@ -1,6 +1,6 @@
 /**
- * What other modules may use from tasks: nothing yet. The inbox items of
- * tasks (L7) and the "Việc cần làm" page (L5) add to it. TasksModule itself
- * is imported from './tasks.module'.
+ * What other modules may use from tasks: nothing. Its inbox items go through
+ * the NOTIFIER port of notifications, and the "Việc cần làm" page is its own
+ * route (GET /me/tasks). TasksModule itself is imported from './tasks.module'.
  */
 export {}

@@ -34,6 +34,13 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
 const openTasksLock = (channelId: string) => `channel-tasks:${channelId}`
 
 /**
+ * Tasks not done, named by their two statuses: `<> 'done'` cannot use the
+ * status column of `Task_channelId_status_idx` and reads every done task of
+ * the channel too (EXPLAIN in M3/backend-review.md).
+ */
+const NOT_DONE: Prisma.EnumTaskStatusFilter = { in: ['todo', 'doing'] }
+
+/**
  * The words as LIKE takes them literally. Prisma's `contains` puts them
  * between `%` as they are, so a `%` or `_` typed would match anything: each
  * is escaped with LIKE's escape character, the backslash, itself escaped first.
@@ -74,7 +81,7 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
         try {
             return await this.prisma.$transaction(async (tx) => {
                 await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${openTasksLock(channelId)}, 0))`
-                decide(await tx.task.count({ where: { channelId, status: { not: 'done' } } }))
+                decide(await tx.task.count({ where: { channelId, status: NOT_DONE } }))
 
                 const now = new Date()
                 const { id } = await tx.task.create({
@@ -142,6 +149,17 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
 
     async remove(taskId: string, decide: (task: TaskFacts) => void): Promise<RemovedTask | null> {
         return this.prisma.$transaction(async (tx) => {
+            // The channel row first, in the mode a foreign key takes: a channel
+            // being deleted (which locks its row, then its inbox items, then
+            // its tasks) is waited for here, before this holds the task and,
+            // through it, the task's items the delete needs. Taken after the
+            // task, the two would wait for each other (deadlock). The row is
+            // servers', only locked, never read (ARCHITECTURE 2.1).
+            await tx.$queryRaw`
+                SELECT 1 FROM "Channel" c JOIN "Task" t ON t."channelId" = c."id"
+                WHERE t."id" = ${taskId}
+                FOR KEY SHARE OF c
+            `
             const facts = await this.lockFacts(tx, taskId)
             if (!facts) return null
             decide(facts)
@@ -202,7 +220,7 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
 
     async listOpen(filter: TaskFilter): Promise<TaskRecord[]> {
         const rows = await this.prisma.task.findMany({
-            where: { ...matching(filter), status: { not: 'done' } },
+            where: { ...matching(filter), status: NOT_DONE },
             orderBy: OPEN_ORDER,
             select: TASK
         })
@@ -226,7 +244,7 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
     async listMineOpen(filter: MineFilter): Promise<TaskRecord[]> {
         if (filter.channelIds.length === 0) return []
         const rows = await this.prisma.task.findMany({
-            where: { ...mine(filter), status: { not: 'done' } },
+            where: { ...mine(filter), status: NOT_DONE },
             orderBy: OPEN_ORDER,
             select: TASK
         })
@@ -334,7 +352,7 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
         let openCount: number | null = null
         if (row.status === 'done') {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${openTasksLock(row.channelId)}, 0))`
-            openCount = await tx.task.count({ where: { channelId: row.channelId, status: { not: 'done' } } })
+            openCount = await tx.task.count({ where: { channelId: row.channelId, status: NOT_DONE } })
         }
         return { ...row, assigneeIds: assignees.map((assignee) => assignee.userId), openCount }
     }

@@ -785,4 +785,155 @@ describe('Task Boards (integration)', () => {
             expect(await deleted()).toEqual([expect.objectContaining({ ids: [], task_id: id })])
         })
     })
+
+    describe('deleting a task while its channel is deleted', () => {
+        it('waits for the channel before it holds the task, so the two deletes never wait on each other in turn', async () => {
+            const created = await create('an', boardId, { title: 'Xóa cùng lúc với kênh' })
+            const id: string = created.body.data.id
+            // A channel delete holds its row, then the inbox items and tasks of
+            // the channel (cascade); here only the row, until let go.
+            let letGo!: () => void
+            const released = new Promise<void>((resolve) => (letGo = resolve))
+            let holding!: () => void
+            const held = new Promise<void>((resolve) => (holding = resolve))
+            const channelDelete = prisma.$transaction(
+                async (tx) => {
+                    await tx.$queryRaw`SELECT 1 FROM "Channel" WHERE "id" = ${boardId} FOR UPDATE`
+                    holding()
+                    await released
+                },
+                { timeout: 30_000 }
+            )
+            await held
+            const deleting = remove('an', id).then((res) => res.status)
+            // Until the task delete waits on the channel row (it never does
+            // when it locks the task first: then it is done or past it).
+            for (let tries = 0; tries < 100; tries++) {
+                const [waiting] = await prisma.$queryRaw<{ n: number }[]>`
+                    SELECT count(*)::int AS n FROM pg_stat_activity
+                    WHERE wait_event_type = 'Lock' AND query LIKE '%FOR KEY SHARE OF c%'
+                `
+                if (waiting!.n > 0) break
+                await new Promise((resolve) => setTimeout(resolve, 50))
+            }
+
+            // The task is still free for the channel delete to take.
+            const free = await prisma.$queryRaw<{ id: string }[]>`
+                SELECT "id" FROM "Task" WHERE "id" = ${id} FOR UPDATE NOWAIT
+            `.catch(() => 'held by the task delete')
+            letGo()
+            await channelDelete
+            expect(free).toEqual([{ id }])
+            expect(await deleting).toBe(200)
+        })
+    })
+
+    describe('constraints of the database (20261117000000_tasks_notifications)', () => {
+        type DatabaseError = { meta?: { driverAdapterError?: { cause?: { originalMessage?: string } } } }
+        /** The constraint that refused a write, as Postgres names it; "written" when none did. */
+        const refusedBy = (write: Promise<unknown>): Promise<string> =>
+            write.then(
+                () => 'written',
+                (error: DatabaseError) => {
+                    const said = error.meta?.driverAdapterError?.cause?.originalMessage ?? String(error)
+                    return /constraint "([^"]+)"/.exec(said)?.[1] ?? said
+                }
+            )
+        let otherServerId: string
+        let otherChannelId: string
+
+        /** A task of An's written straight to the table, in the board unless told otherwise. */
+        const task = (shape: { serverId?: string; channelId?: string; status?: 'todo' | 'done'; completedAt?: Date }) =>
+            prisma.task
+                .create({
+                    data: {
+                        serverId,
+                        channelId: boardId,
+                        creatorId: users.an.id,
+                        title: 'a',
+                        titleSearch: 'a',
+                        ...shape
+                    },
+                    select: { id: true }
+                })
+                .then((row) => row.id)
+        /** An item of Bình's written straight to the table. */
+        const item = (shape: Record<string, unknown>) =>
+            prisma.notification.create({
+                data: { userId: users.binh.id, serverId, type: 'mention', ...shape } as never,
+                select: { id: true }
+            })
+        const message = (channelId: string) =>
+            prisma.message
+                .create({ data: { channelId, authorId: users.an.id, nonce: randomUUID() }, select: { id: true } })
+                .then((row) => row.id)
+
+        beforeAll(async () => {
+            // Lan's own server, for the links that cross servers.
+            const created = await as('lan', api().post('/api/v1/servers'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Server của Lan', template: 'standard' })
+            otherServerId = created.body.data.id
+            const channel = await prisma.channel.findFirstOrThrow({
+                where: { serverId: otherServerId, type: 'text' },
+                select: { id: true }
+            })
+            otherChannelId = channel.id
+        })
+
+        it('refuses a done task without the time it was done, and an open one with it', async () => {
+            expect(await refusedBy(task({ status: 'done' }))).toBe('Task_completed_check')
+            expect(await refusedBy(task({ status: 'todo', completedAt: new Date() }))).toBe('Task_completed_check')
+        })
+
+        it('refuses a task naming a channel of another server', async () => {
+            expect(await refusedBy(task({ serverId: otherServerId }))).toBe('Task_channelId_serverId_fkey')
+            expect(await refusedBy(task({ channelId: otherChannelId }))).toBe('Task_channelId_serverId_fkey')
+        })
+
+        it('refuses an item without the links of its kind, or a moderation item that names who did it', async () => {
+            const messageId = await message(boardId)
+            const taskId = await task({})
+            for (const wrong of [
+                { type: 'mention', channelId: boardId },
+                { type: 'reply', channelId: boardId, messageId, taskId },
+                { type: 'task_assigned', channelId: boardId },
+                { type: 'task_reminder', channelId: boardId, taskId, messageId },
+                { type: 'owner_transferred', channelId: boardId },
+                { type: 'moderation', actorId: users.an.id },
+                { type: 'moderation', serverId: null }
+            ]) {
+                expect(await refusedBy(item(wrong))).toBe('Notification_links_check')
+            }
+        })
+
+        it('refuses an item naming a task or a message of another channel', async () => {
+            const taskId = await task({})
+            const messageId = await message(boardId)
+            expect(await refusedBy(item({ type: 'task_assigned', channelId: secretId, taskId }))).toBe(
+                'Notification_channelId_taskId_fkey'
+            )
+            expect(await refusedBy(item({ type: 'mention', channelId: secretId, messageId }))).toBe(
+                'Notification_channelId_messageId_fkey'
+            )
+        })
+
+        it('refuses a second item of one message for one person, mention or reply', async () => {
+            const messageId = await message(boardId)
+            expect(await refusedBy(item({ type: 'mention', channelId: boardId, messageId }))).toBe('written')
+            expect(await refusedBy(item({ type: 'reply', channelId: boardId, messageId }))).toBe(
+                'Notification_userId_messageId_key'
+            )
+        })
+
+        it('takes away the items of a deleted task, and the moderation items of a server deleted for good', async () => {
+            const taskId = await task({})
+            const ofTask = await item({ type: 'task_assigned', channelId: boardId, taskId })
+            const moderation = await item({ type: 'moderation', serverId: otherServerId })
+            await prisma.task.delete({ where: { id: taskId } })
+            await prisma.server.delete({ where: { id: otherServerId } })
+            const left = await prisma.notification.count({ where: { id: { in: [ofTask.id, moderation.id] } } })
+            expect(left).toBe(0)
+        })
+    })
 })
