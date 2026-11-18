@@ -238,7 +238,7 @@ export const validationSchema = Joi.object({
                 'any.required': '{{#label}} is required in production: voice rooms connect there',
                 'string.empty': '{{#label}} is required in production: voice rooms connect there',
                 'string.uriCustomScheme':
-                    '{{#label}} must be a wss:// address in production: browsers refuse ws:// from an https page'
+                    '{{#label}} must be a wss address in production: browsers refuse an unencrypted WebSocket from an https page'
             }),
         otherwise: Joi.string()
             .uri({ scheme: ['ws', 'wss'] })
