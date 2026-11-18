@@ -3,6 +3,7 @@ import {
     MentionReason,
     MessageItemsPlan,
     NotificationType,
+    ServerItemFacts,
     TaskItemFacts,
     TaskReminder
 } from '../notification.rules'
@@ -29,6 +30,8 @@ export interface NotificationRecord {
     roleId: string | null
     /** A task item: the task as it was when the item was made (D-98). */
     task: TaskItemFacts | null
+    /** An owner or moderation item: the server and what was done, as when the item was made (spec 06 Q9). */
+    server: ServerItemFacts | null
     readAt: Date | null
     createdAt: Date
 }
@@ -57,6 +60,26 @@ export interface TaskItemDraft {
     facts: TaskItemFacts
 }
 
+/** An owner or moderation item to write for one person, as the servers module told it. */
+export interface ServerItemDraft {
+    type: 'owner_transferred' | 'moderation'
+    serverId: string
+    /** The old owner; none on moderation, which never says who (REQ-ROLE-04, a CHECK in the database). */
+    actorId: string | null
+    facts: ServerItemFacts
+}
+
+/**
+ * What a person's inbox shows (REQ-NOTIF-03): the items of the channels they
+ * view now, an owner item of a server they are still in, and every
+ * moderation item, kept after being put out (a server deleted for good takes
+ * them, D-188).
+ */
+export interface InboxScope {
+    serverIds: string[]
+    channelIds: string[]
+}
+
 /** An item taken off, and whether it was still unread (the badge drops by those). */
 export interface RemovedNotification {
     id: string
@@ -72,9 +95,9 @@ export interface NotificationPage {
 
 /**
  * Notification Repository Port — the Notification rows. Every read of a
- * person's inbox is limited to `channelIds`, the channels they view now
- * (REQ-NOTIF-03): the page and the unread count with the very same
- * condition, so the badge matches the list.
+ * person's inbox is limited to their `InboxScope` (REQ-NOTIF-03): the page
+ * and the unread count with the very same condition, so the badge matches
+ * the list.
  */
 export interface NotificationRepositoryPort {
     /** The items a message of the channel has now, one per person. */
@@ -105,6 +128,12 @@ export interface NotificationRepositoryPort {
      */
     remindedAlready(place: TaskPlace, reminder: TaskReminder, dueAt: Date, userIds: string[]): Promise<string[]>
 
+    /**
+     * Writes one owner or moderation item for the person, read when `read`
+     * (D-187). None when the server or the person is gone for good meanwhile.
+     */
+    addServerItem(draft: ServerItemDraft, userId: string, at: Date, read: boolean): Promise<NotificationRecord | null>
+
     /** Takes off the items of messages of one channel (deleted, REQ-NOTIF-03). */
     removeForMessages(channelId: string, messageIds: string[]): Promise<RemovedNotification[]>
 
@@ -118,10 +147,10 @@ export interface NotificationRepositoryPort {
     markAllRead(userId: string, beforeId: string, at: Date): Promise<number>
 
     /** Up to `limit` items older than `beforeId` (or the newest), newest first. */
-    page(userId: string, channelIds: string[], beforeId: string | null, limit: number): Promise<NotificationPage>
+    page(userId: string, scope: InboxScope, beforeId: string | null, limit: number): Promise<NotificationPage>
 
     /** How many of the person's items are unread. */
-    unreadCount(userId: string, channelIds: string[]): Promise<number>
+    unreadCount(userId: string, scope: InboxScope): Promise<number>
 
     /** Deletes up to `limit` items made before `cutoff`, read or not; how many. */
     removeOlderThan(cutoff: Date, limit: number): Promise<number>

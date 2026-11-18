@@ -3,7 +3,7 @@ import { EventBus } from '@nestjs/cqrs'
 import { channelPermissions, Permission, PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
 import { MEMBERSHIP, MembershipPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
-import { NOTIFICATION_REPOSITORY, NotificationRepositoryPort, RemovedNotification } from '../../domain'
+import { InboxScope, NOTIFICATION_REPOSITORY, NotificationRepositoryPort, RemovedNotification } from '../../domain'
 import { MESSAGE_PREVIEWS, MessagePreviewsPort } from '../ports'
 import { NotificationViewSources } from './notification-views'
 
@@ -20,9 +20,9 @@ export interface RemovedEntry {
 }
 
 /**
- * What the inbox's handlers read (D-157, D-190): the items, which channels
- * someone views now (REQ-NOTIF-03), the messages and pictures items show;
- * and the event bus, for `notification.*`.
+ * What the inbox's handlers read (D-157, D-190): the items, what someone's
+ * inbox shows now (`InboxScope`, REQ-NOTIF-03), the messages and pictures
+ * items show; and the event bus, for `notification.*`.
  */
 export abstract class Inbox {
     constructor(
@@ -39,16 +39,16 @@ export abstract class Inbox {
     }
 
     /**
-     * The channels whose items the person sees (REQ-NOTIF-03): those they view
-     * now in the servers they are in. Reads the permission cache once per
-     * server, so the page and the unread count filter alike in one query
+     * What the person's inbox shows (REQ-NOTIF-03): the servers they are in,
+     * and the channels they view now in them. Reads the permission cache once
+     * per server, so the page and the unread count filter alike in one query
      * each. A server left or deleted gives none; one rejoined gives its items
-     * back, read or not as they were.
+     * back, read or not as they were. Moderation items show whatever this is.
      */
-    protected async channelsOf(userId: string, now: Date): Promise<string[]> {
-        const servers = await this.membership.serverIdsOf(userId)
-        const accesses = await Promise.all(servers.map((serverId) => this.checker.access(serverId, userId)))
-        return accesses.flatMap((access) =>
+    protected async scopeOf(userId: string, now: Date): Promise<InboxScope> {
+        const serverIds = await this.membership.serverIdsOf(userId)
+        const accesses = await Promise.all(serverIds.map((serverId) => this.checker.access(serverId, userId)))
+        const channelIds = accesses.flatMap((access) =>
             access
                 ? access.server.channels
                       .filter(
@@ -60,11 +60,12 @@ export abstract class Inbox {
                       .map((channel) => channel.id)
                 : []
         )
+        return { serverIds, channelIds }
     }
 
     /** The person's unread count, as the badge shows it (REQ-NOTIF-01). */
     protected async unreadCountOf(userId: string, now: Date): Promise<number> {
-        return this.notifications.unreadCount(userId, await this.channelsOf(userId, now))
+        return this.notifications.unreadCount(userId, await this.scopeOf(userId, now))
     }
 
     /** Items taken off, by person; a new count only for those who lost an unread one. */

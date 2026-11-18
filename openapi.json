@@ -8452,6 +8452,42 @@
           "title"
         ]
       },
+      "NotificationServerResponseDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "nullable": true,
+            "description": "`moderation`: put out, banned, or timed out (a new length too); null on `owner_transferred`.",
+            "enum": [
+              "kick",
+              "ban",
+              "timeout"
+            ],
+            "type": "string"
+          },
+          "timeout_until": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "A timeout: when it ends; null otherwise."
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Why, when one was given (≤ 512 characters); null otherwise."
+          },
+          "name": {
+            "type": "string",
+            "description": "The server's name then."
+          }
+        },
+        "required": [
+          "action",
+          "timeout_until",
+          "reason",
+          "name"
+        ]
+      },
       "NotificationResponseDto": {
         "type": "object",
         "properties": {
@@ -8505,6 +8541,15 @@
               }
             ]
           },
+          "server": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationServerResponseDto"
+              }
+            ]
+          },
           "read_at": {
             "format": "date-time",
             "type": "string",
@@ -8545,6 +8590,7 @@
           "reason",
           "message",
           "task",
+          "server",
           "read_at",
           "id",
           "server_id",

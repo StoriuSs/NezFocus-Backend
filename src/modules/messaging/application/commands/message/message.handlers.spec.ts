@@ -256,7 +256,8 @@ function world({ limited = false } = {}) {
                 [GIANG, 'dnd'],
                 [KHACH, 'online'],
                 ['chi', 'online']
-            ])
+            ]),
+        connected: async () => false
     }
 
     // The server's members among those asked about: Khách is in no server here.

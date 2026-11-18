@@ -23,7 +23,7 @@ const server = {
 }
 
 /** The owner An acts on Dũng (no role), who is in ÔT, or on Khánh, who is banned from it. */
-function setUp({ found = true, target = true, banned = false } = {}) {
+function setUp({ found = true, target = true, banned = false, timedOutUntil = null as Date | null } = {}) {
     const written: ModerationWrite[] = []
     const repository = {
         change: jest.fn(
@@ -32,7 +32,7 @@ function setUp({ found = true, target = true, banned = false } = {}) {
                 const state: ModerationState = {
                     server,
                     member: { userId: 'an', roleIds: [], timeoutUntil: null },
-                    target: target ? { userId: targetId, roleIds: [], timeoutUntil: null } : null,
+                    target: target ? { userId: targetId, roleIds: [], timeoutUntil: timedOutUntil } : null,
                     banned
                 }
                 written.push(...decide(state))
@@ -101,11 +101,25 @@ describe('moderation handlers', () => {
         it('one kicked or banned leaves, with who removed them and why, for their own tabs alone', async () => {
             const kicked = setUp()
             await new KickMemberHandler(...kicked.deps).execute(new KickMemberCommand('an', 'ot', 'dung', 'Spam'))
-            expect(kicked.published()).toEqual([new MemberChangedEvent('ot', 'dung', 'left', 'kick', 'Spam')])
+            expect(kicked.published()).toEqual([
+                new MemberChangedEvent('ot', 'dung', 'left', 'kick', 'Spam', null, {
+                    action: 'kick',
+                    serverName: 'ÔT',
+                    reason: 'Spam',
+                    timeoutUntil: null
+                })
+            ])
 
             const banned = setUp()
             await new BanMemberHandler(...banned.deps).execute(new BanMemberCommand('an', 'ot', 'dung', null, 0))
-            expect(banned.published()).toEqual([new MemberChangedEvent('ot', 'dung', 'left', 'ban', null)])
+            expect(banned.published()).toEqual([
+                new MemberChangedEvent('ot', 'dung', 'left', 'ban', null, null, {
+                    action: 'ban',
+                    serverName: 'ÔT',
+                    reason: null,
+                    timeoutUntil: null
+                })
+            ])
         })
 
         it('a ban that deletes their recent messages says which, up to the ban (D-181)', async () => {
@@ -124,13 +138,30 @@ describe('moderation handlers', () => {
             await new TimeoutMemberHandler(...timedOut.deps).execute(
                 new TimeoutMemberCommand('an', 'ot', 'dung', 60, 'Nói tục')
             )
-            expect(timedOut.published()).toEqual([new MemberChangedEvent('ot', 'dung', 'updated')])
+            const [told] = timedOut.published() as MemberChangedEvent[]
+            expect(told).toMatchObject({ serverId: 'ot', userId: 'dung', action: 'updated', removedBy: null })
+            // What their inbox item says (REQ-ROLE-04, D-188): the server's name then, why, until when.
+            expect(told!.moderation).toEqual({
+                action: 'timeout',
+                serverName: 'ÔT',
+                reason: 'Nói tục',
+                timeoutUntil: timedOut.written[0]!.kind === 'timeOut' ? timedOut.written[0]!.until : null
+            })
+            expect(told!.moderation!.timeoutUntil).toBeInstanceOf(Date)
 
             const lifted = setUp({ target: false, banned: true })
             await new UnbanMemberHandler(...lifted.deps).execute(new UnbanMemberCommand('an', 'ot', 'khanh'))
             expect(lifted.published()).toEqual([
                 new ServerChangedEvent('ot', [{ topic: 'ban', action: 'deleted' }], false)
             ])
+        })
+
+        it('a timeout ended early is an update their inbox hears nothing of (D-188)', async () => {
+            const ended = setUp({ timedOutUntil: new Date(Date.now() + 60_000) })
+            await new TimeoutMemberHandler(...ended.deps).execute(
+                new TimeoutMemberCommand('an', 'ot', 'dung', null, null)
+            )
+            expect(ended.published()).toEqual([new MemberChangedEvent('ot', 'dung', 'updated')])
         })
 
         it('nothing when a timeout that does not run is ended', async () => {

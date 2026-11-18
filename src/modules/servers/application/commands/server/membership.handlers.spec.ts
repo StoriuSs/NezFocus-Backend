@@ -172,6 +172,19 @@ describe('TransferOwnershipHandler', () => {
         expect(w.log).toEqual(['password', 'commit', 'serverChanged ot', 'publish ServerChangedEvent'])
     })
 
+    it('says who handed the server to whom, with its name then, for the inbox of the new owner (REQ-SRV-05)', async () => {
+        const { w, handler } = setUp(true)
+        await handler.execute(new TransferOwnershipCommand('an', 'ot', 'binh', 'Harbour-Lantern-42'))
+
+        expect(w.events.publish).toHaveBeenCalledWith(
+            new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], true, [], {
+                fromUserId: 'an',
+                toUserId: 'binh',
+                serverName: 'Ôn thi Giải tích 2'
+            })
+        )
+    })
+
     it('changes nothing on a wrong password', async () => {
         const { w, handler } = setUp(false)
         await expect(handler.execute(new TransferOwnershipCommand('an', 'ot', 'binh', 'nope'))).rejects.toThrow(
@@ -398,7 +411,11 @@ describe('membership changes told after the commit (D-178)', () => {
             new TransferOwnershipCommand('an', 'ot', 'binh', 'Harbour-Lantern-42')
         )
         expect(handed.published()).toEqual([
-            new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], true)
+            new ServerChangedEvent('ot', [{ topic: 'server', action: 'updated' }], true, [], {
+                fromUserId: 'an',
+                toUserId: 'binh',
+                serverName: 'Ôn thi Giải tích 2'
+            })
         ])
     })
 

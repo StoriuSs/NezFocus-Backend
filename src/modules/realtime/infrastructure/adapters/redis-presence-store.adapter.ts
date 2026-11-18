@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import { RedisClientType } from 'redis'
 import { REDIS_CLIENT } from '@/shared/infrastructure/cache/redis-client.provider'
 import type { PresenceReaderPort } from '@/modules/servers'
-import { PRESENCES, type Presence, type SocketPresence } from '@/modules/realtime/domain'
+import { liveSockets, PRESENCES, type Presence, type SocketPresence } from '@/modules/realtime/domain'
 import type { KeptPresence, PresencePort, PresenceStorePort } from '@/modules/realtime/application/ports'
 
 /** One person's tabs: socket id → `{ idle, seenAt }`. */
@@ -101,6 +101,22 @@ export class RedisPresenceStore implements PresenceStorePort, PresencePort, Pres
         } catch (error) {
             this.logger.warn(`Presence not read, nobody shown online: ${(error as Error)?.message}`)
             return new Map()
+        }
+    }
+
+    /** A tab gone silent (its app instance stopped without saying) does not count, as for what others see. */
+    async connected(userId: string): Promise<boolean> {
+        try {
+            const tabs = Object.values(await this.redis.hGetAll(socketsKey(userId)))
+            return (
+                liveSockets(
+                    tabs.map((tab) => JSON.parse(tab) as SocketPresence),
+                    Date.now()
+                ).length > 0
+            )
+        } catch (error) {
+            this.logger.warn(`Presence not read, ${userId} taken as not connected: ${(error as Error)?.message}`)
+            return false
         }
     }
 }

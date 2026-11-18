@@ -1,4 +1,11 @@
-import { MessageMentionSources, MessagePlace, TaskPlace, TaskReminder, UnassignedBy } from '../../domain'
+import {
+    MessageMentionSources,
+    MessagePlace,
+    ModerationAction,
+    TaskPlace,
+    TaskReminder,
+    UnassignedBy
+} from '../../domain'
 
 /** A message just sent or edited, and whom it is about (REQ-MSG-09). */
 export interface MessageNotice extends MessagePlace {
@@ -13,6 +20,20 @@ export interface MessageNotice extends MessagePlace {
 export interface TaskNotice extends TaskPlace {
     title: string
     dueAt: Date | null
+}
+
+/** A server an item is about, with its name now: the item keeps it (spec 06 Q9). */
+export interface ServerNotice {
+    serverId: string
+    serverName: string
+}
+
+/** What was done to a member (REQ-ROLE-04): never by whom. */
+export interface ModerationNotice {
+    action: ModerationAction
+    reason: string | null
+    /** A timeout: when it ends. */
+    timeoutUntil: Date | null
 }
 
 /**
@@ -51,6 +72,16 @@ export interface NotifierPort {
      * all who may have had one, hear of it with their unread count.
      */
     taskDeleted(taskId: string, userIds: string[]): Promise<void>
+
+    /** The server handed to `toUserId` by `fromUserId` (REQ-SRV-05): one item for the new owner. */
+    ownerTransferred(notice: ServerNotice, fromUserId: string, toUserId: string): Promise<void>
+
+    /**
+     * A member kicked, banned or timed out, or given a new length (REQ-ROLE-04,
+     * D-188): one item for them, naming no one; a kick or ban that reached an
+     * open app is read (D-187, D-201).
+     */
+    memberModerated(notice: ServerNotice, userId: string, moderation: ModerationNotice): Promise<void>
 }
 
 export const NOTIFIER = Symbol('NotifierPort')

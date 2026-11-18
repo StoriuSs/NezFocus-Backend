@@ -8,6 +8,13 @@ export interface ServerChange {
     action: ServerAction
 }
 
+/** A server handed over (REQ-SRV-05): who gave it to whom, and its name then, for the new owner's inbox. */
+export interface OwnerTransfer {
+    fromUserId: string
+    toUserId: string
+    serverName: string
+}
+
 /**
  * Domain Event: Server Changed
  *
@@ -26,6 +33,8 @@ export interface ServerChange {
  * `boardsTurnedOn`: the text channels whose Task Board this change turned
  * on, so the tasks module sets their reminders again (REQ-TASK-01, 04).
  *
+ * `ownerTransfer`: the server was handed over; the new owner gets an item.
+ *
  * Changes to one member (a role given, a timeout, joining, leaving) are
  * MemberChangedEvent.
  */
@@ -37,7 +46,8 @@ export class ServerChangedEvent {
         public readonly serverId: string,
         changes: ServerChange[],
         public readonly viewChanged: boolean,
-        public readonly boardsTurnedOn: string[] = []
+        public readonly boardsTurnedOn: string[] = [],
+        public readonly ownerTransfer: OwnerTransfer | null = null
     ) {
         const seen = new Map<string, ServerChange>()
         for (const change of changes) {

@@ -25,11 +25,17 @@ export { SYSTEM_MESSAGES, type SystemMessagesPort } from './application/ports/sy
 // Changes to a server and its members, after the commit: realtime tells the members and moves their sockets (D-178).
 export {
     ServerChangedEvent,
+    type OwnerTransfer,
     type ServerAction,
     type ServerChange,
     type ServerTopic
 } from './application/events/server-changed.event'
-export { MemberChangedEvent, type MemberAction, type RemovedBy } from './application/events/member-changed.event'
+export {
+    MemberChangedEvent,
+    type MemberAction,
+    type MemberModeration,
+    type RemovedBy
+} from './application/events/member-changed.event'
 // The messages a ban deletes, which messaging deletes (D-181).
 export { type MessageWindow } from './domain/moderation'
 

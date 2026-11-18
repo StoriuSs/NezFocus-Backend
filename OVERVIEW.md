@@ -335,7 +335,9 @@ servers/
 │   ├── commands/<area>/        # <area>.commands.ts + <area>.handlers.ts, for server, channel-layout, invite, role, moderation
 │   ├── queries/<area>/         # The same, for server, invite, role, moderation
 │   ├── events/                 # ServerChangedEvent, MemberChangedEvent: published after each commit, for realtime (D-178)
-│   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users)
+│   │                           #   and the other modules that follow a server (messaging, tasks, notifications)
+│   ├── events/handlers/        # A deleted account leaves its servers (AccountDeletedEvent of users); a moderation and a
+│   │                           #   server handed over go in the person's inbox through NOTIFIER (Notify* handlers)
 │   ├── services/               # ChangeLayout, ChangeRoles, Moderate, ChangeMembership: lock, decide, write, clear the
 │   │                           #   permission cache, then publish what changed
 │   └── ports/                  # Icon storage, file clean-up, invite guess limit, system messages; MEMBERSHIP,
@@ -402,7 +404,8 @@ with `domain/presence.rules.ts` (the status chosen in users' settings, read
 through `USER_DIRECTORY.presenceOf`) and tells it as `presence.updated` to
 the person's servers. `presence-sweep` (src/maintenance, every 15 seconds)
 takes offline those not heard from for 60 seconds. Other modules read it:
-messaging through `PRESENCE` (@here), servers through its own
+messaging through `PRESENCE` (@here), notifications through `PRESENCE` too
+(whether a kicked or banned person has a live tab, D-187), servers through its own
 `PRESENCE_READER` port, answered by the global `PresenceReaderModule` here
 (as D-160). Every change to one person runs under their short Redis lock
 (`underLock`). A tab's `typing.start` becomes `ReportTypingCommand`, whose
@@ -526,8 +529,10 @@ date in the time zone of one's settings.
 
 `src/modules/notifications/` holds the inbox (SRS 4.8), grouped by area:
 `commands/item/` (a message's items), `commands/task-item/` (a task's items,
-which keep its title and due date as they were, D-98), `commands/read/`,
-`queries/inbox/`. Other modules put items
+which keep its title and due date as they were, D-98), `commands/server-item/`
+(a server handed over and a kick, ban or timeout, which keep the server's
+name; a kick or ban is read when the person has a tab open, D-187, D-201),
+`commands/read/`, `queries/inbox/`. Other modules put items
 in only through its `NOTIFIER` port (D-185), given by the global
 `NotifierModule`: messaging's `NotifyMessageMentionsHandler` works out after
 a message is saved whom it is about (its mention rows, @here, and the
@@ -539,7 +544,8 @@ its items with it, and every time a channel is read (ack, or sending there)
 its items up to there are read; one for a message already read is written
 read (D-199). The inbox reads the permission cache once per server for the
 channels one views now, so the page and the unread count filter alike
-(`services/inbox.ts`); the messages its items show come from
+(`services/inbox.ts`); moderation items show even after one is put out, an
+owner item while one is still in the server; the messages its items show come from
 `MESSAGE_PREVIEWS`, which messaging answers (D-198). Items older than 90
 days go with a daily maintenance task.
 
@@ -633,7 +639,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events, presence
 │   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread, files
 │   ├── modules/tasks/          # Task Boards: tasks, the people on them, their history, search
-│   ├── modules/notifications/  # The inbox: items from mentions and replies, read rules, the 90-day clean-up
+│   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

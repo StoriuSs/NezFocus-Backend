@@ -1,5 +1,12 @@
 import { UserDirectoryPort } from '@/modules/users'
-import { MentionReason, NotificationPerson, NotificationRecord, NotificationType, TaskItemFacts } from '../../domain'
+import {
+    MentionReason,
+    NotificationPerson,
+    NotificationRecord,
+    NotificationType,
+    ServerItemFacts,
+    TaskItemFacts
+} from '../../domain'
 import { MessagePreview, MessagePreviewsPort } from '../ports'
 
 /** The person an item is from, the picture as an address; nulls for an account deleted or waiting to be (D-182). */
@@ -25,6 +32,8 @@ export interface NotificationView {
     message: MessagePreview | null
     /** The task as it was when the item was made (D-98), for a task item. */
     task: TaskItemFacts | null
+    /** The server and what was done, as when the item was made, for an owner or moderation item (spec 06 Q9). */
+    server: ServerItemFacts | null
     readAt: Date | null
     createdAt: Date
 }

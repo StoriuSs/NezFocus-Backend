@@ -30,26 +30,42 @@ const TELL_CACHE: {
     deleteServer: (cache, serverId) => cache.serverChanged(serverId)
 }
 
+/** Who acted and the server's name, read with the lock held: what a new owner's item says. */
+interface Written {
+    userId: string
+    serverName: string
+}
+
 /**
  * What the members are told of each write (D-178): one who left; a new owner,
- * who sees every channel; a deleted server, which no one sees any more.
+ * who sees every channel and gets an item naming the old one (REQ-SRV-05); a
+ * deleted server, which no one sees any more.
  */
 const TOLD: {
     [K in MembershipWrite['kind']]: (
         serverId: string,
-        write: Extract<MembershipWrite, { kind: K }>
+        write: Extract<MembershipWrite, { kind: K }>,
+        written: Written
     ) => ServerChangedEvent | MemberChangedEvent
 } = {
     leave: (serverId, write) => new MemberChangedEvent(serverId, write.userId, 'left'),
-    transferOwnership: (serverId) => new ServerChangedEvent(serverId, [{ topic: 'server', action: 'updated' }], true),
+    transferOwnership: (serverId, write, { userId, serverName }) =>
+        new ServerChangedEvent(serverId, [{ topic: 'server', action: 'updated' }], true, [], {
+            fromUserId: userId,
+            toUserId: write.toUserId,
+            serverName
+        }),
     deleteServer: (serverId) => new ServerChangedEvent(serverId, [{ topic: 'server', action: 'deleted' }], true)
 }
 
-const told = (serverId: string, write: MembershipWrite) =>
-    (TOLD[write.kind] as (serverId: string, write: MembershipWrite) => ServerChangedEvent | MemberChangedEvent)(
-        serverId,
-        write
-    )
+const told = (serverId: string, write: MembershipWrite, written: Written) =>
+    (
+        TOLD[write.kind] as (
+            serverId: string,
+            write: MembershipWrite,
+            written: Written
+        ) => ServerChangedEvent | MemberChangedEvent
+    )(serverId, write, written)
 
 const tellCache = (cache: PermissionCachePort, serverId: string, write: MembershipWrite) =>
     (TELL_CACHE[write.kind] as (cache: PermissionCachePort, serverId: string, write: MembershipWrite) => Promise<void>)(
@@ -81,14 +97,16 @@ export abstract class ChangeMembership {
         decide: (state: MembershipState, now: Date) => MembershipWrite[]
     ): Promise<MembershipWrite[]> {
         let writes: MembershipWrite[] = []
+        let serverName = ''
         const done = await this.servers.changeMembership(serverId, userId, targetId, (state) => {
             // Read once the lock is held, as the roles and the moderation do.
             writes = decide(state, new Date())
+            serverName = state.server.name
             return writes
         })
         if (!done) throw new ServerNotFoundError(serverId)
         await Promise.all(writes.map((write) => tellCache(this.cache, serverId, write)))
-        for (const write of writes) this.events.publish(told(serverId, write))
+        for (const write of writes) this.events.publish(told(serverId, write, { userId, serverName }))
         return writes
     }
 }

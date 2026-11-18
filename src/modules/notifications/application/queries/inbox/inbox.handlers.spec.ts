@@ -47,6 +47,53 @@ describe('ListNotificationsHandler (REQ-NOTIF-01, REQ-NOTIF-03)', () => {
         expect(back.items.map((item) => [item.messageId, item.readAt])).toEqual([['m3', null]])
     })
 
+    it('keeps showing moderation items after one is put out of the server, an owner item only while in it (REQ-NOTIF-03)', async () => {
+        const world = notificationWorld()
+        const server = (action: 'kick' | null) => ({ name: 'ÔT', action, timeoutUntil: null, reason: null })
+        world.seed({
+            userId: 'binh',
+            messageId: null,
+            type: 'owner_transferred',
+            channelId: null,
+            server: server(null)
+        })
+        world.seed({
+            userId: 'binh',
+            messageId: null,
+            type: 'moderation',
+            channelId: null,
+            actor: null,
+            server: server('kick')
+        })
+        world.seed({
+            userId: 'binh',
+            messageId: null,
+            type: 'moderation',
+            serverId: 'cu',
+            channelId: null,
+            actor: null,
+            server: server('kick')
+        })
+        const handler = new ListNotificationsHandler(...world.deps)
+
+        const inServer = await handler.execute(new ListNotificationsQuery('binh', null, 50))
+        expect(inServer.items.map((item) => [item.type, item.serverId])).toEqual([
+            ['moderation', 'cu'],
+            ['moderation', 'ot'],
+            ['owner_transferred', 'ot']
+        ])
+        expect(inServer.unreadCount).toBe(3)
+        expect(inServer.items[0]!.server).toEqual(server('kick'))
+
+        world.servers['ot'] = ['an', 'chi']
+        const out = await handler.execute(new ListNotificationsQuery('binh', null, 50))
+        expect(out.items.map((item) => [item.type, item.serverId])).toEqual([
+            ['moderation', 'cu'],
+            ['moderation', 'ot']
+        ])
+        expect(out.unreadCount).toBe(2)
+    })
+
     it('leaves out an item whose message is deleted, and a picture that cannot be signed', async () => {
         const world = notificationWorld()
         world.say('m2')

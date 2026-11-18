@@ -132,6 +132,33 @@ export function taskItemRecipients(actorId: string | null, userIds: string[]): s
     return [...new Set(userIds)].filter((userId) => userId !== actorId)
 }
 
+/** What was done to someone in a server (REQ-ROLE-04): put out, banned, or timed out (a new length too, D-188). */
+export type ModerationAction = 'kick' | 'ban' | 'timeout'
+
+/**
+ * What an owner or moderation item keeps as it was when made (spec 06 Q9):
+ * the server's name then; on a moderation item, what was done, when a
+ * timeout ends, and why. Never who did it (REQ-ROLE-04).
+ */
+export interface ServerItemFacts {
+    name: string
+    /** moderation only. */
+    action: ModerationAction | null
+    /** A timeout: when it ends. */
+    timeoutUntil: Date | null
+    reason: string | null
+}
+
+/**
+ * Whether a server item is made read (D-187, D-201): a kick or ban that
+ * reached an open app showed its dialog (11 S-MOD-02), so it was seen. A
+ * timeout has no dialog and a server handed over none either: both arrive
+ * unread, open app or not.
+ */
+export function createdRead(action: ModerationAction | null, connected: boolean): boolean {
+    return connected && (action === 'kick' || action === 'ban')
+}
+
 /** How long the inbox keeps an item (REQ-NOTIF-03, SRS 7.3). */
 export const KEPT_DAYS = 90
 

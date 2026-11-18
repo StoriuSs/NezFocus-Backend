@@ -733,8 +733,8 @@ it through its global `SystemMessagesModule`, whose adapter
 (`CommandBusSystemMessages`) only sends messaging's own
 `PostMemberJoinedCommand` over the command bus (D-180). The notifications
 module has two more: `NOTIFIER`, which it defines and answers itself through
-the global `NotifierModule` so that messaging (and later tasks, servers) put
-items in an inbox without importing it (D-185); and `MESSAGE_PREVIEWS`, the
+the global `NotifierModule` so that messaging, tasks and servers put items
+in an inbox without importing it (D-185); and `MESSAGE_PREVIEWS`, the
 messages its items show, which it defines and messaging answers with a query
 over the bus (`QueryBusMessagePreviews`, D-198).
 

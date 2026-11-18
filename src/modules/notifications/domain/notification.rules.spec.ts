@@ -2,6 +2,7 @@ import {
     HeldMessageItem,
     isKept,
     keptSince,
+    createdRead,
     messageRecipients,
     planMessageItems,
     taskItemRecipients
@@ -115,5 +116,19 @@ describe('taskItemRecipients (D-95, D-98)', () => {
 
     it('gives everyone theirs when the app acted (a reminder)', () => {
         expect(taskItemRecipients(null, ['binh', 'chi'])).toEqual(['binh', 'chi'])
+    })
+})
+
+describe('createdRead (D-187, D-201)', () => {
+    it('makes a kick or ban read when it reached an open app: its dialog showed it', () => {
+        expect(createdRead('kick', true)).toBe(true)
+        expect(createdRead('ban', true)).toBe(true)
+        expect(createdRead('kick', false)).toBe(false)
+        expect(createdRead('ban', false)).toBe(false)
+    })
+
+    it('leaves a timeout and an owner item unread, open app or not: no dialog says them', () => {
+        expect(createdRead('timeout', true)).toBe(false)
+        expect(createdRead(null, true)).toBe(false)
     })
 })

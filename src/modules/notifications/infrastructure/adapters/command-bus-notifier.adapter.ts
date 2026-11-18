@@ -2,12 +2,15 @@ import { Injectable } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 import { TaskReminder, UnassignedBy } from '../../domain'
 import {
+    AddServerItemCommand,
     AddTaskItemsCommand,
     ForgetTaskItemsCommand,
     MessageNotice,
+    ModerationNotice,
     NotifierPort,
     ReadChannelItemsCommand,
     RemoveMessageItemsCommand,
+    ServerNotice,
     SyncMessageItemsCommand,
     TaskNotice
 } from '../../application'
@@ -79,5 +82,41 @@ export class CommandBusNotifier implements NotifierPort {
 
     async taskDeleted(taskId: string, userIds: string[]): Promise<void> {
         await this.commandBus.execute(new ForgetTaskItemsCommand(taskId, userIds))
+    }
+
+    async ownerTransferred(
+        { serverId, serverName }: ServerNotice,
+        fromUserId: string,
+        toUserId: string
+    ): Promise<void> {
+        await this.commandBus.execute(
+            new AddServerItemCommand(
+                {
+                    type: 'owner_transferred',
+                    serverId,
+                    actorId: fromUserId,
+                    facts: { name: serverName, action: null, timeoutUntil: null, reason: null }
+                },
+                toUserId
+            )
+        )
+    }
+
+    async memberModerated(
+        { serverId, serverName }: ServerNotice,
+        userId: string,
+        { action, reason, timeoutUntil }: ModerationNotice
+    ): Promise<void> {
+        await this.commandBus.execute(
+            new AddServerItemCommand(
+                {
+                    type: 'moderation',
+                    serverId,
+                    actorId: null,
+                    facts: { name: serverName, action, timeoutUntil, reason }
+                },
+                userId
+            )
+        )
     }
 }

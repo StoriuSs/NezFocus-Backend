@@ -3,17 +3,26 @@ import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
     HeldMessageItem,
+    InboxScope,
     MessageItemsPlan,
     MessagePlace,
     NotificationPage,
     NotificationRecord,
     NotificationRepositoryPort,
     RemovedNotification,
+    ServerItemDraft,
     TaskItemDraft,
     TaskPlace,
     TaskReminder
 } from '../../domain'
-import { dataOf, MessageItemData, NOTIFICATION, taskDataOf, toNotificationRecord } from './notification.selections'
+import {
+    dataOf,
+    MessageItemData,
+    NOTIFICATION,
+    serverDataOf,
+    taskDataOf,
+    toNotificationRecord
+} from './notification.selections'
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
 
@@ -25,6 +34,19 @@ const WRITE_BATCH = 500
 
 /** The item types a message makes, the ones reading a channel marks read (D-188). */
 const MESSAGE_TYPES = Prisma.sql`'mention'::"NotificationType", 'reply'::"NotificationType"`
+
+/**
+ * A person's items they may see now (REQ-NOTIF-03): of a channel they view,
+ * a server handed to them that they are still in, and any moderation item.
+ */
+const inScope = (userId: string, { serverIds, channelIds }: InboxScope): Prisma.NotificationWhereInput => ({
+    userId,
+    OR: [
+        { channelId: { in: channelIds } },
+        { type: 'owner_transferred', serverId: { in: serverIds } },
+        { type: 'moderation' }
+    ]
+})
 
 const batches = <T>(all: T[]): T[][] =>
     Array.from({ length: Math.ceil(all.length / WRITE_BATCH) }, (_, index) =>
@@ -134,6 +156,33 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
         }
     }
 
+    async addServerItem(
+        { type, serverId, actorId, facts }: ServerItemDraft,
+        userId: string,
+        at: Date,
+        read: boolean
+    ): Promise<NotificationRecord | null> {
+        try {
+            const row = await this.prisma.notification.create({
+                data: {
+                    userId,
+                    type,
+                    serverId,
+                    actorId,
+                    data: serverDataOf(facts),
+                    readAt: read ? at : null,
+                    createdAt: at
+                },
+                select: NOTIFICATION
+            })
+            return toNotificationRecord(row)
+        } catch (error) {
+            // The server or the person gone for good meanwhile: no one to tell.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
     async remindedAlready(
         { channelId, taskId }: TaskPlace,
         reminder: TaskReminder,
@@ -194,14 +243,9 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
         return count
     }
 
-    async page(
-        userId: string,
-        channelIds: string[],
-        beforeId: string | null,
-        limit: number
-    ): Promise<NotificationPage> {
+    async page(userId: string, scope: InboxScope, beforeId: string | null, limit: number): Promise<NotificationPage> {
         const rows = await this.prisma.notification.findMany({
-            where: { userId, channelId: { in: channelIds }, ...(beforeId && { id: { lt: beforeId } }) },
+            where: { ...inScope(userId, scope), ...(beforeId && { id: { lt: beforeId } }) },
             orderBy: { id: 'desc' },
             take: limit + 1,
             select: NOTIFICATION
@@ -209,8 +253,8 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
         return { items: rows.slice(0, limit).map(toNotificationRecord), more: rows.length > limit }
     }
 
-    async unreadCount(userId: string, channelIds: string[]): Promise<number> {
-        return this.prisma.notification.count({ where: { userId, readAt: null, channelId: { in: channelIds } } })
+    async unreadCount(userId: string, scope: InboxScope): Promise<number> {
+        return this.prisma.notification.count({ where: { ...inScope(userId, scope), readAt: null } })
     }
 
     async removeOlderThan(cutoff: Date, limit: number): Promise<number> {

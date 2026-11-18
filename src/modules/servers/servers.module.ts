@@ -25,6 +25,8 @@ import {
     MEMBERSHIP,
     MODERATION_COMMAND_HANDLERS,
     MODERATION_QUERY_HANDLERS,
+    NotifyModeratedMemberHandler,
+    NotifyNewOwnerHandler,
     ROLE_COMMAND_HANDLERS,
     ROLE_DIRECTORY,
     ROLE_QUERY_HANDLERS,
@@ -59,7 +61,9 @@ import {
  * permissions module what someone may do, and tells it after each commit
  * what changed (D-146). Asks the auth module for the password when a server
  * is handed over (CURRENT_PASSWORD, D-160), and the users module for
- * people's pictures as addresses (USER_DIRECTORY).
+ * people's pictures as addresses (USER_DIRECTORY). Puts a moderation or a
+ * server handed over in the person's inbox through the global NOTIFIER
+ * (D-185).
  */
 @Module({
     // file-cleanup's consumer lives in UploadModule; this module only adds jobs.
@@ -94,7 +98,9 @@ import {
         ...ROLE_QUERY_HANDLERS,
         ...MODERATION_COMMAND_HANDLERS,
         ...MODERATION_QUERY_HANDLERS,
-        ...SERVER_EVENT_HANDLERS
+        ...SERVER_EVENT_HANDLERS,
+        NotifyModeratedMemberHandler,
+        NotifyNewOwnerHandler
     ],
     // MEMBERSHIP: the realtime gateway puts a socket in its servers' rooms; tasks
     // checks that a member who left has not joined again (D-195).

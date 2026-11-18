@@ -461,10 +461,13 @@ port (`SERVER_OWNERSHIP`), servers answers it, and gives it through a small
 sends messaging's own command over the bus, so the global module needs
 nothing but `CqrsModule`. Notifications defines and answers its own
 `NOTIFIER` (`NotifierModule` in `notifications.module.ts`, D-185), so
-messaging calls it without importing notifications; and it defines
-`MESSAGE_PREVIEWS`, which messaging answers through `MessagePreviewsModule`
-with a query over the bus (D-198): the code depends one way only, messaging
-on notifications. Ask the owner before adding another such pair.
+messaging, tasks and servers call it without importing the notifications
+Nest module; and it defines `MESSAGE_PREVIEWS`, which messaging answers
+through `MessagePreviewsModule` with a query over the bus (D-198): the code
+depends one way only, messaging on notifications. Servers and notifications
+import each other's `index.ts` (`NOTIFIER` one way, `MEMBERSHIP` the other),
+which D-185 accepted: neither index loads the other's Nest module, so no
+token is undefined when Nest reads `@Inject`. Ask the owner before adding another such pair.
 
 `MODULES` at the top of `eslint.config.mjs` is every folder under
 `src/modules`, so from the module's first file a deep import into it from

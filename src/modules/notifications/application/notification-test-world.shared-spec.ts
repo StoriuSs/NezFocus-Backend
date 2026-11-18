@@ -4,11 +4,13 @@ import { MembershipPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import {
     HeldMessageItem,
+    InboxScope,
     MessageItemsPlan,
     MessagePlace,
     NotificationRecord,
     NotificationRepositoryPort,
     RemovedNotification,
+    ServerItemDraft,
     TaskItemDraft,
     TaskPlace,
     TaskReminder
@@ -19,7 +21,7 @@ import { MessagePreview, MessagePreviewsPort } from './ports'
  * One server for the notifications handler specs, in memory (spec 06):
  * "ot", An the owner, Bình a member, Chi holding "Quản lý". Channels:
  * #hoi-dap, #bi-mat private to Quản lý. Lan is in no server. Server "cu" is
- * one Bình left: his items there are hidden, not deleted.
+ * one Bình left: his items there are hidden, not deleted, but for moderation.
  */
 
 const server: AccessServer = {
@@ -57,6 +59,8 @@ export function notificationWorld() {
     const rows: Row[] = []
     /** Tasks deleted: writing their items fails as the foreign key does. */
     const deletedTasks = new Set<string>()
+    /** Servers deleted for good: writing their items fails as the foreign key does. */
+    const deletedServers = new Set<string>()
     let made = 0
     const nextId = () => `n${String(++made).padStart(3, '0')}`
     const person = (id: string) => ({ id, username: id, displayName: id.toUpperCase(), avatarKey: `${id}.png` })
@@ -70,8 +74,15 @@ export function notificationWorld() {
         }
         return removed
     }
-    const seen = (userId: string, channelIds: string[]) =>
-        rows.filter((row) => row.userId === userId && row.channelId !== null && channelIds.includes(row.channelId))
+    /** What the Prisma repository's `inScope` keeps (REQ-NOTIF-03). */
+    const seen = (userId: string, { serverIds, channelIds }: InboxScope) =>
+        rows.filter(
+            (row) =>
+                row.userId === userId &&
+                ((row.channelId !== null && channelIds.includes(row.channelId)) ||
+                    (row.type === 'owner_transferred' && row.serverId !== null && serverIds.includes(row.serverId)) ||
+                    row.type === 'moderation')
+        )
 
     const repository: NotificationRepositoryPort = {
         heldForMessage: jest.fn(
@@ -100,6 +111,7 @@ export function notificationWorld() {
                         messageId: place.messageId,
                         taskId: null,
                         task: null,
+                        server: null,
                         actorId: place.actorId,
                         actor: person(place.actorId),
                         reason: item.reason,
@@ -132,6 +144,7 @@ export function notificationWorld() {
                     reason: null,
                     roleId: null,
                     task: facts,
+                    server: null,
                     readAt: null,
                     createdAt: at
                 })
@@ -139,6 +152,30 @@ export function notificationWorld() {
             rows.push(...added)
             return [...added].reverse()
         }),
+        addServerItem: jest.fn(
+            async ({ type, serverId, actorId, facts }: ServerItemDraft, userId: string, at: Date, read: boolean) => {
+                if (deletedServers.has(serverId)) return null
+                const row: Row = {
+                    id: nextId(),
+                    userId,
+                    type,
+                    serverId,
+                    channelId: null,
+                    messageId: null,
+                    taskId: null,
+                    actorId,
+                    actor: actorId ? person(actorId) : null,
+                    reason: null,
+                    roleId: null,
+                    task: null,
+                    server: facts,
+                    readAt: read ? at : null,
+                    createdAt: at
+                }
+                rows.push(row)
+                return row
+            }
+        ),
         remindedAlready: jest.fn(
             async ({ taskId }: TaskPlace, reminder: TaskReminder, dueAt: Date, userIds: string[]) =>
                 rows
@@ -181,15 +218,14 @@ export function notificationWorld() {
             marked.forEach((row) => (row.readAt = at))
             return marked.length
         }),
-        page: jest.fn(async (userId: string, channelIds: string[], beforeId: string | null, limit: number) => {
-            const older = seen(userId, channelIds)
+        page: jest.fn(async (userId: string, scope: InboxScope, beforeId: string | null, limit: number) => {
+            const older = seen(userId, scope)
                 .filter((row) => beforeId === null || row.id < beforeId)
                 .sort((a, b) => (a.id < b.id ? 1 : -1))
             return { items: older.slice(0, limit), more: older.length > limit }
         }),
         unreadCount: jest.fn(
-            async (userId: string, channelIds: string[]) =>
-                seen(userId, channelIds).filter((row) => row.readAt === null).length
+            async (userId: string, scope: InboxScope) => seen(userId, scope).filter((row) => row.readAt === null).length
         ),
         removeOlderThan: jest.fn(
             async (cutoff: Date, limit: number) =>
@@ -248,6 +284,7 @@ export function notificationWorld() {
             channelId: 'hoi-dap',
             taskId: null,
             task: null,
+            server: null,
             actorId: 'an',
             actor: person('an'),
             reason: 'user',
@@ -279,6 +316,7 @@ export function notificationWorld() {
         say,
         published,
         servers,
-        deletedTasks
+        deletedTasks,
+        deletedServers
     }
 }

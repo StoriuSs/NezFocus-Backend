@@ -19,6 +19,8 @@ interface Item {
     read_at: string | null
     actor: { id: string } | null
     message: { content: string } | null
+    server_id: string | null
+    server: { name: string; action: string | null; timeout_until: string | null; reason: string | null } | null
 }
 
 /**
@@ -26,7 +28,8 @@ interface Item {
  * D-183, D-188, D-198, D-199): items written after a message is saved, by
  * name, by reply, by @everyone and @role, read in the channel or the inbox,
  * following edits and deletes, hidden with the channel, cleaned up after 90
- * days, and what each person's tabs hear.
+ * days, and what each person's tabs hear. A server handed over and a
+ * moderation (REQ-SRV-05, REQ-ROLE-04, D-187, D-201).
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -408,6 +411,104 @@ describe('Inbox (integration)', () => {
                 (found) => !!found
             )
             expect(back!.read_at).toBeNull()
+        })
+    })
+
+    describe('items from servers (REQ-SRV-05, REQ-ROLE-04, D-187, D-201)', () => {
+        /** A server of An's with these people in it, so taking them out leaves the others alone. */
+        async function serverWith(name: string, members: Who[]): Promise<string> {
+            const created = await as('an', api().post('/api/v1/servers'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name, template: 'standard' })
+            const id = created.body.data.id as string
+            const invite = await as('an', api().post(`/api/v1/servers/${id}/invites`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ max_age_seconds: null, max_uses: null })
+            for (const who of members) await as(who, api().post(`/api/v1/invites/${invite.body.data.code}/accept`))
+            return id
+        }
+        const member = (id: string, who: Who) => `/api/v1/servers/${id}/members/${users[who].id}`
+        const itemsIn = async (who: Who, id: string) =>
+            (await inbox(who)).items.filter((item) => item.server_id === id && item.channel_id === null)
+        const arrived = (who: Who, id: string, count: number) =>
+            eventually(
+                () => itemsIn(who, id),
+                (items) => items.length >= count
+            )
+
+        it('gives one timed out an unread item with the server name, why and until when, naming no one; a new length is a new item, ending it early none', async () => {
+            const id = await serverWith('CLB Guitar PTIT', ['dung'])
+            const dung = await connectAs('dung')
+            const heard = collect(dung, 'notification.created')
+
+            const timedOut = await as('an', api().patch(member(id, 'dung'))).send({
+                timeout_seconds: 3600,
+                reason: 'Nói tục'
+            })
+            expect(timedOut.status).toBe(200)
+            const [first] = await arrived('dung', id, 1)
+            expect(first).toMatchObject({
+                type: 'moderation',
+                actor: null,
+                read_at: null,
+                server: { name: 'CLB Guitar PTIT', action: 'timeout', reason: 'Nói tục' }
+            })
+            expect(Date.parse(first!.server!.timeout_until!)).toBeGreaterThan(Date.now() + 3500_000)
+            expect(await heard()).toEqual([{ notification: expect.objectContaining({ id: first!.id }) }])
+
+            await as('an', api().patch(member(id, 'dung'))).send({ timeout_seconds: 300 })
+            const [longer] = await arrived('dung', id, 2)
+            expect(longer!.server).toMatchObject({ action: 'timeout', reason: null })
+            expect(Date.parse(longer!.server!.timeout_until!)).toBeLessThan(Date.now() + 301_000)
+
+            await as('an', api().patch(member(id, 'dung'))).send({ timeout_seconds: null })
+            await new Promise((resolve) => setTimeout(resolve, 400))
+            expect(await itemsIn('dung', id)).toHaveLength(2)
+        })
+
+        it('makes a kick read when the person has a tab open and a ban unread when not; both stay once they are out', async () => {
+            const id = await serverWith('Nhóm đồ án Mobile', ['binh', 'chi'])
+            await connectAs('chi')
+            const before = (await inbox('binh')).unread_count
+
+            expect((await as('an', api().delete(member(id, 'chi'))).send({ reason: 'Spam' })).status).toBe(200)
+            expect((await as('an', api().put(`/api/v1/servers/${id}/bans/${users.binh.id}`)).send({})).status).toBe(200)
+
+            const [kicked] = await arrived('chi', id, 1)
+            expect(kicked).toMatchObject({ type: 'moderation', server: { action: 'kick', reason: 'Spam' } })
+            expect(kicked!.read_at).not.toBeNull()
+            const [banned] = await arrived('binh', id, 1)
+            expect(banned).toMatchObject({ type: 'moderation', read_at: null, server: { action: 'ban', reason: null } })
+            expect((await inbox('binh')).unread_count).toBe(before + 1)
+        })
+
+        it('gives the new owner an unread item naming the old one, hidden once they leave the server', async () => {
+            const id = await serverWith('Ôn thi Xác suất', ['chi'])
+            const handed = await as('an', api().post(`/api/v1/servers/${id}/transfer`)).send({
+                user_id: users.chi.id,
+                password: PASSWORD
+            })
+            expect(handed.status).toBe(200)
+            const [item] = await arrived('chi', id, 1)
+            expect(item).toMatchObject({
+                type: 'owner_transferred',
+                read_at: null,
+                actor: { id: users.an.id },
+                server: { name: 'Ôn thi Xác suất', action: null, timeout_until: null, reason: null }
+            })
+            expect(await itemsIn('an', id)).toEqual([])
+
+            // Handed back, then out of it: the item is hidden from the list and the count (REQ-NOTIF-03).
+            const unread = (await inbox('chi')).unread_count
+            const back = await as('chi', api().post(`/api/v1/servers/${id}/transfer`)).send({
+                user_id: users.an.id,
+                password: PASSWORD
+            })
+            expect(back.status).toBe(200)
+            expect((await as('chi', api().delete(`/api/v1/servers/${id}/members/me`))).status).toBe(200)
+            const after = await inbox('chi')
+            expect(after.items.some((found) => found.id === item!.id)).toBe(false)
+            expect(after.unread_count).toBe(unread - 1)
         })
     })
 
