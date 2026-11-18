@@ -49,6 +49,7 @@ const message = (id: string, authorId: string | null, avatarKey: string | null =
     editedAt: null,
     pinned: false,
     systemUser: null,
+    systemUsers: [],
     createdAt: new Date('2026-10-18T20:02:00Z')
 })
 

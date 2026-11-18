@@ -1,7 +1,7 @@
 import { CannotChangeTaskError, InvalidTaskAssigneeError, TaskTimedOutError } from '../../../domain'
 import { MembershipPort } from '@/modules/servers'
 import { TaskUpdatedEvent } from '../../events/task-updated.event'
-import { taskWorld } from '../../task-test-world.shared-spec'
+import { IN_A_DAY, taskWorld } from '../../task-test-world.shared-spec'
 import { AssignTaskCommand, UnassignLeftMemberCommand, UnassignTaskCommand } from './assignee.commands'
 import { AssignTaskHandler, UnassignLeftMemberHandler, UnassignTaskHandler } from './assignee.handlers'
 
@@ -21,7 +21,14 @@ describe('AssignTaskHandler (REQ-TASK-02)', () => {
         const task = await assign('an', id, ['an'])
 
         expect(task.assignees.map((assignee) => assignee.id)).toEqual(['binh', 'an'])
-        expect(events.publish).toHaveBeenCalledWith(new TaskUpdatedEvent(task))
+        expect(events.publish).toHaveBeenCalledWith(
+            new TaskUpdatedEvent(task, {
+                actorId: 'an',
+                added: ['an'],
+                removed: [],
+                before: { status: 'todo', dueAt: IN_A_DAY }
+            })
+        )
     })
 
     it('lets an assignee add others, but not someone who only views the channel', async () => {

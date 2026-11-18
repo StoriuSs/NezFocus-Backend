@@ -1023,7 +1023,7 @@ They are extremely similar and often used interchangeably. Both enforce the same
 In practice, if you understand one, you understand the other. Our codebase uses Hexagonal terminology.
 
 **12. Can a Command Handler from one module call another module's Command Handler?**
-It can, but it shouldn't do it directly. Instead, it should dispatch a Command through the `CommandBus`. This maintains loose coupling. The starter does exactly this when a user deletes their account: the auth module checks the proof, then dispatches the users module's command. (NezFocus no longer has that command: since deletion waits 14 days, auth records the request through `USER_DIRECTORY` and the users module's sweep deletes, D-141. The pattern still holds for the next cross-module command.)
+It can, but it shouldn't do it directly. Instead, it should dispatch a Command through the `CommandBus`. This maintains loose coupling. The starter does exactly this when a user deletes their account: the auth module checks the proof, then dispatches the users module's command. (NezFocus no longer has that command: since deletion waits 14 days, auth records the request through `USER_DIRECTORY` and the users module's sweep deletes, D-141.) NezFocus does it when a task's reminder runs: the tasks module dispatches messaging's `PostTaskDueCommand`, exported from `messaging/index.ts`, to post "Còn 2 giờ tới hạn" in the channel (REQ-TASK-04). Messaging never imports tasks, so no global module is needed, unlike `SYSTEM_MESSAGES` (D-180).
 ```typescript
 // ✅ Correct: Dispatch through the bus (the starter's DeleteOwnAccountHandler, auth module)
 await this.commandBus.execute(new DeleteAccountCommand(userId, userId))

@@ -49,6 +49,7 @@ const record = (id: string, by: string): MessageRecord => ({
     editedAt: null,
     pinned: true,
     systemUser: null,
+    systemUsers: [],
     createdAt: new Date('2026-10-15T21:12:00Z')
 })
 

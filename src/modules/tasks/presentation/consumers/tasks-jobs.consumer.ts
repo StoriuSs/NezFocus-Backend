@@ -3,15 +3,16 @@ import { Logger } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 import { Job } from 'bullmq'
 import { QUEUES } from '@/shared/infrastructure/queue/queues'
-import { UnassignLeftMemberCommand } from '../../application'
-import { TASKS_JOBS, UnassignLeftMemberJob } from '../../infrastructure/adapters/tasks-jobs'
+import { SendTaskReminderCommand, UnassignLeftMemberCommand } from '../../application'
+import { SendTaskReminderJob, TASKS_JOBS, UnassignLeftMemberJob } from '../../infrastructure/adapters/tasks-jobs'
 
 /**
  * Tasks Jobs Consumer: Inbound Adapter
  *
  * Runs the jobs the tasks module queues, each through its command: a member
- * who left a server taken off its tasks (D-195). A job that throws is retried
- * by the queue (DEFAULT_JOB_OPTIONS).
+ * who left a server taken off its tasks (D-195), a task's reminder at its
+ * time (REQ-TASK-04). A job that throws is retried by the queue
+ * (DEFAULT_JOB_OPTIONS).
  */
 @Processor(QUEUES.TASKS)
 export class TasksJobsConsumer extends WorkerHost {
@@ -22,11 +23,19 @@ export class TasksJobsConsumer extends WorkerHost {
     }
 
     async process(job: Job): Promise<void> {
-        if (job.name !== TASKS_JOBS.UNASSIGN_LEFT_MEMBER) {
-            this.logger.warn(`Unknown tasks job "${job.name}" (${job.id}), ignored`)
-            return
+        switch (job.name) {
+            case TASKS_JOBS.UNASSIGN_LEFT_MEMBER: {
+                const { serverId, userId } = job.data as UnassignLeftMemberJob
+                await this.commandBus.execute(new UnassignLeftMemberCommand(serverId, userId))
+                return
+            }
+            case TASKS_JOBS.SEND_REMINDER: {
+                const { taskId, mark, dueAt } = job.data as SendTaskReminderJob
+                await this.commandBus.execute(new SendTaskReminderCommand(taskId, mark, new Date(dueAt)))
+                return
+            }
+            default:
+                this.logger.warn(`Unknown tasks job "${job.name}" (${job.id}), ignored`)
         }
-        const { serverId, userId } = job.data as UnassignLeftMemberJob
-        await this.commandBus.execute(new UnassignLeftMemberCommand(serverId, userId))
     }
 }

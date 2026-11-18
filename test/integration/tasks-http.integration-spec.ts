@@ -1,10 +1,15 @@
 import { randomUUID } from 'crypto'
 import { AddressInfo } from 'net'
+import { getQueueToken } from '@nestjs/bullmq'
+import { CommandBus } from '@nestjs/cqrs'
 import { NestExpressApplication } from '@nestjs/platform-express'
+import { Queue } from 'bullmq'
 import request from 'supertest'
 import { io, Socket } from 'socket.io-client'
 import { Permission } from '@/modules/permissions'
+import { SendTaskReminderCommand } from '@/modules/tasks/application'
 import { MAX_OPEN_TASKS } from '@/modules/tasks/domain'
+import { QUEUES } from '@/shared/infrastructure/queue/queues'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
@@ -16,7 +21,8 @@ import { testClientIp } from './targets'
  * search without accents, the done group a page at a time, the history,
  * what the channel hears, and the people who lose the channel or leave the
  * server (D-194, D-195), and the To-do page that gathers one's tasks from every
- * server (REQ-TASK-05, D-186).
+ * server (REQ-TASK-05, D-186); the inbox items of tasks, the due-date
+ * reminders and their message in the channel (D-95, D-98, D-200, REQ-TASK-04).
  *
  * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then `pnpm test:integration`.
  */
@@ -597,6 +603,186 @@ describe('Task Boards (integration)', () => {
             })
             expect(ids(await mine())).toEqual([given.body.data.id, later.body.data.id])
             expect(outcome(await mine(`?status=done&before=${done.body.data.id}`))).toEqual([409, 'CONFLICT_ERROR'])
+        })
+    })
+
+    // Bình left the server in a test above: Chi and Dũng are the people here.
+    describe('inbox items and reminders of tasks (D-95, D-98, D-200, REQ-TASK-04)', () => {
+        type Item = { id: string; type: string; task_id: string | null; actor: { id: string } | null; task: unknown }
+        const inbox = async (who: Who): Promise<Item[]> =>
+            (await as(who, api().get('/api/v1/me/notifications?limit=100'))).body.data.items
+        /** The items are written after the write is saved: wait until `ready` holds. */
+        async function inboxUntil(who: Who, ready: (items: Item[]) => boolean): Promise<Item[]> {
+            let items: Item[] = []
+            for (let tries = 0; tries < 50; tries++) {
+                items = await inbox(who)
+                if (ready(items)) break
+                await new Promise((resolve) => setTimeout(resolve, 100))
+            }
+            return items
+        }
+        const ofTask = (items: Item[], taskId: string) => items.filter((item) => item.task_id === taskId)
+        const queue = () => app.get<Queue>(getQueueToken(QUEUES.TASKS))
+        /** The reminders waiting for a task; set after the write answered, so read until they settle. */
+        async function jobIdsUntil(taskId: string, count: number): Promise<string[]> {
+            let found: string[] = []
+            for (let tries = 0; tries < 30; tries++) {
+                // A job removed while it is listed comes back empty.
+                found = (await queue().getJobs(['delayed', 'waiting']))
+                    .map((job) => job?.id ?? '')
+                    .filter((jobId) => jobId.startsWith(`task-${taskId}-`))
+                    .sort()
+                if (found.length === count) break
+                await new Promise((resolve) => setTimeout(resolve, 100))
+            }
+            return found
+        }
+
+        it('gives the people put on a task by someone else an item that keeps its title and due date, not the one who did it', async () => {
+            const due = inHours(30)
+            const made = await create('an', boardId, {
+                title: 'Chuẩn bị demo cuối kỳ',
+                due_at: due,
+                assignee_ids: [users.chi.id, users.an.id]
+            })
+            const id: string = made.body.data.id
+            const items = ofTask(await inboxUntil('chi', (all) => ofTask(all, id).length > 0), id)
+            expect(items).toEqual([
+                expect.objectContaining({
+                    type: 'task_assigned',
+                    actor: expect.objectContaining({ id: users.an.id }),
+                    task: { title: 'Chuẩn bị demo cuối kỳ', due_at: due, reminder: null, unassigned_by: null }
+                })
+            ])
+            // Taking a task on oneself makes none; a later title leaves the item's words as they were (D-98).
+            const byChi = await create('chi', boardId, { title: 'Việc của Chi' })
+            expect((await assign('an', byChi.body.data.id, [users.an.id])).status).toBe(200)
+            expect((await update('an', id, { title: 'Demo cuối kỳ' })).status).toBe(200)
+            await new Promise((resolve) => setTimeout(resolve, 300))
+            expect(ofTask(await inbox('an'), id)).toEqual([])
+            expect(ofTask(await inbox('an'), byChi.body.data.id)).toEqual([])
+            expect(ofTask(await inbox('chi'), id)[0]!.task).toMatchObject({ title: 'Chuẩn bị demo cuối kỳ' })
+        })
+
+        it('tells the creator when the last person on it takes themselves off, not when the creator takes them off', async () => {
+            const made = await create('an', boardId, { title: 'Làm slide thuyết trình', assignee_ids: [users.chi.id] })
+            const id: string = made.body.data.id
+            expect((await unassign('chi', id, users.chi.id)).status).toBe(200)
+            const items = ofTask(await inboxUntil('an', (all) => ofTask(all, id).length > 0), id)
+            expect(items).toEqual([
+                expect.objectContaining({
+                    type: 'task_unassigned',
+                    actor: expect.objectContaining({ id: users.chi.id }),
+                    task: expect.objectContaining({ unassigned_by: 'withdrew' })
+                })
+            ])
+
+            const other = await create('an', boardId, { title: 'Việc khác', assignee_ids: [users.chi.id] })
+            expect((await unassign('an', other.body.data.id, users.chi.id)).status).toBe(200)
+            await new Promise((resolve) => setTimeout(resolve, 300))
+            expect(ofTask(await inbox('an'), other.body.data.id)).toEqual([])
+        })
+
+        it('sets the reminders still ahead, moves them with the due date and drops them when done (ARCHITECTURE 7)', async () => {
+            const soon = new Date(Date.now() + 3 * 3600_000)
+            soon.setMilliseconds(0)
+            const made = await create('an', boardId, { title: 'Nộp báo cáo', due_at: soon.toISOString() })
+            const id: string = made.body.data.id
+            // 3 hours out: only the 2-hour mark is still ahead (D-95).
+            expect(await jobIdsUntil(id, 1)).toEqual([`task-${id}-2h-${soon.getTime()}`])
+
+            const later = new Date(soon.getTime() + 48 * 3600_000)
+            await update('an', id, { due_at: later.toISOString() })
+            expect(await jobIdsUntil(id, 2)).toEqual([
+                `task-${id}-24h-${later.getTime()}`,
+                `task-${id}-2h-${later.getTime()}`
+            ])
+
+            await update('an', id, { status: 'done' })
+            expect(await jobIdsUntil(id, 0)).toEqual([])
+            await update('an', id, { status: 'todo' })
+            expect(await jobIdsUntil(id, 2)).toHaveLength(2)
+            await remove('an', id)
+            expect(await jobIdsUntil(id, 0)).toEqual([])
+        })
+
+        it('reminds the people on it in their inbox once per mark, and in the channel naming them', async () => {
+            const due = new Date(Date.now() + 3 * 3600_000)
+            due.setMilliseconds(0)
+            const made = await create('an', boardId, {
+                title: 'Ôn chương 4',
+                due_at: due.toISOString(),
+                assignee_ids: [users.chi.id, users.dung.id]
+            })
+            const id: string = made.body.data.id
+            const remind = () => app.get(CommandBus).execute(new SendTaskReminderCommand(id, '2h', due))
+
+            await expect(remind()).resolves.toBe(true)
+            // Run again, as a job retried after the message failed: no second item.
+            await expect(remind()).resolves.toBe(true)
+            for (const who of ['chi', 'dung'] as Who[]) {
+                const reminders = ofTask(await inbox(who), id).filter((item) => item.type === 'task_reminder')
+                expect(reminders).toEqual([
+                    expect.objectContaining({
+                        actor: null,
+                        task: { title: 'Ôn chương 4', due_at: due.toISOString(), reminder: '2h', unassigned_by: null }
+                    })
+                ])
+            }
+            const page = await as('an', api().get(`/api/v1/channels/${boardId}/messages`))
+            const said = (
+                page.body.data.items as { system_event: string | null; system_data: { task_id?: string } | null }[]
+            ).filter((message) => message.system_event === 'task_due' && message.system_data?.task_id === id)
+            // Said once for the two runs.
+            expect(said).toHaveLength(1)
+            // Given at once: their order is by id.
+            const named = [users.chi.id, users.dung.id].sort()
+            expect(said[0]).toMatchObject({
+                type: 'system',
+                author: null,
+                system_data: {
+                    task_id: id,
+                    title: 'Ôn chương 4',
+                    reminder: '2h',
+                    due_at: due.toISOString(),
+                    user_ids: named
+                },
+                system_users: named.map((userId) => ({ id: userId }))
+            })
+
+            // Done meanwhile: the job reads it again and sends nothing.
+            await update('an', id, { status: 'done' })
+            await expect(remind()).resolves.toBe(false)
+        })
+
+        it('tells everyone who had an item of a deleted task, with the task and their new count (D-200)', async () => {
+            const made = await create('an', boardId, { title: 'Sẽ bị xóa', assignee_ids: [users.chi.id] })
+            const id: string = made.body.data.id
+            await inboxUntil('chi', (all) => ofTask(all, id).length > 0)
+            const before = (await as('chi', api().get('/api/v1/me/notifications'))).body.data.unread_count as number
+
+            const chi = await connectAs('chi')
+            const deleted = collect(chi, 'notification.deleted')
+            expect((await remove('an', id)).status).toBe(200)
+
+            expect(ofTask(await inbox('chi'), id)).toEqual([])
+            expect(await deleted()).toEqual([{ ids: [], unread_count: before - 1, task_id: id }])
+        })
+
+        it('tells someone taken off a task before it is deleted too: their item stayed (D-98, D-200)', async () => {
+            const made = await create('an', boardId, { title: 'Gỡ rồi xóa', assignee_ids: [users.chi.id] })
+            const id: string = made.body.data.id
+            await inboxUntil('chi', (all) => ofTask(all, id).length > 0)
+            expect((await unassign('an', id, users.chi.id)).status).toBe(200)
+            // Taken off, the item keeps its words (D-98).
+            expect(ofTask(await inbox('chi'), id)).toHaveLength(1)
+
+            const chi = await connectAs('chi')
+            const deleted = collect(chi, 'notification.deleted')
+            expect((await remove('an', id)).status).toBe(200)
+
+            expect(ofTask(await inbox('chi'), id)).toEqual([])
+            expect(await deleted()).toEqual([expect.objectContaining({ ids: [], task_id: id })])
         })
     })
 })

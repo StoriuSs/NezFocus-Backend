@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
+import { TaskReminder, UnassignedBy } from '../../domain'
 import {
+    AddTaskItemsCommand,
+    ForgetTaskItemsCommand,
     MessageNotice,
     NotifierPort,
     ReadChannelItemsCommand,
     RemoveMessageItemsCommand,
-    SyncMessageItemsCommand
+    SyncMessageItemsCommand,
+    TaskNotice
 } from '../../application'
+
+const placeOf = ({ serverId, channelId, taskId }: TaskNotice) => ({ serverId, channelId, taskId })
 
 /**
  * The NOTIFIER port (D-185), given by the global NotifierModule: only sends
@@ -27,5 +33,51 @@ export class CommandBusNotifier implements NotifierPort {
 
     async channelRead(userId: string, channelId: string, messageId: string): Promise<void> {
         await this.commandBus.execute(new ReadChannelItemsCommand(userId, channelId, messageId))
+    }
+
+    async taskAssigned(notice: TaskNotice, actorId: string, userIds: string[]): Promise<void> {
+        await this.commandBus.execute(
+            new AddTaskItemsCommand(
+                {
+                    type: 'task_assigned',
+                    place: placeOf(notice),
+                    actorId,
+                    facts: { title: notice.title, dueAt: notice.dueAt, reminder: null, unassignedBy: null }
+                },
+                userIds
+            )
+        )
+    }
+
+    async taskUnassigned(notice: TaskNotice, creatorId: string, leaverId: string, by: UnassignedBy): Promise<void> {
+        await this.commandBus.execute(
+            new AddTaskItemsCommand(
+                {
+                    type: 'task_unassigned',
+                    place: placeOf(notice),
+                    actorId: leaverId,
+                    facts: { title: notice.title, dueAt: notice.dueAt, reminder: null, unassignedBy: by }
+                },
+                [creatorId]
+            )
+        )
+    }
+
+    async taskReminder(notice: TaskNotice & { dueAt: Date }, reminder: TaskReminder, userIds: string[]): Promise<void> {
+        await this.commandBus.execute(
+            new AddTaskItemsCommand(
+                {
+                    type: 'task_reminder',
+                    place: placeOf(notice),
+                    actorId: null,
+                    facts: { title: notice.title, dueAt: notice.dueAt, reminder, unassignedBy: null }
+                },
+                userIds
+            )
+        )
+    }
+
+    async taskDeleted(taskId: string, userIds: string[]): Promise<void> {
+        await this.commandBus.execute(new ForgetTaskItemsCommand(taskId, userIds))
     }
 }

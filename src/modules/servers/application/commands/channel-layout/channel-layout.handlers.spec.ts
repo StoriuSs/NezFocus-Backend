@@ -123,6 +123,20 @@ describe('channel list handlers', () => {
         ])
     })
 
+    it('names the channels whose Task Board was turned on, so their reminders are set again (REQ-TASK-01)', async () => {
+        const { deps, published } = setUp()
+        await new UpdateChannelHandler(...deps).execute(
+            new UpdateChannelCommand('an', 'ot', 'chung', { taskBoardEnabled: true })
+        )
+        await new UpdateChannelHandler(...deps).execute(
+            new UpdateChannelCommand('an', 'ot', 'chung', { sendMode: 'managers' })
+        )
+        expect(published()).toEqual([
+            expect.objectContaining({ serverId: 'ot', boardsTurnedOn: ['chung'] }),
+            expect.objectContaining({ serverId: 'ot', boardsTurnedOn: [] })
+        ])
+    })
+
     it('leaves the cache alone when a channel edit changes nothing', async () => {
         const { written, cache, deps } = setUp()
         await new UpdateChannelHandler(...deps).execute(

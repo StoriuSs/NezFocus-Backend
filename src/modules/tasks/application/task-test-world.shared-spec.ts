@@ -139,10 +139,15 @@ export function taskWorld() {
         }),
         remove: jest.fn(async (taskId: string, decide: (facts: TaskFacts) => void) => {
             const task = tasks.get(taskId)
-            if (!task) return false
-            decide(factsOf(task))
+            if (!task) return null
+            const facts = factsOf(task)
+            decide(facts)
             tasks.delete(taskId)
-            return true
+            // From the history, as the Prisma repository reads it: everyone ever added (D-200).
+            const added = history
+                .get(taskId)!
+                .flatMap(({ event }) => (event.kind === 'assignee_added' ? [event.data.userId] : []))
+            return { task: facts, peopleIds: [...new Set([task.creatorId, ...added])] }
         }),
         find: jest.fn(async (taskId: string) => tasks.get(taskId) ?? null),
         listOpen: jest.fn(async ({ channelId }: TaskFilter) =>

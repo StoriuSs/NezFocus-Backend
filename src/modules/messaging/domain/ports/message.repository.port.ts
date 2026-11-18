@@ -50,6 +50,12 @@ export interface MessageRecord {
      * an author (names null once erased, REQ-AUTH-09); null on a regular message, or one naming no one.
      */
     systemUser: MessageAuthor | null
+    /**
+     * The people a system message names together (`systemData.userIds`: those
+     * a task's reminder is for, D-95), in order, read like authors; an id of
+     * no account is left out. Empty on any other message.
+     */
+    systemUsers: MessageAuthor[]
     /** @everyone, in effect (REQ-MSG-03). */
     mentionEveryone: boolean
     /** Whom @here reached as it was sent (D-166): the client marks the message for them (REQ-MSG-09). */
@@ -112,6 +118,24 @@ export interface MessagePage {
     hasMoreAfter: boolean
 }
 
+/**
+ * What a task's reminder in its channel keeps (REQ-TASK-04, MSG-08): the
+ * task, its title when sent (an old reminder keeps its words), which
+ * reminder of which due date, and the people it is for, named in plain words
+ * (D-95).
+ */
+export interface TaskDueData {
+    taskId: string
+    title: string
+    reminder: '24h' | '2h'
+    /** ISO time: the due date the reminder is for. With the task and the reminder, it is said once. */
+    dueAt: string
+    userIds: string[]
+}
+
+/** How long before the due date the earliest reminder is said: none is looked for before then. */
+export const TASK_DUE_EARLIEST_MS = 24 * 3600_000
+
 /** The messages of channels: the only module that writes them (ARCHITECTURE 9). */
 export interface MessageRepositoryPort {
     /**
@@ -163,6 +187,13 @@ export interface MessageRepositoryPort {
      * now (deleted since its server named it the welcome channel).
      */
     createMemberJoined(channelId: string, userId: string): Promise<MessageRecord | null>
+    /**
+     * Write "Còn 24 giờ tới hạn: {title} · {people}" in the task's channel
+     * (REQ-TASK-04, MSG-08): a system message, the task and its people in
+     * `systemData`. Null if the channel is gone by now, or the same reminder
+     * (task, mark, due date) is there already: a job run again says it once.
+     */
+    createTaskDue(channelId: string, due: TaskDueData): Promise<MessageRecord | null>
     /** Up to `limit` messages of the channel from `cursor`; `around` splits them half before, half from the id on. */
     page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage>
     /** The messages among `ids` not deleted, in no order: what inbox items show (D-184). */

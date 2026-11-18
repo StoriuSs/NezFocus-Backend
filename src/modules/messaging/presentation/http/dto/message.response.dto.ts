@@ -64,14 +64,18 @@ export class MessageResponseDto {
     @Type(() => MentionedRoleResponseDto)
     mentionRoles: MentionedRoleResponseDto[]
 
-    /** What a system message reports (`member_joined`, `message_pinned`); null on a regular one. */
+    /** What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one. */
     @Expose()
     @ApiProperty({ type: String, nullable: true })
     @IsOptional()
     @IsString()
     systemEvent: string | null
 
-    /** Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one. */
+    /**
+     * Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,
+     * D-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,
+     * its title when sent. Null on a regular one.
+     */
     @Expose()
     // As it is: an untyped object would otherwise come out empty, every key not @Expose()d.
     @Transform(({ obj }: { obj: { systemData?: unknown } }) => obj.systemData ?? null, { toClassOnly: true })
@@ -87,6 +91,13 @@ export class MessageResponseDto {
     @ValidateNested()
     @Type(() => MessageAuthorResponseDto)
     systemUser: MessageAuthorResponseDto | null
+
+    /** The people a task's reminder is for, in order, named like authors (D-95, D-182); empty on any other message. */
+    @Expose()
+    @ApiProperty({ type: [MessageAuthorResponseDto] })
+    @ValidateNested({ each: true })
+    @Type(() => MessageAuthorResponseDto)
+    systemUsers: MessageAuthorResponseDto[]
 
     /** The message this one answers; null if none (REQ-MSG-05). */
     @Expose()

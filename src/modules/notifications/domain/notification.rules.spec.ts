@@ -1,4 +1,11 @@
-import { HeldMessageItem, isKept, keptSince, messageRecipients, planMessageItems } from './notification.rules'
+import {
+    HeldMessageItem,
+    isKept,
+    keptSince,
+    messageRecipients,
+    planMessageItems,
+    taskItemRecipients
+} from './notification.rules'
 
 const none = { users: [], repliedTo: null, roles: [], everyone: [], here: [] }
 
@@ -92,5 +99,21 @@ describe('the 90 days the inbox keeps (REQ-NOTIF-03)', () => {
         expect(keptSince(now).toISOString()).toBe('2026-08-19T12:00:00.000Z')
         expect(isKept(new Date('2026-08-19T12:00:00.000Z'), now)).toBe(true)
         expect(isKept(new Date('2026-08-19T11:59:59.999Z'), now)).toBe(false)
+    })
+})
+
+describe('taskItemRecipients (D-95, D-98)', () => {
+    it('gives each person one item, never the one who acted: taking a task on oneself makes none', () => {
+        expect(taskItemRecipients('an', ['binh', 'an', 'chi', 'binh'])).toEqual(['binh', 'chi'])
+        expect(taskItemRecipients('binh', ['binh'])).toEqual([])
+    })
+
+    it('leaves the creator without an item when they are the one who left the task', () => {
+        expect(taskItemRecipients('an', ['an'])).toEqual([])
+        expect(taskItemRecipients('binh', ['an'])).toEqual(['an'])
+    })
+
+    it('gives everyone theirs when the app acted (a reminder)', () => {
+        expect(taskItemRecipients(null, ['binh', 'chi'])).toEqual(['binh', 'chi'])
     })
 })

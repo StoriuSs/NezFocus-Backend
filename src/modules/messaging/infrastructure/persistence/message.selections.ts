@@ -77,6 +77,14 @@ const subjectOf = (row: Pick<MessageRow, 'type' | 'systemData'>): string | null 
     return row.type === 'system' && typeof userId === 'string' ? userId : null
 }
 
+/** The people a system message names together (`systemData.userIds`: a task's reminder), in their order. */
+const subjectsOf = (row: Pick<MessageRow, 'type' | 'systemData'>): string[] => {
+    const userIds = (row.systemData as { userIds?: unknown } | null)?.userIds
+    return row.type === 'system' && Array.isArray(userIds)
+        ? userIds.filter((id): id is string => typeof id === 'string')
+        : []
+}
+
 /** The people a row's <@id> tokens name, where they count (D-172): of the message, and of the one it answers. */
 interface Named {
     own: string[]
@@ -139,6 +147,7 @@ const toRecord = (
                   }),
         pinned: pin !== null,
         systemUser: person ? toAuthor(person) : null,
+        systemUsers: read(subjectsOf({ type: row.type, systemData })),
         mentionUsers: read(named.own),
         attachments: attachments.map(toFile)
     }
@@ -151,7 +160,12 @@ const toRecord = (
  */
 export async function toRecords(db: Tx, rows: MessageRow[]): Promise<MessageRecord[]> {
     const named = rows.map(namedIn)
-    const wanted = rows.flatMap((row, index) => [subjectOf(row), ...named[index]!.own, ...named[index]!.answered])
+    const wanted = rows.flatMap((row, index) => [
+        subjectOf(row),
+        ...subjectsOf(row),
+        ...named[index]!.own,
+        ...named[index]!.answered
+    ])
     const ids = [...new Set(wanted.filter((id): id is string => id !== null))]
     const people = ids.length ? await db.user.findMany({ where: { id: { in: ids } }, ...AUTHOR }) : []
     const byId = new Map(people.map((person) => [person.id, person]))

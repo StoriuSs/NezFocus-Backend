@@ -23,6 +23,9 @@ export interface ServerChange {
  * the members' sockets in or out of the channel rooms first (SRS 5.2). A
  * name, who may post, the order or a colour changes no view.
  *
+ * `boardsTurnedOn`: the text channels whose Task Board this change turned
+ * on, so the tasks module sets their reminders again (REQ-TASK-01, 04).
+ *
  * Changes to one member (a role given, a timeout, joining, leaving) are
  * MemberChangedEvent.
  */
@@ -33,7 +36,8 @@ export class ServerChangedEvent {
     constructor(
         public readonly serverId: string,
         changes: ServerChange[],
-        public readonly viewChanged: boolean
+        public readonly viewChanged: boolean,
+        public readonly boardsTurnedOn: string[] = []
     ) {
         const seen = new Map<string, ServerChange>()
         for (const change of changes) {

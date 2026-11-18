@@ -75,6 +75,7 @@ function world({ noNewReactions = false } = {}) {
             editedAt: null,
             pinned: false,
             systemUser: null,
+            systemUsers: [],
             createdAt: new Date('2026-10-18T20:06:00Z'),
             deleted: false
         })

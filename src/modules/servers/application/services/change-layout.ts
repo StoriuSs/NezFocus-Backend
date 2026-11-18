@@ -59,6 +59,10 @@ const CHANGES_VIEW: { [K in LayoutWrite['kind']]: (write: Extract<LayoutWrite, {
 
 const changesView = (write: LayoutWrite) => (CHANGES_VIEW[write.kind] as (write: LayoutWrite) => boolean)(write)
 
+/** The channels whose Task Board a write turns on: their reminders are set again (REQ-TASK-01). */
+const boardsTurnedOn = (writes: LayoutWrite[]) =>
+    writes.flatMap((write) => (write.kind === 'updateChannel' && write.changes.taskBoardEnabled ? [write.id] : []))
+
 /** What the members are told of each write (D-178, SRS 5.2). A move is an update of what moved. */
 const TOLD: Record<LayoutWrite['kind'], ServerChange> = {
     updateServer: { topic: 'server', action: 'updated' },
@@ -103,7 +107,9 @@ export abstract class ChangeLayout {
         if (writes.some(changesCached)) await this.cache.serverChanged(serverId)
         if (writes.length > 0) {
             const changes = writes.map((write) => TOLD[write.kind])
-            this.events.publish(new ServerChangedEvent(serverId, changes, writes.some(changesView)))
+            this.events.publish(
+                new ServerChangedEvent(serverId, changes, writes.some(changesView), boardsTurnedOn(writes))
+            )
         }
         return result
     }

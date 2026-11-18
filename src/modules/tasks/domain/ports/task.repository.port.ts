@@ -33,6 +33,13 @@ export interface TaskRecord {
     assignees: TaskAssignee[]
 }
 
+/** A task just deleted, and those who may have had an inbox item of it (D-200). */
+export interface RemovedTask {
+    task: TaskFacts
+    /** Its creator first, then all ever put on it, each once. */
+    peopleIds: string[]
+}
+
 /** One line of a task's history (REQ-TASK-03). */
 export interface TaskEventRecord {
     id: string
@@ -92,8 +99,13 @@ export interface TaskRepositoryPort {
         decide: (task: TaskFacts) => TaskWrite | null
     ): Promise<{ record: TaskRecord; changed: boolean } | null>
 
-    /** Delete a task with its people and history once `decide` passes on it; false when it was gone already. */
-    remove(taskId: string, decide: (task: TaskFacts) => void): Promise<boolean>
+    /**
+     * Delete a task with its people, history and inbox items once `decide`
+     * passes on it. Gives the task as it was and everyone who may have had an
+     * item of it: its creator and all ever put on it, from its history
+     * (D-200). Null when it was gone already.
+     */
+    remove(taskId: string, decide: (task: TaskFacts) => void): Promise<RemovedTask | null>
 
     /** One task, or null. */
     find(taskId: string): Promise<TaskRecord | null>

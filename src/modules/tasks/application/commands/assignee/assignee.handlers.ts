@@ -44,8 +44,8 @@ export class UnassignTaskHandler extends ChangeTask implements ICommandHandler<U
  * of the servers module's table (MEMBERSHIP), not the permission cache, which
  * a failed clear could leave holding them, the job then ending with nothing
  * done for good. One joining again between that read and the write still
- * comes off (the same as leaving a moment later). The creator hears of a
- * task left with no one on it at L7 (D-95).
+ * comes off (the same as leaving a moment later). The creator of a task
+ * left with no one on it hears of it (D-95, NotifyTaskPeopleHandler).
  *
  * @returns how many tasks they were taken off
  */
@@ -63,7 +63,17 @@ export class UnassignLeftMemberHandler implements ICommandHandler<UnassignLeftMe
         if ((await this.membership.membersAmong(serverId, [userId])).length > 0) return 0
         const records = await this.tasks.unassignLeftMember(serverId, userId)
         const views = await taskViews({ users: this.users, checker: this.checker }, records)
-        for (const view of views) this.events.publish(new TaskUpdatedEvent(view))
+        for (const view of views) {
+            // Nobody acted: the inbox says "{Tên} đã rời server" to a creator left with no one on it (D-95).
+            this.events.publish(
+                new TaskUpdatedEvent(view, {
+                    actorId: null,
+                    added: [],
+                    removed: [userId],
+                    before: { status: view.status, dueAt: view.dueAt }
+                })
+            )
+        }
         return views.length
     }
 }

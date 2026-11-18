@@ -1,7 +1,7 @@
 import { Prisma } from '@/generated/prisma/client'
 import { shownPerson } from '@/shared/domain'
 import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
-import { MentionReason, NotificationRecord } from '../../domain'
+import { MentionReason, NotificationRecord, TaskItemFacts, TaskReminder, UnassignedBy } from '../../domain'
 
 /** An item as the inbox reads it, its actor as others see them (D-182). */
 export const NOTIFICATION = {
@@ -11,6 +11,7 @@ export const NOTIFICATION = {
     serverId: true,
     channelId: true,
     messageId: true,
+    taskId: true,
     data: true,
     readAt: true,
     createdAt: true,
@@ -30,11 +31,39 @@ export const dataOf = (data: Prisma.JsonValue): MessageItemData => {
     return { reason: kept.reason ?? null, roleId: kept.roleId ?? null }
 }
 
+/** What a task item keeps in `data`, as it was when made (D-98): the due date as an ISO time. */
+// A type, not an interface: Prisma takes it as JSON only with an index signature.
+export type TaskItemData = {
+    title: string
+    dueAt: string | null
+    reminder?: TaskReminder
+    unassignedBy?: UnassignedBy
+}
+
+export const taskDataOf = ({ title, dueAt, reminder, unassignedBy }: TaskItemFacts): TaskItemData => ({
+    title,
+    dueAt: dueAt?.toISOString() ?? null,
+    ...(reminder && { reminder }),
+    ...(unassignedBy && { unassignedBy })
+})
+
+const taskFactsOf = (data: Prisma.JsonValue): TaskItemFacts => {
+    const kept = (data ?? {}) as Partial<TaskItemData>
+    return {
+        title: kept.title ?? '',
+        dueAt: kept.dueAt ? new Date(kept.dueAt) : null,
+        reminder: kept.reminder ?? null,
+        unassignedBy: kept.unassignedBy ?? null
+    }
+}
+
 export const toNotificationRecord = ({ data, actor, ...row }: NotificationRow): NotificationRecord => {
     const person = actor && shownPerson(actor)
+    const isMessage = row.type === 'mention' || row.type === 'reply'
     return {
         ...row,
-        ...dataOf(data),
+        ...(isMessage ? dataOf(data) : { reason: null, roleId: null }),
+        task: row.taskId ? taskFactsOf(data) : null,
         actor: person && {
             id: person.id,
             username: person.username,

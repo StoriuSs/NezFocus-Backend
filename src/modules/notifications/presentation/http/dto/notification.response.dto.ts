@@ -4,6 +4,7 @@ import { IsDate, IsIn, IsOptional, IsString, ValidateNested } from 'class-valida
 import { MentionReason, NotificationType } from '../../../domain'
 import { NotificationActorResponseDto } from './notification-actor.response.dto'
 import { NotificationMessageResponseDto } from './notification-message.response.dto'
+import { NotificationTaskResponseDto } from './notification-task.response.dto'
 
 const TYPES: NotificationType[] = [
     'mention',
@@ -19,8 +20,9 @@ const REASONS: MentionReason[] = ['user', 'role', 'everyone', 'here']
 /**
  * One inbox item (spec 06, C-29). A mention or reply: the message's place,
  * its author as `actor`, why it is about the reader (`reason`, `role_id` for
- * a role) and the message as it is now. The client names the channel and
- * server from its list of servers.
+ * a role) and the message as it is now. A task item: the task's id, who
+ * acted (`actor`, none on a reminder) and the task as it was then (`task`,
+ * D-98). The client names the channel and server from its list of servers.
  */
 export class NotificationResponseDto {
     @Expose()
@@ -48,6 +50,11 @@ export class NotificationResponseDto {
     messageId: string | null
 
     @Expose()
+    @IsOptional()
+    @IsString()
+    taskId: string | null
+
+    @Expose()
     @ApiProperty({ type: NotificationActorResponseDto, nullable: true })
     @IsOptional()
     @ValidateNested()
@@ -72,6 +79,13 @@ export class NotificationResponseDto {
     @ValidateNested()
     @Type(() => NotificationMessageResponseDto)
     message: NotificationMessageResponseDto | null
+
+    @Expose()
+    @ApiProperty({ type: NotificationTaskResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => NotificationTaskResponseDto)
+    task: NotificationTaskResponseDto | null
 
     /** Null while unread. */
     @Expose()

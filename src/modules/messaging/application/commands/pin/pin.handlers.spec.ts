@@ -87,6 +87,7 @@ function world() {
             editedAt: null,
             pinned: false,
             systemUser: null,
+            systemUsers: [],
             createdAt: new Date('2026-10-16T20:30:00Z'),
             deleted: false
         })
@@ -119,6 +120,7 @@ function world() {
                 systemEvent: 'message_pinned',
                 systemData: { userId, messageId },
                 systemUser: person(userId, 'Chi'),
+                systemUsers: [],
                 replyTo: null,
                 mentionEveryone: false,
                 mentionHereUserIds: [],

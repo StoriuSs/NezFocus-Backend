@@ -8,9 +8,14 @@ import {
     NotificationPage,
     NotificationRecord,
     NotificationRepositoryPort,
-    RemovedNotification
+    RemovedNotification,
+    TaskItemDraft,
+    TaskPlace,
+    TaskReminder
 } from '../../domain'
-import { dataOf, MessageItemData, NOTIFICATION, toNotificationRecord } from './notification.selections'
+import { dataOf, MessageItemData, NOTIFICATION, taskDataOf, toNotificationRecord } from './notification.selections'
+
+const prismaCode = (error: unknown) => (error as { code?: string })?.code
 
 /** The client a Prisma transaction callback is given. */
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
@@ -100,6 +105,57 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
             return { ids, removed }
         })
         return { added: await this.records(written.ids), removed: written.removed }
+    }
+
+    async addTaskItems(
+        { type, place, actorId, facts }: TaskItemDraft,
+        userIds: string[],
+        at: Date
+    ): Promise<NotificationRecord[]> {
+        if (userIds.length === 0) return []
+        const data = taskDataOf(facts)
+        try {
+            const ids = await this.prisma.$transaction(async (tx) => {
+                const written: string[] = []
+                for (const batch of batches(userIds)) {
+                    const rows = await tx.notification.createManyAndReturn({
+                        data: batch.map((userId) => ({ userId, type, ...place, actorId, data, createdAt: at })),
+                        select: { id: true }
+                    })
+                    written.push(...rows.map((row) => row.id))
+                }
+                return written
+            })
+            return await this.records(ids)
+        } catch (error) {
+            // The task (or its channel) deleted meanwhile: its items would have gone with it.
+            if (prismaCode(error) === 'P2003') return []
+            throw error
+        }
+    }
+
+    async remindedAlready(
+        { channelId, taskId }: TaskPlace,
+        reminder: TaskReminder,
+        dueAt: Date,
+        userIds: string[]
+    ): Promise<string[]> {
+        if (userIds.length === 0) return []
+        // With the channel: Notification_channelId_taskId_idx starts with it.
+        const rows = await this.prisma.notification.findMany({
+            where: {
+                channelId,
+                taskId,
+                type: 'task_reminder',
+                userId: { in: userIds },
+                AND: [
+                    { data: { path: ['reminder'], equals: reminder } },
+                    { data: { path: ['dueAt'], equals: dueAt.toISOString() } }
+                ]
+            },
+            select: { userId: true }
+        })
+        return [...new Set(rows.map((row) => row.userId))]
     }
 
     async removeForMessages(channelId: string, messageIds: string[]): Promise<RemovedNotification[]> {

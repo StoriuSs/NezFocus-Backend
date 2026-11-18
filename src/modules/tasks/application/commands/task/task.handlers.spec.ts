@@ -109,7 +109,14 @@ describe('UpdateTaskHandler (REQ-TASK-01 to 03, D-96)', () => {
 
         expect(task.status).toBe('done')
         expect(task.completedAt).toBeInstanceOf(Date)
-        expect(events.publish).toHaveBeenCalledWith(new TaskUpdatedEvent(task))
+        expect(events.publish).toHaveBeenCalledWith(
+            new TaskUpdatedEvent(task, {
+                actorId: 'binh',
+                added: [],
+                removed: [],
+                before: { status: 'todo', dueAt: IN_A_DAY }
+            })
+        )
     })
 
     it('tells no one when nothing changes', async () => {
@@ -162,16 +169,29 @@ describe('DeleteTaskHandler (REQ-TASK-02)', () => {
         return { ...world, remove }
     }
 
-    it('lets the creator or MANAGE_TASKS delete it, and tells the channel', async () => {
-        const { remove, seed, tasks, events } = setup()
-        const mine = seed({ creatorId: 'binh' })
+    it('lets the creator or MANAGE_TASKS delete it, and tells the channel and those who may have had items of it (D-200)', async () => {
+        const { remove, seed, tasks, events, history } = setup()
+        const mine = seed({ creatorId: 'binh', assignees: [] })
         const other = seed()
+        // Bình on it since it was made, Chi added once and taken off since: both may have an item.
+        history
+            .get(other)!
+            .push(
+                { actorId: 'an', event: { kind: 'assignee_added', data: { userId: 'binh' } } },
+                { actorId: 'an', event: { kind: 'assignee_added', data: { userId: 'chi' } } },
+                { actorId: 'an', event: { kind: 'assignee_removed', data: { userId: 'chi' } } }
+            )
 
         await remove('binh', mine)
         await remove('chi', other)
 
         expect(tasks.size).toBe(0)
-        expect(events.publish).toHaveBeenCalledWith(new TaskDeletedEvent(mine, 'viec-nhom'))
+        expect(events.publish).toHaveBeenCalledWith(
+            new TaskDeletedEvent(mine, 'viec-nhom', { status: 'todo', dueAt: IN_A_DAY }, ['binh'])
+        )
+        expect(events.publish).toHaveBeenCalledWith(
+            new TaskDeletedEvent(other, 'viec-nhom', { status: 'todo', dueAt: IN_A_DAY }, ['an', 'binh', 'chi'])
+        )
     })
 
     it('refuses an assignee who did not make it', async () => {

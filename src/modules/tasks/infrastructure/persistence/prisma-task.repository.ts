@@ -5,6 +5,7 @@ import {
     MineFilter,
     NewTask,
     planLeftServer,
+    RemovedTask,
     TaskEventRecord,
     TaskFacts,
     TaskFilter,
@@ -139,14 +140,25 @@ export class PrismaTaskRepository implements TaskRepositoryPort {
         })
     }
 
-    async remove(taskId: string, decide: (task: TaskFacts) => void): Promise<boolean> {
+    async remove(taskId: string, decide: (task: TaskFacts) => void): Promise<RemovedTask | null> {
         return this.prisma.$transaction(async (tx) => {
             const facts = await this.lockFacts(tx, taskId)
-            if (!facts) return false
+            if (!facts) return null
             decide(facts)
+            // Read before its history goes: everyone ever put on it (D-200).
+            const added = await tx.taskEvent.findMany({
+                where: { taskId, kind: 'assignee_added' },
+                select: { data: true }
+            })
+            const everAssigned = added.map(({ data }) => (data as { userId?: unknown } | null)?.userId)
             // Its people, history and inbox items go with it (foreign keys, D-98).
             await tx.task.delete({ where: { id: taskId } })
-            return true
+            return {
+                task: facts,
+                peopleIds: [
+                    ...new Set([facts.creatorId, ...everAssigned.filter((id): id is string => typeof id === 'string')])
+                ]
+            }
         })
     }
 

@@ -507,7 +507,17 @@ queue (D-195): `UnassignLeftMemberLaterHandler` queues a job on servers'
 `MemberChangedEvent` (`TASK_JOBS`, a BullMQ adapter), and `TasksJobsConsumer`
 sends `UnassignLeftMemberCommand`, which takes them off every task of the
 server in one transaction with a line of history done by no one, unless they
-joined again meanwhile. The To-do page's `GET /me/tasks` (`queries/mine/`,
+joined again meanwhile. The same queue sends the due-date reminders
+(REQ-TASK-04, `commands/reminder/`): after each write
+`ScheduleTaskRemindersHandler` sets the marks still ahead, 24 and 2 hours
+before (`domain/reminder.rules.ts`), each a delayed job named by the task, the
+mark and the due date, and drops those of a due date moved, a task done or
+deleted; a board turned on again sets its tasks' reminders again. The job
+reads the task again, then writes the inbox items and posts messaging's
+`PostTaskDueCommand` over the bus. After each write the people on a task get
+their inbox items through `NOTIFIER` (`NotifyTaskPeopleHandler`: given a
+task, no one left on it, D-98, D-95); a task deleted names everyone who may
+have had one (D-200). The To-do page's `GET /me/tasks` (`queries/mine/`,
 D-186) gathers one's tasks from every server: `services/my-boards.ts` reads
 the permission cache once per server one has tasks in for the channels one
 still views with the board on, the repository filters by them in one query,
@@ -515,7 +525,9 @@ and `domain/due-group.rules.ts` puts each task not done in its group by due
 date in the time zone of one's settings.
 
 `src/modules/notifications/` holds the inbox (SRS 4.8), grouped by area:
-`commands/item/`, `commands/read/`, `queries/inbox/`. Other modules put items
+`commands/item/` (a message's items), `commands/task-item/` (a task's items,
+which keep its title and due date as they were, D-98), `commands/read/`,
+`queries/inbox/`. Other modules put items
 in only through its `NOTIFIER` port (D-185), given by the global
 `NotifierModule`: messaging's `NotifyMessageMentionsHandler` works out after
 a message is saved whom it is about (its mention rows, @here, and the

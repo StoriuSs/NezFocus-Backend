@@ -155,6 +155,7 @@ function world({ limited = false } = {}) {
                 editedAt: null,
                 pinned: false,
                 systemUser: null,
+                systemUsers: [],
                 mentionEveryone: input.mentions.everyone,
                 mentionHereUserIds: input.mentions.hereUserIds,
                 mentionRoleIds: input.mentions.roleIds,
@@ -199,6 +200,7 @@ function world({ limited = false } = {}) {
         page: jest.fn(),
         latestId: jest.fn(),
         createMemberJoined: jest.fn(),
+        createTaskDue: jest.fn(),
         removeRecent: jest.fn()
     }
     /** A message already in a channel, by someone (or a system message when `by` is null). */
@@ -215,6 +217,7 @@ function world({ limited = false } = {}) {
             editedAt: null,
             pinned: false,
             systemUser: null,
+            systemUsers: [],
             ...NO_MENTIONS,
             attachments: [],
             createdAt: new Date('2026-10-18T20:11:00Z'),

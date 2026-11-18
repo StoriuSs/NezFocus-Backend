@@ -90,7 +90,12 @@ through the auth module's `AuthEmails`. `MessagingJobsConsumer` does it for
 the `messaging` queue: it sends `DeleteRecentMessagesCommand`, which deletes a
 banned member's recent messages (D-181). `TasksJobsConsumer` does it for the
 `tasks` queue: it sends `UnassignLeftMemberCommand`, which takes a member who
-left a server off its tasks (D-195).
+left a server off its tasks (D-195), and `SendTaskReminderCommand`, a task's
+reminder 24 or 2 hours before it is due (REQ-TASK-04). A reminder is a
+delayed job (`delay`), waiting in Redis until its time, so a restart keeps it;
+its id names the task, the mark and the due date, so a new due date is a new
+job and the old one is removed while it waits. The job reads the task again
+when it runs and does nothing for one deleted, done or due at another time.
 
 ### Why is this better?
 

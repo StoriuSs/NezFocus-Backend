@@ -25,6 +25,11 @@ enum SystemEvent {
   member_joined
   /// Someone pinned a message. systemData: { userId, messageId }.
   message_pinned
+  /// A task of the channel is due in 24 or 2 hours (REQ-TASK-04, MSG-08).
+  /// systemData: { taskId, title, reminder, dueAt, userIds }: the title when sent,
+  /// the people reminded (or its creator), named in plain words, never as
+  /// mentions (D-95).
+  task_due
 }
 
 /// A message in a channel.

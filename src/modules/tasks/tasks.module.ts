@@ -9,11 +9,16 @@ import { TASK_REPOSITORY } from './domain'
 import {
     ASSIGNEE_COMMAND_HANDLERS,
     MINE_QUERY_HANDLERS,
+    NotifyDeletedTaskHandler,
+    NotifyTaskPeopleHandler,
     PublishCreatedTaskHandler,
     PublishDeletedTaskHandler,
     PublishUpdatedTaskHandler,
     TASK_COMMAND_HANDLERS,
     TASK_JOBS,
+    REMINDER_COMMAND_HANDLERS,
+    ScheduleBoardRemindersHandler,
+    ScheduleTaskRemindersHandler,
     TASK_QUERY_HANDLERS,
     UnassignLeftMemberLaterHandler
 } from './application'
@@ -29,7 +34,10 @@ import { BoardController, MyTasksController, TasksController, TasksJobsConsumer 
  * addresses (USER_DIRECTORY), and tells the channel's sockets through
  * realtime's EVENT_PUBLISHER. Lists one's tasks from every server for the
  * To-do page (`GET /me/tasks`). Its own `tasks` queue takes members who left a
- * server off its tasks (D-195).
+ * server off its tasks (D-195) and sends the due-date reminders (REQ-TASK-04).
+ * Puts task items in people's inboxes through notifications' NOTIFIER (global,
+ * D-185), and a reminder in the channel through messaging's PostTaskDueCommand,
+ * sent over the bus.
  */
 @Module({
     imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule, registerQueues(QUEUES.TASKS)],
@@ -39,12 +47,17 @@ import { BoardController, MyTasksController, TasksController, TasksJobsConsumer 
         { provide: TASK_JOBS, useClass: BullMqTaskJobs },
         ...TASK_COMMAND_HANDLERS,
         ...ASSIGNEE_COMMAND_HANDLERS,
+        ...REMINDER_COMMAND_HANDLERS,
         ...TASK_QUERY_HANDLERS,
         ...MINE_QUERY_HANDLERS,
         PublishCreatedTaskHandler,
         PublishUpdatedTaskHandler,
         PublishDeletedTaskHandler,
         UnassignLeftMemberLaterHandler,
+        NotifyTaskPeopleHandler,
+        NotifyDeletedTaskHandler,
+        ScheduleTaskRemindersHandler,
+        ScheduleBoardRemindersHandler,
         TasksJobsConsumer
     ]
 })

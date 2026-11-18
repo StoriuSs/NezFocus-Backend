@@ -15,6 +15,8 @@ export interface RemovedEntry {
     userId: string
     ids: string[]
     unreadCount: number | null
+    /** All the items of this task went, whose ids are not known (D-200). */
+    taskId?: string
 }
 
 /**
@@ -74,20 +76,21 @@ export abstract class Inbox {
             entry.unread ||= unread
             byUser.set(userId, entry)
         }
-        // A few people at a time: an @everyone message deleted is hundreds of counts.
-        const entries: RemovedEntry[] = []
-        const people = [...byUser]
-        for (let start = 0; start < people.length; start += COUNTS_AT_ONCE) {
-            entries.push(
-                ...(await Promise.all(
-                    people.slice(start, start + COUNTS_AT_ONCE).map(async ([userId, { ids, unread }]) => ({
-                        userId,
-                        ids,
-                        unreadCount: unread ? await this.unreadCountOf(userId, now) : null
-                    }))
-                ))
-            )
+        const counts = await this.unreadCountsOf(
+            [...byUser].filter(([, entry]) => entry.unread).map(([userId]) => userId),
+            now
+        )
+        return [...byUser].map(([userId, { ids }]) => ({ userId, ids, unreadCount: counts.get(userId) ?? null }))
+    }
+
+    /** Each person's unread count, a few people at a time: an @everyone message deleted is hundreds of counts. */
+    protected async unreadCountsOf(userIds: string[], now: Date): Promise<Map<string, number>> {
+        const counts = new Map<string, number>()
+        for (let start = 0; start < userIds.length; start += COUNTS_AT_ONCE) {
+            const batch = userIds.slice(start, start + COUNTS_AT_ONCE)
+            const found = await Promise.all(batch.map((userId) => this.unreadCountOf(userId, now)))
+            batch.forEach((userId, index) => counts.set(userId, found[index]!))
         }
-        return entries
+        return counts
     }
 }

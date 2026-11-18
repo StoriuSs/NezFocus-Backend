@@ -7189,13 +7189,13 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one."
           },
           "system_data": {
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent. Null on a regular one."
           },
           "system_user": {
             "nullable": true,
@@ -7206,6 +7206,13 @@
                 "$ref": "#/components/schemas/MessageAuthorResponseDto"
               }
             ]
+          },
+          "system_users": {
+            "description": "The people a task's reminder is for, in order, named like authors (D-95, D-182); empty on any other message.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageAuthorResponseDto"
+            }
           },
           "reply_to": {
             "nullable": true,
@@ -7268,6 +7275,7 @@
           "system_event",
           "system_data",
           "system_user",
+          "system_users",
           "reply_to",
           "edited_at",
           "attachments",
@@ -7349,13 +7357,13 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one."
           },
           "system_data": {
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent. Null on a regular one."
           },
           "system_user": {
             "nullable": true,
@@ -7366,6 +7374,13 @@
                 "$ref": "#/components/schemas/MessageAuthorResponseDto"
               }
             ]
+          },
+          "system_users": {
+            "description": "The people a task's reminder is for, in order, named like authors (D-95, D-182); empty on any other message.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageAuthorResponseDto"
+            }
           },
           "reply_to": {
             "nullable": true,
@@ -7422,6 +7437,7 @@
           "system_event",
           "system_data",
           "system_user",
+          "system_users",
           "reply_to",
           "edited_at",
           "attachments",
@@ -7566,13 +7582,13 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one."
           },
           "system_data": {
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`, D-168); null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent. Null on a regular one."
           },
           "system_user": {
             "nullable": true,
@@ -7583,6 +7599,13 @@
                 "$ref": "#/components/schemas/MessageAuthorResponseDto"
               }
             ]
+          },
+          "system_users": {
+            "description": "The people a task's reminder is for, in order, named like authors (D-95, D-182); empty on any other message.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageAuthorResponseDto"
+            }
           },
           "reply_to": {
             "nullable": true,
@@ -7649,6 +7672,7 @@
           "system_event",
           "system_data",
           "system_user",
+          "system_users",
           "reply_to",
           "edited_at",
           "attachments",
@@ -8390,6 +8414,44 @@
           "files"
         ]
       },
+      "NotificationTaskResponseDto": {
+        "type": "object",
+        "properties": {
+          "due_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "The due date then; null when it had none."
+          },
+          "reminder": {
+            "nullable": true,
+            "description": "`task_reminder`: 24 hours or 2 hours before it is due (REQ-TASK-04); null on the other kinds.",
+            "enum": [
+              "24h",
+              "2h"
+            ],
+            "type": "string"
+          },
+          "unassigned_by": {
+            "nullable": true,
+            "description": "`task_unassigned`: its last person took themselves off, or left the\nserver (D-95); `actor` is who. Null on the other kinds.",
+            "enum": [
+              "withdrew",
+              "left_server"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "due_at",
+          "reminder",
+          "unassigned_by",
+          "title"
+        ]
+      },
       "NotificationResponseDto": {
         "type": "object",
         "properties": {
@@ -8434,6 +8496,15 @@
               }
             ]
           },
+          "task": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationTaskResponseDto"
+              }
+            ]
+          },
           "read_at": {
             "format": "date-time",
             "type": "string",
@@ -8455,6 +8526,10 @@
             "type": "string",
             "nullable": true
           },
+          "task_id": {
+            "type": "string",
+            "nullable": true
+          },
           "role_id": {
             "type": "string",
             "nullable": true
@@ -8469,11 +8544,13 @@
           "actor",
           "reason",
           "message",
+          "task",
           "read_at",
           "id",
           "server_id",
           "channel_id",
           "message_id",
+          "task_id",
           "role_id",
           "created_at"
         ]

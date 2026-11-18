@@ -1,5 +1,6 @@
 export * from './due-group.rules'
 export * from './errors'
 export * from './ports'
+export * from './reminder.rules'
 export * from './task-text.rules'
 export * from './task.rules'

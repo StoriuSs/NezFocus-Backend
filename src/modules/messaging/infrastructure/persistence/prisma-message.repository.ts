@@ -11,7 +11,9 @@ import {
     MessageRecord,
     MessageRepositoryPort,
     NewMessage,
-    StoredMessage
+    StoredMessage,
+    TASK_DUE_EARLIEST_MS,
+    TaskDueData
 } from '../../domain'
 import { MESSAGE, STORED, toRecordOf, toRecords, toStored, Tx } from './message.selections'
 
@@ -194,6 +196,35 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         try {
             const row = await this.prisma.message.create({
                 data: { channelId, type: 'system', systemEvent: 'member_joined', systemData: { userId }, content: '' },
+                select: MESSAGE
+            })
+            return await toRecordOf(this.prisma, row)
+        } catch (error) {
+            // The channel deleted meanwhile (its foreign key): nothing to write in.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
+    async createTaskDue(channelId: string, due: TaskDueData): Promise<MessageRecord | null> {
+        // Said already, by a run of the same job: only from the earliest reminder on, along (channelId, id).
+        const said = await this.prisma.message.findFirst({
+            where: {
+                channelId,
+                id: { gte: firstIdAt(new Date(new Date(due.dueAt).getTime() - TASK_DUE_EARLIEST_MS)) },
+                systemEvent: 'task_due',
+                AND: [
+                    { systemData: { path: ['taskId'], equals: due.taskId } },
+                    { systemData: { path: ['reminder'], equals: due.reminder } },
+                    { systemData: { path: ['dueAt'], equals: due.dueAt } }
+                ]
+            },
+            select: { id: true }
+        })
+        if (said) return null
+        try {
+            const row = await this.prisma.message.create({
+                data: { channelId, type: 'system', systemEvent: 'task_due', systemData: { ...due }, content: '' },
                 select: MESSAGE
             })
             return await toRecordOf(this.prisma, row)

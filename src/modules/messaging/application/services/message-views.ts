@@ -31,11 +31,12 @@ export interface RepliedMessageView extends Omit<RepliedMessage, 'author' | 'men
 /** A message as the API and the socket give it. */
 export interface MessageView extends Omit<
     MessageRecord,
-    'author' | 'replyTo' | 'systemUser' | 'mentionUsers' | 'mentionRoleIds' | 'attachments'
+    'author' | 'replyTo' | 'systemUser' | 'systemUsers' | 'mentionUsers' | 'mentionRoleIds' | 'attachments'
 > {
     author: MessageAuthorView | null
     replyTo: RepliedMessageView | null
     systemUser: MessageAuthorView | null
+    systemUsers: MessageAuthorView[]
     mentionUsers: MentionedUserView[]
     /** Left out once deleted: the client shows its token as an unknown role. */
     mentionRoles: MentionedRoleView[]
@@ -85,7 +86,12 @@ export async function messageViews(
     serverId: string,
     records: MessageRecord[]
 ): Promise<MessageView[]> {
-    const authors = records.flatMap((record) => [record.author, record.replyTo?.author ?? null, record.systemUser])
+    const authors = records.flatMap((record) => [
+        record.author,
+        record.replyTo?.author ?? null,
+        record.systemUser,
+        ...record.systemUsers
+    ])
     const keys = [...new Set(authors.map((author) => author?.avatarKey).filter((key) => !!key))] as string[]
     const roleIds = [
         ...new Set(records.flatMap((record) => [...record.mentionRoleIds, ...(record.replyTo?.mentionRoleIds ?? [])]))
@@ -115,19 +121,22 @@ export async function messageViews(
         })
     })
 
-    return records.map(({ author, replyTo, systemUser, mentionUsers, mentionRoleIds, ...message }, index) => ({
-        ...message,
-        author: view(author),
-        replyTo: replyTo && {
-            id: replyTo.id,
-            author: view(replyTo.author),
-            content: replyTo.content,
-            deleted: replyTo.deleted,
-            files: replyTo.files,
-            ...mentions(replyTo)
-        },
-        systemUser: view(systemUser),
-        ...mentions({ mentionUsers, mentionRoleIds }),
-        attachments: links[index]!
-    }))
+    return records.map(
+        ({ author, replyTo, systemUser, systemUsers, mentionUsers, mentionRoleIds, ...message }, index) => ({
+            ...message,
+            author: view(author),
+            replyTo: replyTo && {
+                id: replyTo.id,
+                author: view(replyTo.author),
+                content: replyTo.content,
+                deleted: replyTo.deleted,
+                files: replyTo.files,
+                ...mentions(replyTo)
+            },
+            systemUser: view(systemUser),
+            systemUsers: systemUsers.map((person) => view(person)!),
+            ...mentions({ mentionUsers, mentionRoleIds }),
+            attachments: links[index]!
+        })
+    )
 }

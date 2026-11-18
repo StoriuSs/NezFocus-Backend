@@ -8,7 +8,10 @@ import {
     MessagePlace,
     NotificationRecord,
     NotificationRepositoryPort,
-    RemovedNotification
+    RemovedNotification,
+    TaskItemDraft,
+    TaskPlace,
+    TaskReminder
 } from '../domain'
 import { MessagePreview, MessagePreviewsPort } from './ports'
 
@@ -52,6 +55,8 @@ type Row = NotificationRecord & { actorId: string | null }
 /** The inbox, kept as the Prisma repository keeps it; ids rise like UUIDv7. */
 export function notificationWorld() {
     const rows: Row[] = []
+    /** Tasks deleted: writing their items fails as the foreign key does. */
+    const deletedTasks = new Set<string>()
     let made = 0
     const nextId = () => `n${String(++made).padStart(3, '0')}`
     const person = (id: string) => ({ id, username: id, displayName: id.toUpperCase(), avatarKey: `${id}.png` })
@@ -93,6 +98,8 @@ export function notificationWorld() {
                         serverId: place.serverId,
                         channelId: place.channelId,
                         messageId: place.messageId,
+                        taskId: null,
+                        task: null,
                         actorId: place.actorId,
                         actor: person(place.actorId),
                         reason: item.reason,
@@ -109,6 +116,41 @@ export function notificationWorld() {
                 }
                 return { added: [...added].reverse(), removed: removeIds(plan.remove) }
             }
+        ),
+        addTaskItems: jest.fn(async ({ type, place, actorId, facts }: TaskItemDraft, userIds: string[], at: Date) => {
+            // A task deleted meanwhile takes its items with it.
+            if (deletedTasks.has(place.taskId)) return []
+            const added = userIds.map(
+                (userId): Row => ({
+                    id: nextId(),
+                    userId,
+                    type,
+                    ...place,
+                    messageId: null,
+                    actorId,
+                    actor: actorId ? person(actorId) : null,
+                    reason: null,
+                    roleId: null,
+                    task: facts,
+                    readAt: null,
+                    createdAt: at
+                })
+            )
+            rows.push(...added)
+            return [...added].reverse()
+        }),
+        remindedAlready: jest.fn(
+            async ({ taskId }: TaskPlace, reminder: TaskReminder, dueAt: Date, userIds: string[]) =>
+                rows
+                    .filter(
+                        (row) =>
+                            row.taskId === taskId &&
+                            row.type === 'task_reminder' &&
+                            row.task?.reminder === reminder &&
+                            row.task.dueAt?.getTime() === dueAt.getTime() &&
+                            userIds.includes(row.userId)
+                    )
+                    .map((row) => row.userId)
         ),
         removeForMessages: jest.fn(async (channelId: string, messageIds: string[]) =>
             removeIds(
@@ -198,12 +240,14 @@ export function notificationWorld() {
     const eventBus = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
 
     /** An item as if written earlier. */
-    const seed = (row: Partial<Row> & { userId: string; messageId: string }): Row => {
+    const seed = (row: Partial<Row> & { userId: string; messageId: string | null }): Row => {
         const full: Row = {
             id: nextId(),
             type: 'mention',
             serverId: 'ot',
             channelId: 'hoi-dap',
+            taskId: null,
+            task: null,
             actorId: 'an',
             actor: person('an'),
             reason: 'user',
@@ -222,5 +266,19 @@ export function notificationWorld() {
     const published = (type: new (...args: never[]) => unknown) =>
         eventBus.publish.mock.calls.map(([event]) => event).filter((event) => event instanceof type)
 
-    return { rows, repository, membership, checker, users, previews, eventBus, deps, seed, say, published, servers }
+    return {
+        rows,
+        repository,
+        membership,
+        checker,
+        users,
+        previews,
+        eventBus,
+        deps,
+        seed,
+        say,
+        published,
+        servers,
+        deletedTasks
+    }
 }

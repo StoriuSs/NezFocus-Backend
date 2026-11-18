@@ -114,6 +114,27 @@ export function openBoardsOf(access: ServerAccess | null, now: Date): string[] {
 }
 
 /**
+ * A board as the app sees it for its own work, with no one opening it (a
+ * reminder, REQ-TASK-04): whether it is on, and which of `userIds` view its
+ * channel now, as the permission cache knows them. Read through those
+ * people, as the cache is read per member: when none of them is in the
+ * server any more, the board counts as off, as there is no one to tell.
+ */
+export async function boardReach(
+    checker: PermissionCheckerPort,
+    { serverId, channelId }: Pick<OpenBoard, 'serverId' | 'channelId'>,
+    userIds: string[],
+    now: Date
+): Promise<{ on: boolean; viewerIds: Set<string> }> {
+    const people = [...new Set(userIds)]
+    const accesses = await Promise.all(people.map((userId) => checker.access(serverId, userId)))
+    const known = accesses.find((access): access is ServerAccess => access !== null)
+    const channel = known?.server.channels.find((candidate) => candidate.id === channelId)
+    const viewerIds = new Set(people.filter((_, index) => viewsChannel(accesses[index] ?? null, channelId, now)))
+    return { on: channel?.type === 'text' && channel.taskBoardEnabled, viewerIds }
+}
+
+/**
  * Those among `userIds` who may view the board's channel now (REQ-TASK-01):
  * the only people a task may be given to. A member timed out still views.
  */

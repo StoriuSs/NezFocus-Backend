@@ -102,6 +102,36 @@ export function planMessageItems(
     }
 }
 
+/** Which reminder a `task_reminder` item is: 24 hours or 2 hours before the due date (REQ-TASK-04). */
+export type TaskReminder = '24h' | '2h'
+
+/** Why a task has no one on it any more (D-95): its last person took themselves off, or left the server. */
+export type UnassignedBy = 'withdrew' | 'left_server'
+
+/**
+ * What a task item keeps as it was when made (D-98): the title and due date
+ * then; which reminder; why no one is on it. Opening it shows the task as
+ * it is now.
+ */
+export interface TaskItemFacts {
+    title: string
+    dueAt: Date | null
+    /** task_reminder only. */
+    reminder: TaskReminder | null
+    /** task_unassigned only. */
+    unassignedBy: UnassignedBy | null
+}
+
+/**
+ * Who gets a task item (D-98, D-95): each person once, never the one who
+ * acted (D-185), so taking a task on oneself makes no item, and a creator
+ * who left their own task hears nothing of it. Null: the app acted (a
+ * reminder), everyone gets theirs. In the order given.
+ */
+export function taskItemRecipients(actorId: string | null, userIds: string[]): string[] {
+    return [...new Set(userIds)].filter((userId) => userId !== actorId)
+}
+
 /** How long the inbox keeps an item (REQ-NOTIF-03, SRS 7.3). */
 export const KEPT_DAYS = 90
 

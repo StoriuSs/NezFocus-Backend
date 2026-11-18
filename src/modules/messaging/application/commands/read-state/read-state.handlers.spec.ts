@@ -60,6 +60,7 @@ const message = (id: string, channelId: string, deleted = false): StoredMessage 
     systemEvent: null,
     systemData: null,
     systemUser: null,
+    systemUsers: [],
     replyTo: null,
     mentionEveryone: false,
     mentionHereUserIds: [],

@@ -1,4 +1,11 @@
-import { HeldMessageItem, MentionReason, MessageItemsPlan, NotificationType } from '../notification.rules'
+import {
+    HeldMessageItem,
+    MentionReason,
+    MessageItemsPlan,
+    NotificationType,
+    TaskItemFacts,
+    TaskReminder
+} from '../notification.rules'
 
 /** The person an item is from, as others see them: none of an account deleted or waiting to be (D-182). */
 export interface NotificationPerson {
@@ -16,9 +23,12 @@ export interface NotificationRecord {
     serverId: string | null
     channelId: string | null
     messageId: string | null
+    taskId: string | null
     actor: NotificationPerson | null
     reason: MentionReason | null
     roleId: string | null
+    /** A task item: the task as it was when the item was made (D-98). */
+    task: TaskItemFacts | null
     readAt: Date | null
     createdAt: Date
 }
@@ -29,6 +39,22 @@ export interface MessagePlace {
     channelId: string
     messageId: string
     actorId: string
+}
+
+/** The task a task item is about, in its channel and server. */
+export interface TaskPlace {
+    serverId: string
+    channelId: string
+    taskId: string
+}
+
+/** The task items to write for some people: one kind, one task, the same words for each (D-98). */
+export interface TaskItemDraft {
+    type: 'task_assigned' | 'task_reminder' | 'task_unassigned'
+    place: TaskPlace
+    /** Who it names: the one who gave the task, or who left it; none for a reminder. */
+    actorId: string | null
+    facts: TaskItemFacts
 }
 
 /** An item taken off, and whether it was still unread (the badge drops by those). */
@@ -66,6 +92,18 @@ export interface NotificationRepositoryPort {
         readerIds: ReadonlySet<string>,
         at: Date
     ): Promise<{ added: NotificationRecord[]; removed: RemovedNotification[] }>
+
+    /**
+     * Writes one task item for each of `userIds`, in batches, unread. None
+     * when the task was deleted meanwhile (its items would have gone with it).
+     */
+    addTaskItems(draft: TaskItemDraft, userIds: string[], at: Date): Promise<NotificationRecord[]>
+
+    /**
+     * Those of `userIds` who already have the reminder of this mark and due
+     * date of the task: a reminder's job run again writes none twice.
+     */
+    remindedAlready(place: TaskPlace, reminder: TaskReminder, dueAt: Date, userIds: string[]): Promise<string[]>
 
     /** Takes off the items of messages of one channel (deleted, REQ-NOTIF-03). */
     removeForMessages(channelId: string, messageIds: string[]): Promise<RemovedNotification[]>
