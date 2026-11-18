@@ -178,6 +178,9 @@ reference for every variable.
 - [ ] `EMAIL_*` — a real SMTP server. **Required in production**: nobody can
       confirm an account, so nobody can sign in, without it. Send one real
       sign-up through it before launch ([setup/email.md](./setup/email.md))
+- [ ] `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` — **required in
+      production**: a LiveKit Cloud project, `wss://`, its webhook pointed at
+      the API ([environment.md](./environment.md#voice-and-video-livekit))
 - [ ] `SENTRY_DSN` — a project of its own, not shared with staging. Empty
       turns error tracking off
 - [ ] `LOG_LEVEL` — `info` unless you have a reason

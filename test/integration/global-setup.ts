@@ -1,7 +1,7 @@
 import { connect } from 'net'
 import { execSync } from 'child_process'
 import { Client } from 'pg'
-import { databaseTarget, redisTarget, s3Target, smtpTarget } from './targets'
+import { databaseTarget, livekitTarget, redisTarget, s3Target, smtpTarget } from './targets'
 
 /**
  * Confirms every backing service is reachable before any suite starts, then
@@ -19,12 +19,14 @@ interface Service {
 
 const s3Endpoint = new URL(s3Target.endpoint)
 const database = new URL(databaseTarget.url)
+const livekit = new URL(livekitTarget.url)
 
 const services: Service[] = [
     { name: 'Postgres', host: database.hostname, port: Number(database.port || 5432) },
     { name: 'Redis', host: redisTarget.host, port: redisTarget.port },
     { name: 'RustFS (S3)', host: s3Endpoint.hostname, port: Number(s3Endpoint.port || 80) },
-    { name: 'Mailpit (SMTP)', host: smtpTarget.host, port: smtpTarget.port }
+    { name: 'Mailpit (SMTP)', host: smtpTarget.host, port: smtpTarget.port },
+    { name: 'LiveKit', host: livekit.hostname, port: Number(livekit.port || 7880) }
 ]
 
 const reachable = ({ host, port }: Service): Promise<boolean> =>

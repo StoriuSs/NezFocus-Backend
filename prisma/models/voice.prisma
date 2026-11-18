@@ -1,0 +1,43 @@
+// Owned by src/modules/voice (SRS 4.5; ARCHITECTURE 4): only it writes them.
+//
+// LiveKit's webhooks are the truth about who is in a room; this table is the
+// API's copy of it, kept in step by those webhooks and by a check against
+// LiveKit every minute, since a webhook can come twice, late, or never
+// (D-210). A row is gone once its person leaves: nothing here is history.
+
+/// A person in a voice room now. Lists the people of each room (D-205) and
+/// the icons beside their names.
+model VoiceState {
+  /// One row per person: an account is in one room at a time (D-210).
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// A voice channel. The LiveKit room is named voice:<channelId>.
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  /// LiveKit's id of the connection. When a person reloads or moves to
+  /// another room, the participant_left of the old connection can come after
+  /// the participant_joined of the new one: it only removes the row when this
+  /// matches (D-210).
+  participantSid String
+  /// When LiveKit says the connection joined. A participant_joined older than
+  /// this is a late one and changes nothing (D-210).
+  joinedAt  DateTime @db.Timestamptz(6)
+
+  /// What the person's own browser reports through voice.self_state (D-206):
+  /// only the icons beside the name; the people in the room see the tracks
+  /// themselves.
+  micOn         Boolean @default(false)
+  cameraOn      Boolean @default(false)
+  /// From LiveKit's track_published / track_unpublished for screen_share. One
+  /// person per room at most (D-101): a partial unique index in the
+  /// migration.
+  screenSharing Boolean @default(false)
+  /// A moderator turned their microphone off; lasts until they leave or are
+  /// unmuted (D-207).
+  modMuted      Boolean @default(false)
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  // The people of a room, in the order they joined.
+  @@index([channelId, joinedAt])
+}

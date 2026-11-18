@@ -87,6 +87,10 @@ docker compose --env-file .env.development -f docker-compose.dev.yaml up -d --bu
 - **RustFS** (S3-compatible storage) is under the `testing` profile, so
   `pnpm docker:dev` does not start it. `pnpm test:services:up` does, and
   creates `AWS_S3_BUCKET` in it
+- **LiveKit**, the media server of voice and video rooms (D-204), with its
+  development key. It sends its webhooks to the API on the host, so voice
+  rooms work with `pnpm docker:services` and `pnpm dev`, not yet with the app
+  container ([environment.md](./environment.md#voice-and-video-livekit))
 
 **Access** (the `.env.example` ports; every one bound to `127.0.0.1`):
 
@@ -100,6 +104,7 @@ docker compose --env-file .env.development -f docker-compose.dev.yaml up -d --bu
 | Prometheus | `http://localhost:${PROMETHEUS_PORT}` (9090) |
 | Alertmanager | `http://localhost:${ALERTMANAGER_PORT}` (9093) |
 | RustFS console | `http://localhost:9101/rustfs/console/` (after `pnpm test:services:up`) |
+| LiveKit | `ws://localhost:7880` (`LIVEKIT_URL`; media on 7881 TCP and 7882 UDP) |
 | Node debug | `localhost:9229` |
 
 Inside its container the app always listens on 3000; `PORT` is only the host
@@ -117,7 +122,7 @@ when you don't need Grafana:
 days):
 
 ```bash
-pnpm docker:services   # db, redis, mailpit, rustfs; stops the app container if it runs
+pnpm docker:services   # db, redis, mailpit, rustfs, livekit; stops the app container if it runs
 pnpm dev               # the API, on the host, with hot reload
 ```
 

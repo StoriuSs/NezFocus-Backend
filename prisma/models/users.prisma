@@ -81,6 +81,10 @@ model User {
   notifications   Notification[] @relation("NotificationRecipient")
   notificationsBy Notification[] @relation("NotificationActor")
 
+  // Owned by the voice module (prisma/models/voice.prisma); declared here only
+  // because Prisma needs both sides of a relation.
+  voiceState VoiceState?
+
   @@index([username])
   @@index([deletedAt])
   @@index([deletionRequestedAt])

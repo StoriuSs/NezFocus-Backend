@@ -64,7 +64,7 @@ Pick the path that matches what you want right now:
 pnpm install
 cp .env.example .env.development   # runs as it is; see GETTING_STARTED.md for what to change
 
-# The whole stack: the app, Postgres, Redis, Mailpit,
+# The whole stack: the app, Postgres, Redis, Mailpit, LiveKit,
 # and the monitoring services
 pnpm docker:dev
 ```
@@ -75,7 +75,7 @@ To run the app on your machine instead of in Docker, it still needs its
 backing services. Start them with Docker and leave the app out:
 
 ```bash
-pnpm test:services:up   # Postgres, Redis, RustFS and Mailpit
+pnpm test:services:up   # Postgres, Redis, RustFS, Mailpit and LiveKit
 pnpm prisma:generate    # the database client, into generated/
 pnpm prisma:migrate     # uses DATABASE_URL, which must match DB_USERNAME/DB_PASSWORD/DB_NAME
 pnpm dev
@@ -178,7 +178,7 @@ has every screen.
 ### Database Setup
 
 ```bash
-# Start Postgres, Redis, RustFS and Mailpit on their own
+# Start Postgres, Redis, RustFS, Mailpit and LiveKit on their own
 pnpm test:services:up
 
 # Generate Prisma client
@@ -220,7 +220,7 @@ pnpm test:cov
 # E2E tests
 pnpm test:e2e
 
-# Integration tests, against real Postgres, Redis, RustFS and Mailpit
+# Integration tests, against real Postgres, Redis, RustFS, Mailpit and LiveKit
 pnpm test:services:up
 pnpm test:integration
 ```

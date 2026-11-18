@@ -212,6 +212,46 @@ services:
       - backend
     restart: unless-stopped
 
+  # ── LiveKit: the media server of voice and video rooms (D-204) ──────────
+  #
+  # Development, the tests and CI run it here; a release uses LiveKit Cloud.
+  # The key pair is LIVEKIT_API_KEY / LIVEKIT_API_SECRET of the env file
+  # (LiveKit's development pair by default), and its webhooks go to the API
+  # running on this machine (`pnpm start:dev`, or the API of pandacode-run.sh),
+  # on PORT. host.docker.internal is Docker Desktop's name for the host;
+  # extra_hosts gives Linux (CI) the same name.
+  #
+  # Browsers send media straight to the ports below, at the address LiveKit
+  # tells them (node_ip): the same port numbers inside and outside, and
+  # 127.0.0.1, since a container's own address is not reachable from the host
+  # on Docker Desktop. 7881 is ICE over TCP, for when UDP is blocked.
+  livekit:
+    container_name: livekit-nezfocus-web
+    image: livekit/livekit-server:v1.13.11
+    command: ["--dev", "--bind", "0.0.0.0"]
+    environment:
+      LIVEKIT_CONFIG: |
+        keys:
+          ${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-secret}
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+          node_ip: 127.0.0.1
+        webhook:
+          api_key: ${LIVEKIT_API_KEY:-devkey}
+          urls:
+            - http://host.docker.internal:${PORT:-8888}/${API_PREFIX:-api}/v1/voice/livekit-webhook
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:7880:7880"     # signalling and the server API (LIVEKIT_URL)
+      - "127.0.0.1:7881:7881"     # media, ICE over TCP
+      - "127.0.0.1:7882:7882/udp" # media, UDP
+    networks:
+      - backend
+    restart: unless-stopped
+
 networks:
   backend:
     driver: bridge

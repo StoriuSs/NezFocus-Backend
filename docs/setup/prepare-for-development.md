@@ -305,18 +305,19 @@ Three kinds, each with its own command:
 |---|---|---|
 | `pnpm test` | Unit tests: single pieces of logic, with everything around them faked | Nothing running |
 | `pnpm test:e2e` | The HTTP API, start to finish, with the database and Redis faked | Nothing running |
-| `pnpm test:integration` | The code against the real thing: Postgres, Redis, S3 storage (RustFS) and SMTP (Mailpit) | The test services (below) |
+| `pnpm test:integration` | The code against the real thing: Postgres, Redis, S3 storage (RustFS), SMTP (Mailpit) and the media server of voice rooms (LiveKit) | The test services (below) |
 
 ```bash
 pnpm test
 pnpm test:e2e
 
-pnpm test:services:up     # Postgres, Redis, RustFS and Mailpit, from docker-compose.dev.yaml
+pnpm test:services:up     # Postgres, Redis, RustFS, Mailpit and LiveKit, from docker-compose.dev.yaml
 pnpm test:integration
 ```
 
 `pnpm test:services:up` reuses the Postgres, Redis and Mailpit of step 5 if
-they are running, and adds RustFS, an S3-compatible storage server. The
+they are running, and adds RustFS, an S3-compatible storage server, and
+LiveKit, the media server of voice and video rooms (D-204). The
 integration tests create their own database, `<DB_NAME>_test`, so they never
 touch your development data. `pnpm test:services:down` removes RustFS again.
 

@@ -172,7 +172,7 @@ against the services in Docker:
 
 ```bash
 docker compose --env-file .env.development -f docker-compose.dev.yaml stop app   # frees port 8888
-pnpm test:services:up   # Postgres, Redis, RustFS, Mailpit
+pnpm test:services:up   # Postgres, Redis, RustFS, Mailpit, LiveKit
 pnpm prisma:generate    # once, and after every change to prisma/
 pnpm prisma:migrate     # apply migrations, using DATABASE_URL
 pnpm dev                # the app, with hot reload, on PORT (8888)
@@ -189,7 +189,7 @@ pnpm lint               # ESLint, with --fix available as pnpm lint:fix
 pnpm format             # Prettier
 pnpm test               # unit tests
 pnpm test:e2e           # end-to-end tests
-pnpm test:integration   # against Postgres, Redis, RustFS and Mailpit (test:services:up first)
+pnpm test:integration   # against Postgres, Redis, RustFS, Mailpit and LiveKit (test:services:up first)
 pnpm openapi:check      # the committed openapi.json still matches the code
 ```
 

@@ -353,6 +353,11 @@ about it (like the bans of D-162); the daily inbox clean-up deletes what a
 lost event left. The items others have where it is the actor stay, shown as
 a deleted account (D-182).
 
+The voice table (M4) keeps nothing to keep: `VoiceState` says who is in a
+room now, and its row goes when the person leaves. Its `onDelete: Cascade`
+on `User` never runs, since the `User` row stays; an account that starts
+waiting to be deleted is put out of its room by the voice module (D-210).
+
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.
 

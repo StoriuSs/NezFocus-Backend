@@ -229,7 +229,7 @@ has no image until they pass.
 
 The most common one is Docker Hub not answering in time ("context deadline
 exceeded" or "Client.Timeout exceeded" while downloading an image). The
-images the checks start (Postgres, Redis, RustFS, Mailpit, the monitoring
+images the checks start (Postgres, Redis, RustFS, Mailpit, LiveKit, the monitoring
 tools, the scanner) are downloaded first by `scripts/pull-images.sh`, which
 tries each one four times over about a minute and a half. The image build
 downloads its own base images (`node`, `alpine`) itself, without retrying,

@@ -4,7 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express'
 import { register } from 'prom-client'
 import request from 'supertest'
 import { configureApp } from '@/bootstrap/configure-app'
-import { databaseTarget, redisTarget, smtpTarget } from './targets'
+import { databaseTarget, livekitTarget, redisTarget, smtpTarget } from './targets'
 
 /** What the integration suites that run the whole app share. */
 
@@ -27,6 +27,9 @@ export async function bootApp(
         EMAIL_SECURE: 'false',
         EMAIL_USER: '',
         EMAIL_PASSWORD: '',
+        LIVEKIT_URL: livekitTarget.url,
+        LIVEKIT_API_KEY: livekitTarget.apiKey,
+        LIVEKIT_API_SECRET: livekitTarget.apiSecret,
         API_PREFIX: 'api',
         BASE_URL: 'http://api.itest.example',
         CORS_ORIGINS: FRONTEND,

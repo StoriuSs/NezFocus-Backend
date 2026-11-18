@@ -1,0 +1,108 @@
+import { Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { RoomServiceClient, ServerError, TokenVerifier } from 'livekit-server-sdk'
+import { MediaRoomsUnavailableError } from '@/modules/voice/domain'
+import { LiveKitMediaRooms } from './livekit-media-rooms.adapter'
+
+// What the adapter signs, read back with the same key, and what it makes of
+// LiveKit's answers. Whether LiveKit takes the tokens, and its real answers,
+// are in test/integration/voice-http.
+const livekit = { url: 'ws://127.0.0.1:1', apiKey: 'devkey', apiSecret: 'secret' }
+const adapter = () => new LiveKitMediaRooms(new ConfigService({ livekit }))
+const claims = (token: string) => new TokenVerifier(livekit.apiKey, livekit.apiSecret).verify(token)
+
+describe('LiveKitMediaRooms join tokens (D-210)', () => {
+    it('is for one room and person, ten minutes to join, sending what they may and no data', async () => {
+        const { token, url } = await adapter().issueJoinToken({
+            room: 'voice:c1',
+            identity: 'user-1',
+            name: 'An',
+            sources: ['microphone', 'camera', 'screen_share', 'screen_share_audio']
+        })
+
+        expect(url).toBe(livekit.url)
+        const granted = await claims(token)
+        expect(granted).toMatchObject({ sub: 'user-1', name: 'An' })
+        expect(granted.exp! - granted.nbf!).toBe(600)
+        expect(granted.video).toEqual({
+            roomJoin: true,
+            room: 'voice:c1',
+            canSubscribe: true,
+            canPublish: true,
+            canPublishSources: ['microphone', 'camera', 'screen_share', 'screen_share_audio'],
+            canPublishData: false
+        })
+    })
+
+    it('lets someone without SPEAK or VIDEO listen only', async () => {
+        const { token } = await adapter().issueJoinToken({
+            room: 'voice:c1',
+            identity: 'user-2',
+            name: 'Bình',
+            sources: []
+        })
+
+        expect((await claims(token)).video).toMatchObject({
+            canSubscribe: true,
+            canPublish: false,
+            canPublishSources: []
+        })
+    })
+
+    it('sends only the sources it is given: SPEAK alone is the microphone', async () => {
+        const { token } = await adapter().issueJoinToken({
+            room: 'voice:c1',
+            identity: 'user-3',
+            name: 'Chi',
+            sources: ['microphone']
+        })
+
+        expect((await claims(token)).video).toMatchObject({ canPublish: true, canPublishSources: ['microphone'] })
+    })
+})
+
+describe('LiveKitMediaRooms asking LiveKit', () => {
+    afterEach(() => jest.restoreAllMocks())
+    /** LiveKit's answer to each call, made when the call comes. */
+    const answers = (method: 'listParticipants' | 'removeParticipant', outcome: () => Promise<unknown>) =>
+        jest.spyOn(RoomServiceClient.prototype, method).mockImplementation(outcome as never)
+    const logged = (level: 'warn' | 'error') => jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined)
+
+    it('lists who is in a room, with when they joined', async () => {
+        answers('listParticipants', async () => [{ identity: 'user-1', sid: 'PA_1', joinedAtMs: 1795000000123n }])
+
+        expect(await adapter().listParticipants('voice:c1')).toEqual([
+            { identity: 'user-1', sid: 'PA_1', joinedAt: new Date(1795000000123) }
+        ])
+    })
+
+    it('takes "not found" for an empty room, and for a person already gone', async () => {
+        const notFound = () => Promise.reject(new ServerError('not_found', 'room does not exist', 404, 'not_found'))
+        answers('listParticipants', notFound)
+        answers('removeParticipant', notFound)
+
+        expect(await adapter().listParticipants('voice:c1')).toEqual([])
+        await expect(adapter().removeParticipant('voice:c1', 'user-1')).resolves.toBeUndefined()
+    })
+
+    it('reports LiveKit out of reach as unavailable, not as an empty room or a person gone, and logs why', async () => {
+        const warn = logged('warn')
+
+        await expect(adapter().listParticipants('voice:c1')).rejects.toBeInstanceOf(MediaRoomsUnavailableError)
+        await expect(adapter().removeParticipant('voice:c1', 'user-1')).rejects.toBeInstanceOf(
+            MediaRoomsUnavailableError
+        )
+        expect(warn).toHaveBeenCalledTimes(2)
+        expect(warn.mock.calls[0]![0]).toContain('voice:c1')
+    })
+
+    it('logs a refused key as an error naming the settings: waiting will not fix it', async () => {
+        const error = logged('error')
+        answers('listParticipants', () =>
+            Promise.reject(new ServerError('unauthenticated', 'invalid token', 401, 'unauthenticated'))
+        )
+
+        await expect(adapter().listParticipants('voice:c1')).rejects.toBeInstanceOf(MediaRoomsUnavailableError)
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('LIVEKIT_API_SECRET'))
+    })
+})

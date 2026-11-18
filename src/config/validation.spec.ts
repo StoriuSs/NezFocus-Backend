@@ -23,7 +23,10 @@ const prodEnv = {
     ALERT_WEBHOOK_URL: 'https://discord.com/api/webhooks/123/AbC-token',
     EMAIL_HOST: 'smtp-relay.example.com',
     FRONTEND_URL: 'https://app.example.com',
-    BASE_URL: 'https://api.example.com'
+    BASE_URL: 'https://api.example.com',
+    LIVEKIT_URL: 'wss://nezfocus.livekit.cloud',
+    LIVEKIT_API_KEY: 'nezfocus-production',
+    LIVEKIT_API_SECRET: strong.repeat(3)
 }
 
 const errorFor = (env: Record<string, string | undefined>) =>
@@ -64,5 +67,32 @@ describe('validationSchema in production', () => {
                 ALERT_WEBHOOK_URL: 'https://discord.com/api/webhooks/your-webhook-id/your-webhook-token'
             })
         ).toContain('placeholder')
+    })
+
+    // D-204: development, the tests and CI run LiveKit locally with its
+    // development key; a release talks to LiveKit Cloud.
+    it('requires LiveKit settings of its own: a wss address and a key and secret that are not the development ones', () => {
+        expect(errorFor({ ...prodEnv, LIVEKIT_URL: undefined })).toContain('LIVEKIT_URL" is required in production')
+        expect(errorFor({ ...prodEnv, LIVEKIT_URL: 'ws://nezfocus.livekit.cloud' })).toContain('LIVEKIT_URL')
+        expect(errorFor({ ...prodEnv, LIVEKIT_API_KEY: undefined })).toContain('LIVEKIT_API_KEY')
+        expect(errorFor({ ...prodEnv, LIVEKIT_API_KEY: 'devkey' })).toContain('LIVEKIT_API_KEY')
+        expect(errorFor({ ...prodEnv, LIVEKIT_API_SECRET: undefined })).toContain('LIVEKIT_API_SECRET')
+        expect(errorFor({ ...prodEnv, LIVEKIT_API_SECRET: 'secret' })).toContain('LIVEKIT_API_SECRET')
+        expect(errorFor({ ...prodEnv, LIVEKIT_API_SECRET: strong })).toContain('at least 32 characters')
+    })
+})
+
+describe('validationSchema in development', () => {
+    it('defaults LiveKit to the local development server (docker-compose.dev.yaml), also for an empty line', () => {
+        const empty = { LIVEKIT_URL: '', LIVEKIT_API_KEY: '', LIVEKIT_API_SECRET: '' }
+        for (const env of [devEnv, { ...devEnv, ...empty }]) {
+            const { value, error } = validationSchema.validate(env)
+            expect(error).toBeUndefined()
+            expect(value).toMatchObject({
+                LIVEKIT_URL: 'ws://localhost:7880',
+                LIVEKIT_API_KEY: 'devkey',
+                LIVEKIT_API_SECRET: 'secret'
+            })
+        }
     })
 })

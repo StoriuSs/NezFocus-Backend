@@ -151,8 +151,8 @@ jobs:
       - name: Pull the service images
         run: >-
           docker compose --env-file .env.development -f docker-compose.dev.yaml --profile testing
-          config --images db redis rustfs mailpit | xargs scripts/pull-images.sh
-      - name: Start Postgres, Redis, RustFS and Mailpit
+          config --images db redis rustfs mailpit livekit | xargs scripts/pull-images.sh
+      - name: Start Postgres, Redis, RustFS, Mailpit and LiveKit
         run: pnpm test:services:up
       - run: pnpm test:integration
       - name: The migrations produce the schema
@@ -166,7 +166,7 @@ jobs:
           pnpm prisma:check
       - name: Service logs
         if: failure()
-        run: docker compose --env-file .env.development -f docker-compose.dev.yaml --profile testing logs --no-color --tail 200 db redis rustfs rustfs-buckets mailpit
+        run: docker compose --env-file .env.development -f docker-compose.dev.yaml --profile testing logs --no-color --tail 200 db redis rustfs rustfs-buckets mailpit livekit
 
   monitoring:
     name: Monitoring configuration

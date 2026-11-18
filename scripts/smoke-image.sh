@@ -56,6 +56,8 @@ docker run -d --name "$NAME-app" --network "$NET" --env-file "$ENV_FILE" \
 	-e BULL_BOARD_PASSWORD=smoke-bull-board-password \
 	-e JWT_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" \
 	-e ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/0/smoke \
+	-e LIVEKIT_URL=wss://smoke.livekit.cloud -e LIVEKIT_API_KEY=smoke-livekit-key \
+	-e LIVEKIT_API_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" \
 	"$IMAGE" >/dev/null
 
 # Either may be missing from .env.example (the app has defaults); grep then

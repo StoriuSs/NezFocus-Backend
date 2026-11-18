@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with eight modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way) and `notifications` (the inbox, which other modules write to through its `NOTIFIER` port) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with nine modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port) and `voice` (voice and video rooms, whose media LiveKit carries) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications, voice"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -88,15 +88,19 @@ flowchart TB
     subgraph outside["Outside services"]
         SMTP["Email provider, SMTP<br/>codes and notices"]
         Google["Google<br/>sign-in, optional"]
+        LiveKit["LiveKit Cloud<br/>voice and video"]
     end
 
     Browser -->|https| Nginx
     Browser -.->|sign-in page| Google
+    Browser -->|room media| LiveKit
     Nginx --> App
     App --> PG
     App --> RD
     App -->|sends mail| SMTP
     App -->|checks the sign-in| Google
+    App -->|join tokens, who is in a room| LiveKit
+    LiveKit -.->|webhooks| App
     Backup --> PG
     Mon -.->|scrapes and reads logs| App
 ```
@@ -552,6 +556,14 @@ owner item while one is still in the server; the messages its items show come fr
 days go with a daily maintenance task, and an account deleted for good loses
 its own inbox at once (`events/handlers/`, users' `AccountDeletedEvent`, D-203).
 
+`src/modules/voice/` holds voice and video rooms (SRS 4.5). LiveKit carries
+the media (D-204: a local server in development, the tests and CI, LiveKit
+Cloud in production); the module sits behind its `MEDIA_ROOMS` port, which
+the `LiveKitMediaRooms` adapter answers: join tokens that grant what one's
+permissions allow (D-210), who is in a room, putting a person out. Who is in
+which room now is the `VoiceState` table, one row per person. So far (M4 L1)
+that is all; the routes, LiveKit's webhooks and the events come next.
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -643,10 +655,11 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread, files
 │   ├── modules/tasks/          # Task Boards: tasks, the people on them, their history, search
 │   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up, a deleted account's inbox
+│   ├── modules/voice/          # Voice and video rooms: LiveKit behind MEDIA_ROOMS, who is in which room
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
-├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma, tasks.prisma, notifications.prisma) and migrations
+├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma, tasks.prisma, notifications.prisma, voice.prisma) and migrations
 ├── test/                       # e2e and integration suites
 ├── k6/                         # Load-test scripts
 ├── monitoring/                 # Prometheus, Loki, Alloy, Grafana, Alertmanager

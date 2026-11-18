@@ -57,6 +57,17 @@ export const smtpTarget = {
 }
 
 /**
+ * The LiveKit of docker-compose.dev.yaml, which takes its key pair from
+ * .env.development too. bootApp hands these to the app under test, whose own
+ * env file (.env.test) does not exist.
+ */
+export const livekitTarget = {
+    url: env.TEST_LIVEKIT_URL ?? (dev.LIVEKIT_URL || 'ws://localhost:7880'),
+    apiKey: env.TEST_LIVEKIT_API_KEY ?? (dev.LIVEKIT_API_KEY || 'devkey'),
+    apiSecret: env.TEST_LIVEKIT_API_SECRET ?? (dev.LIVEKIT_API_SECRET || 'secret')
+}
+
+/**
  * A made-up client address for one suite (sent as X-Forwarded-For). The
  * sign-in limits count per IP for 15 minutes in Redis, which outlives a run:
  * from a handful of addresses, a quick rerun often drew one an earlier run

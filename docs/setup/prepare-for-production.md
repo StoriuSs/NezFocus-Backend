@@ -408,6 +408,17 @@ AWS_S3_BUCKET=myapp-avatars
 AWS_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com   # R2 only; leave out for AWS
 ```
 
+**Voice and video rooms.** Production refuses to start without these: a
+LiveKit Cloud project (cloud.livekit.io; its free plan suits a demo), whose
+webhook points at `https://api.example.com/api/v1/voice/livekit-webhook`
+(D-204, [environment.md](../environment.md#voice-and-video-livekit)):
+
+```bash
+LIVEKIT_URL=wss://<project>.livekit.cloud   # required
+LIVEKIT_API_KEY=<the project's API key>     # required
+LIVEKIT_API_SECRET=<its secret>             # required, at least 32 characters
+```
+
 **Logging.** `LOG_LEVEL=info`.
 
 **Monitoring and alerts** (steps 10 to 12):

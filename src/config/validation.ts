@@ -224,6 +224,44 @@ export const validationSchema = Joi.object({
     AWS_S3_PUBLIC_ENDPOINT: Joi.string().uri().allow('').optional(),
     AWS_S3_FORCE_PATH_STYLE: Joi.boolean().allow('').optional(),
 
+    // livekit.config.ts: voice and video rooms (D-204). Elsewhere than
+    // production the defaults are the local server's in docker-compose.dev.yaml,
+    // which runs with LiveKit's development key; a release talks to LiveKit
+    // Cloud, over wss because the web app is served over https. An empty line
+    // in development means unset.
+    LIVEKIT_URL: Joi.when('NODE_ENV', {
+        is: 'production',
+        then: Joi.string()
+            .required()
+            .uri({ scheme: ['wss'] })
+            .messages({
+                'any.required': '{{#label}} is required in production: voice rooms connect there',
+                'string.empty': '{{#label}} is required in production: voice rooms connect there',
+                'string.uriCustomScheme':
+                    '{{#label}} must be a wss:// address in production: browsers refuse ws:// from an https page'
+            }),
+        otherwise: Joi.string()
+            .uri({ scheme: ['ws', 'wss'] })
+            .empty('')
+            .default('ws://localhost:7880')
+    }),
+    LIVEKIT_API_KEY: Joi.when('NODE_ENV', {
+        is: 'production',
+        then: Joi.string()
+            .required()
+            .invalid('devkey')
+            .messages({ 'any.invalid': '{{#label}} is the development key; use the key of the LiveKit project' }),
+        otherwise: Joi.string().empty('').default('devkey')
+    }),
+    // Signs the tokens browsers join rooms with, and checks LiveKit's webhooks.
+    LIVEKIT_API_SECRET: Joi.when('NODE_ENV', {
+        is: 'production',
+        then: strongSecret
+            .min(32)
+            .messages({ 'string.min': '{{#label}} must be at least 32 characters: the secret of the LiveKit project' }),
+        otherwise: Joi.string().empty('').default('secret')
+    }),
+
     // pino.config.ts
     LOG_LEVEL: Joi.string().default('info'),
     // Unset picks json in containers/production, pretty in a terminal

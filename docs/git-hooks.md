@@ -118,8 +118,8 @@ git push
 3. If tests pass → Push succeeds ✅
 4. If tests fail → Push blocked ❌ (must fix failing tests first)
 
-The **integration** suite is not here. It needs Postgres, Redis, RustFS and
-Mailpit running, which a push hook cannot assume: `pnpm test:services:up && pnpm test:integration`
+The **integration** suite is not here. It needs Postgres, Redis, RustFS,
+Mailpit and LiveKit running, which a push hook cannot assume: `pnpm test:services:up && pnpm test:integration`
 when you want it, and CI runs it on every branch.
 
 That matters most for sign-in. The auth module's real checks (sign-up with an

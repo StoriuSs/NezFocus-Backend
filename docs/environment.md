@@ -21,6 +21,7 @@ defaults that are right until you have a reason to change them.
   - [Redis and caching](#redis-and-caching)
   - [Limits and timeouts](#limits-and-timeouts)
   - [Admin pages](#admin-pages)
+  - [Voice and video (LiveKit)](#voice-and-video-livekit)
   - [Uploads and storage](#uploads-and-storage)
   - [Email](#email)
   - [Logging and error tracking](#logging-and-error-tracking)
@@ -92,6 +93,7 @@ walks through each one.
 | `CORS_ORIGINS` | The web app's exact origin, e.g. `https://app.example.com` | Your domain |
 | `EMAIL_HOST` and the other `EMAIL_*` | **Required.** A real SMTP server: sign-up emails a code | [setup/email.md](./setup/email.md) |
 | `ALERT_WEBHOOK_URL` | **Required.** Where alerts go | [setup/discord-alerts.md](./setup/discord-alerts.md) |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | **Required.** The `wss://` address, key and secret of a LiveKit Cloud project: voice and video rooms | The project's settings at cloud.livekit.io |
 | `PORT` | `3000`, the port nginx forwards to (the template's `8888` is for development; anything else answers 502) | [The traps](#things-that-will-catch-you-out) |
 | `NODE_ENV` | `production` (compose sets it anyway) | |
 
@@ -246,6 +248,23 @@ seconds. [auth/in-the-code.md](./auth/in-the-code.md) says where to change them.
 | --- | --- | --- | --- | --- | --- |
 | `BULL_BOARD_USER` | | `admin` | Basic-auth user for `/admin/queues` (the queue dashboard), and for `/api-docs` in production. Not checked: choose one anyway | app | |
 | `BULL_BOARD_PASSWORD` | prod | `admin` | Its password. Production refuses the default and anything weak: a waiting or failed email job on `/admin/queues` holds the sign-in or reset code it sends, so read access to that page is enough to take over an account | app | `openssl rand -hex 24` |
+
+### Voice and video (LiveKit)
+
+LiveKit carries the media of voice and video rooms; the API signs the tokens
+browsers join with, takes its webhooks and asks it who is in a room (D-204).
+In development, the tests and CI the defaults below are the local server of
+`docker-compose.dev.yaml` (`pnpm test:services:up`), with LiveKit's
+development key; it sends its webhooks to the API on this machine, on `PORT`.
+Voice rooms therefore need the API run on the host (`pnpm start:dev`,
+`pnpm start`): the app container of `pnpm docker:dev` finds no LiveKit at
+`localhost` and gets no webhooks (M4 L1, by choice).
+
+| Variable | Required | Default | What it does | Read by | Set up |
+| --- | --- | --- | --- | --- | --- |
+| `LIVEKIT_URL` | prod | `ws://localhost:7880` | Where browsers and the API reach LiveKit. `wss://` in production | app | The LiveKit Cloud project |
+| `LIVEKIT_API_KEY` | prod | `devkey` | The key tokens and webhooks are signed with. Also the local server's key (compose) | app, compose | The LiveKit Cloud project |
+| `LIVEKIT_API_SECRET` | prod | `secret` | Its secret, at least 32 characters in production. Also the local server's (compose) | app, compose | The LiveKit Cloud project |
 
 ### Uploads and storage
 
@@ -507,6 +526,11 @@ unsafe, or would break something only later.
    the template's `your_`/`your-` placeholder.
 8. **`AUTH_COOKIE_SECURE` defaults to on**, so the cookies travel over HTTPS
    only (not a refusal, a different default).
+9. **`LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` are required**:
+   the address must be `wss://` (the web app is served over https, and
+   browsers refuse `ws://` from such a page), the key may not be the
+   development `devkey`, and the secret follows the strong-secret rules of
+   point 1 with at least 32 characters.
 
 These apply in every environment, and are worth knowing because they stop a
 development start too:

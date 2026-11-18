@@ -34,6 +34,7 @@ rely on a number.
 | Discord | Receives the alerts ("the database is down") | Optional, a test channel | **Required** (`ALERT_WEBHOOK_URL`) | Free | [discord-alerts.md](./discord-alerts.md) |
 | Uptime check and heartbeat | Tell you from outside when the site, or the alerting itself, is down | No | **Required** uptime check, recommended heartbeat | UptimeRobot and Healthchecks.io are free at this size | [uptime-check.md](./uptime-check.md) |
 | Off-site backup bucket | Keeps a copy of the nightly database dumps at another provider | No | Strongly recommended | A few cents a month (Backblaze B2, Cloudflare R2) | [offsite-backups.md](./offsite-backups.md) |
+| LiveKit Cloud | Carries the sound, video and screens of voice rooms | No: the local LiveKit of `pnpm test:services:up` | **Required** (`LIVEKIT_*`) | A free plan | [../environment.md](../environment.md#voice-and-video-livekit) |
 | Google sign-in | The "Continue with Google" button | Optional, a dev client | Optional | Free | [google-sign-in.md](./google-sign-in.md) |
 | Object storage (S3 or R2) | Stores profile pictures in a bucket instead of the server's disk | No: local disk, or RustFS in Docker | Optional (`STORAGE_TYPE=local` is fine on one server) | R2 has a monthly free allowance; S3 bills per use | [storage-s3-r2.md](./storage-s3-r2.md) |
 | Sentry | Groups unexpected errors (500s, crashes) into issues and emails you about new ones | Optional | Optional, recommended | Developer plan: 5,000 errors a month, 1 user | [sentry.md](./sentry.md) |
