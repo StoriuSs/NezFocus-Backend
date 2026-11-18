@@ -158,12 +158,13 @@ The difference matters the moment you run the app twice. An in-process
 `@Cron` fires on **every** instance, so two instances do every job twice.
 A Redis-held schedule produces one job per tick, handled by one instance.
 
-Two schedules ship with the starter, and the servers module adds a third:
+Two schedules ship with the starter; the servers and notifications modules add one each:
 
 | Queue | Scheduler | Every | What it does |
 | --- | --- | --- | --- |
 | `maintenance` | `deleted-accounts-sweep` (users) | 15 min | Deletes the accounts whose 14 days are over (asked to be deleted, or left incomplete) and erases their personal data at once (D-141) |
 | `maintenance` | `servers-clean-up` (servers) | 24 h | Deletes for good the servers deleted 30 days ago, their icons through the file clean-up queue; takes out of their servers the deleted accounts whose `AccountDeletedEvent` was lost |
+| `maintenance` | `notifications-clean-up` (notifications) | 24 h | Deletes the inbox items made more than 90 days ago (REQ-NOTIF-03), then the items of accounts deleted for good that a lost `AccountDeletedEvent` left (D-203), a batch of 1,000 at a time |
 | `maintenance` | `auth-clean-up` (auth) | 1 h | Removes sessions that ended a week ago and codes a day old; ends what a lost `AccountDeletedEvent` left behind (sessions, passwords and Google links of deleted accounts) |
 
 ## Code map

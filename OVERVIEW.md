@@ -549,7 +549,8 @@ channels one views now, so the page and the unread count filter alike
 (`services/inbox.ts`); moderation items show even after one is put out, an
 owner item while one is still in the server; the messages its items show come from
 `MESSAGE_PREVIEWS`, which messaging answers (D-198). Items older than 90
-days go with a daily maintenance task.
+days go with a daily maintenance task, and an account deleted for good loses
+its own inbox at once (`events/handlers/`, users' `AccountDeletedEvent`, D-203).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
@@ -641,7 +642,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/realtime/       # Socket tickets, the gateway, rooms, sending events, presence
 │   ├── modules/messaging/      # Messages in channels: sending, history, editing, deleting, replies, reactions, pins, mentions, unread, files
 │   ├── modules/tasks/          # Task Boards: tasks, the people on them, their history, search
-│   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up
+│   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up, a deleted account's inbox
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

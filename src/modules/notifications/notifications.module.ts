@@ -7,6 +7,7 @@ import { UsersModule } from '@/modules/users/users.module'
 import { NOTIFICATION_REPOSITORY } from './domain'
 import {
     CleanUpNotificationsHandler,
+    ForgetDeletedAccountItemsHandler,
     INBOX_QUERY_HANDLERS,
     ITEM_COMMAND_HANDLERS,
     NOTIFIER,
@@ -30,6 +31,7 @@ import { NotificationsController } from './presentation'
  * channels they view (PERMISSION_CHECKER), users for pictures as addresses
  * (USER_DIRECTORY), and tells each person's tabs through realtime's
  * EVENT_PUBLISHER, asking its PRESENCE whether a tab is open (D-187).
+ * Hears users' AccountDeletedEvent to delete that account's inbox (D-203).
  */
 @Module({
     imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
@@ -44,7 +46,8 @@ import { NotificationsController } from './presentation'
         ...INBOX_QUERY_HANDLERS,
         PublishCreatedNotificationsHandler,
         PublishReadNotificationsHandler,
-        PublishDeletedNotificationsHandler
+        PublishDeletedNotificationsHandler,
+        ForgetDeletedAccountItemsHandler
     ]
 })
 export class NotificationsModule {}

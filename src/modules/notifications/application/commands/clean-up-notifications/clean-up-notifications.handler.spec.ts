@@ -20,4 +20,16 @@ describe('CleanUpNotificationsHandler (REQ-NOTIF-03)', () => {
         expect(world.rows.map((row) => row.messageId)).toEqual(['kept'])
         expect(world.repository.removeOlderThan).toHaveBeenCalledTimes(2)
     })
+
+    it('deletes the items of accounts deleted for good that the event missed, a batch at a time (D-203)', async () => {
+        const world = notificationWorld()
+        for (let index = 0; index < CLEAN_UP_BATCH + 1; index++) world.seed({ userId: 'dung', messageId: `d${index}` })
+        world.seed({ userId: 'binh', messageId: 'kept', actorId: 'dung' })
+        world.deletedAccounts.add('dung')
+
+        await new CleanUpNotificationsHandler(world.repository).execute(new CleanUpNotificationsCommand(now))
+
+        expect(world.rows.map((row) => row.messageId)).toEqual(['kept'])
+        expect(world.repository.removeOfDeleted).toHaveBeenCalledTimes(2)
+    })
 })

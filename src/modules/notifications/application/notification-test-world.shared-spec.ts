@@ -61,6 +61,8 @@ export function notificationWorld() {
     const deletedTasks = new Set<string>()
     /** Servers deleted for good: writing their items fails as the foreign key does. */
     const deletedServers = new Set<string>()
+    /** Accounts deleted for good (User.deletedAt set). */
+    const deletedAccounts = new Set<string>()
     let made = 0
     const nextId = () => `n${String(++made).padStart(3, '0')}`
     const person = (id: string) => ({ id, username: id, displayName: id.toUpperCase(), avatarKey: `${id}.png` })
@@ -247,6 +249,21 @@ export function notificationWorld() {
                         .slice(0, limit)
                         .map((row) => row.id)
                 ).length
+        ),
+        removeAllOfDeleted: jest.fn(
+            async (userId: string) =>
+                removeIds(
+                    rows.filter((row) => row.userId === userId && deletedAccounts.has(userId)).map((row) => row.id)
+                ).length
+        ),
+        removeOfDeleted: jest.fn(
+            async (limit: number) =>
+                removeIds(
+                    rows
+                        .filter((row) => deletedAccounts.has(row.userId))
+                        .slice(0, limit)
+                        .map((row) => row.id)
+                ).length
         )
     }
 
@@ -329,6 +346,7 @@ export function notificationWorld() {
         published,
         servers,
         deletedTasks,
-        deletedServers
+        deletedServers,
+        deletedAccounts
     }
 }

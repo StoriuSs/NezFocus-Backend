@@ -1,10 +1,12 @@
 import { randomUUID } from 'crypto'
 import { AddressInfo } from 'net'
 import { NestExpressApplication } from '@nestjs/platform-express'
-import { CommandBus } from '@nestjs/cqrs'
+import { CommandBus, EventBus } from '@nestjs/cqrs'
 import request from 'supertest'
 import { io, Socket } from 'socket.io-client'
 import { CleanUpNotificationsCommand } from '@/modules/notifications'
+import { NOTIFICATION_REPOSITORY, NotificationRepositoryPort } from '@/modules/notifications/domain'
+import { AccountDeletedEvent } from '@/modules/users'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
@@ -37,7 +39,7 @@ describe('Inbox (integration)', () => {
     const CLIENT_IP = testClientIp()
     const PREFIX = `itest-notif-${randomUUID().slice(0, 8)}`
     const PASSWORD = 'Harbour-Lantern-42'
-    type Who = 'an' | 'binh' | 'chi' | 'dung'
+    type Who = 'an' | 'binh' | 'chi' | 'dung' | 'em' | 'giang'
 
     let app: NestExpressApplication
     let prisma: PrismaService
@@ -581,6 +583,53 @@ describe('Inbox (integration)', () => {
             })
             await app.get(CommandBus).execute(new CleanUpNotificationsCommand(new Date()))
             expect(await prisma.notification.findUnique({ where: { id: old.id } })).toBeNull()
+        })
+    })
+
+    describe('an account deleted for good (D-203)', () => {
+        it('loses its own inbox at once and in the daily clean-up, and the items others have about it stay', async () => {
+            await signUp('em')
+            await signUp('giang')
+            const banned = (who: Who) =>
+                prisma.notification.create({
+                    data: {
+                        userId: users[who].id,
+                        serverId,
+                        type: 'moderation',
+                        data: { action: 'ban', reason: 'Spam' }
+                    }
+                })
+            const items = (who: Who) => prisma.notification.count({ where: { userId: users[who].id } })
+            await banned('em')
+            await banned('giang')
+            // Bình's item about Em: the server Em handed him.
+            const about = await prisma.notification.create({
+                data: { userId: users.binh.id, serverId, type: 'owner_transferred', actorId: users.em.id },
+                select: { id: true }
+            })
+
+            // The event, as when the 14 days are over.
+            await prisma.user.update({ where: { id: users.em.id }, data: { deletedAt: new Date() } })
+            app.get(EventBus).publish(new AccountDeletedEvent(users.em.id, true))
+            expect(
+                await eventually(
+                    () => items('em'),
+                    (count) => count === 0
+                )
+            ).toBe(0)
+            expect(await prisma.notification.findUnique({ where: { id: about.id } })).not.toBeNull()
+
+            // An account still live keeps its inbox, whatever asks.
+            expect(
+                await app.get<NotificationRepositoryPort>(NOTIFICATION_REPOSITORY).removeAllOfDeleted(users.giang.id)
+            ).toBe(0)
+            expect(await items('giang')).toBe(1)
+
+            // The event lost: the daily clean-up finds it, and only it.
+            await prisma.user.update({ where: { id: users.giang.id }, data: { deletedAt: new Date() } })
+            await app.get(CommandBus).execute(new CleanUpNotificationsCommand(new Date()))
+            expect(await items('giang')).toBe(0)
+            expect(await prisma.notification.findUnique({ where: { id: about.id } })).not.toBeNull()
         })
     })
 })

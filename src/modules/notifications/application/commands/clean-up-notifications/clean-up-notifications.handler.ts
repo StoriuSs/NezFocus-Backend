@@ -8,8 +8,10 @@ export const CLEAN_UP_BATCH = 1000
 
 /**
  * Deletes, a batch at a time, every item made more than 90 days ago, read or
- * not (REQ-NOTIF-03). Says nothing to the inbox: an item that goes while
- * the inbox is open stays shown until it is read again (spec 06 › Edge case).
+ * not (REQ-NOTIF-03), then the items of accounts deleted for good that a lost
+ * AccountDeletedEvent left behind (D-203). Says nothing to the inbox: an item
+ * that goes while the inbox is open stays shown until it is read again
+ * (spec 06 › Edge case).
  */
 @CommandHandler(CleanUpNotificationsCommand)
 export class CleanUpNotificationsHandler implements ICommandHandler<CleanUpNotificationsCommand> {
@@ -17,9 +19,17 @@ export class CleanUpNotificationsHandler implements ICommandHandler<CleanUpNotif
 
     async execute({ now }: CleanUpNotificationsCommand): Promise<number> {
         const cutoff = keptSince(now)
+        return (
+            (await this.inBatches((limit) => this.notifications.removeOlderThan(cutoff, limit))) +
+            (await this.inBatches((limit) => this.notifications.removeOfDeleted(limit)))
+        )
+    }
+
+    /** Runs one delete until a batch comes back short; how many it deleted in all. */
+    private async inBatches(remove: (limit: number) => Promise<number>): Promise<number> {
         let total = 0
         for (;;) {
-            const deleted = await this.notifications.removeOlderThan(cutoff, CLEAN_UP_BATCH)
+            const deleted = await remove(CLEAN_UP_BATCH)
             total += deleted
             if (deleted < CLEAN_UP_BATCH) return total
         }

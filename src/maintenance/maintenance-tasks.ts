@@ -66,7 +66,7 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
     },
     {
         // Deletes the inbox items made more than 90 days ago, read or not
-        // (REQ-NOTIF-03).
+        // (REQ-NOTIF-03), and those of accounts deleted for good (D-203).
         id: 'notifications-clean-up',
         everyMs: 24 * 60 * MINUTE_MS,
         command: (now) => new CleanUpNotificationsCommand(now)

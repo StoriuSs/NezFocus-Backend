@@ -278,6 +278,26 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
         `
     }
 
+    async removeAllOfDeleted(userId: string): Promise<number> {
+        // Notification_userId_id_idx; nothing if the account is not deleted.
+        const { count } = await this.prisma.notification.deleteMany({
+            where: { userId, user: { deletedAt: { not: null } } }
+        })
+        return count
+    }
+
+    async removeOfDeleted(limit: number): Promise<number> {
+        // Every deleted account (User_deletedAt_idx), then Notification_userId_id_idx for each.
+        return this.prisma.$executeRaw`
+            DELETE FROM "Notification" WHERE "id" IN (
+                SELECT n."id" FROM "Notification" n
+                JOIN "User" u ON u."id" = n."userId"
+                WHERE u."deletedAt" IS NOT NULL
+                LIMIT ${limit}
+            )
+        `
+    }
+
     /** The items, newest first. */
     private async records(ids: string[]): Promise<NotificationRecord[]> {
         if (ids.length === 0) return []

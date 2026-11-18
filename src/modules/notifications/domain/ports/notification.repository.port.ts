@@ -157,6 +157,12 @@ export interface NotificationRepositoryPort {
 
     /** Deletes up to `limit` items made before `cutoff`, read or not; how many. */
     removeOlderThan(cutoff: Date, limit: number): Promise<number>
+
+    /** Deletes every item of an account deleted for good, none if it is not (D-203); how many. */
+    removeAllOfDeleted(userId: string): Promise<number>
+
+    /** Deletes up to `limit` items of accounts deleted for good, left by a lost event (D-203); how many. */
+    removeOfDeleted(limit: number): Promise<number>
 }
 
 export const NOTIFICATION_REPOSITORY = Symbol('NotificationRepositoryPort')

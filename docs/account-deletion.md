@@ -253,6 +253,10 @@ handlers, run by the event bus in the same process right after:
   Then the bans held against the account go, with the reasons moderators
   wrote about it (D-162): they stop no one now, since signing up again makes
   a new account. Bans the account made of others stay.
+- **`ForgetDeletedAccountItemsHandler`** (notifications): deletes every inbox
+  item of the account, with the reasons of the moderation items written about
+  it (D-203). Items others have where it is the actor stay. The daily
+  `notifications-clean-up` deletes what a lost event left.
 
 Last, the sweep removes the avatar files itself, not through the event. The
 statement above keeps the `avatarUrl` key on the deleted row: it is all that
@@ -286,11 +290,12 @@ your own.
 | 14 days after the request, at the next 15-minute sweep | `deletedAt` and `deletedBy` set; `email`, `username`, `displayName`, `bio` set to null; `UserSettings` deleted | `SweepDeletedAccountsHandler` |
 | Moments after the sweep | Open sessions ended (reason `account-deleted`); password and Google links deleted | `EndSessionsOfDeletedAccountHandler` |
 | Moments after the sweep | Out of every server; a server it owned alone deleted, then gone for good 30 days later; bans held against it deleted (D-162) | `ForgetDeletedAccountHandler` (servers), then the daily servers clean-up |
+| Moments after the sweep | Every inbox item of its own, with the reasons of the moderation items about it (D-203) | `ForgetDeletedAccountItemsHandler` (notifications), then the daily `notifications-clean-up` |
 | The same sweep, right after | Avatar file queued for deletion, then `avatarUrl` set to null (a crash in between: the next sweep) | `SweepDeletedAccountsHandler` |
 | Within the hour, only if the step above failed | The same session, password and link clean-up, with a warning in the log | hourly auth clean-up |
 | A day after they stop working | Emailed codes (`VerificationCode` rows, keyed by address, not by account) | hourly auth clean-up |
 | 7 days after the session ended | `Session` rows and all their refresh tokens | hourly auth clean-up |
-| Never | The `User` row itself (id, roles, flags, dates, `deletedAt`, `deletedBy`), and rows in your own tables that point to it | |
+| Never | The `User` row itself (id, roles, flags, dates, `deletedAt`, `deletedBy`), and rows in your own tables that point to it, unless a decision says otherwise (bans D-162, its own inbox D-203) | |
 
 Ended sessions are kept a week on purpose: a stolen refresh token presented in
 that week is still recognised for what it is.
@@ -341,8 +346,12 @@ and their history stay: `Task.creator`, `TaskEvent.actor` and
 `Notification.actor` are `onDelete: Restrict`. The tasks it was given do not
 keep it: the sweep takes the account out of every server, and someone who
 leaves a server is taken off its tasks (the `tasks` queue, D-195); a task
-left with nobody tells its maker (REQ-TASK-04, M3 L7). Its own inbox items go with the 90-day inbox clean-up,
-like anyone's.
+left with nobody tells its maker (REQ-TASK-04, M3 L7). Its own inbox items
+go at once (D-203): `notifications` hears `AccountDeletedEvent` and deletes
+every item of the account, with the reasons of the moderation items written
+about it (like the bans of D-162); the daily inbox clean-up deletes what a
+lost event left. The items others have where it is the actor stay, shown as
+a deleted account (D-182).
 
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.

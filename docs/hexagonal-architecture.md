@@ -446,6 +446,8 @@ depends on `permissions` (its two ports and its pure rules), and nothing in
 `auth` (the `CURRENT_PASSWORD` port, and the `SERVER_OWNERSHIP` port it
 answers) and on `users` (`AccountDeletedEvent`, and `USER_DIRECTORY` for
 people's pictures in its lists); neither imports `servers` (D-160).
+`notifications` depends on `users` too (`USER_DIRECTORY`, and
+`AccountDeletedEvent` to delete a deleted account's own inbox, D-203).
 
 ## Architecture Diagram
 
