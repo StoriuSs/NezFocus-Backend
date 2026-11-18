@@ -12,7 +12,7 @@ export interface EventPublisherPort {
     toUser(userId: string, event: string, data: object): void
     /** To every member's sockets in one server. */
     toServer(serverId: string, event: string, data: object): void
-    /** To every socket whose person may view one text channel (D-163). */
+    /** To every socket whose person may view one channel, text (D-163) or voice (D-205). */
     toChannel(channelId: string, event: string, data: object): void
     /** Tells these sessions' sockets `session.revoked`, then cuts them off. */
     endSessions(sessionIds: string[]): void

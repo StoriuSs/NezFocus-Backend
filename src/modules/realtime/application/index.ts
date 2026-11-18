@@ -10,6 +10,8 @@ export * from './commands/presence/presence.commands'
 export * from './commands/presence/presence.handlers'
 export * from './commands/report-typing/report-typing.command'
 export * from './commands/report-typing/report-typing.handler'
+export * from './commands/report-voice-state/report-voice-state.command'
+export * from './commands/report-voice-state/report-voice-state.handler'
 export * from './commands/settle-rooms/settle-rooms.command'
 export * from './commands/settle-rooms/settle-rooms.handler'
 
@@ -18,6 +20,7 @@ export * from './services/room-moves'
 
 // Events
 export * from './events/typing-signalled.event'
+export * from './events/voice-self-state-signalled.event'
 
 // Event handlers (the events are the auth, users and servers modules')
 export * from './events/handlers/disconnect-ended-sessions.handler'

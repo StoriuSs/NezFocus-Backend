@@ -22,6 +22,7 @@ import {
     OpenedConnection,
     ReportIdleCommand,
     ReportTypingCommand,
+    ReportVoiceStateCommand,
     SettleRoomsCommand
 } from '@/modules/realtime/application'
 import { type Presence, takeSignal } from '@/modules/realtime/domain'
@@ -53,7 +54,7 @@ const IDLE_EVERY_MS = 1000
  * adapter come from RedisIoAdapter (configure-app.ts).
  *
  * A tab also sends light signals (SRS 5.2): `heartbeat`, `presence.idle`,
- * `typing.start`. Each becomes one command. One that is malformed is
+ * `typing.start`, `voice.self_state`. Each becomes one command. One that is malformed is
  * ignored: the socket stays. Before anything else, each is counted against
  * one limit per socket for every signal (SIGNALS_PER_WINDOW): one over it is
  * ignored the same way, costing no Redis and no SQL. `presence.idle` is also
@@ -138,6 +139,16 @@ export class RealtimeGateway
         const channelId = (body as { channel_id?: unknown } | null)?.channel_id
         if (!connection || typeof channelId !== 'string' || !isUUID(channelId)) return
         await this.commandBus.execute(new ReportTypingCommand(connection.userId, socket.id, channelId))
+    }
+
+    /** `{ mic, camera }` when the tab's own microphone or camera goes on or off in a voice room (D-206). */
+    @SubscribeMessage('voice.self_state')
+    async voiceState(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): Promise<void> {
+        if (!this.takes(socket)) return
+        const { connection } = socket.data as ConnectionData
+        const { mic, camera } = (body as { mic?: unknown; camera?: unknown } | null) ?? {}
+        if (!connection || typeof mic !== 'boolean' || typeof camera !== 'boolean') return
+        await this.commandBus.execute(new ReportVoiceStateCommand(connection.userId, mic, camera))
     }
 
     /** Counts a signal of this socket: false when it is over the limit, to be ignored. */

@@ -88,6 +88,12 @@ export const MESSAGES = {
         TICKET_ISSUED: 'Realtime ticket issued'
     },
 
+    VOICE: {
+        TOKEN_ISSUED: 'Voice token issued',
+        LEFT: 'Left the voice room',
+        EVENT_RECEIVED: 'Media event received'
+    },
+
     // Messaging messages
     MESSAGING: {
         MESSAGE_SENT: 'Message sent',

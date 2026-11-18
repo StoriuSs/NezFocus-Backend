@@ -19,6 +19,8 @@ export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from '.
 export { CHANNEL_DIRECTORY, type ChannelDirectoryPort } from './application/ports/channel-directory.port'
 // The roles a message mentions: whether each may be, and their names (D-171).
 export { ROLE_DIRECTORY, type DirectoryRole, type RoleDirectoryPort } from './application/ports/role-directory.port'
+// Who is in each voice room, for the rooms in GET /servers: answered by voice (D-180 pattern, D-205).
+export { ROOM_PEOPLE, type RoomPeoplePort, type RoomPerson } from './application/ports/room-people.port'
 // "X joined the server" in the welcome channel: answered by messaging (D-160 pattern, D-180).
 export { SYSTEM_MESSAGES, type SystemMessagesPort } from './application/ports/system-messages.port'
 

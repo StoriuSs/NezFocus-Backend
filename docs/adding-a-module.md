@@ -247,8 +247,9 @@ src/modules/servers/application/
 
 `servers` does this for its five command areas (`server`, `channel-layout`,
 `invite`, `role`, `moderation`; four of them have queries, `channel-layout`
-has none), each folder named like the files in it; `messaging` and `tasks`
-(`task`, `assignee`; D-190) too;
+has none), each folder named like the files in it; `messaging`, `tasks`
+(`task`, `assignee`; D-190) and `voice` (`connection`, `media-event`,
+`reconcile`, `room`; D-211) too;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`
@@ -464,7 +465,9 @@ nothing but `CqrsModule`. Notifications defines and answers its own
 messaging, tasks and servers call it without importing the notifications
 Nest module; and it defines `MESSAGE_PREVIEWS`, which messaging answers
 through `MessagePreviewsModule` with a query over the bus (D-198): the code
-depends one way only, messaging on notifications. Servers and notifications
+depends one way only, messaging on notifications. Voice answers servers'
+`ROOM_PEOPLE` (the people of each voice room in `GET /servers`, D-205) the
+same way, through `RoomPeopleModule` in `voice.module.ts`: voice on servers. Servers and notifications
 import each other's `index.ts` (`NOTIFIER` one way, `MEMBERSHIP` the other),
 which D-185 accepted: neither index loads the other's Nest module, so no
 token is undefined when Nest reads `@Inject`. Ask the owner before adding another such pair.

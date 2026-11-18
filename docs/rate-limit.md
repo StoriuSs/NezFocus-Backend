@@ -169,7 +169,7 @@ expensiveOperation() { ... }
 
 `@SkipThrottle()` with no argument skips a throttler called `default`, which does not exist here, so it skips nothing. Use the starter's `@SkipRateLimit()` (from `@/shared/presentation/decorators`), which names `relaxed` for you.
 
-`/metrics` is exempt this way: `MetricsController` carries `@SkipRateLimit()` ([`metrics.controller.ts`](../src/shared/infrastructure/monitoring/metrics.controller.ts)), because Prometheus scrapes it from one address every few seconds. Nothing in `app.module.ts` matches URLs.
+`/metrics` is exempt this way: `MetricsController` carries `@SkipRateLimit()` ([`metrics.controller.ts`](../src/shared/infrastructure/monitoring/metrics.controller.ts)), because Prometheus scrapes it from one address every few seconds. So is LiveKit's webhook (`LiveKitWebhookController`, `POST /voice/livekit-webhook`): every join and leave of every room comes from LiveKit's few addresses, and each call is signed (D-210). Nothing in `app.module.ts` matches URLs.
 
 ## Behind Nginx and Cloudflare
 

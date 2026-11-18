@@ -13,6 +13,8 @@ export type { Presence } from './domain/presence.rules'
 
 // A tab typing in a channel, handed on to messaging (REQ-MSG-06).
 export { TypingSignalledEvent } from './application/events/typing-signalled.event'
+// A tab's microphone and camera in a voice room, handed on to voice (D-206).
+export { VoiceSelfStateSignalledEvent } from './application/events/voice-self-state-signalled.event'
 
 // Run on a schedule by src/maintenance (D-174).
 export { SweepPresenceCommand } from './application/commands/presence/presence.commands'

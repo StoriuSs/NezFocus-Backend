@@ -64,7 +64,7 @@ import { PresenceReaderModule, RealtimeModule } from '@/modules/realtime/realtim
 import { MessagePreviewsModule, MessagingModule, SystemMessagesModule } from '@/modules/messaging/messaging.module'
 import { NotificationsModule, NotifierModule } from '@/modules/notifications/notifications.module'
 import { TasksModule } from '@/modules/tasks/tasks.module'
-import { VoiceModule } from '@/modules/voice/voice.module'
+import { RoomPeopleModule, VoiceModule } from '@/modules/voice/voice.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
 // Guards
@@ -194,6 +194,8 @@ import { RolesGuard } from '@/shared/presentation'
         // Gives NOTIFIER to every module that puts items in an inbox (D-185).
         NotifierModule,
         VoiceModule,
+        // Answers servers' ROOM_PEOPLE port: who is in each voice room (D-205).
+        RoomPeopleModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

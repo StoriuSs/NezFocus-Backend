@@ -85,6 +85,14 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
         }
     }
 
+    async listRooms(): Promise<string[]> {
+        try {
+            return (await this.rooms.listRooms()).map((room) => room.name)
+        } catch (error) {
+            throw this.unavailable('list', 'the rooms', error)
+        }
+    }
+
     async removeParticipant(room: string, identity: string): Promise<void> {
         try {
             await this.rooms.removeParticipant(room, identity)

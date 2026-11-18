@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { Expose } from 'class-transformer'
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches } from 'class-validator'
+import { Expose, Type } from 'class-transformer'
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, ValidateNested } from 'class-validator'
+import { RoomPersonResponseDto } from './room-person.response.dto'
 import { BITS } from './shared/fields'
 
 export class ServerChannelResponseDto {
@@ -56,4 +57,15 @@ export class ServerChannelResponseDto {
     @IsOptional()
     @IsString({ each: true })
     viewRoleIds: string[] | null
+
+    /**
+     * A voice room: who is in it, in the order they joined (D-205); kept up to
+     * date by `voice_state.updated`. Null for a text channel.
+     */
+    @ApiProperty({ type: [RoomPersonResponseDto], nullable: true })
+    @Expose()
+    @IsOptional()
+    @ValidateNested({ each: true })
+    @Type(() => RoomPersonResponseDto)
+    voiceStates: RoomPersonResponseDto[] | null
 }

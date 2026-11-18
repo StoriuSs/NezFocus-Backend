@@ -386,7 +386,8 @@ opens socket.io with it; `presentation/gateways/realtime.gateway.ts` turns
 the handshake into one `OpenConnectionCommand`, which spends the ticket,
 checks the session is still live (auth's `PRINCIPAL`) and works out the
 rooms: the person's, the session's, each server (servers' `MEMBERSHIP`) and
-each text channel they may view (`PERMISSION_CHECKER`). Other modules send
+each channel they may view, text or voice (`PERMISSION_CHECKER`; a voice
+room's channel carries its list of people, D-205). Other modules send
 events through its `EVENT_PUBLISHER` port. It hears auth's
 `SessionsEndedEvent` (every way a session ends goes through auth's
 `SessionEnds`) and cuts those sessions' sockets off, and auth's
@@ -561,8 +562,20 @@ the media (D-204: a local server in development, the tests and CI, LiveKit
 Cloud in production); the module sits behind its `MEDIA_ROOMS` port, which
 the `LiveKitMediaRooms` adapter answers: join tokens that grant what one's
 permissions allow (D-210), who is in a room, putting a person out. Who is in
-which room now is the `VoiceState` table, one row per person. So far (M4 L1)
-that is all; the routes, LiveKit's webhooks and the events come next.
+which room now is the `VoiceState` table, one row per person, written only
+from LiveKit's word: `POST /voice/token` grants a token (putting one out of
+any other room first: one connection per account), and the row comes with
+LiveKit's webhook (`POST /voice/livekit-webhook`, public but signed, checked
+by the `MEDIA_EVENTS` port; each event taken once by its id in Redis,
+`EVENT_RECEIPTS`; a late or out-of-order one ignored by the rules in
+`domain/voice-state.rules.ts`). Every change to a person's row is decided
+under an advisory lock of that person. A maintenance task sets the rows
+right against LiveKit every minute (D-210). Each change becomes
+`VoiceStateChangedEvent`, and the room's viewers hear the whole list again
+(`voice_state.updated` to `channel:<id>`, D-205); the same lists are in the
+rooms of `GET /servers`, through servers' `ROOM_PEOPLE` port, answered by
+the global `RoomPeopleModule` here. A tab's microphone and camera come over
+its socket (`voice.self_state`, D-206), received by realtime and handed on.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

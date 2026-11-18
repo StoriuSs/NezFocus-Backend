@@ -9,8 +9,9 @@ import { AccessMember, AccessServer, channelPermissions, Permission } from '@/mo
  *   when it ends (`session.revoked`).
  * - `server:<id>`: every member's sockets; events about the server itself,
  *   its members, roles and channels.
- * - `channel:<id>`: every socket whose person may view that text channel,
- *   open or not, so its unread count moves too (D-163).
+ * - `channel:<id>`: every socket whose person may view that channel, open
+ *   or not: a text channel's unread count moves too (D-163), a voice room's
+ *   list of people with it (D-205).
  */
 export const userRoom = (userId: string) => `user:${userId}`
 export const sessionRoom = (sessionId: string) => `session:${sessionId}`
@@ -22,16 +23,15 @@ export const serverIdsIn = (rooms: string[]) =>
     rooms.filter((room) => room.startsWith('server:')).map((room) => room.slice('server:'.length))
 
 /**
- * A member's rooms in one server: the server's, and each text channel they
- * may view, checked as opening the channel is (VIEW_CHANNEL from
- * channelPermissions: private channels, roles, the owner, a timeout). Voice
- * rooms have no chat yet (M4). Decided on the access the caller read; the
- * same rule moves a socket in or out when permissions change (L9).
+ * A member's rooms in one server: the server's, and each channel they may
+ * view, text or voice, checked as opening the channel is (VIEW_CHANNEL from
+ * channelPermissions: private channels, roles, the owner, a timeout).
+ * Decided on the access the caller read; the same rule moves a socket in or
+ * out when permissions change (L9).
  */
 export function serverRooms(serverId: string, server: AccessServer, member: AccessMember, now: Date): string[] {
     const rooms = [serverRoom(serverId)]
     for (const channel of server.channels) {
-        if (channel.type !== 'text') continue
         if ((channelPermissions(server, member, channel, now) & Permission.VIEW_CHANNEL) !== 0n) {
             rooms.push(channelRoom(channel.id))
         }

@@ -5087,6 +5087,127 @@
           "notifications"
         ]
       }
+    },
+    "/api/v1/voice/token": {
+      "post": {
+        "operationId": "VoiceController_token_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinVoiceRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VoiceTokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A token to join a voice room (CONNECT), sending what SPEAK and VIDEO\nallow (D-210). Being in another room puts one out of it first. A room\none may not view is NOT_FOUND; no CONNECT FORBIDDEN_ERROR; a timeout\nMEMBER_TIMED_OUT with `timeout_until`; LiveKit unreachable\nSERVICE_UNAVAILABLE_ERROR. Not `@Idempotent()`: a retry is simply\nanother token.",
+        "tags": [
+          "voice"
+        ]
+      }
+    },
+    "/api/v1/voice/leave": {
+      "post": {
+        "operationId": "VoiceController_leave_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Leave the room one is in: out of LiveKit and off the room's list at\nonce. In no room: answered the same.",
+        "tags": [
+          "voice"
+        ]
+      }
+    },
+    "/api/v1/voice/livekit-webhook": {
+      "post": {
+        "operationId": "LiveKitWebhookController_receive_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "voice"
+        ]
+      }
     }
   },
   "info": {
@@ -5862,6 +5983,66 @@
           "position"
         ]
       },
+      "RoomPersonUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "RoomPersonResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/RoomPersonUserResponseDto"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "mic_on": {
+            "type": "boolean",
+            "description": "What their own browser says (D-206): icons only."
+          },
+          "camera_on": {
+            "type": "boolean"
+          },
+          "screen_sharing": {
+            "type": "boolean"
+          },
+          "mod_muted": {
+            "type": "boolean",
+            "description": "A moderator turned their microphone off (D-207)."
+          }
+        },
+        "required": [
+          "user",
+          "joined_at",
+          "mic_on",
+          "camera_on",
+          "screen_sharing",
+          "mod_muted"
+        ]
+      },
       "ServerChannelResponseDto": {
         "type": "object",
         "properties": {
@@ -5876,6 +6057,14 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "voice_states": {
+            "nullable": true,
+            "description": "A voice room: who is in it, in the order they joined (D-205); kept up to\ndate by `voice_state.updated`. Null for a text channel.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomPersonResponseDto"
             }
           },
           "id": {
@@ -5921,6 +6110,7 @@
         "required": [
           "permissions",
           "view_role_ids",
+          "voice_states",
           "id",
           "category_id",
           "type",
@@ -8657,6 +8847,35 @@
             "format": "uuid"
           }
         }
+      },
+      "VoiceTokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Good for the first connection within 10 minutes; LiveKit renews it itself once in."
+          },
+          "url": {
+            "type": "string",
+            "description": "LiveKit's address: ws://localhost:7880 in development, wss:// in production."
+          }
+        },
+        "required": [
+          "token",
+          "url"
+        ]
+      },
+      "JoinVoiceRequestDto": {
+        "type": "object",
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "channel_id"
+        ]
       }
     }
   }

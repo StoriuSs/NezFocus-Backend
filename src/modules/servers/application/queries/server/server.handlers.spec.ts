@@ -1,6 +1,6 @@
 import { EVERYONE_DEFAULT_PERMISSIONS } from '@/modules/permissions'
 import { MembershipSnapshot, ServerRepositoryPort, ServerSnapshot } from '../../../domain'
-import { IconStoragePort } from '../../ports'
+import { IconStoragePort, RoomPeoplePort, RoomPerson } from '../../ports'
 import { ListMyServersQuery } from './server.queries'
 import { ListMyServersHandler } from './server.handlers'
 
@@ -36,7 +36,8 @@ describe('ListMyServersHandler', () => {
         const storage = { getReadUrl: jest.fn().mockResolvedValue('https://cdn.test/ot.webp') }
         const handler = new ListMyServersHandler(
             servers as unknown as ServerRepositoryPort,
-            storage as unknown as IconStoragePort
+            storage as unknown as IconStoragePort,
+            { peopleOf: jest.fn().mockResolvedValue(new Map()) } as RoomPeoplePort
         )
 
         const items = await handler.execute(new ListMyServersQuery('an', 'ot'))
@@ -46,5 +47,52 @@ describe('ListMyServersHandler', () => {
             ['nd', null, true]
         ])
         expect(storage.getReadUrl).toHaveBeenCalledTimes(1)
+    })
+
+    it('gives each voice room its people, read once for every server, and text channels none (D-205)', async () => {
+        const channel = (id: string, type: 'text' | 'voice', isPrivate = false) => ({
+            id,
+            type,
+            isPrivate,
+            viewRoleIds: [],
+            sendMode: 'everyone' as const,
+            taskBoardEnabled: false,
+            categoryId: null,
+            name: id,
+            position: 0,
+            isStudyRoom: false
+        })
+        const server = {
+            ...snapshot('ot', null),
+            channels: [channel('chat', 'text'), channel('lounge', 'voice'), channel('staff-room', 'voice', true)]
+        }
+        const binh: RoomPerson = {
+            user: { id: 'binh', username: 'binh', displayName: 'Bình', avatarUrl: null },
+            joinedAt: new Date('2026-11-18T10:00:00Z'),
+            micOn: true,
+            cameraOn: false,
+            screenSharing: false,
+            modMuted: false
+        }
+        const roomPeople = { peopleOf: jest.fn().mockResolvedValue(new Map([['lounge', [binh]]])) }
+        const handler = new ListMyServersHandler(
+            {
+                listForMember: jest
+                    .fn()
+                    .mockResolvedValue([{ server, member: { userId: 'chi', roleIds: [], timeoutUntil: null } }])
+            } as unknown as ServerRepositoryPort,
+            { getReadUrl: jest.fn() } as unknown as IconStoragePort,
+            roomPeople
+        )
+
+        const [item] = await handler.execute(new ListMyServersQuery('chi'))
+
+        // A private room they cannot see is not asked about, nor shown.
+        expect(roomPeople.peopleOf).toHaveBeenCalledTimes(1)
+        expect(roomPeople.peopleOf).toHaveBeenCalledWith(['lounge'])
+        expect(item.channels.map((shown) => [shown.id, shown.voiceStates])).toEqual([
+            ['chat', null],
+            ['lounge', [binh]]
+        ])
     })
 })

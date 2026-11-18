@@ -41,14 +41,17 @@ const server = (everyone = EVERYONE_DEFAULT_PERMISSIONS): AccessServer => ({
 const member = (roleIds: string[] = [], timeoutUntil: Date | null = null) => ({ userId: 'an', roleIds, timeoutUntil })
 
 describe("A socket's rooms in one server (SRS 5.2, D-163)", () => {
-    it('are the server and every text channel the member may view, a read-only one included', () => {
-        expect(serverRooms('s1', server(), member(), NOW)).toEqual(['server:s1', 'channel:general', 'channel:news'])
+    it('are the server and every channel the member may view, a read-only one and voice rooms included (D-205)', () => {
+        expect(serverRooms('s1', server(), member(), NOW)).toEqual([
+            'server:s1',
+            'channel:general',
+            'channel:news',
+            'channel:lounge'
+        ])
     })
 
-    it('leave out a private channel of a role the member lacks, and voice rooms', () => {
-        const rooms = serverRooms('s1', server(), member(), NOW)
-        expect(rooms).not.toContain('channel:staff')
-        expect(rooms).not.toContain('channel:lounge')
+    it('leave out a private channel of a role the member lacks', () => {
+        expect(serverRooms('s1', server(), member(), NOW)).not.toContain('channel:staff')
     })
 
     it('take in that private channel once the member holds its role, and every one for the owner', () => {
@@ -60,7 +63,8 @@ describe("A socket's rooms in one server (SRS 5.2, D-163)", () => {
         expect(serverRooms('s1', server(), member([], LATER), NOW)).toEqual([
             'server:s1',
             'channel:general',
-            'channel:news'
+            'channel:news',
+            'channel:lounge'
         ])
     })
 
@@ -83,8 +87,8 @@ describe('Moving a socket when its server changes (D-178)', () => {
     it('keeps a member in what they may view and takes them out of the rest', () => {
         const allowed = serverRooms('s1', server(), member(), NOW)
         expect(roomMoves('s1', CHANNELS, allowed)).toEqual({
-            leave: ['channel:staff', 'channel:lounge'],
-            join: ['server:s1', 'channel:general', 'channel:news']
+            leave: ['channel:staff'],
+            join: ['server:s1', 'channel:general', 'channel:news', 'channel:lounge']
         })
     })
 })

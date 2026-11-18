@@ -6,6 +6,7 @@ import { CleanUpNotificationsCommand } from '@/modules/notifications'
 import { SweepPresenceCommand } from '@/modules/realtime'
 import { CleanUpServersCommand } from '@/modules/servers'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
+import { ReconcileVoiceRoomsCommand } from '@/modules/voice'
 
 const MINUTE_MS = 60 * 1000
 
@@ -70,5 +71,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'notifications-clean-up',
         everyMs: 24 * 60 * MINUTE_MS,
         command: (now) => new CleanUpNotificationsCommand(now)
+    },
+    {
+        // Sets who is in which voice room right against LiveKit, whose
+        // webhooks can be lost (D-210).
+        id: 'voice-reconcile',
+        everyMs: MINUTE_MS,
+        command: (now) => new ReconcileVoiceRoomsCommand(now)
     }
 ]

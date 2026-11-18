@@ -1,0 +1,147 @@
+import { EventBus } from '@nestjs/cqrs'
+import { MediaEventRejectedError, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../../domain'
+import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
+import { EventReceiptsPort, MediaEvent, MediaEventsPort, MediaRoomsPort } from '../../ports'
+import { ApplyMediaEventCommand } from './media-event.commands'
+import { ApplyMediaEventHandler } from './media-event.handlers'
+
+const LOUNGE = '0190a000-0000-7000-8000-00000000000a'
+const STUDY = '0190a000-0000-7000-8000-00000000000b'
+const at = (seconds: number) => new Date(Date.UTC(2026, 10, 18, 10, 0, seconds))
+const joined = (over: Partial<Extract<MediaEvent, { kind: 'joined' | 'left' }>> = {}): MediaEvent => ({
+    id: 'EV_1',
+    kind: 'joined',
+    room: `voice:${LOUNGE}`,
+    identity: 'an',
+    participantSid: 'PA_new',
+    joinedAt: at(10),
+    ...over
+})
+const row = (over: Partial<VoiceState> = {}): VoiceState => ({
+    userId: 'an',
+    channelId: LOUNGE,
+    participantSid: 'PA_old',
+    joinedAt: at(0),
+    micOn: false,
+    cameraOn: false,
+    screenSharing: false,
+    modMuted: false,
+    ...over
+})
+
+/** A repository holding one person's row, written as the real one would. */
+function setup(event: MediaEvent | Error, current: VoiceState | null = null) {
+    const mediaEvents = {
+        read: jest.fn(() => (event instanceof Error ? Promise.reject(event) : Promise.resolve(event)))
+    }
+    const receipts = { firstSight: jest.fn().mockResolvedValue(true), forget: jest.fn().mockResolvedValue(undefined) }
+    const media = { removeParticipant: jest.fn().mockResolvedValue(undefined) }
+    const states = {
+        change: jest.fn(async (_userId: string, decide: (state: VoiceState | null) => VoiceWrite | null) => {
+            const write = decide(current)
+            if (!write) return null
+            if (write.kind === 'remove') return { before: current, after: null }
+            if (write.kind === 'put') {
+                const after: VoiceState = { ...row(), ...write.connection, micOn: false, cameraOn: false }
+                return { before: current, after }
+            }
+            return null
+        })
+    }
+    const events = { publish: jest.fn() }
+    const handler = new ApplyMediaEventHandler(
+        mediaEvents as unknown as MediaEventsPort,
+        receipts as unknown as EventReceiptsPort,
+        media as unknown as MediaRoomsPort,
+        states as unknown as VoiceStateRepositoryPort,
+        events as unknown as EventBus
+    )
+    const run = () => handler.execute(new ApplyMediaEventCommand('{"event":"…"}', 'Bearer jwt'))
+    return { run, mediaEvents, receipts, media, states, events }
+}
+
+describe("LiveKit's webhooks (D-210)", () => {
+    it('refuses one not signed by LiveKit, reading nothing from it', async () => {
+        const { run, receipts, states } = setup(new MediaEventRejectedError('sha256 checksum of body does not match'))
+
+        await expect(run()).rejects.toBeInstanceOf(MediaEventRejectedError)
+        expect(receipts.firstSight).not.toHaveBeenCalled()
+        expect(states.change).not.toHaveBeenCalled()
+    })
+
+    it('leaves alone an event of another kind, or about a room that is no voice room', async () => {
+        for (const event of [{ id: 'EV_2', kind: 'other' } as MediaEvent, joined({ room: `call:${LOUNGE}` })]) {
+            const { run, receipts, states } = setup(event)
+            await run()
+            expect(receipts.firstSight).not.toHaveBeenCalled()
+            expect(states.change).not.toHaveBeenCalled()
+        }
+    })
+
+    it('puts someone who joined in the room and tells it', async () => {
+        const { run, events } = setup(joined())
+
+        await run()
+
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'joined', at(10))]])
+    })
+
+    it('takes an event sent again once', async () => {
+        const { run, receipts, states } = setup(joined())
+        receipts.firstSight.mockResolvedValue(false)
+
+        await run()
+
+        expect(states.change).not.toHaveBeenCalled()
+    })
+
+    it('ignores the late participant_joined of an older connection', async () => {
+        const { run, events } = setup(
+            joined({ participantSid: 'PA_old', joinedAt: at(0) }),
+            row({ participantSid: 'PA_new', joinedAt: at(10) })
+        )
+
+        await run()
+
+        expect(events.publish).not.toHaveBeenCalled()
+    })
+
+    it('ignores the participant_left of the connection a reload replaced', async () => {
+        const { run, events } = setup(
+            joined({ kind: 'left', participantSid: 'PA_old' }),
+            row({ participantSid: 'PA_new' })
+        )
+
+        await run()
+
+        expect(events.publish).not.toHaveBeenCalled()
+    })
+
+    it('takes someone out of the room when their connection leaves', async () => {
+        const { run, events } = setup(joined({ kind: 'left', participantSid: 'PA_old' }), row())
+
+        await run()
+
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'left', at(0))]])
+    })
+
+    it('puts someone who joined a room while still in another out of the other (one connection per account)', async () => {
+        const { run, media, events } = setup(joined(), row({ channelId: STUDY }))
+
+        await run()
+
+        expect(events.publish.mock.calls).toEqual([
+            [new VoiceStateChangedEvent(STUDY, 'an', 'left', at(0))],
+            [new VoiceStateChangedEvent(LOUNGE, 'an', 'joined', at(10))]
+        ])
+        expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${STUDY}`, 'an')
+    })
+
+    it('forgets the event when writing failed, so LiveKit sending it again is taken', async () => {
+        const { run, receipts, states } = setup(joined())
+        states.change.mockRejectedValue(new Error('database down'))
+
+        await expect(run()).rejects.toThrow('database down')
+        expect(receipts.forget).toHaveBeenCalledWith('EV_1')
+    })
+})

@@ -80,7 +80,7 @@ function setup(options: { holder?: TicketHolder | null; servers?: string[]; revo
 }
 
 describe('Opening a realtime connection', () => {
-    it('spends the ticket and puts the socket in its user, session, server and viewable text channel rooms', async () => {
+    it('spends the ticket and puts the socket in its user, session, server and viewable channel rooms, voice ones too (D-205)', async () => {
         const { handler, redeemed } = setup()
 
         const opened = await handler.execute(new OpenConnectionCommand('ticket-1'))
@@ -89,17 +89,23 @@ describe('Opening a realtime connection', () => {
         expect(opened.userId).toBe(AN)
         expect(opened.sessionId).toBe(SESSION)
         expect(opened.rooms.sort()).toEqual(
-            ['user:user-an', 'session:session-1', 'server:study', 'channel:general', 'channel:news'].sort()
+            [
+                'user:user-an',
+                'session:session-1',
+                'server:study',
+                'channel:general',
+                'channel:news',
+                'channel:lounge'
+            ].sort()
         )
     })
 
-    it('leaves out a private channel, a voice room, and a server it is no longer in (D-163)', async () => {
+    it('leaves out a private channel and a server it is no longer in (D-163)', async () => {
         const { handler } = setup()
 
         const { rooms } = await handler.execute(new OpenConnectionCommand('ticket-1'))
 
         expect(rooms).not.toContain('channel:staff')
-        expect(rooms).not.toContain('channel:lounge')
         expect(rooms).not.toContain('server:left')
     })
 

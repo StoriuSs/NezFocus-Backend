@@ -43,6 +43,12 @@ export interface MediaRoomsPort {
     listParticipants(room: string): Promise<RoomParticipant[]>
 
     /**
+     * The name of every room the media server has now, people in it or not.
+     * @throws MediaRoomsUnavailableError when the media server cannot be reached
+     */
+    listRooms(): Promise<string[]>
+
+    /**
      * Ends a person's connection to a room. Nothing happens when they are not
      * in it.
      * @throws MediaRoomsUnavailableError when the media server cannot be reached

@@ -2,7 +2,6 @@ import { ConfigService } from '@nestjs/config'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
-import * as path from 'path'
 import { SnakeToCamelPipe, createValidationPipe } from '@/shared/presentation/pipes'
 import { httpMetricsMiddleware, requestIdMiddleware } from '@/shared/presentation/middlewares'
 import { MetricsService } from '@/shared/infrastructure/monitoring/metrics.service'
@@ -48,6 +47,11 @@ export async function configureApp(app: NestExpressApplication): Promise<void> {
         exposedHeaders: ['Retry-After']
     })
 
+    // LiveKit's webhooks (POST /voice/livekit-webhook, D-210) are signed over
+    // the body as sent: read their type as text, so the route checks the very
+    // bytes that were signed. No browser sends this type.
+    app.useBodyParser('text', { type: 'application/webhook+json' })
+
     // Cookie parser - must be before routes
     app.use(cookieParser())
 
@@ -68,8 +72,9 @@ export async function configureApp(app: NestExpressApplication): Promise<void> {
 
     // Serve locally stored uploads from the directory they are written to.
     // It was always cwd/uploads, so with UPLOAD_DEST=/data/uploads (a mounted
-    // volume) uploads succeeded and every avatar URL answered 404.
-    app.useStaticAssets(path.resolve(configService.get<string>('upload.local.uploadDir')!), {
+    // volume) uploads succeeded and every avatar URL answered 404. A relative
+    // directory is taken from the working directory: serve-static resolves it.
+    app.useStaticAssets(configService.get<string>('upload.local.uploadDir')!, {
         prefix: '/uploads/'
     })
 
