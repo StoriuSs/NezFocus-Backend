@@ -5176,6 +5176,178 @@
         ]
       }
     },
+    "/api/v1/voice/rooms/{channelId}/participants/{userId}/mute": {
+      "post": {
+        "operationId": "VoiceController_mute_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Turn someone's microphone off until they leave or are unmuted\n(MUTE_MEMBERS, D-207); they are told `voice.muted`. A room one cannot\nview, or someone not in it, NOT_FOUND; no MUTE_MEMBERS FORBIDDEN_ERROR;\ntimed out MEMBER_TIMED_OUT; someone ranked level or above, or oneself,\nROLE_HIERARCHY_VIOLATION; LiveKit unreachable SERVICE_UNAVAILABLE_ERROR.\nMuted already: answered the same (D-212).",
+        "tags": [
+          "voice"
+        ]
+      },
+      "delete": {
+        "operationId": "VoiceController_unmute_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Let someone muted turn their microphone on again (MUTE_MEMBERS, D-207); the same answers as muting.",
+        "tags": [
+          "voice"
+        ]
+      }
+    },
+    "/api/v1/voice/rooms/{channelId}/participants/{userId}": {
+      "delete": {
+        "operationId": "VoiceController_disconnect_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Put someone out of the room (MOVE_MEMBERS, REQ-VC-04); they are told\n`voice.disconnected` with reason `moderator` and may join again at\nonce. The same answers as muting.",
+        "tags": [
+          "voice"
+        ]
+      }
+    },
     "/api/v1/voice/livekit-webhook": {
       "post": {
         "operationId": "LiveKitWebhookController_receive_v1",
@@ -6015,6 +6187,17 @@
           "user": {
             "$ref": "#/components/schemas/RoomPersonUserResponseDto"
           },
+          "role_ids": {
+            "description": "Their roles in the server, not @everyone; none once they left it. With is_owner, what a moderator's menu needs (D-208).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "is_owner": {
+            "type": "boolean",
+            "description": "Whether they own the server: no one mutes or puts out the owner (REQ-ROLE-02)."
+          },
           "joined_at": {
             "format": "date-time",
             "type": "string"
@@ -6036,6 +6219,8 @@
         },
         "required": [
           "user",
+          "role_ids",
+          "is_owner",
           "joined_at",
           "mic_on",
           "camera_on",

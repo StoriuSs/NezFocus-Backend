@@ -1,5 +1,5 @@
 import { Expose, Type } from 'class-transformer'
-import { IsBoolean, IsDate, ValidateNested } from 'class-validator'
+import { IsBoolean, IsDate, IsString, ValidateNested } from 'class-validator'
 import { RoomPersonUserResponseDto } from './room-person-user.response.dto'
 
 /**
@@ -11,6 +11,16 @@ export class RoomPersonResponseDto {
     @ValidateNested()
     @Type(() => RoomPersonUserResponseDto)
     user: RoomPersonUserResponseDto
+
+    /** Their roles in the server, not @everyone; none once they left it. With is_owner, what a moderator's menu needs (D-208). */
+    @Expose()
+    @IsString({ each: true })
+    roleIds: string[]
+
+    /** Whether they own the server: no one mutes or puts out the owner (REQ-ROLE-02). */
+    @Expose()
+    @IsBoolean()
+    isOwner: boolean
 
     @Expose()
     @IsDate()

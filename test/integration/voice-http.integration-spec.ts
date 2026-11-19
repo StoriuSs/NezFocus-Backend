@@ -20,7 +20,8 @@ import { livekitTarget, testClientIp } from './targets'
  * MEDIA_ROOMS; the tokens to join, by permission; LiveKit's webhooks,
  * signed, sent again and out of order; one connection per account; the
  * people of each room in GET /servers and voice_state.updated (D-205); the
- * reconciliation; a tab's microphone and camera (D-206).
+ * reconciliation; a tab's microphone and camera (D-206); moderators muting
+ * and putting people out, and the server putting them out (D-207, D-212).
  *
  * The webhooks here are signed by the test with the key pair of the LiveKit
  * of test:services:up, as LiveKit signs them: a real participant needs a
@@ -33,7 +34,7 @@ describe('Voice rooms (integration)', () => {
     const CLIENT_IP = testClientIp()
     const PREFIX = `itest-voice-${randomUUID().slice(0, 8)}`
     const PASSWORD = 'Harbour-Lantern-42'
-    type Who = 'an' | 'binh' | 'chi' | 'dung'
+    type Who = 'an' | 'binh' | 'chi' | 'dung' | 'em'
 
     let app: NestExpressApplication
     let prisma: PrismaService
@@ -145,7 +146,7 @@ describe('Voice rooms (integration)', () => {
         await app.listen(0)
         socketUrl = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`
         prisma = app.get(PrismaService)
-        for (const who of ['an', 'binh', 'chi', 'dung'] as Who[]) await signUp(who)
+        for (const who of ['an', 'binh', 'chi', 'dung', 'em'] as Who[]) await signUp(who)
 
         const created = await as('an', api().post('/api/v1/servers'))
             .set('Idempotency-Key', randomUUID())
@@ -154,7 +155,7 @@ describe('Voice rooms (integration)', () => {
         const invite = await as('an', api().post(`/api/v1/servers/${serverId}/invites`))
             .set('Idempotency-Key', randomUUID())
             .send({ max_age_seconds: null, max_uses: null })
-        for (const who of ['binh', 'chi', 'dung'] as Who[]) {
+        for (const who of ['binh', 'chi', 'dung', 'em'] as Who[]) {
             await as(who, api().post(`/api/v1/invites/${invite.body.data.code}/accept`))
         }
         const room = async (name: string, isPrivate = false) => {
@@ -279,7 +280,7 @@ describe('Voice rooms (integration)', () => {
 
         it('finds nobody in a room LiveKit has never heard of, and putting out someone not there changes nothing', async () => {
             expect(await mediaRooms().listParticipants(room)).toEqual([])
-            await expect(mediaRooms().removeParticipant(room, users.an.id)).resolves.toBeUndefined()
+            await expect(mediaRooms().removeParticipant(room, users.an.id)).resolves.toBe(false)
         })
 
         it('lists its rooms', async () => {
@@ -391,6 +392,8 @@ describe('Voice rooms (integration)', () => {
                     display_name: expect.any(String),
                     avatar_url: null
                 },
+                role_ids: [],
+                is_owner: false,
                 joined_at: joinedAt.toISOString(),
                 mic_on: false,
                 camera_on: false,
@@ -565,6 +568,138 @@ describe('Voice rooms (integration)', () => {
             const events = (await heard()) as { voice_states: { mic_on: boolean; camera_on: boolean }[] }[]
             expect(events.at(-1)?.voice_states).toEqual([expect.objectContaining({ mic_on: true, camera_on: true })])
             expect(await rowOf('binh')).toMatchObject({ micOn: true, cameraOn: true })
+        })
+    })
+
+    describe('moderators, and the server putting people out (REQ-VC-04, D-207, D-212)', () => {
+        // Chi holds a role with MUTE_MEMBERS and MOVE_MEMBERS, above Bình and Em, below An (the owner).
+        let everyoneId: string
+        const participant = (channelId: string, who: Who) =>
+            `/api/v1/voice/rooms/${channelId}/participants/${users[who].id}`
+        const mute = (by: Who, who: Who, channelId = roomId) =>
+            as(by, api().post(`${participant(channelId, who)}/mute`))
+        const unmute = (by: Who, who: Who) => as(by, api().delete(`${participant(roomId, who)}/mute`))
+        const disconnect = (by: Who, who: Who) => as(by, api().delete(participant(roomId, who)))
+        const mutedOf = async (who: Who) =>
+            (await prisma.voiceState.findUnique({ where: { userId: users[who].id }, select: { modMuted: true } }))
+                ?.modMuted
+        const setEveryone = (bits: bigint) =>
+            as('an', api().patch(`/api/v1/servers/${serverId}/roles/${everyoneId}`)).send({
+                permissions: bits.toString()
+            })
+        /** Waits for the event handlers that run after a request has been answered. */
+        const settled = () => new Promise((resolve) => setTimeout(resolve, 400))
+
+        beforeAll(async () => {
+            const roles = await as('an', api().get(`/api/v1/servers/${serverId}/roles`))
+            everyoneId = roles.body.data.roles.find((r: { is_everyone: boolean }) => r.is_everyone).id
+            const made = await as('an', api().post(`/api/v1/servers/${serverId}/roles`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Quản lý phòng' })
+            const roleId = made.body.data.role_id as string
+            const allowed = await as('an', api().patch(`/api/v1/servers/${serverId}/roles/${roleId}`)).send({
+                permissions: (Permission.MUTE_MEMBERS | Permission.MOVE_MEMBERS).toString()
+            })
+            const granted = await as('an', api().put(`/api/v1/servers/${serverId}/roles/${roleId}/members`)).send({
+                user_ids: [users.chi.id]
+            })
+            expect([made.status, allowed.status, granted.status]).toEqual([201, 200, 200])
+        })
+        afterEach(emptyRooms)
+
+        it('mutes and unmutes someone ranked lower: their row, the list with their roles, and their own tabs', async () => {
+            await joins('binh', roomId, 'PA_binh')
+            await joins('an', roomId, 'PA_an')
+            const heard = collect(await connectAs('binh'), 'voice.muted')
+
+            expect((await mute('chi', 'binh')).status).toBe(200)
+            expect(await mutedOf('binh')).toBe(true)
+            expect(await peopleIn('chi', roomId)).toEqual([
+                expect.objectContaining({
+                    user: expect.objectContaining({ id: users.binh.id }),
+                    mod_muted: true,
+                    role_ids: [],
+                    is_owner: false
+                }),
+                expect.objectContaining({ user: expect.objectContaining({ id: users.an.id }), is_owner: true })
+            ])
+            // Muted already: answered the same, nothing told again (D-212).
+            expect((await mute('chi', 'binh')).status).toBe(200)
+
+            expect((await unmute('chi', 'binh')).status).toBe(200)
+            expect(await mutedOf('binh')).toBe(false)
+            expect(await heard()).toEqual([
+                { channel_id: roomId, muted: true },
+                { channel_id: roomId, muted: false }
+            ])
+        })
+
+        it('refuses without the permission, on someone level or above, and for someone not in the room', async () => {
+            await joins('an', roomId, 'PA_an')
+            await joins('chi', roomId, 'PA_chi')
+
+            expect(outcome(await mute('binh', 'chi'))).toEqual([403, 'FORBIDDEN_ERROR'])
+            expect(outcome(await mute('chi', 'an'))).toEqual([403, 'ROLE_HIERARCHY_VIOLATION'])
+            expect(outcome(await mute('chi', 'chi'))).toEqual([403, 'ROLE_HIERARCHY_VIOLATION'])
+            expect(outcome(await disconnect('chi', 'an'))).toEqual([403, 'ROLE_HIERARCHY_VIOLATION'])
+            expect(outcome(await mute('chi', 'binh'))).toEqual([404, 'NOT_FOUND_ERROR'])
+            expect(outcome(await mute('chi', 'binh', privateRoomId))).toEqual([404, 'NOT_FOUND_ERROR'])
+            expect(outcome(await mute('dung', 'binh'))).toEqual([403, 'MEMBER_TIMED_OUT'])
+            expect(await mutedOf('an')).toBe(false)
+        })
+
+        it('puts someone out, telling them it was a moderator, never who', async () => {
+            await joins('binh', roomId, 'PA_binh')
+            const heard = collect(await connectAs('binh'), 'voice.disconnected')
+
+            expect((await disconnect('chi', 'binh')).status).toBe(200)
+
+            expect(await rowOf('binh')).toBeNull()
+            expect(await heard()).toEqual([{ channel_id: roomId, reason: 'moderator' }])
+        })
+
+        it('puts out one who lost CONNECT, told permission; one who lost SPEAK stays', async () => {
+            await joins('binh', roomId, 'PA_binh')
+            const heard = collect(await connectAs('binh'), 'voice.disconnected')
+            try {
+                expect((await setEveryone(EVERYONE_DEFAULT_PERMISSIONS & ~Permission.SPEAK)).status).toBe(200)
+                await settled()
+                expect(await rowOf('binh')).not.toBeNull()
+
+                expect((await setEveryone(EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CONNECT)).status).toBe(200)
+                expect(await heard()).toEqual([{ channel_id: roomId, reason: 'permission' }])
+                expect(await rowOf('binh')).toBeNull()
+            } finally {
+                await setEveryone(EVERYONE_DEFAULT_PERMISSIONS)
+            }
+        })
+
+        it('puts out one timed out, then one kicked, each told why', async () => {
+            const heard = collect(await connectAs('em'), 'voice.disconnected')
+            await joins('em', roomId, 'PA_em_1')
+            await as('an', api().patch(`/api/v1/servers/${serverId}/members/${users.em.id}`)).send({
+                timeout_seconds: 60,
+                reason: 'Thử'
+            })
+            await settled()
+            expect(await rowOf('em')).toBeNull()
+
+            // Timed out, a join (a token taken before) is put out, never listed (D-212).
+            await joins('em', roomId, 'PA_em_2')
+            expect(await rowOf('em')).toBeNull()
+
+            await as('an', api().patch(`/api/v1/servers/${serverId}/members/${users.em.id}`)).send({
+                timeout_seconds: null
+            })
+            await joins('em', roomId, 'PA_em_3')
+            expect(await rowOf('em')).not.toBeNull()
+            const kicked = await as('an', api().delete(`/api/v1/servers/${serverId}/members/${users.em.id}`)).send({})
+            expect(kicked.status).toBe(200)
+            expect(await heard()).toEqual([
+                { channel_id: roomId, reason: 'timeout' },
+                { channel_id: roomId, reason: 'kick' }
+            ])
+            expect(await rowOf('em')).toBeNull()
         })
     })
 })

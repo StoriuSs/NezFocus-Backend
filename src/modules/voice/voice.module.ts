@@ -10,9 +10,13 @@ import {
     CONNECTION_COMMAND_HANDLERS,
     EVENT_RECEIPTS,
     MEDIA_EVENT_COMMAND_HANDLERS,
+    LeaveDeletedAccountRoomHandler,
     MEDIA_EVENTS,
     MEDIA_ROOMS,
+    MODERATION_COMMAND_HANDLERS,
     PublishRoomPeopleHandler,
+    RecheckMemberRoomHandler,
+    RecheckServerRoomsHandler,
     RECONCILE_COMMAND_HANDLERS,
     ReconcileVoiceRoomsCommand,
     RecordSelfStateHandler,
@@ -32,7 +36,9 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
  * module gives the tokens to join (MEDIA_ROOMS), keeps who is in which room
  * (VoiceState) from LiveKit's webhooks (MEDIA_EVENTS, each taken once with
  * EVENT_RECEIPTS) and a reconciliation every minute, and tells each room's
- * viewers its people through realtime's EVENT_PUBLISHER (D-205).
+ * viewers its people through realtime's EVENT_PUBLISHER (D-205). Moderators
+ * mute and put people out (D-207); a kick, ban, timeout, lost permission or
+ * deleted room puts them out too, as servers' and auth's events say (D-212).
  *
  * Asks servers where a channel is (CHANNEL_DIRECTORY), permissions what
  * someone may do there (PERMISSION_CHECKER), users the names and pictures
@@ -50,10 +56,14 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
         { provide: VOICE_STATE_REPOSITORY, useClass: PrismaVoiceStateRepository },
         ...CONNECTION_COMMAND_HANDLERS,
         ...MEDIA_EVENT_COMMAND_HANDLERS,
+        ...MODERATION_COMMAND_HANDLERS,
         ...RECONCILE_COMMAND_HANDLERS,
         ...ROOM_QUERY_HANDLERS,
         PublishRoomPeopleHandler,
-        RecordSelfStateHandler
+        RecordSelfStateHandler,
+        RecheckMemberRoomHandler,
+        RecheckServerRoomsHandler,
+        LeaveDeletedAccountRoomHandler
     ]
 })
 export class VoiceModule implements OnApplicationBootstrap {

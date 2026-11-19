@@ -68,6 +68,8 @@ describe('ListMyServersHandler', () => {
         }
         const binh: RoomPerson = {
             user: { id: 'binh', username: 'binh', displayName: 'Bình', avatarUrl: null },
+            roleIds: ['helper'],
+            isOwner: false,
             joinedAt: new Date('2026-11-18T10:00:00Z'),
             micOn: true,
             cameraOn: false,

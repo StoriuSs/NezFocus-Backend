@@ -4,6 +4,8 @@ import {
     joinWrite,
     leaveApplies,
     leaveWrite,
+    modMuteWrite,
+    reasonForLeaving,
     reconcilePlan,
     selfStateWrite,
     VoiceConnection,
@@ -128,5 +130,44 @@ describe('writes to a row', () => {
         expect(selfStateWrite(row, true, false)).toEqual({ kind: 'flags', flags: { micOn: true, cameraOn: false } })
         expect(selfStateWrite(row, false, false)).toBeNull()
         expect(selfStateWrite(null, true, true)).toBeNull()
+    })
+
+    it('keeps the microphone off while a moderator has it muted, whatever the browser says (D-212)', () => {
+        const muted = { ...row, modMuted: true }
+        expect(selfStateWrite(muted, true, true)).toEqual({ kind: 'flags', flags: { micOn: false, cameraOn: true } })
+        expect(selfStateWrite(muted, true, false)).toBeNull()
+    })
+
+    it("mutes and unmutes someone in the room, turning the mic's icon off (D-207)", () => {
+        expect(modMuteWrite({ ...row, micOn: true }, A, true)).toEqual({
+            kind: 'flags',
+            flags: { modMuted: true, micOn: false }
+        })
+        expect(modMuteWrite({ ...row, modMuted: true }, A, false)).toEqual({
+            kind: 'flags',
+            flags: { modMuted: false }
+        })
+    })
+
+    it('mutes the connection they are on now: LiveKit acts on the person, a reload included', () => {
+        expect(modMuteWrite({ ...row, participantSid: 'PA_reload' }, A, true)).toEqual({
+            kind: 'flags',
+            flags: { modMuted: true, micOn: false }
+        })
+    })
+
+    it('writes nothing for a mute already so, someone in another room, or nobody (D-212)', () => {
+        expect(modMuteWrite({ ...row, modMuted: true }, A, true)).toBeNull()
+        expect(modMuteWrite(row, A, false)).toBeNull()
+        expect(modMuteWrite(row, B, true)).toBeNull()
+        expect(modMuteWrite(null, A, true)).toBeNull()
+    })
+})
+
+describe('why someone left a server is why they left its room (SRS 5.2 voice.disconnected)', () => {
+    it('says kick, ban, or that they left by themselves', () => {
+        expect(reasonForLeaving('kick')).toBe('kick')
+        expect(reasonForLeaving('ban')).toBe('ban')
+        expect(reasonForLeaving(null)).toBe('server_left')
     })
 })

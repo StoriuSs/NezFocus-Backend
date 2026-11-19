@@ -143,12 +143,41 @@ export const leaveWrite = (current: VoiceState | null, participantSid: string): 
 
 /**
  * What the person's browser says of its microphone and camera (D-206):
- * nothing to write when they are in no room, or nothing changed.
+ * nothing to write when they are in no room, or nothing changed. A mic
+ * muted by a moderator stays off (D-212).
  */
 export function selfStateWrite(current: VoiceState | null, micOn: boolean, cameraOn: boolean): VoiceWrite | null {
-    if (!current || (current.micOn === micOn && current.cameraOn === cameraOn)) return null
-    return { kind: 'flags', flags: { micOn, cameraOn } }
+    if (!current) return null
+    // Muted by a moderator, the mic sends nothing whatever the browser shows (D-212).
+    const mic = micOn && !current.modMuted
+    if (current.micOn === mic && current.cameraOn === cameraOn) return null
+    return { kind: 'flags', flags: { micOn: mic, cameraOn } }
 }
+
+/**
+ * A moderator muting (`muted`) or unmuting someone in room `channelId`
+ * (REQ-VC-04, D-207): muted, the mic's icon goes off with it. LiveKit acts
+ * on the person, not on one connection, so a reload meanwhile is muted
+ * too. Nothing to write when it already is so (D-212), or they are no
+ * longer in that room.
+ */
+export function modMuteWrite(current: VoiceState | null, channelId: string, muted: boolean): VoiceWrite | null {
+    if (current?.channelId !== channelId || current.modMuted === muted) return null
+    return { kind: 'flags', flags: muted ? { modMuted: true, micOn: false } : { modMuted: false } }
+}
+
+/** Why someone was put out of their room, as `voice.disconnected` says it (SRS 5.2, D-212). */
+export type DisconnectReason =
+    | 'moderator'
+    | 'timeout'
+    | 'kick'
+    | 'ban'
+    | 'permission'
+    | 'channel_deleted'
+    | 'server_left'
+
+/** One who left the room's server leaves the room: kicked, banned, or by themselves. */
+export const reasonForLeaving = (removedBy: 'kick' | 'ban' | null): DisconnectReason => removedBy ?? 'server_left'
 
 /**
  * How long a webhook's id is remembered, so the same event sent again is

@@ -26,7 +26,7 @@ export interface RoomParticipant {
  * Media Rooms Port — the media server that carries the sound, video and
  * screens of voice rooms (LiveKit, D-204; ARCHITECTURE 4). Browsers connect
  * to it themselves with a token from here; the API asks it who is in a room
- * and puts people out.
+ * and puts people out, or changes what they may send.
  */
 export interface MediaRoomsPort {
     /**
@@ -49,11 +49,20 @@ export interface MediaRoomsPort {
     listRooms(): Promise<string[]>
 
     /**
-     * Ends a person's connection to a room. Nothing happens when they are not
-     * in it.
+     * Ends a person's connection to a room: true when they were in it;
+     * nothing happens, false, when they were not.
      * @throws MediaRoomsUnavailableError when the media server cannot be reached
      */
-    removeParticipant(room: string, identity: string): Promise<void>
+    removeParticipant(room: string, identity: string): Promise<boolean>
+
+    /**
+     * Changes what a person connected to a room may send (D-207, D-210): a
+     * source taken away stops at once, the media server unpublishing its
+     * track; one given back is theirs to turn on. Nothing happens when they
+     * are not in the room.
+     * @throws MediaRoomsUnavailableError when the media server cannot be reached
+     */
+    setSources(room: string, identity: string, sources: MediaSource[]): Promise<void>
 }
 
 export const MEDIA_ROOMS = Symbol('MediaRoomsPort')

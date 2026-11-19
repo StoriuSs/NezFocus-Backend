@@ -576,6 +576,18 @@ right against LiveKit every minute (D-210). Each change becomes
 rooms of `GET /servers`, through servers' `ROOM_PEOPLE` port, answered by
 the global `RoomPeopleModule` here. A tab's microphone and camera come over
 its socket (`voice.self_state`, D-206), received by realtime and handed on.
+Moderators mute, unmute and put people out (`commands/moderation`, D-207):
+MUTE_MEMBERS / MOVE_MEMBERS in the room and a higher rank, the mute being a
+change of what LiveKit lets the person send. The server puts people out
+too (D-212): handlers of servers' `MemberChangedEvent` (kick, ban,
+leaving, timeout, a role) and `ServerChangedEvent` (roles, channels, a
+deleted channel or server) set each person in its rooms right, telling
+them why (`voice.disconnected`); the reconciliation empties the rooms of
+deleted channels too, and puts out anyone in a room they may no longer be
+in, as a webhook join of such a person does at once. What one person may
+send is decided and set one change at a time, under their `voice-media:`
+lock (`inMediaTurn` of the repository). Each person in a room's list carries their roles
+and whether they own the server, for the moderators' menus (D-205).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

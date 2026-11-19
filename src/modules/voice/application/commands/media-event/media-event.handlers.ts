@@ -1,5 +1,8 @@
 import { Inject } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
+import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
+import { EVENT_PUBLISHER, EventPublisherPort } from '@/modules/realtime'
+import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
 import {
     channelOfRoom,
     joinWrite,
@@ -17,6 +20,7 @@ import {
     MediaEventsPort,
     MediaRoomsPort
 } from '../../ports'
+import { standingOf } from '../../services/room-recheck'
 import { changeEvents } from '../../services/voice-changes'
 import { ApplyMediaEventCommand } from './media-event.commands'
 
@@ -37,6 +41,10 @@ import { ApplyMediaEventCommand } from './media-event.commands'
  * Someone who joined a room while still connected to another (two tabs, two
  * rooms) is put out of the other: one connection per account (D-210). The
  * participant_left that follows changes nothing.
+ *
+ * Someone who joined a room they may no longer be in (a token taken before
+ * a ban or a timeout, used within its ten minutes; the room deleted) is put
+ * out at once, told why, and never listed (D-212).
  */
 @CommandHandler(ApplyMediaEventCommand)
 export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCommand> {
@@ -45,6 +53,9 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
         @Inject(EVENT_RECEIPTS) private readonly receipts: EventReceiptsPort,
         @Inject(MEDIA_ROOMS) private readonly media: MediaRoomsPort,
         @Inject(VOICE_STATE_REPOSITORY) private readonly states: VoiceStateRepositoryPort,
+        @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
+        @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
+        @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisherPort,
         private readonly events: EventBus
     ) {}
 
@@ -63,6 +74,7 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
         }
         let result: Awaited<ReturnType<VoiceStateRepositoryPort['change']>>
         try {
+            if (event.kind === 'joined' && !(await this.mayStay(event.room, channelId, event.identity))) return
             result = await this.states.change(event.identity, (current) =>
                 event.kind === 'joined' ? joinWrite(current, connection) : leaveWrite(current, event.participantSid)
             )
@@ -77,6 +89,21 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             // Not reached now: the reconciliation puts them out within minutes (the adapter logged why).
             await this.media.removeParticipant(voiceRoomOf(before.channelId), event.identity).catch(() => undefined)
         }
+    }
+
+    /**
+     * Whether the person who joined `room` may be there; if not, they are
+     * put out and told why. LiveKit unreachable throws: the event is sent
+     * again.
+     */
+    private async mayStay(room: string, channelId: string, userId: string): Promise<boolean> {
+        const serverId = await this.channels.serverIdOf(channelId)
+        const standing = await standingOf(this.checker, serverId, channelId, userId, new Date())
+        if (standing.kind === 'in') return true
+        if (await this.media.removeParticipant(room, userId)) {
+            this.publisher.toUser(userId, 'voice.disconnected', { channelId, reason: standing.reason })
+        }
+        return false
     }
 }
 

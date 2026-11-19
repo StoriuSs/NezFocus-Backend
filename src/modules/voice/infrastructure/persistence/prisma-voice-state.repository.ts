@@ -3,7 +3,7 @@ import { shownPerson } from '@/shared/domain'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
 import { RoomOccupant, VoiceConnection, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../domain'
-import { voiceRoomLock, voiceStateLock } from './voice-locks'
+import { voiceMediaLock, voiceRoomLock, voiceStateLock } from './voice-locks'
 
 const STATE = {
     userId: true,
@@ -17,6 +17,12 @@ const STATE = {
 } as const
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
+
+/**
+ * How long a media turn may hold its transaction: a call to LiveKit (at
+ * most 5 seconds, the adapter's limit) and a row change, with room to spare.
+ */
+const MEDIA_TURN_MS = 15_000
 
 /** The client of PrismaService, or of a transaction it runs. */
 type Db = PrismaService | Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
@@ -100,6 +106,17 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
             if (error instanceof RoomGone || prismaCode(error) === 'P2003') return null
             throw error
         }
+    }
+
+    async inMediaTurn<T>(userId: string, work: () => Promise<T>): Promise<T> {
+        return this.prisma.$transaction(
+            async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${voiceMediaLock(userId)}, 0))`
+                // The work runs on other connections: this one only holds the lock.
+                return work()
+            },
+            { timeout: MEDIA_TURN_MS, maxWait: MEDIA_TURN_MS }
+        )
     }
 
     connections(): Promise<VoiceConnection[]> {

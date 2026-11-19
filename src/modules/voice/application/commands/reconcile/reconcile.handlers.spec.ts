@@ -1,4 +1,7 @@
 import { EventBus } from '@nestjs/cqrs'
+import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
+import { EventPublisherPort } from '@/modules/realtime'
+import { ChannelDirectoryPort } from '@/modules/servers'
 import { VoiceConnection, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../../domain'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
 import { MediaRoomsPort, RoomParticipant } from '../../ports'
@@ -7,15 +10,16 @@ import { ReconcileVoiceRoomsHandler } from './reconcile.handlers'
 
 const LOUNGE = '0190a000-0000-7000-8000-00000000000a'
 const STUDY = '0190a000-0000-7000-8000-00000000000b'
+const DELETED = '0190a000-0000-7000-8000-00000000000c'
 const at = (minutes: number) => new Date(Date.UTC(2026, 10, 18, 10, minutes))
 const NOW = at(10)
 
-function setup(rows: VoiceState[], rooms: Record<string, RoomParticipant[]>) {
+function setup(rows: VoiceState[], rooms: Record<string, RoomParticipant[]>, gone: string[] = [], shut: string[] = []) {
     const byUser = new Map(rows.map((row) => [row.userId, row]))
     const media = {
         listRooms: jest.fn().mockResolvedValue(Object.keys(rooms)),
         listParticipants: jest.fn(async (room: string) => rooms[room] ?? []),
-        removeParticipant: jest.fn().mockResolvedValue(undefined)
+        removeParticipant: jest.fn().mockResolvedValue(true)
     }
     const states = {
         connections: jest.fn(async (): Promise<VoiceConnection[]> => rows),
@@ -34,12 +38,41 @@ function setup(rows: VoiceState[], rooms: Record<string, RoomParticipant[]>) {
         })
     }
     const events = { publish: jest.fn() }
+    const channels = { serverIdOf: jest.fn(async (channelId: string) => (gone.includes(channelId) ? null : 's1')) }
+    const publisher = { toUser: jest.fn() }
+    // Everyone may connect, but the people in `shut`, whose @everyone has lost CONNECT.
+    const server = (permissions: bigint) =>
+        ({
+            ownerId: 'owner',
+            roles: [{ id: 'everyone', permissions, position: 0, isEveryone: true }],
+            channels: [LOUNGE, STUDY, DELETED].map((id) => ({
+                id,
+                type: 'voice',
+                isPrivate: false,
+                viewRoleIds: [],
+                sendMode: 'everyone',
+                taskBoardEnabled: false
+            }))
+        }) as AccessServer
+    const checker = {
+        access: jest.fn(async (_serverId: string, userId: string) => ({
+            server: server(
+                shut.includes(userId)
+                    ? EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CONNECT
+                    : EVERYONE_DEFAULT_PERMISSIONS
+            ),
+            member: { userId, roleIds: [], timeoutUntil: null }
+        }))
+    }
     const handler = new ReconcileVoiceRoomsHandler(
         media as unknown as MediaRoomsPort,
         states as unknown as VoiceStateRepositoryPort,
+        channels as unknown as ChannelDirectoryPort,
+        checker as unknown as PermissionCheckerPort,
+        publisher as unknown as EventPublisherPort,
         events as unknown as EventBus
     )
-    return { handler, media, events }
+    return { handler, media, events, publisher }
 }
 
 const state = (userId: string, channelId: string, participantSid: string, joinedAt: Date): VoiceState => ({
@@ -80,6 +113,53 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
             [new VoiceStateChangedEvent(STUDY, 'an', 'left', at(0))],
             [new VoiceStateChangedEvent(LOUNGE, 'chi', 'joined', at(2))]
         ])
+    })
+
+    it('empties a room whose channel is gone, telling who was in it, and drops its rows (D-212)', async () => {
+        const { handler, media, events, publisher } = setup(
+            // A deleted server keeps its channels a while, and Dung's row with them.
+            [state('dung', DELETED, 'PA_dung', at(1))],
+            {
+                [`voice:${DELETED}`]: [
+                    { identity: 'dung', sid: 'PA_dung', joinedAt: at(1) },
+                    { identity: 'chi', sid: 'PA_chi', joinedAt: at(2) }
+                ]
+            },
+            [DELETED]
+        )
+
+        await handler.execute(new ReconcileVoiceRoomsCommand(NOW))
+
+        expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${DELETED}`, 'chi')
+        expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${DELETED}`, 'dung')
+        for (const userId of ['chi', 'dung']) {
+            expect(publisher.toUser).toHaveBeenCalledWith(userId, 'voice.disconnected', {
+                channelId: DELETED,
+                reason: 'channel_deleted'
+            })
+        }
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(DELETED, 'dung', 'left', at(1))]])
+    })
+
+    it('puts out anyone in a room they may no longer be in, telling them why: a putting out LiveKit missed (D-212)', async () => {
+        const { handler, media, events, publisher } = setup(
+            [],
+            { [`voice:${LOUNGE}`]: [{ identity: 'binh', sid: 'PA_binh', joinedAt: at(1) }] },
+            [],
+            ['binh']
+        )
+
+        await expect(handler.execute(new ReconcileVoiceRoomsCommand(NOW))).resolves.toEqual({
+            joined: 0,
+            dropped: 0,
+            evicted: 0
+        })
+        expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'binh')
+        expect(publisher.toUser).toHaveBeenCalledWith('binh', 'voice.disconnected', {
+            channelId: LOUNGE,
+            reason: 'permission'
+        })
+        expect(events.publish).not.toHaveBeenCalled()
     })
 
     it('puts someone connected to two rooms out of the older one', async () => {

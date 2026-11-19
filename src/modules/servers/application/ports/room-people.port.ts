@@ -2,6 +2,10 @@
 export interface RoomPerson {
     /** Names and picture are null once the account is deleted, or waiting to be (D-182). */
     user: { id: string; username: string | null; displayName: string | null; avatarUrl: string | null }
+    /** Their roles in the server, @everyone not counted; none once they left it. For the moderators' menus (D-208). */
+    roleIds: string[]
+    /** Whether they own the server: no one acts on the owner (REQ-ROLE-02). */
+    isOwner: boolean
     joinedAt: Date
     /** What their own browser says (D-206): icons only. */
     micOn: boolean

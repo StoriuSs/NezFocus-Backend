@@ -91,6 +91,9 @@ export const MESSAGES = {
     VOICE: {
         TOKEN_ISSUED: 'Voice token issued',
         LEFT: 'Left the voice room',
+        PARTICIPANT_MUTED: 'Microphone turned off',
+        PARTICIPANT_UNMUTED: 'Microphone allowed again',
+        PARTICIPANT_DISCONNECTED: 'Put out of the voice room',
         EVENT_RECEIVED: 'Media event received'
     },
 

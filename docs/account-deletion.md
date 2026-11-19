@@ -356,7 +356,9 @@ a deleted account (D-182).
 The voice table (M4) keeps nothing to keep: `VoiceState` says who is in a
 room now, and its row goes when the person leaves. Its `onDelete: Cascade`
 on `User` never runs, since the `User` row stays; an account that starts
-waiting to be deleted is put out of its room by the voice module (D-210).
+waiting to be deleted is put out of its room by the voice module (D-210,
+D-212: `LeaveDeletedAccountRoomHandler` hears `AccountDeletionRequestedEvent`;
+nothing is told, its sessions have ended).
 
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.

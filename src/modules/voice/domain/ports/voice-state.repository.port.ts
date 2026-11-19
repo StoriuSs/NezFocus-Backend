@@ -34,6 +34,14 @@ export interface VoiceStateRepositoryPort {
         decide: (current: VoiceState | null) => VoiceWrite | null
     ): Promise<{ before: VoiceState | null; after: VoiceState | null } | null>
 
+    /**
+     * Runs `work` holding the person's media lock (D-207, D-212): what
+     * LiveKit lets them send is decided and set one change at a time, each
+     * from what `work` reads once it holds it. `work` may change the row
+     * (`change` takes the row lock after this one).
+     */
+    inMediaTurn<T>(userId: string, work: () => Promise<T>): Promise<T>
+
     /** Every row's connection: the rooms the reconciliation reads. */
     connections(): Promise<VoiceConnection[]>
 

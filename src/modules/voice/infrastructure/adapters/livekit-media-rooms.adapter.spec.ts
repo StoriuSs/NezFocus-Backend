@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { RoomServiceClient, ServerError, TokenVerifier } from 'livekit-server-sdk'
+import { RoomServiceClient, ServerError, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 import { MediaRoomsUnavailableError } from '@/modules/voice/domain'
 import { LiveKitMediaRooms } from './livekit-media-rooms.adapter'
 
@@ -64,8 +64,10 @@ describe('LiveKitMediaRooms join tokens (D-210)', () => {
 describe('LiveKitMediaRooms asking LiveKit', () => {
     afterEach(() => jest.restoreAllMocks())
     /** LiveKit's answer to each call, made when the call comes. */
-    const answers = (method: 'listParticipants' | 'removeParticipant', outcome: () => Promise<unknown>) =>
-        jest.spyOn(RoomServiceClient.prototype, method).mockImplementation(outcome as never)
+    const answers = (
+        method: 'listParticipants' | 'removeParticipant' | 'updateParticipant',
+        outcome: () => Promise<unknown>
+    ) => jest.spyOn(RoomServiceClient.prototype, method).mockImplementation(outcome as never)
     const logged = (level: 'warn' | 'error') => jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined)
 
     it('lists who is in a room, with when they joined', async () => {
@@ -76,13 +78,39 @@ describe('LiveKitMediaRooms asking LiveKit', () => {
         ])
     })
 
+    it('changes what a person may send: the whole permission, as a join token gives it (D-207)', async () => {
+        const update = answers('updateParticipant', async () => ({}))
+
+        await adapter().setSources('voice:c1', 'user-1', ['camera', 'screen_share'])
+
+        expect(update).toHaveBeenCalledWith('voice:c1', 'user-1', {
+            permission: {
+                canSubscribe: true,
+                canPublish: true,
+                canPublishSources: [TrackSource.CAMERA, TrackSource.SCREEN_SHARE],
+                canPublishData: false
+            }
+        })
+    })
+
+    it('changes nothing for a person already gone, and reports LiveKit out of reach', async () => {
+        logged('warn')
+        answers('updateParticipant', () =>
+            Promise.reject(new ServerError('not_found', 'participant not found', 404, 'not_found'))
+        )
+        await expect(adapter().setSources('voice:c1', 'user-1', [])).resolves.toBeUndefined()
+
+        answers('updateParticipant', () => Promise.reject(new Error('connect ECONNREFUSED')))
+        await expect(adapter().setSources('voice:c1', 'user-1', [])).rejects.toBeInstanceOf(MediaRoomsUnavailableError)
+    })
+
     it('takes "not found" for an empty room, and for a person already gone', async () => {
         const notFound = () => Promise.reject(new ServerError('not_found', 'room does not exist', 404, 'not_found'))
         answers('listParticipants', notFound)
         answers('removeParticipant', notFound)
 
         expect(await adapter().listParticipants('voice:c1')).toEqual([])
-        await expect(adapter().removeParticipant('voice:c1', 'user-1')).resolves.toBeUndefined()
+        await expect(adapter().removeParticipant('voice:c1', 'user-1')).resolves.toBe(false)
     })
 
     it('reports LiveKit out of reach as unavailable, not as an empty room or a person gone, and logs why', async () => {

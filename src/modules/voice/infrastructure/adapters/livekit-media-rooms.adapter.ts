@@ -19,6 +19,18 @@ const SOURCES: Record<MediaSource, TrackSource> = {
     screen_share_audio: TrackSource.SCREEN_SHARE_AUDIO
 }
 
+/**
+ * What a person may do in a room (D-210): hear everyone, send `sources` and
+ * nothing with none, never LiveKit's data channel (room chat is the
+ * channel's messages). The same in a join token and in a later change.
+ */
+const permissionFor = (sources: MediaSource[]) => ({
+    canSubscribe: true,
+    canPublish: sources.length > 0,
+    canPublishSources: sources.map((source) => SOURCES[source]),
+    canPublishData: false
+})
+
 /** LiveKit's answer when the room does not exist, or the person is not in it. */
 const isNotFound = (error: unknown) =>
     error instanceof ServerError && (error.status === 404 || error.code === 'not_found')
@@ -57,15 +69,7 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
             name: grant.name,
             ttl: JOIN_TOKEN_TTL_SECONDS
         })
-        token.addGrant({
-            roomJoin: true,
-            room: grant.room,
-            canSubscribe: true,
-            canPublish: grant.sources.length > 0,
-            canPublishSources: grant.sources.map((source) => SOURCES[source]),
-            // Room chat is the channel's messages (D-210), not LiveKit's data channel.
-            canPublishData: false
-        })
+        token.addGrant({ roomJoin: true, room: grant.room, ...permissionFor(grant.sources) })
         return { token: await token.toJwt(), url: this.url }
     }
 
@@ -93,12 +97,23 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
         }
     }
 
-    async removeParticipant(room: string, identity: string): Promise<void> {
+    async removeParticipant(room: string, identity: string): Promise<boolean> {
         try {
             await this.rooms.removeParticipant(room, identity)
+            return true
+        } catch (error) {
+            if (isNotFound(error)) return false
+            throw this.unavailable('put a person out of', room, error)
+        }
+    }
+
+    async setSources(room: string, identity: string, sources: MediaSource[]): Promise<void> {
+        try {
+            // The permission is replaced whole: what the join token gave, with these sources.
+            await this.rooms.updateParticipant(room, identity, { permission: permissionFor(sources) })
         } catch (error) {
             if (isNotFound(error)) return
-            throw this.unavailable('put a person out of', room, error)
+            throw this.unavailable('change what a person may send in', room, error)
         }
     }
 

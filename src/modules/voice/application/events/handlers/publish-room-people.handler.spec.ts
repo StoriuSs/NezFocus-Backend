@@ -1,4 +1,6 @@
+import { AccessServer, PermissionCheckerPort } from '@/modules/permissions'
 import { EventPublisherPort } from '@/modules/realtime'
+import { ChannelDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import { RoomOccupant, VoiceStateRepositoryPort } from '../../../domain'
 import { VoiceStateChangedEvent } from '../voice-state-changed.event'
@@ -33,13 +35,26 @@ describe("A voice room's people (D-205)", () => {
         const handler = new PublishRoomPeopleHandler(
             states as unknown as VoiceStateRepositoryPort,
             users as unknown as UserDirectoryPort,
-            publisher as unknown as EventPublisherPort
+            publisher as unknown as EventPublisherPort,
+            {
+                serverIdOf: jest.fn(async () => {
+                    steps.push('server read')
+                    return 's1'
+                })
+            } as unknown as ChannelDirectoryPort,
+            {
+                access: jest.fn().mockResolvedValue({
+                    server: { ownerId: 'owner' } as AccessServer,
+                    member: { userId: 'an', roleIds: ['r1'], timeoutUntil: null }
+                })
+            } as unknown as PermissionCheckerPort
         )
 
         await handler.handle(new VoiceStateChangedEvent(LOUNGE, 'an', 'updated', JOINED))
 
         expect(states.tellOccupants).toHaveBeenCalledWith(LOUNGE, expect.any(Function))
-        expect(steps).toEqual(['locked', 'told', 'released'])
+        // The database is read before the lock: under it, only the rows and the permission cache.
+        expect(steps).toEqual(['server read', 'locked', 'told', 'released'])
         expect(publisher.toChannel).toHaveBeenCalledWith(LOUNGE, 'voice_state.updated', {
             channelId: LOUNGE,
             voiceStates: [
@@ -50,6 +65,8 @@ describe("A voice room's people (D-205)", () => {
                         displayName: 'An',
                         avatarUrl: 'https://cdn.test/avatars/an.webp'
                     },
+                    roleIds: ['r1'],
+                    isOwner: false,
                     joinedAt: JOINED,
                     micOn: true,
                     cameraOn: false,

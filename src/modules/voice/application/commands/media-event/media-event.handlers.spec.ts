@@ -1,4 +1,7 @@
 import { EventBus } from '@nestjs/cqrs'
+import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
+import { EventPublisherPort } from '@/modules/realtime'
+import { ChannelDirectoryPort } from '@/modules/servers'
 import { MediaEventRejectedError, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../../domain'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
 import { EventReceiptsPort, MediaEvent, MediaEventsPort, MediaRoomsPort } from '../../ports'
@@ -30,12 +33,29 @@ const row = (over: Partial<VoiceState> = {}): VoiceState => ({
 })
 
 /** A repository holding one person's row, written as the real one would. */
-function setup(event: MediaEvent | Error, current: VoiceState | null = null) {
+function setup(event: MediaEvent | Error, current: VoiceState | null = null, everyone = EVERYONE_DEFAULT_PERMISSIONS) {
     const mediaEvents = {
         read: jest.fn(() => (event instanceof Error ? Promise.reject(event) : Promise.resolve(event)))
     }
     const receipts = { firstSight: jest.fn().mockResolvedValue(true), forget: jest.fn().mockResolvedValue(undefined) }
-    const media = { removeParticipant: jest.fn().mockResolvedValue(undefined) }
+    const media = { removeParticipant: jest.fn().mockResolvedValue(true) }
+    const server = {
+        ownerId: 'owner',
+        roles: [{ id: 'everyone', permissions: everyone, position: 0, isEveryone: true }],
+        channels: [LOUNGE, STUDY].map((id) => ({
+            id,
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
+        }))
+    } as AccessServer
+    const channels = { serverIdOf: jest.fn().mockResolvedValue('s1') }
+    const checker = {
+        access: jest.fn().mockResolvedValue({ server, member: { userId: 'an', roleIds: [], timeoutUntil: null } })
+    }
+    const publisher = { toUser: jest.fn() }
     const states = {
         change: jest.fn(async (_userId: string, decide: (state: VoiceState | null) => VoiceWrite | null) => {
             const write = decide(current)
@@ -54,13 +74,60 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null) {
         receipts as unknown as EventReceiptsPort,
         media as unknown as MediaRoomsPort,
         states as unknown as VoiceStateRepositoryPort,
+        channels as unknown as ChannelDirectoryPort,
+        checker as unknown as PermissionCheckerPort,
+        publisher as unknown as EventPublisherPort,
         events as unknown as EventBus
     )
     const run = () => handler.execute(new ApplyMediaEventCommand('{"event":"…"}', 'Bearer jwt'))
-    return { run, mediaEvents, receipts, media, states, events }
+    return { run, mediaEvents, receipts, media, states, events, channels, checker, publisher }
 }
 
 describe("LiveKit's webhooks (D-210)", () => {
+    it('puts out at once, never listed, someone who joined a room they may no longer be in (D-212)', async () => {
+        const { run, media, states, publisher } = setup(
+            joined(),
+            null,
+            EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CONNECT
+        )
+
+        await run()
+
+        expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an')
+        expect(publisher.toUser).toHaveBeenCalledWith('an', 'voice.disconnected', {
+            channelId: LOUNGE,
+            reason: 'permission'
+        })
+        expect(states.change).not.toHaveBeenCalled()
+    })
+
+    it('puts out one who joined after leaving the server (a token used after a ban), and a deleted room', async () => {
+        const banned = setup(joined())
+        banned.checker.access.mockResolvedValue(null)
+        await banned.run()
+        expect(banned.publisher.toUser).toHaveBeenCalledWith('an', 'voice.disconnected', {
+            channelId: LOUNGE,
+            reason: 'server_left'
+        })
+
+        const deleted = setup(joined())
+        deleted.channels.serverIdOf.mockResolvedValue(null)
+        await deleted.run()
+        expect(deleted.publisher.toUser).toHaveBeenCalledWith('an', 'voice.disconnected', {
+            channelId: LOUNGE,
+            reason: 'channel_deleted'
+        })
+        expect(deleted.states.change).not.toHaveBeenCalled()
+    })
+
+    it('forgets the event when LiveKit cannot put such a person out, so it is sent again', async () => {
+        const { run, media, receipts } = setup(joined(), null, EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CONNECT)
+        media.removeParticipant.mockRejectedValue(new Error('unreachable'))
+
+        await expect(run()).rejects.toThrow('unreachable')
+        expect(receipts.forget).toHaveBeenCalledWith('EV_1')
+    })
+
     it('refuses one not signed by LiveKit, reading nothing from it', async () => {
         const { run, receipts, states } = setup(new MediaEventRejectedError('sha256 checksum of body does not match'))
 

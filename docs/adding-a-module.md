@@ -249,7 +249,7 @@ src/modules/servers/application/
 `invite`, `role`, `moderation`; four of them have queries, `channel-layout`
 has none), each folder named like the files in it; `messaging`, `tasks`
 (`task`, `assignee`; D-190) and `voice` (`connection`, `media-event`,
-`reconcile`, `room`; D-211) too;
+`moderation`, `reconcile`, `room`; D-211) too;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`

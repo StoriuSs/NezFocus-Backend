@@ -9,5 +9,8 @@
 // Requests
 export { JoinVoiceRequestDto } from './join-voice.request.dto'
 
+// Params
+export { RoomParticipantParamsDto } from './room-participant.params.dto'
+
 // Responses
 export { VoiceTokenResponseDto } from './voice-token.response.dto'
