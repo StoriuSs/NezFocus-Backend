@@ -578,7 +578,8 @@ the global `RoomPeopleModule` here. A tab's microphone and camera come over
 its socket (`voice.self_state`, D-206), received by realtime and handed on.
 Moderators mute, unmute and put people out (`commands/moderation`, D-207):
 MUTE_MEMBERS / MOVE_MEMBERS in the room and a higher rank, the mute being a
-change of what LiveKit lets the person send. The server puts people out
+change of what LiveKit lets the person send: no sound at all, the
+microphone and a shared screen's sound. The server puts people out
 too (D-212): handlers of servers' `MemberChangedEvent` (kick, ban,
 leaving, timeout, a role) and `ServerChangedEvent` (roles, channels, a
 deleted channel or server) set each person in its rooms right, telling

@@ -11,6 +11,8 @@ const LOUNGE = '0190a000-0000-7000-8000-00000000000a'
 const JOINED = new Date('2026-11-18T10:00:00Z')
 const LATER = new Date(Date.now() + 60 * 60 * 1000)
 const ALL = ['microphone', 'camera', 'screen_share', 'screen_share_audio']
+// Muted by a moderator: no sound at all, the screen without its sound (L5a-a).
+const MUTED = ['camera', 'screen_share']
 const server = (everyone = EVERYONE_DEFAULT_PERMISSIONS) =>
     ({
         ownerId: 'owner',
@@ -143,7 +145,7 @@ describe('A member who changes while in a room of their server (D-210, D-212)', 
 
         await handler.handle(new MemberChangedEvent('s1', 'an', 'updated'))
 
-        expect(media.setSources).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', ALL.slice(1))
+        expect(media.setSources).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', MUTED)
     })
 
     it("keeps a mute set after the event read the row: the row is read again in the person's media turn", async () => {
@@ -152,7 +154,7 @@ describe('A member who changes while in a room of their server (D-210, D-212)', 
 
         await handler.handle(new MemberChangedEvent('s1', 'an', 'updated'))
 
-        expect(media.setSources).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', ALL.slice(1))
+        expect(media.setSources).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', MUTED)
     })
 
     it('leaves alone, telling nothing, one who left the room before their turn came', async () => {

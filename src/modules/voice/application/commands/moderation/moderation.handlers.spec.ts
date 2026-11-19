@@ -117,16 +117,13 @@ function setup({ access = server(), current = row() as VoiceState | null, actorT
 }
 
 describe('A moderator muting someone in a voice room (REQ-VC-04, D-207)', () => {
-    it('takes the microphone from what they may send, marks them muted and tells them', async () => {
+    it("takes the microphone and a screen's sound from what they may send, marks them muted and tells them (L5a-a)", async () => {
         const { mute, media, writes, events, publisher } = setup()
 
         await mute.execute(new MuteParticipantCommand('mod', LOUNGE, 'an'))
 
-        expect(media.setSources).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', [
-            'camera',
-            'screen_share',
-            'screen_share_audio'
-        ])
+        // No sound at all: the screen still shows, without its sound.
+        expect(media.setSources).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', ['camera', 'screen_share'])
         expect(writes).toEqual([{ kind: 'flags', flags: { modMuted: true, micOn: false } }])
         expect(events.publish).toHaveBeenCalledWith(new VoiceStateChangedEvent(LOUNGE, 'an', 'updated', NOW))
         expect(publisher.toUser).toHaveBeenCalledWith('an', 'voice.muted', { channelId: LOUNGE, muted: true })

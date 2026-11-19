@@ -23,9 +23,16 @@ export function sourcesOf(permissions: bigint): MediaSource[] {
     return sources
 }
 
-/** What someone muted by a moderator may send: all but the microphone (D-207, D-212). */
+/** The sources that make sound: muted by a moderator, one sends none of them (D-207). */
+const SOUNDS: MediaSource[] = ['microphone', 'screen_share_audio']
+
+/**
+ * What someone muted by a moderator may send: no sound at all, neither the
+ * microphone nor a shared screen's sound; the camera and the screen itself
+ * stay (D-207, D-212).
+ */
 export const mutedSources = (sources: MediaSource[], modMuted: boolean): MediaSource[] =>
-    modMuted ? sources.filter((source) => source !== 'microphone') : sources
+    modMuted ? sources.filter((source) => !SOUNDS.includes(source)) : sources
 
 /** Whether a timeout still runs at `now`. */
 export const timedOut = ({ member }: ServerAccess, now: Date): boolean =>
