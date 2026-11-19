@@ -8,17 +8,14 @@ export interface ReadStateView extends ChannelReadState {
 }
 
 /**
- * The text channels of a server the member may view now, in the server's
- * order: those whose messages reach their sockets (D-163), so whose unread
- * they keep. The rule of the realtime module's serverRooms.
+ * The channels of a server the member may view now, text channels and the
+ * chat of voice rooms, in the server's order: those whose messages reach
+ * their sockets (D-163), so whose unread they keep. The rule of the realtime
+ * module's serverRooms.
  */
-export function viewableTextChannels(server: AccessServer, member: AccessMember, now: Date): string[] {
+export function viewableChannels(server: AccessServer, member: AccessMember, now: Date): string[] {
     return server.channels
-        .filter(
-            (channel) =>
-                channel.type === 'text' &&
-                (channelPermissions(server, member, channel, now) & Permission.VIEW_CHANNEL) !== 0n
-        )
+        .filter((channel) => (channelPermissions(server, member, channel, now) & Permission.VIEW_CHANNEL) !== 0n)
         .map((channel) => channel.id)
 }
 

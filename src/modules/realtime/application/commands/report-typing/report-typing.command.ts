@@ -1,4 +1,4 @@
-/** A tab says its person is typing in a text channel (REQ-MSG-06): `typing.start` over its socket. */
+/** A tab says its person is typing in a channel, text or a voice room's chat (REQ-MSG-06): `typing.start` over its socket. */
 export class ReportTypingCommand {
     constructor(
         public readonly userId: string,

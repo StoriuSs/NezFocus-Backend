@@ -1,7 +1,7 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import { CannotSendError, ChannelNotFoundError, TimedOutError } from '../../domain'
-import { openChannel, requireSending, timedOutUntil } from './channel-access'
+import { openChannel, requireSending, timedOutUntil, viewersOf } from './channel-access'
 
 const NOW = new Date('2026-10-18T21:47:00Z')
 const LATER = new Date('2026-10-18T22:30:00Z')
@@ -89,13 +89,24 @@ describe('Opening a channel to read or post (NFR-SEC-05)', () => {
         await expect(world().open('ban-can-su', 'binh')).rejects.toBeInstanceOf(ChannelNotFoundError)
     })
 
-    it('answers not found for a voice room, which has no chat yet', async () => {
-        await expect(world().open('phong-hoc', 'binh')).rejects.toBeInstanceOf(ChannelNotFoundError)
+    it('opens a voice room’s chat as a text channel, saying it is a room (S-ROOM-08, D-213)', async () => {
+        const opened = await world().open('phong-hoc', 'binh')
+        expect(opened).toMatchObject({ serverId: 'ot', type: 'voice' })
+        expect(opened.permissions & Permission.SEND_MESSAGES).toBe(Permission.SEND_MESSAGES)
+        expect((await world().open('hoi-dap', 'binh')).type).toBe('text')
     })
 
     it('lets a timed-out member read', async () => {
         const opened = await world().open('hoi-dap', 'phong')
         expect(opened.permissions & Permission.VIEW_CHANNEL).toBe(Permission.VIEW_CHANNEL)
+    })
+})
+
+describe('Who of a list views a channel (mentions, D-164)', () => {
+    it('keeps those who view a voice room as those who view a text channel', async () => {
+        const { checker } = world()
+        expect(await viewersOf(checker, 'ot', 'phong-hoc', ['nguoi-la', 'binh', 'an'], NOW)).toEqual(['binh', 'an'])
+        expect(await viewersOf(checker, 'ot', 'ban-can-su', ['binh', 'an'], NOW)).toEqual(['an'])
     })
 })
 

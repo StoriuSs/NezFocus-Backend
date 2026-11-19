@@ -16,8 +16,8 @@ import { joinedAt, ReadStateView, readStatesIn } from '../../services/read-state
 import { AckChannelCommand } from './read-state.commands'
 
 /**
- * Marks a text channel the person may view read up to a message of it
- * (REQ-MSG-09), deleted or not (it stays a place in the channel); a message
+ * Marks a channel the person may view (text, or a voice room's chat) read
+ * up to a message of it (REQ-MSG-09), deleted or not (it stays a place in the channel); a message
  * of another channel is not found, as a far place would mark later messages
  * read. The mark only moves forward (D-173): two tabs acking out of order
  * never take it back. The person's tabs and devices are told

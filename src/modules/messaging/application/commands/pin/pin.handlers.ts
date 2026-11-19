@@ -11,6 +11,7 @@ import {
     MessageRepositoryPort,
     PIN_REPOSITORY,
     PinRepositoryPort,
+    requirePinsIn,
     TimedOutError
 } from '../../../domain'
 import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
@@ -25,7 +26,8 @@ import { PinMessageCommand, UnpinMessageCommand } from './pin.commands'
  * Let through only someone who may pin or unpin this message in `channelId`
  * (REQ-MSG-07): a message of that channel they see (else not found, naming
  * nothing), while not timed out (said first, as for deleting), with
- * MANAGE_MESSAGES. Gives the channel's server.
+ * MANAGE_MESSAGES, and not in a voice room's chat, which has no pins
+ * (D-213). Gives the channel's server.
  */
 async function requirePinning(
     messages: MessageRepositoryPort,
@@ -39,6 +41,7 @@ async function requirePinning(
     const until = timedOutUntil(channel, now)
     if (until) throw new TimedOutError(until)
     if ((channel.permissions & Permission.MANAGE_MESSAGES) === 0n) throw new CannotPinError()
+    requirePinsIn(channel.type)
     return channel.serverId
 }
 

@@ -1,7 +1,7 @@
 import { DomainError } from '@/shared/domain/domain-error'
 
 /**
- * No such text channel, its server is gone, the person is not a member, or
+ * No such channel, its server is gone, the person is not a member, or
  * they may not view it: the same answer for all (NFR-SEC-05).
  */
 export class ChannelNotFoundError extends DomainError {

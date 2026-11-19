@@ -1,4 +1,4 @@
-/** Send a message to a text channel (REQ-MSG-01), maybe answering another (REQ-MSG-05). */
+/** Send a message to a text channel or a voice room's chat (REQ-MSG-01), maybe answering another (REQ-MSG-05). */
 export class SendMessageCommand {
     constructor(
         readonly userId: string,

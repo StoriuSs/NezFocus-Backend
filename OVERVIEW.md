@@ -417,8 +417,9 @@ messaging through `PRESENCE` (@here), notifications through `PRESENCE` too
 (`underLock`). A tab's `typing.start` becomes `ReportTypingCommand`, whose
 handler publishes `TypingSignalledEvent`: typing is messaging's (D-176).
 
-`src/modules/messaging/` holds the messages of text channels (SRS 4.4),
-grouped by area like `servers`. `POST /channels/{id}/messages` asks servers'
+`src/modules/messaging/` holds the messages of text channels and of voice
+rooms' chat (SRS 4.4; a room's chat reads and posts as a text channel, in
+the room or not, and has no pins: D-213), grouped by area like `servers`. `POST /channels/{id}/messages` asks servers'
 `CHANNEL_DIRECTORY` which server the channel is in, then
 `PERMISSION_CHECKER` what the person may do there
 (`application/services/channel-access.ts`), counts the message per person

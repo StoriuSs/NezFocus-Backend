@@ -9,7 +9,7 @@ import { ListPinsQuery, PinMessageCommand, PinnedMessageView, UnpinMessageComman
 import { ChannelIdParamsDto, PinListResponseDto, PinParamsDto } from './dto'
 
 /**
- * The pins of a text channel (SRS 5.1, REQ-MSG-07): reading them, pinning and
+ * The pins of a text channel (SRS 5.1, REQ-MSG-07; a voice room's chat has none, D-213): reading them, pinning and
  * unpinning one (MANAGE_MESSAGES). A channel one may not view, or a message
  * not of it, is NOT_FOUND (NFR-SEC-05).
  */
@@ -38,7 +38,8 @@ export class PinController {
      * Pin a regular message of the channel: told as `pins.updated`, with the
      * system message "<who> pinned a message" as `message.created`
      * (REQ-MSG-08). Pinning it again changes nothing; a 51st pin is
-     * MAX_PINS_REACHED.
+     * MAX_PINS_REACHED; a voice room's chat has no pins (VALIDATION_ERROR,
+     * rule room_chat, D-213).
      */
     @Put(':messageId')
     @HttpCode(HttpStatus.OK)

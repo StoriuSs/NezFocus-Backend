@@ -236,10 +236,9 @@ describe('Messages (integration)', () => {
     })
 
     describe('who may read and post (REQ-ROLE-03, REQ-ROLE-04, NFR-SEC-05)', () => {
-        it('answers not found for a channel one may not view, a voice room, an unknown id, or a stranger', async () => {
+        it('answers not found for a channel one may not view, an unknown id, or a stranger', async () => {
             expect(outcome(await send('binh', secretId, 'Xin chào'))).toEqual([404, 'NOT_FOUND_ERROR'])
             expect(outcome(await history('binh', secretId))).toEqual([404, 'NOT_FOUND_ERROR'])
-            expect(outcome(await send('binh', voiceId, 'Xin chào'))).toEqual([404, 'NOT_FOUND_ERROR'])
             expect(outcome(await history('binh', randomUUID()))).toEqual([404, 'NOT_FOUND_ERROR'])
             expect(outcome(await history('khanh', generalId))).toEqual([404, 'NOT_FOUND_ERROR'])
         })
@@ -276,6 +275,63 @@ describe('Messages (integration)', () => {
             const until = Date.parse(refused.body.data.timeout_until as string)
             expect(until).toBeGreaterThan(Date.now() + 50_000)
             expect((await history('dung', generalId)).status).toBe(200)
+        })
+    })
+
+    describe('the chat of a voice room (07 S-ROOM-08, P10, D-213)', () => {
+        it('takes messages as a text channel, without being in the room: history, the channel’s sockets, mentions, unread', async () => {
+            const watching = collect(await connectAs('chi'), 'message.created')
+
+            const sent = await send('binh', voiceId, `<@${users.chi.id}> vào phòng ôn chương 3 không?`)
+
+            expect(sent.status).toBe(201)
+            expect(sent.body.data).toMatchObject({ channel_id: voiceId, mention_users: [{ id: users.chi.id }] })
+            expect((await history('an', voiceId)).body.data.items.at(-1)).toMatchObject({ id: sent.body.data.id })
+            expect(await watching()).toEqual([{ message: sent.body.data, nonce: expect.any(String) }])
+            const mentioned = await prisma.messageMention.findMany({
+                where: { messageId: sent.body.data.id },
+                select: { userId: true }
+            })
+            expect(mentioned).toEqual([{ userId: users.chi.id }])
+            const states = await as('chi', api().get('/api/v1/me/read-states'))
+            expect(states.body.data.items).toContainEqual(
+                expect.objectContaining({ server_id: serverId, channel_id: voiceId, unread_count: 1, mention_count: 1 })
+            )
+            const acked = await as('chi', api().post(`/api/v1/channels/${voiceId}/ack`)).send({})
+            expect(acked.body.data).toMatchObject({ channel_id: voiceId, unread_count: 0, mention_count: 0 })
+        })
+
+        it('keeps a private room’s chat from whoever may not view the room', async () => {
+            const made = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ type: 'voice', name: 'Phòng cán sự', is_private: true, view_role_ids: [] })
+            const privateRoomId: string = made.body.data.id
+
+            expect((await send('an', privateRoomId, 'Họp cán sự')).status).toBe(201)
+            expect(outcome(await history('binh', privateRoomId))).toEqual([404, 'NOT_FOUND_ERROR'])
+            expect(outcome(await send('binh', privateRoomId, 'Cho mình vào'))).toEqual([404, 'NOT_FOUND_ERROR'])
+            const states = await as('binh', api().get('/api/v1/me/read-states'))
+            expect(states.body.data.items.map((state: { channel_id: string }) => state.channel_id)).not.toContain(
+                privateRoomId
+            )
+        })
+
+        it('has no pins: pinning there is a broken rule, after the usual checks', async () => {
+            const sent = await send('binh', voiceId, 'Đề cương ôn tập')
+            const id: string = sent.body.data.id
+
+            const pinned = await as('an', api().put(`/api/v1/channels/${voiceId}/pins/${id}`))
+            expect(outcome(pinned)).toEqual([422, 'VALIDATION_ERROR'])
+            expect(pinned.body.data).toMatchObject({ rule: 'room_chat' })
+            expect(outcome(await as('an', api().delete(`/api/v1/channels/${voiceId}/pins/${id}`)))).toEqual([
+                422,
+                'VALIDATION_ERROR'
+            ])
+            expect(outcome(await as('binh', api().put(`/api/v1/channels/${voiceId}/pins/${id}`)))).toEqual([
+                403,
+                'FORBIDDEN_ERROR'
+            ])
+            expect(await prisma.message.count({ where: { channelId: voiceId, type: 'system' } })).toBe(0)
         })
     })
 

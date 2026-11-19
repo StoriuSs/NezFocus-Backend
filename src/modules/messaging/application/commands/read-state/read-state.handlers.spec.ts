@@ -75,7 +75,7 @@ const message = (id: string, channelId: string, deleted = false): StoredMessage 
 
 /**
  * Server ÔT: #hoi-dap with m1 → m3 (m2 deleted), #trong with no message,
- * #ban-quan-ly private to moderators (Chi) with m9, a voice room. Bình is a
+ * #ban-quan-ly private to moderators (Chi) with m9, a voice room with m5. Bình is a
  * member who joined on 1/11; the read states keep only what was marked.
  */
 function world() {
@@ -83,7 +83,8 @@ function world() {
         ['m1', message('m1', 'hoi-dap')],
         ['m2', message('m2', 'hoi-dap', true)],
         ['m3', message('m3', 'hoi-dap')],
-        ['m9', message('m9', 'ban-quan-ly')]
+        ['m9', message('m9', 'ban-quan-ly')],
+        ['m5', message('m5', 'phong-hoc')]
     ])
     const marks = new Map<string, string>()
     const asked: { userId: string; roleIds: string[]; channels: ReadScope[] }[] = []
@@ -189,12 +190,18 @@ describe('AckChannelHandler (REQ-MSG-09, D-46, D-173)', () => {
         expect(readStates.markRead).not.toHaveBeenCalled()
     })
 
-    it('is NOT_FOUND in a channel the person may not view, or a voice room', async () => {
+    it('is NOT_FOUND in a channel the person may not view', async () => {
         const { ack, readStates } = world()
         await expect(ack('binh', 'ban-quan-ly', 'm9')).rejects.toBeInstanceOf(ChannelNotFoundError)
-        await expect(ack('binh', 'phong-hoc')).rejects.toBeInstanceOf(ChannelNotFoundError)
         await expect(ack('binh', 'khong-co')).rejects.toBeInstanceOf(ChannelNotFoundError)
         expect(readStates.markRead).not.toHaveBeenCalled()
+    })
+
+    it('marks a voice room’s chat read as a text channel (S-ROOM-08)', async () => {
+        const { ack, marks } = world()
+        const state = await ack('binh', 'phong-hoc', 'm5')
+        expect(marks.get('binh:phong-hoc')).toBe('m5')
+        expect(state).toMatchObject({ serverId: 'ot', channelId: 'phong-hoc', lastReadId: 'm5' })
     })
 
     it('counts with the roles the person holds there and from when they joined (D-170)', async () => {

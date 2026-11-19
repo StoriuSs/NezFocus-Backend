@@ -3,12 +3,12 @@ import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
 import { MEMBERSHIP, MembershipPort } from '@/modules/servers'
 import { READ_STATE_REPOSITORY, ReadScope, ReadStateRepositoryPort, readFloor } from '../../../domain'
-import { ReadStateView, viewableTextChannels } from '../../services/read-states'
+import { ReadStateView, viewableChannels } from '../../services/read-states'
 import { ListReadStatesQuery } from './read-state.queries'
 
 /**
- * Every text channel the person may view, in each server they are in, with
- * how far they have read it (REQ-MSG-09, D-170, D-173). One statement for
+ * Every channel the person may view (text, and voice rooms' chat), in each
+ * server they are in, with how far they have read it (REQ-MSG-09, D-170, D-173). One statement for
  * all of them, with every role the person holds: role ids are unique across
  * servers and a message only mentions roles of its own server. A server left
  * between listing and checking is skipped.
@@ -31,7 +31,7 @@ export class ListReadStatesHandler implements IQueryHandler<ListReadStatesQuery>
             const access = await this.permissions.access(serverId, userId)
             if (!access) continue
             roleIds.push(...access.member.roleIds)
-            for (const channelId of viewableTextChannels(access.server, access.member, now)) {
+            for (const channelId of viewableChannels(access.server, access.member, now)) {
                 serverOf.set(channelId, serverId)
                 channels.push({ channelId, floorId: readFloor(joinedAt) })
             }

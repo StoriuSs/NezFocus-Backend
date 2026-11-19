@@ -44,6 +44,7 @@ const attachments = {
 
 const channel = (permissions: bigint): OpenChannel => ({
     serverId: 'ot',
+    type: 'text',
     permissions,
     member: { userId: 'an', roleIds: [], timeoutUntil: null }
 })

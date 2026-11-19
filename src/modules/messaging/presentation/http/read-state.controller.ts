@@ -22,7 +22,7 @@ export class ReadStateController {
         private readonly queryBus: QueryBus
     ) {}
 
-    /** Every text channel the reader may view, with its unread and mentions counted up to 100. */
+    /** Every channel the reader may view (text, and voice rooms' chat), with its unread and mentions counted up to 100. */
     @Get('me/read-states')
     @HttpCode(HttpStatus.OK)
     @ApiEnvelopeResponse(ReadStateListResponseDto)

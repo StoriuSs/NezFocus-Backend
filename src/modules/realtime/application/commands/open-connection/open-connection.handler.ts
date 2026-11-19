@@ -17,8 +17,8 @@ export interface OpenedConnection {
 /**
  * Lets a socket in (ARCHITECTURE 3.1 steps 2 to 4): spends its ticket, checks
  * the session that bought it has not ended since, and works out its rooms:
- * its own, its session's, each server it is in, and each text channel there
- * it may view (D-163): serverRooms, the rule L9 reuses when permissions
+ * its own, its session's, each server it is in, and each channel there it
+ * may view, text or voice (D-163, D-205): serverRooms, the rule L9 reuses when permissions
  * change.
  */
 @CommandHandler(OpenConnectionCommand)

@@ -71,8 +71,10 @@ export class CannotDeleteMessageError extends DomainError {
  * - `empty`: a message holds text or files (REQ-MSG-01, D-93); an edit may
  *   take all the text out of one with files.
  * - `attachments`: at most 10 files in a message, each once (REQ-MSG-04).
+ * - `room_chat`: the chat of a voice room has no pins (D-213); its page has
+ *   no Pins panel, so only a forged request.
  */
-export type MessageRule = 'reply_target' | 'system_message' | 'emoji' | 'length' | 'empty' | 'attachments'
+export type MessageRule = 'reply_target' | 'system_message' | 'emoji' | 'length' | 'empty' | 'attachments' | 'room_chat'
 
 /** A message that breaks one of the rules above. */
 export class MessageRuleError extends DomainError {

@@ -2,18 +2,21 @@ import { AccessMember, channelPermissions, Permission, PermissionCheckerPort } f
 import { ChannelDirectoryPort } from '@/modules/servers'
 import { CannotSendError, ChannelNotFoundError, TimedOutError } from '../../domain'
 
-/** A text channel the person may view, and what they may do in it. */
+/** A channel the person may view, and what they may do in it. */
 export interface OpenChannel {
     serverId: string
+    /** A text channel, or a voice room, whose chat has no pins (D-213). */
+    type: 'text' | 'voice'
     /** From channelPermissions: private channels, roles, the owner, a timeout. */
     permissions: bigint
     member: AccessMember
 }
 
 /**
- * The text channel `channelId`, as `userId` sees it now. Anyone who may not
- * view it learns only "not found" (NFR-SEC-05): no such channel, its server
- * gone, not a member, a private channel, or a voice room (no chat before M4).
+ * The channel `channelId`, as `userId` sees it now: a text channel, or the
+ * chat of a voice room, which reads and posts as one (S-ROOM-08), in the
+ * room or not. Anyone who may not view it learns only "not found" (NFR-SEC-05): no
+ * such channel, its server gone, not a member, a private channel.
  *
  * Reads the permission cache (PERMISSION_CHECKER): a role or a timeout given a
  * moment ago reaches it once servers has told the cache (D-146).
@@ -29,15 +32,15 @@ export async function openChannel(
     if (!serverId) throw new ChannelNotFoundError(channelId)
     const access = await checker.access(serverId, userId)
     const channel = access?.server.channels.find((candidate) => candidate.id === channelId)
-    if (!access || channel?.type !== 'text') throw new ChannelNotFoundError(channelId)
+    if (!access || !channel) throw new ChannelNotFoundError(channelId)
 
     const permissions = channelPermissions(access.server, access.member, channel, now)
     if ((permissions & Permission.VIEW_CHANNEL) === 0n) throw new ChannelNotFoundError(channelId)
-    return { serverId, permissions, member: access.member }
+    return { serverId, type: channel.type, permissions, member: access.member }
 }
 
 /**
- * Those among `userIds` who may view the text channel now, in the order
+ * Those among `userIds` who may view the channel now (text or voice), in the order
  * given: members whose roles, the channel's privacy and the owner let them
  * (D-17); a timed-out member still views (appendix B). Anyone else is left
  * out: a mention of them reaches no one (D-164).
@@ -53,7 +56,7 @@ export async function viewersOf(
         userIds.map(async (userId) => {
             const access = await checker.access(serverId, userId)
             const channel = access?.server.channels.find((candidate) => candidate.id === channelId)
-            if (!access || channel?.type !== 'text') return false
+            if (!access || !channel) return false
             return (channelPermissions(access.server, access.member, channel, now) & Permission.VIEW_CHANNEL) !== 0n
         })
     )

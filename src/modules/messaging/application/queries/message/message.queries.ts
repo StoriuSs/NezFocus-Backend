@@ -9,7 +9,7 @@ export class ListMessagePreviewsQuery {
     constructor(readonly messages: { id: string; serverId: string }[]) {}
 }
 
-/** A page of a text channel's history (SRS 5.1, D-48). */
+/** A page of a channel's history, text or a voice room's chat (SRS 5.1, D-48). */
 export class ListMessagesQuery {
     constructor(
         readonly userId: string,

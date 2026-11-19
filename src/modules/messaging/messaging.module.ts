@@ -69,9 +69,9 @@ import {
 } from './presentation'
 
 /**
- * Messages in text channels (SRS 4.4): the only module that writes the
- * messaging tables. Asks servers which server a channel is in
- * (CHANNEL_DIRECTORY), permissions what someone may do there
+ * Messages in text channels and the chat of voice rooms (SRS 4.4,
+ * S-ROOM-08): the only module that writes the messaging tables. Asks
+ * servers which server a channel is in (CHANNEL_DIRECTORY), permissions what someone may do there
  * (PERMISSION_CHECKER), when someone joined a server (MEMBERSHIP, for where
  * their unread starts, which of the people online are in a server, for
  * @here, and who views a channel, for @everyone and @role), users for pictures as addresses and the status chosen

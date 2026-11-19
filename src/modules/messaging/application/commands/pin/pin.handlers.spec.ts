@@ -55,6 +55,14 @@ const server: AccessServer = {
             viewRoleIds: ['quan-ly'],
             sendMode: 'everyone',
             taskBoardEnabled: false
+        },
+        {
+            id: 'phong-hoc',
+            type: 'voice',
+            isPrivate: false,
+            viewRoleIds: [],
+            sendMode: 'everyone',
+            taskBoardEnabled: false
         }
     ]
 }
@@ -65,7 +73,8 @@ const person = (id: string, displayName: string) => ({ id, username: id, display
  * One server: Bình a member, Chi a moderator (MANAGE_MESSAGES), Phong a
  * moderator timed out for an hour, Khánh an ADMINISTRATOR timed out too, An
  * the owner. Messages: m1 in #hoi-dap,
- * m2 in #ban-quan-ly (private to moderators), m3 a system message.
+ * m2 in #ban-quan-ly (private to moderators), m3 a system message, m5 in
+ * the chat of a voice room.
  */
 function world() {
     const messages = new Map<string, StoredMessage>()
@@ -94,6 +103,7 @@ function world() {
     seed('m1')
     seed('m2', 'ban-quan-ly')
     seed('m3', 'hoi-dap', 'system')
+    seed('m5', 'phong-hoc')
 
     const pinned = new Map<string, string[]>()
     const pinsOf = (channelId: string) => pinned.get(channelId) ?? []
@@ -244,6 +254,17 @@ describe('PinMessageHandler (REQ-MSG-07, REQ-MSG-08, SRS 1.71)', () => {
         await expect(pin('chi', 'hoi-dap', 'm3')).rejects.toBeInstanceOf(MessageRuleError)
     })
 
+    it('refuses a message of a voice room’s chat, which has no pins (D-213), after the usual checks', async () => {
+        const { pin, pinsOf, events } = world()
+        await expect(pin('chi', 'phong-hoc', 'm5')).rejects.toMatchObject({ details: { rule: 'room_chat' } })
+        await expect(pin('khanh', 'phong-hoc', 'm5')).rejects.toBeInstanceOf(MessageRuleError)
+        // Without MANAGE_MESSAGES, or timed out, says so first: that is what the person could change.
+        await expect(pin('binh', 'phong-hoc', 'm5')).rejects.toBeInstanceOf(CannotPinError)
+        await expect(pin('phong', 'phong-hoc', 'm5')).rejects.toBeInstanceOf(TimedOutError)
+        expect(pinsOf('phong-hoc')).toEqual([])
+        expect(events.publish).not.toHaveBeenCalled()
+    })
+
     it('answers not found for a message of another channel than the route says, a hidden or a deleted one', async () => {
         const { pin, messages } = world()
         await expect(pin('chi', 'tai-lieu', 'm1')).rejects.toBeInstanceOf(MessageNotFoundError)
@@ -279,5 +300,11 @@ describe('UnpinMessageHandler (REQ-MSG-07, SRS 1.71)', () => {
     it('answers not found for a message of another channel than the route says', async () => {
         const { unpin } = world()
         await expect(unpin('chi', 'tai-lieu', 'm1')).rejects.toBeInstanceOf(MessageNotFoundError)
+    })
+
+    it('refuses in a voice room’s chat (D-213)', async () => {
+        const { unpin, events } = world()
+        await expect(unpin('chi', 'phong-hoc', 'm5')).rejects.toMatchObject({ details: { rule: 'room_chat' } })
+        expect(events.publish).not.toHaveBeenCalled()
     })
 })

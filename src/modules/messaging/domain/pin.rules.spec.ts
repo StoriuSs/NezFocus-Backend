@@ -1,5 +1,5 @@
 import { MaxPinsReachedError, MessageNotFoundError, MessageRuleError } from './errors'
-import { decidePin, MAX_PINS, PinFacts } from './pin.rules'
+import { decidePin, MAX_PINS, PinFacts, requirePinsIn } from './pin.rules'
 
 const facts = (over: Partial<PinFacts> = {}): PinFacts => ({
     messageId: 'm1',
@@ -30,5 +30,12 @@ describe('Pinning a message, decided under the lock of its channel pins (REQ-MSG
 
     it('refuses a system message (SRS 1.71)', () => {
         expect(() => decidePin(facts({ system: true }))).toThrow(MessageRuleError)
+    })
+})
+
+describe('Which channels have pins (D-213)', () => {
+    it('a text channel has, a voice room’s chat has not', () => {
+        expect(() => requirePinsIn('text')).not.toThrow()
+        expect(() => requirePinsIn('voice')).toThrow(expect.objectContaining({ details: { rule: 'room_chat' } }))
     })
 })

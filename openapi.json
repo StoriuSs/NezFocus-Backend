@@ -4125,7 +4125,7 @@
             "bearer": []
           }
         ],
-        "summary": "Pin a regular message of the channel: told as `pins.updated`, with the\nsystem message \"<who> pinned a message\" as `message.created`\n(REQ-MSG-08). Pinning it again changes nothing; a 51st pin is\nMAX_PINS_REACHED.",
+        "summary": "Pin a regular message of the channel: told as `pins.updated`, with the\nsystem message \"<who> pinned a message\" as `message.created`\n(REQ-MSG-08). Pinning it again changes nothing; a 51st pin is\nMAX_PINS_REACHED; a voice room's chat has no pins (VALIDATION_ERROR,\nrule room_chat, D-213).",
         "tags": [
           "messaging"
         ]
@@ -4220,7 +4220,7 @@
             "bearer": []
           }
         ],
-        "summary": "Every text channel the reader may view, with its unread and mentions counted up to 100.",
+        "summary": "Every channel the reader may view (text, and voice rooms' chat), with its unread and mentions counted up to 100.",
         "tags": [
           "messaging"
         ]

@@ -2,7 +2,7 @@ import { Expose } from 'class-transformer'
 import { IsInt, IsString, Max, Min } from 'class-validator'
 import { READ_COUNT_CAP } from '../../../domain'
 
-/** How far the reader has read one text channel, and what is new there to them (REQ-MSG-09). */
+/** How far the reader has read one channel (text, or a voice room's chat), and what is new there to them (REQ-MSG-09). */
 export class ReadStateResponseDto {
     @Expose()
     @IsString()

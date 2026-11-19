@@ -24,7 +24,7 @@ function cursorOf({ before, after, around }: MessageHistoryQueryDto): MessageCur
 }
 
 /**
- * The messages of a text channel (SRS 5.1): its history, page by page, and
+ * The messages of a text channel or a voice room's chat (SRS 5.1): its history, page by page, and
  * sending one. Whoever may not view the channel gets NOT_FOUND (NFR-SEC-05).
  */
 @ApiTags('messaging')

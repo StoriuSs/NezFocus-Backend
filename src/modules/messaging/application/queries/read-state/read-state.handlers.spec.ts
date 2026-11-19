@@ -87,13 +87,14 @@ function world() {
 }
 
 describe('ListReadStatesHandler (REQ-MSG-09, SRS 5.1)', () => {
-    it('answers for every text channel the person may view in each of their servers, with its server', async () => {
+    it('answers for every channel the person may view in each of their servers, a voice room’s chat too, with its server', async () => {
         const { list } = world()
 
         const states = await list()
 
         expect(states.map(({ serverId, channelId }) => `${serverId}/${channelId}`)).toEqual([
             'ot/hoi-dap',
+            'ot/phong-hoc',
             'ot/tai-lieu',
             'nd/chung'
         ])
@@ -117,6 +118,7 @@ describe('ListReadStatesHandler (REQ-MSG-09, SRS 5.1)', () => {
                 roleIds: ['mobile'],
                 channels: [
                     { channelId: 'hoi-dap', floorId: readFloor(JOINED_OT) },
+                    { channelId: 'phong-hoc', floorId: readFloor(JOINED_OT) },
                     { channelId: 'tai-lieu', floorId: readFloor(JOINED_OT) },
                     { channelId: 'chung', floorId: readFloor(JOINED_ND) }
                 ]
