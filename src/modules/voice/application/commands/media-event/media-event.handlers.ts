@@ -7,6 +7,8 @@ import {
     channelOfRoom,
     joinWrite,
     leaveWrite,
+    ScreenAlreadySharedError,
+    shareWrite,
     VOICE_STATE_REPOSITORY,
     VoiceConnection,
     VoiceStateRepositoryPort,
@@ -17,12 +19,17 @@ import {
     EventReceiptsPort,
     MEDIA_EVENTS,
     MEDIA_ROOMS,
+    MediaEvent,
     MediaEventsPort,
     MediaRoomsPort
 } from '../../ports'
 import { standingOf } from '../../services/room-recheck'
 import { changeEvents } from '../../services/voice-changes'
 import { ApplyMediaEventCommand } from './media-event.commands'
+
+type ShareEvent = Extract<MediaEvent, { kind: 'share_started' | 'share_stopped' }>
+const isShare = (event: MediaEvent): event is ShareEvent =>
+    event.kind === 'share_started' || event.kind === 'share_stopped'
 
 /**
  * Who came into a voice room and who went out, as LiveKit tells it (D-210):
@@ -45,6 +52,12 @@ import { ApplyMediaEventCommand } from './media-event.commands'
  * Someone who joined a room they may no longer be in (a token taken before
  * a ban or a timeout, used within its ten minutes; the room deleted) is put
  * out at once, told why, and never listed (D-212).
+ *
+ * A screen started or stopped marks its person sharing or not, for the
+ * connection the row holds (D-101). One room shares one screen: a second
+ * (two people starting at once, or a Share button not yet off) meets the
+ * partial unique index, and its track is muted at LiveKit and its person
+ * told who shares (`voice.share_rejected`); their app takes it down.
  */
 @CommandHandler(ApplyMediaEventCommand)
 export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCommand> {
@@ -65,6 +78,13 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
         const channelId = channelOfRoom(event.room)
         if (!channelId) return
         if (!(await this.receipts.firstSight(event.id))) return
+        if (isShare(event)) {
+            await this.share(event, channelId).catch(async (error: unknown) => {
+                await this.receipts.forget(event.id)
+                throw error
+            })
+            return
+        }
 
         const connection: VoiceConnection = {
             userId: event.identity,
@@ -89,6 +109,27 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             // Not reached now: the reconciliation puts them out within minutes (the adapter logged why).
             await this.media.removeParticipant(voiceRoomOf(before.channelId), event.identity).catch(() => undefined)
         }
+    }
+
+    /**
+     * Marks the screen of `event`'s connection started or stopped; a second
+     * screen in the room is muted and its person told. LiveKit unreachable
+     * throws, nobody told: the event is sent again.
+     */
+    private async share(event: ShareEvent, channelId: string): Promise<void> {
+        const sharing = event.kind === 'share_started'
+        let result: Awaited<ReturnType<VoiceStateRepositoryPort['change']>>
+        try {
+            result = await this.states.change(event.identity, (current) =>
+                shareWrite(current, event.participantSid, sharing)
+            )
+        } catch (error) {
+            if (!(error instanceof ScreenAlreadySharedError)) throw error
+            await this.media.muteTrack(event.room, event.identity, event.trackSid)
+            this.publisher.toUser(event.identity, 'voice.share_rejected', { channelId, userId: error.sharerId })
+            return
+        }
+        for (const changed of changeEvents(result)) this.events.publish(changed)
     }
 
     /**

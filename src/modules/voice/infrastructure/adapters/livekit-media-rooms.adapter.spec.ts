@@ -65,17 +65,71 @@ describe('LiveKitMediaRooms asking LiveKit', () => {
     afterEach(() => jest.restoreAllMocks())
     /** LiveKit's answer to each call, made when the call comes. */
     const answers = (
-        method: 'listParticipants' | 'removeParticipant' | 'updateParticipant',
+        method:
+            | 'listParticipants'
+            | 'removeParticipant'
+            | 'updateParticipant'
+            | 'mutePublishedTrack'
+            | 'getParticipant',
         outcome: () => Promise<unknown>
     ) => jest.spyOn(RoomServiceClient.prototype, method).mockImplementation(outcome as never)
     const logged = (level: 'warn' | 'error') => jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined)
 
-    it('lists who is in a room, with when they joined', async () => {
-        answers('listParticipants', async () => [{ identity: 'user-1', sid: 'PA_1', joinedAtMs: 1795000000123n }])
+    it('lists who is in a room, with when they joined and whether they send a screen (D-101)', async () => {
+        answers('listParticipants', async () => [
+            { identity: 'user-1', sid: 'PA_1', joinedAtMs: 1795000000123n, tracks: [] },
+            {
+                identity: 'user-2',
+                sid: 'PA_2',
+                joinedAtMs: 1795000000456n,
+                tracks: [{ source: TrackSource.MICROPHONE }, { source: TrackSource.SCREEN_SHARE }]
+            },
+            // Its sound alone is no screen, nor is a muted one (a second screen in the room, stopped).
+            {
+                identity: 'user-3',
+                sid: 'PA_3',
+                joinedAtMs: 1795000000789n,
+                tracks: [{ source: TrackSource.SCREEN_SHARE_AUDIO }]
+            },
+            {
+                identity: 'user-4',
+                sid: 'PA_4',
+                joinedAtMs: 1795000000999n,
+                tracks: [{ source: TrackSource.SCREEN_SHARE, muted: true }]
+            }
+        ])
 
         expect(await adapter().listParticipants('voice:c1')).toEqual([
-            { identity: 'user-1', sid: 'PA_1', joinedAt: new Date(1795000000123) }
+            { identity: 'user-1', sid: 'PA_1', joinedAt: new Date(1795000000123), sharing: false },
+            { identity: 'user-2', sid: 'PA_2', joinedAt: new Date(1795000000456), sharing: true },
+            { identity: 'user-3', sid: 'PA_3', joinedAt: new Date(1795000000789), sharing: false },
+            { identity: 'user-4', sid: 'PA_4', joinedAt: new Date(1795000000999), sharing: false }
         ])
+    })
+
+    it("mutes one track of a person's, nothing when it or they are gone, and reports LiveKit out of reach", async () => {
+        logged('warn')
+        const holding = answers('getParticipant', async () => ({ tracks: [{ sid: 'TR_0' }, { sid: 'TR_1' }] }))
+        const mute = answers('mutePublishedTrack', async () => ({}))
+        await adapter().muteTrack('voice:c1', 'user-1', 'TR_1')
+        expect(holding).toHaveBeenCalledWith('voice:c1', 'user-1')
+        expect(mute).toHaveBeenCalledWith('voice:c1', 'user-1', 'TR_1', true)
+
+        // Gone: LiveKit is not asked to mute, which would wait seconds to say "unavailable".
+        mute.mockClear()
+        await adapter().muteTrack('voice:c1', 'user-1', 'TR_gone')
+        answers('getParticipant', () =>
+            Promise.reject(new ServerError('not_found', 'participant does not exist', 404, 'not_found'))
+        )
+        await expect(adapter().muteTrack('voice:c1', 'user-1', 'TR_1')).resolves.toBeUndefined()
+        expect(mute).not.toHaveBeenCalled()
+
+        answers('getParticipant', async () => ({ tracks: [{ sid: 'TR_1' }] }))
+
+        answers('mutePublishedTrack', () => Promise.reject(new Error('connect ECONNREFUSED')))
+        await expect(adapter().muteTrack('voice:c1', 'user-1', 'TR_1')).rejects.toBeInstanceOf(
+            MediaRoomsUnavailableError
+        )
     })
 
     it('changes what a person may send: the whole permission, as a join token gives it (D-207)', async () => {

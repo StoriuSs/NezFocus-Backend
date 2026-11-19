@@ -79,7 +79,8 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
             return participants.map((participant) => ({
                 identity: participant.identity,
                 sid: participant.sid,
-                joinedAt: new Date(Number(participant.joinedAtMs))
+                joinedAt: new Date(Number(participant.joinedAtMs)),
+                sharing: participant.tracks.some((track) => track.source === TrackSource.SCREEN_SHARE && !track.muted)
             }))
         } catch (error) {
             // The local server lists nobody for a room it never heard of; a
@@ -114,6 +115,20 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
         } catch (error) {
             if (isNotFound(error)) return
             throw this.unavailable('change what a person may send in', room, error)
+        }
+    }
+
+    async muteTrack(room: string, identity: string, trackSid: string): Promise<void> {
+        try {
+            // Asked about a person or track it does not have, LiveKit waits
+            // three seconds and answers "unavailable" (v1.13.11, tried
+            // 19/11/2026), as if it were down: asked first, it says so at once.
+            const participant = await this.rooms.getParticipant(room, identity)
+            if (!participant.tracks.some((track) => track.sid === trackSid)) return
+            await this.rooms.mutePublishedTrack(room, identity, trackSid, true)
+        } catch (error) {
+            if (isNotFound(error)) return
+            throw this.unavailable('mute a track in', room, error)
         }
     }
 

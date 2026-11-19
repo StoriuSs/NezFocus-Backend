@@ -166,6 +166,51 @@ export function modMuteWrite(current: VoiceState | null, channelId: string, mute
     return { kind: 'flags', flags: muted ? { modMuted: true, micOn: false } : { modMuted: false } }
 }
 
+/**
+ * The screen a connection shares started (`sharing`) or stopped (D-101):
+ * only for the connection the row holds, since the track_unpublished of the
+ * connection a reload replaced can come late. Nothing to write when it is
+ * already so, or they are in no room.
+ */
+export function shareWrite(current: VoiceState | null, participantSid: string, sharing: boolean): VoiceWrite | null {
+    if (current?.participantSid !== participantSid || current.screenSharing === sharing) return null
+    return { kind: 'flags', flags: { screenSharing: sharing } }
+}
+
+/** A connection LiveKit lists, and whether it sends a screen (one muted is not sent). */
+export interface LiveScreen {
+    channelId: string
+    participantSid: string
+    sharing: boolean
+}
+
+/**
+ * The screens the reconciliation sets right against LiveKit, read after the
+ * rows (D-101):
+ * - `off`: rows marked sharing whose connection LiveKit lists with no
+ *   screen. A lost track_unpublished, which would keep the room's Share
+ *   button off for everyone.
+ * - `on`: a room where nobody is marked sharing (once `off` is done) and
+ *   exactly one connection sends a screen: its row. A lost track_published.
+ *   With two screens sent, the webhooks are still settling who came first.
+ * A connection LiveKit no longer lists is in neither: its row goes as a
+ * whole. One no row holds yet waits for its join.
+ */
+export function screenFixes(rows: VoiceState[], live: LiveScreen[]): { off: VoiceState[]; on: VoiceState[] } {
+    const sharing = new Map(live.map((screen) => [screen.participantSid, screen.sharing]))
+    const off = rows.filter((row) => row.screenSharing && sharing.get(row.participantSid) === false)
+    const marked = new Set(rows.filter((row) => row.screenSharing && !off.includes(row)).map((row) => row.channelId))
+    const rowOf = new Map(rows.map((row) => [row.participantSid, row]))
+    const on: VoiceState[] = []
+    for (const channelId of new Set(live.map((screen) => screen.channelId))) {
+        if (marked.has(channelId)) continue
+        const screens = live.filter((screen) => screen.channelId === channelId && screen.sharing)
+        const row = screens.length === 1 ? rowOf.get(screens[0]!.participantSid) : undefined
+        if (row && !row.screenSharing) on.push(row)
+    }
+    return { off, on }
+}
+
 /** Why someone was put out of their room, as `voice.disconnected` says it (SRS 5.2, D-212). */
 export type DisconnectReason =
     | 'moderator'

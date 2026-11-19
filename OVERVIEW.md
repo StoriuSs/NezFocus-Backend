@@ -588,6 +588,11 @@ in, as a webhook join of such a person does at once. What one person may
 send is decided and set one change at a time, under their `voice-media:`
 lock (`inMediaTurn` of the repository). Each person in a room's list carries their roles
 and whether they own the server, for the moderators' menus (D-205).
+A room shares one screen at a time (D-101): the webhooks of a screen's
+track mark its person sharing, and a second one meets the partial unique
+index of `VoiceState`, so its track is muted at LiveKit and its person told
+who shares (`voice.share_rejected`); the reconciliation sets right a screen
+whose start or stop was lost.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

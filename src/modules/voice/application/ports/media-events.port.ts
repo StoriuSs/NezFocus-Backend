@@ -16,6 +16,16 @@ export type MediaEvent =
           /** When the connection joined. */
           joinedAt: Date
       }
+    | {
+          id: string
+          /** A screen (screen_share track) published or unpublished; its sound is no screen. */
+          kind: 'share_started' | 'share_stopped'
+          room: string
+          identity: string
+          participantSid: string
+          /** The media server's id of the screen's track. */
+          trackSid: string
+      }
     | { id: string; kind: 'other' }
 
 /**

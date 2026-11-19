@@ -571,6 +571,69 @@ describe('Voice rooms (integration)', () => {
         })
     })
 
+    describe('screens shared (track_published / track_unpublished, REQ-VC-05, D-101)', () => {
+        afterEach(emptyRooms)
+
+        /** track_published / track_unpublished of a track `source` sent by `who`'s connection `sid`. */
+        const trackEvent = (
+            kind: 'track_published' | 'track_unpublished',
+            who: Who,
+            sid: string,
+            source = 'SCREEN_SHARE',
+            channelId = roomId
+        ) => ({
+            ...participantEvent('participant_joined', who, channelId, sid, new Date()),
+            event: kind,
+            track: { sid: `TR_${who}_${source}`, type: source === 'SCREEN_SHARE_AUDIO' ? 'AUDIO' : 'VIDEO', source }
+        })
+        const sharingOf = async (who: Who) =>
+            (await prisma.voiceState.findUnique({ where: { userId: users[who].id }, select: { screenSharing: true } }))
+                ?.screenSharing
+
+        it('marks who shares for the room, and unmarks them when they stop', async () => {
+            await joins('an', roomId, 'PA_an')
+            await joins('binh', roomId, 'PA_binh')
+
+            expect((await webhook(trackEvent('track_published', 'an', 'PA_an'))).status).toBe(200)
+            expect(await sharingOf('an')).toBe(true)
+            expect(await peopleIn('binh', roomId)).toEqual([
+                expect.objectContaining({ user: expect.objectContaining({ id: users.an.id }), screen_sharing: true }),
+                expect.objectContaining({ user: expect.objectContaining({ id: users.binh.id }), screen_sharing: false })
+            ])
+
+            await webhook(trackEvent('track_unpublished', 'an', 'PA_an'))
+            expect(await sharingOf('an')).toBe(false)
+        })
+
+        it("leaves a screen's sound, the camera, and the screen of a connection a reload replaced alone", async () => {
+            await joins('an', roomId, 'PA_an')
+            await webhook(trackEvent('track_published', 'an', 'PA_an', 'SCREEN_SHARE_AUDIO'))
+            await webhook(trackEvent('track_published', 'an', 'PA_an', 'CAMERA'))
+            await webhook(trackEvent('track_published', 'an', 'PA_old'))
+            expect(await sharingOf('an')).toBe(false)
+        })
+
+        it('stops a second screen in the room, telling its person who shares; the first stopped, the next one may', async () => {
+            await joins('an', roomId, 'PA_an')
+            await joins('binh', roomId, 'PA_binh')
+            await joins('chi', otherRoomId, 'PA_chi')
+            const heard = collect(await connectAs('binh'), 'voice.share_rejected')
+            await webhook(trackEvent('track_published', 'an', 'PA_an'))
+
+            // LiveKit is asked to mute a track it does not have here: nothing to mute, answered.
+            expect((await webhook(trackEvent('track_published', 'binh', 'PA_binh'))).status).toBe(200)
+            expect(await sharingOf('binh')).toBe(false)
+            expect(await heard()).toEqual([{ channel_id: roomId, user_id: users.an.id }])
+            // Another room has its own screen.
+            await webhook(trackEvent('track_published', 'chi', 'PA_chi', 'SCREEN_SHARE', otherRoomId))
+            expect(await sharingOf('chi')).toBe(true)
+
+            await webhook(trackEvent('track_unpublished', 'an', 'PA_an'))
+            await webhook(trackEvent('track_published', 'binh', 'PA_binh'))
+            expect(await sharingOf('binh')).toBe(true)
+        })
+    })
+
     describe('moderators, and the server putting people out (REQ-VC-04, D-207, D-212)', () => {
         // Chi holds a role with MUTE_MEMBERS and MOVE_MEMBERS, above Bình and Em, below An (the owner).
         let everyoneId: string

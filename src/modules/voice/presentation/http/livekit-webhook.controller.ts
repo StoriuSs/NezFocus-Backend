@@ -7,7 +7,8 @@ import { MESSAGES } from '@/shared/constants'
 import { ApplyMediaEventCommand } from '../../application'
 
 /**
- * LiveKit's webhooks (D-210): who joins and leaves each room. Called by
+ * LiveKit's webhooks (D-210): who joins and leaves each room, and whose
+ * screen starts and stops (D-101). Called by
  * LiveKit, never by a browser: public, with no access token, but every call
  * is signed (Authorization, checked by MEDIA_EVENTS; anything else 401).
  *

@@ -20,6 +20,8 @@ export interface RoomParticipant {
     /** The media server's id of this connection; a reload makes a new one. */
     sid: string
     joinedAt: Date
+    /** Whether they send a screen (D-101): one muted (a second in the room, stopped) is not sent. */
+    sharing: boolean
 }
 
 /**
@@ -63,6 +65,14 @@ export interface MediaRoomsPort {
      * @throws MediaRoomsUnavailableError when the media server cannot be reached
      */
     setSources(room: string, identity: string, sources: MediaSource[]): Promise<void>
+
+    /**
+     * Mutes one track a person sends (D-101: a second screen in the room):
+     * the others stop receiving it; the person's own app takes it down.
+     * Nothing happens when the track or the person is gone.
+     * @throws MediaRoomsUnavailableError when the media server cannot be reached
+     */
+    muteTrack(room: string, identity: string, trackSid: string): Promise<void>
 }
 
 export const MEDIA_ROOMS = Symbol('MediaRoomsPort')

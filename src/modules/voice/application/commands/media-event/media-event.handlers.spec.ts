@@ -2,7 +2,13 @@ import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { EventPublisherPort } from '@/modules/realtime'
 import { ChannelDirectoryPort } from '@/modules/servers'
-import { MediaEventRejectedError, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../../domain'
+import {
+    MediaEventRejectedError,
+    ScreenAlreadySharedError,
+    VoiceState,
+    VoiceStateRepositoryPort,
+    VoiceWrite
+} from '../../../domain'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
 import { EventReceiptsPort, MediaEvent, MediaEventsPort, MediaRoomsPort } from '../../ports'
 import { ApplyMediaEventCommand } from './media-event.commands'
@@ -18,6 +24,15 @@ const joined = (over: Partial<Extract<MediaEvent, { kind: 'joined' | 'left' }>> 
     identity: 'an',
     participantSid: 'PA_new',
     joinedAt: at(10),
+    ...over
+})
+const share = (over: Partial<Extract<MediaEvent, { kind: 'share_started' | 'share_stopped' }>> = {}): MediaEvent => ({
+    id: 'EV_S',
+    kind: 'share_started',
+    room: `voice:${LOUNGE}`,
+    identity: 'an',
+    participantSid: 'PA_old',
+    trackSid: 'TR_screen',
     ...over
 })
 const row = (over: Partial<VoiceState> = {}): VoiceState => ({
@@ -38,7 +53,10 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null, eve
         read: jest.fn(() => (event instanceof Error ? Promise.reject(event) : Promise.resolve(event)))
     }
     const receipts = { firstSight: jest.fn().mockResolvedValue(true), forget: jest.fn().mockResolvedValue(undefined) }
-    const media = { removeParticipant: jest.fn().mockResolvedValue(true) }
+    const media = {
+        removeParticipant: jest.fn().mockResolvedValue(true),
+        muteTrack: jest.fn().mockResolvedValue(undefined)
+    }
     const server = {
         ownerId: 'owner',
         roles: [{ id: 'everyone', permissions: everyone, position: 0, isEveryone: true }],
@@ -65,7 +83,8 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null, eve
                 const after: VoiceState = { ...row(), ...write.connection, micOn: false, cameraOn: false }
                 return { before: current, after }
             }
-            return null
+            if (!current) return null
+            return { before: current, after: { ...current, ...write.flags } }
         })
     }
     const events = { publish: jest.fn() }
@@ -210,5 +229,60 @@ describe("LiveKit's webhooks (D-210)", () => {
 
         await expect(run()).rejects.toThrow('database down')
         expect(receipts.forget).toHaveBeenCalledWith('EV_1')
+    })
+
+    describe('screens shared (track_published / track_unpublished of screen_share, D-101)', () => {
+        it('marks the person sharing, and tells the room', async () => {
+            const { run, states, events } = setup(share(), row())
+
+            await run()
+
+            expect(states.change).toHaveBeenCalledWith('an', expect.any(Function))
+            expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'updated', at(0))]])
+        })
+
+        it('unmarks them when the screen stops', async () => {
+            const { run, events } = setup(share({ kind: 'share_stopped' }), row({ screenSharing: true }))
+
+            await run()
+
+            expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'updated', at(0))]])
+        })
+
+        it('stops a second screen in the room: its track muted, its person told who shares (D-101)', async () => {
+            const { run, states, media, publisher, events, receipts } = setup(share(), row())
+            states.change.mockRejectedValue(new ScreenAlreadySharedError(LOUNGE, 'binh'))
+
+            await run()
+
+            expect(media.muteTrack).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', 'TR_screen')
+            expect(publisher.toUser).toHaveBeenCalledWith('an', 'voice.share_rejected', {
+                channelId: LOUNGE,
+                userId: 'binh'
+            })
+            expect(events.publish).not.toHaveBeenCalled()
+            expect(receipts.forget).not.toHaveBeenCalled()
+        })
+
+        it('forgets the event when LiveKit cannot mute the second screen, telling nobody yet', async () => {
+            const { run, states, media, publisher, receipts } = setup(share(), row())
+            states.change.mockRejectedValue(new ScreenAlreadySharedError(LOUNGE, 'binh'))
+            media.muteTrack.mockRejectedValue(new Error('unreachable'))
+
+            await expect(run()).rejects.toThrow('unreachable')
+            expect(publisher.toUser).not.toHaveBeenCalled()
+            expect(receipts.forget).toHaveBeenCalledWith('EV_S')
+        })
+
+        it('changes nothing for the screen of a connection a reload replaced', async () => {
+            const { run, events } = setup(
+                share({ kind: 'share_stopped' }),
+                row({ participantSid: 'PA_new', screenSharing: true })
+            )
+
+            await run()
+
+            expect(events.publish).not.toHaveBeenCalled()
+        })
     })
 })

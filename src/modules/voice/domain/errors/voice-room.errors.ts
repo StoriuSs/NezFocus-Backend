@@ -35,6 +35,24 @@ export class VoiceTimedOutError extends DomainError {
     }
 }
 
+/**
+ * Someone else in the room already shares a screen (D-101): the partial
+ * unique index refused a second. Never answered over HTTP: the webhook that
+ * met it stops the second screen and tells its person who shares.
+ */
+export class ScreenAlreadySharedError extends DomainError {
+    readonly kind = 'conflict'
+    readonly errorKey = 'CONFLICT'
+
+    constructor(
+        public readonly channelId: string,
+        /** Who shares the room's screen. */
+        public readonly sharerId: string
+    ) {
+        super(`Voice room ${channelId} already has a screen shared by ${sharerId}`)
+    }
+}
+
 /** The person a moderator acts on is not in that room (any more): they left, or never came (D-212). */
 export class VoiceParticipantNotFoundError extends DomainError {
     readonly kind = 'not_found'

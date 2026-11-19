@@ -1,4 +1,4 @@
-import { VoiceConnection, VoiceState, VoiceWrite } from '../voice-state.rules'
+import { VoiceState, VoiceWrite } from '../voice-state.rules'
 
 /** A person in a room as others may see them (D-182): no name or picture once deleted, or waiting to be. */
 export interface VoicePerson {
@@ -28,6 +28,8 @@ export interface VoiceStateRepositoryPort {
      * Writes what `decide` makes of the person's row, read under their lock.
      * Null when it wrote nothing: `decide` gave null, or the room's channel
      * or the account is gone (a webhook about a room just deleted).
+     * @throws ScreenAlreadySharedError when it would mark a second person
+     *   sharing a screen in the room (D-101)
      */
     change(
         userId: string,
@@ -42,8 +44,8 @@ export interface VoiceStateRepositoryPort {
      */
     inMediaTurn<T>(userId: string, work: () => Promise<T>): Promise<T>
 
-    /** Every row's connection: the rooms the reconciliation reads. */
-    connections(): Promise<VoiceConnection[]>
+    /** Every row: the rooms the reconciliation reads, and the screens it checks. */
+    connections(): Promise<VoiceState[]>
 
     /** The people in these rooms, in the order they joined each. */
     occupantsOf(channelIds: string[]): Promise<RoomOccupant[]>

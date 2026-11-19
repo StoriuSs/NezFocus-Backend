@@ -8,6 +8,8 @@ import {
     reasonForLeaving,
     reconcilePlan,
     selfStateWrite,
+    screenFixes,
+    shareWrite,
     VoiceConnection,
     voiceRoomOf
 } from './voice-state.rules'
@@ -161,6 +163,69 @@ describe('writes to a row', () => {
         expect(modMuteWrite(row, A, false)).toBeNull()
         expect(modMuteWrite(row, B, true)).toBeNull()
         expect(modMuteWrite(null, A, true)).toBeNull()
+    })
+})
+
+describe('the screen a person shares (D-101)', () => {
+    const row = { ...connection(), micOn: false, cameraOn: false, screenSharing: false, modMuted: false }
+
+    it("turns the row's screen on and off for its own connection", () => {
+        expect(shareWrite(row, 'PA_1', true)).toEqual({ kind: 'flags', flags: { screenSharing: true } })
+        expect(shareWrite({ ...row, screenSharing: true }, 'PA_1', false)).toEqual({
+            kind: 'flags',
+            flags: { screenSharing: false }
+        })
+    })
+
+    it('writes nothing for a screen already so, the connection a reload replaced, or nobody', () => {
+        expect(shareWrite({ ...row, screenSharing: true }, 'PA_1', true)).toBeNull()
+        expect(shareWrite(row, 'PA_1', false)).toBeNull()
+        // The old connection's track_unpublished, late after a reload that shares again.
+        expect(shareWrite({ ...row, participantSid: 'PA_2', screenSharing: true }, 'PA_1', false)).toBeNull()
+        expect(shareWrite(row, 'PA_2', true)).toBeNull()
+        expect(shareWrite(null, 'PA_1', true)).toBeNull()
+    })
+
+    describe('set right against what LiveKit sends', () => {
+        const live = (participantSid: string, sharing: boolean, channelId = A) => ({
+            channelId,
+            participantSid,
+            sharing
+        })
+
+        it('turns off a row whose connection LiveKit lists with no screen (a lost track_unpublished)', () => {
+            const sharing = { ...row, screenSharing: true }
+            const other = { ...row, userId: 'u2', channelId: B, participantSid: 'PA_9', screenSharing: true }
+            expect(
+                screenFixes(
+                    [sharing, other, { ...row, userId: 'u3', participantSid: 'PA_3' }],
+                    [live('PA_1', false), live('PA_9', true, B), live('PA_3', false)]
+                )
+            ).toEqual({ off: [sharing], on: [] })
+            // A connection LiveKit no longer has: its row goes as a whole.
+            expect(screenFixes([sharing], [])).toEqual({ off: [], on: [] })
+        })
+
+        it('turns on the one screen of a room nobody is marked sharing in (a lost track_published)', () => {
+            const an = { ...row, userId: 'an', participantSid: 'PA_an' }
+            const binh = { ...row, userId: 'binh', participantSid: 'PA_binh', screenSharing: true }
+            expect(screenFixes([an, binh], [live('PA_an', true), live('PA_binh', false)])).toEqual({
+                off: [binh],
+                on: [an]
+            })
+        })
+
+        it('turns on nothing while the room has a sharer, or two screens are sent (the webhooks are still settling who was first)', () => {
+            const an = { ...row, userId: 'an', participantSid: 'PA_an' }
+            const binh = { ...row, userId: 'binh', participantSid: 'PA_binh', screenSharing: true }
+            const chi = { ...row, userId: 'chi', participantSid: 'PA_chi' }
+            expect(screenFixes([an, binh], [live('PA_an', true), live('PA_binh', true)])).toEqual({ off: [], on: [] })
+            // Binh's row is still marked, its connection gone from LiveKit: the row goes first, this run.
+            expect(screenFixes([an, binh], [live('PA_an', true)])).toEqual({ off: [], on: [] })
+            expect(screenFixes([an, chi], [live('PA_an', true), live('PA_chi', true)])).toEqual({ off: [], on: [] })
+            // A connection no row holds yet: its join is the reconciliation's own work, first.
+            expect(screenFixes([], [live('PA_an', true)])).toEqual({ off: [], on: [] })
+        })
     })
 })
 

@@ -7,9 +7,14 @@ import {
     channelOfRoom,
     joinWrite,
     leaveWrite,
+    LiveScreen,
     reconcilePlan,
+    ScreenAlreadySharedError,
+    screenFixes,
+    shareWrite,
     VOICE_STATE_REPOSITORY,
     VoiceConnection,
+    VoiceState,
     VoiceStateRepositoryPort,
     voiceRoomOf
 } from '../../../domain'
@@ -19,11 +24,13 @@ import { clearGoneRooms, standingOf } from '../../services/room-recheck'
 import { changeEvents } from '../../services/voice-changes'
 import { ReconcileVoiceRoomsCommand } from './reconcile.commands'
 
-/** What one run changed: rows added and removed, connections put out. */
+/** What one run changed: rows added and removed, connections put out, screens turned off and on. */
 export interface Reconciled {
     joined: number
     dropped: number
     evicted: number
+    unshared: number
+    shared: number
 }
 
 /**
@@ -39,6 +46,13 @@ export interface Reconciled {
  * write and the same events as the webhook it stands for, under the
  * person's lock, so one that came meanwhile is not undone. LiveKit
  * unreachable: nothing changes, the next run tries again.
+ *
+ * Screens are set right too (D-101, screenFixes): a row still sharing a
+ * screen its connection no longer sends (a lost track_unpublished) is
+ * turned off, or the room's Share button would stay off for everyone; the
+ * one screen sent in a room nobody is marked sharing in (a lost
+ * track_published) is turned on. Two screens sent: who came first is the
+ * webhooks' call, and the run leaves them.
  */
 @CommandHandler(ReconcileVoiceRoomsCommand)
 export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoiceRoomsCommand> {
@@ -63,6 +77,7 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
         )
 
         const live: VoiceConnection[] = []
+        const screens: LiveScreen[] = []
         for (const [channelId, serverId] of servers) {
             const room = voiceRoomOf(channelId)
             for (const participant of await this.media.listParticipants(room)) {
@@ -84,6 +99,7 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
                     participantSid: participant.sid,
                     joinedAt: participant.joinedAt
                 })
+                screens.push({ channelId, participantSid: participant.sid, sharing: participant.sharing })
             }
         }
 
@@ -97,7 +113,27 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
         for (const { channelId, userId } of plan.evict) {
             await this.media.removeParticipant(voiceRoomOf(channelId), userId)
         }
-        return { joined: plan.join.length, dropped: plan.drop.length, evicted: plan.evict.length }
+        const { off, on } = screenFixes(rows, screens)
+        for (const row of off) await this.setScreen(row, false)
+        for (const row of on) await this.setScreen(row, true)
+        return {
+            joined: plan.join.length,
+            dropped: plan.drop.length,
+            evicted: plan.evict.length,
+            unshared: off.length,
+            shared: on.length
+        }
+    }
+
+    /** One screen set right, as its webhook would; someone else marked meanwhile was first. */
+    private async setScreen(row: VoiceState, sharing: boolean): Promise<void> {
+        try {
+            this.publish(
+                await this.states.change(row.userId, (current) => shareWrite(current, row.participantSid, sharing))
+            )
+        } catch (error) {
+            if (!(error instanceof ScreenAlreadySharedError)) throw error
+        }
     }
 
     private publish(result: Awaited<ReturnType<VoiceStateRepositoryPort['change']>>): void {

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { shownPerson } from '@/shared/domain'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
-import { RoomOccupant, VoiceConnection, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../domain'
+import { RoomOccupant, ScreenAlreadySharedError, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../domain'
 import { voiceMediaLock, voiceRoomLock, voiceStateLock } from './voice-locks'
 
 const STATE = {
@@ -51,14 +51,25 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
         return this.prisma.voiceState.findUnique({ where: { userId }, select: STATE })
     }
 
-    async change(
+    change(
         userId: string,
         decide: (current: VoiceState | null) => VoiceWrite | null
     ): Promise<{ before: VoiceState | null; after: VoiceState | null } | null> {
+        return this.changeOnce(userId, decide, false)
+    }
+
+    private async changeOnce(
+        userId: string,
+        decide: (current: VoiceState | null) => VoiceWrite | null,
+        retried: boolean
+    ): Promise<{ before: VoiceState | null; after: VoiceState | null } | null> {
+        // The room of the row as read under the lock: a refused screen is looked up there.
+        const read: { room: string | null } = { room: null }
         try {
             return await this.prisma.$transaction(async (tx) => {
                 await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${voiceStateLock(userId)}, 0))`
                 const before = await tx.voiceState.findUnique({ where: { userId }, select: STATE })
+                read.room = before?.channelId ?? null
                 const write = decide(before)
                 if (!write) return null
 
@@ -104,6 +115,16 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
             // The room's channel was deleted, or the account is gone: a
             // webhook about either changes nothing.
             if (error instanceof RoomGone || prismaCode(error) === 'P2003') return null
+            // The only unique index a change can meet: a second screen in the room (D-101).
+            const { room } = read
+            if (prismaCode(error) !== 'P2002' || !room) throw error
+            const sharer = await this.prisma.voiceState.findFirst({
+                where: { channelId: room, screenSharing: true, userId: { not: userId } },
+                select: { userId: true }
+            })
+            if (sharer) throw new ScreenAlreadySharedError(room, sharer.userId)
+            // They stopped meanwhile: the screen is free, tried once more.
+            if (!retried) return this.changeOnce(userId, decide, true)
             throw error
         }
     }
@@ -119,10 +140,8 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
         )
     }
 
-    connections(): Promise<VoiceConnection[]> {
-        return this.prisma.voiceState.findMany({
-            select: { userId: true, channelId: true, participantSid: true, joinedAt: true }
-        })
+    connections(): Promise<VoiceState[]> {
+        return this.prisma.voiceState.findMany({ select: STATE })
     }
 
     async occupantsOf(channelIds: string[]): Promise<RoomOccupant[]> {

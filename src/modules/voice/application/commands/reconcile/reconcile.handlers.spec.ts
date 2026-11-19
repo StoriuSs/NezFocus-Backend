@@ -2,7 +2,7 @@ import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { EventPublisherPort } from '@/modules/realtime'
 import { ChannelDirectoryPort } from '@/modules/servers'
-import { VoiceConnection, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../../domain'
+import { VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../../domain'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
 import { MediaRoomsPort, RoomParticipant } from '../../ports'
 import { ReconcileVoiceRoomsCommand } from './reconcile.commands'
@@ -14,15 +14,21 @@ const DELETED = '0190a000-0000-7000-8000-00000000000c'
 const at = (minutes: number) => new Date(Date.UTC(2026, 10, 18, 10, minutes))
 const NOW = at(10)
 
-function setup(rows: VoiceState[], rooms: Record<string, RoomParticipant[]>, gone: string[] = [], shut: string[] = []) {
+/** Someone LiveKit lists; with no screen unless said. */
+type Listed = Omit<RoomParticipant, 'sharing'> & { sharing?: boolean }
+
+function setup(rows: VoiceState[], rooms: Record<string, Listed[]>, gone: string[] = [], shut: string[] = []) {
     const byUser = new Map(rows.map((row) => [row.userId, row]))
     const media = {
         listRooms: jest.fn().mockResolvedValue(Object.keys(rooms)),
-        listParticipants: jest.fn(async (room: string) => rooms[room] ?? []),
+        listParticipants: jest.fn(
+            async (room: string): Promise<RoomParticipant[]> =>
+                (rooms[room] ?? []).map((listed) => ({ sharing: false, ...listed }))
+        ),
         removeParticipant: jest.fn().mockResolvedValue(true)
     }
     const states = {
-        connections: jest.fn(async (): Promise<VoiceConnection[]> => rows),
+        connections: jest.fn(async (): Promise<VoiceState[]> => rows),
         change: jest.fn(async (userId: string, decide: (state: VoiceState | null) => VoiceWrite | null) => {
             const current = byUser.get(userId) ?? null
             const write = decide(current)
@@ -31,7 +37,12 @@ function setup(rows: VoiceState[], rooms: Record<string, RoomParticipant[]>, gon
                 byUser.delete(userId)
                 return { before: current, after: null }
             }
-            if (write.kind !== 'put') return null
+            if (write.kind === 'flags') {
+                if (!current) return null
+                const changed = { ...current, ...write.flags }
+                byUser.set(userId, changed)
+                return { before: current, after: changed }
+            }
             const after = { ...write.connection, micOn: false, cameraOn: false, screenSharing: false, modMuted: false }
             byUser.set(userId, after)
             return { before: current, after }
@@ -104,7 +115,9 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
         await expect(handler.execute(new ReconcileVoiceRoomsCommand(NOW))).resolves.toEqual({
             joined: 1,
             dropped: 1,
-            evicted: 0
+            evicted: 0,
+            unshared: 0,
+            shared: 0
         })
         expect(media.listParticipants.mock.calls.map(([room]) => room).sort()).toEqual(
             [`voice:${LOUNGE}`, `voice:${STUDY}`].sort()
@@ -152,7 +165,9 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
         await expect(handler.execute(new ReconcileVoiceRoomsCommand(NOW))).resolves.toEqual({
             joined: 0,
             dropped: 0,
-            evicted: 0
+            evicted: 0,
+            unshared: 0,
+            shared: 0
         })
         expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'binh')
         expect(publisher.toUser).toHaveBeenCalledWith('binh', 'voice.disconnected', {
@@ -171,8 +186,36 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
         await expect(handler.execute(new ReconcileVoiceRoomsCommand(NOW))).resolves.toEqual({
             joined: 1,
             dropped: 0,
-            evicted: 1
+            evicted: 1,
+            unshared: 0,
+            shared: 0
         })
         expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${STUDY}`, 'an')
+    })
+
+    it('turns on the one screen sent in a room nobody is marked sharing in: a lost track_published (D-101)', async () => {
+        const { handler, events } = setup([state('an', LOUNGE, 'PA_an', at(0))], {
+            [`voice:${LOUNGE}`]: [{ identity: 'an', sid: 'PA_an', joinedAt: at(0), sharing: true }]
+        })
+
+        await expect(handler.execute(new ReconcileVoiceRoomsCommand(NOW))).resolves.toMatchObject({ shared: 1 })
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'updated', at(0))]])
+    })
+
+    it('turns off a screen LiveKit no longer has for that connection: a lost track_unpublished (D-101)', async () => {
+        const { handler, events } = setup(
+            [
+                { ...state('an', LOUNGE, 'PA_an', at(0)), screenSharing: true },
+                { ...state('binh', STUDY, 'PA_binh', at(0)), screenSharing: true }
+            ],
+            {
+                [`voice:${LOUNGE}`]: [{ identity: 'an', sid: 'PA_an', joinedAt: at(0) }],
+                // Binh still shares.
+                [`voice:${STUDY}`]: [{ identity: 'binh', sid: 'PA_binh', joinedAt: at(0), sharing: true }]
+            }
+        )
+
+        await expect(handler.execute(new ReconcileVoiceRoomsCommand(NOW))).resolves.toMatchObject({ unshared: 1 })
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'updated', at(0))]])
     })
 })
