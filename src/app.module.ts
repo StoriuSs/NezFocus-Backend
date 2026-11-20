@@ -18,6 +18,7 @@ import {
     emailConfig,
     uploadConfig,
     livekitConfig,
+    studyConfig,
     timeoutConfig,
     prometheusConfig,
     pinoConfig,
@@ -65,6 +66,7 @@ import { MessagePreviewsModule, MessagingModule, SystemMessagesModule } from '@/
 import { NotificationsModule, NotifierModule } from '@/modules/notifications/notifications.module'
 import { TasksModule } from '@/modules/tasks/tasks.module'
 import { RoomPeopleModule, VoiceModule } from '@/modules/voice/voice.module'
+import { StudyModule } from '@/modules/study/study.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
 // Guards
@@ -90,6 +92,7 @@ import { RolesGuard } from '@/shared/presentation'
                 emailConfig,
                 uploadConfig,
                 livekitConfig,
+                studyConfig,
                 timeoutConfig,
                 prometheusConfig
             ],
@@ -196,6 +199,7 @@ import { RolesGuard } from '@/shared/presentation'
         VoiceModule,
         // Answers servers' ROOM_PEOPLE port: who is in each voice room (D-205).
         RoomPeopleModule,
+        StudyModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

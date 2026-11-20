@@ -62,6 +62,11 @@ export const ERROR_TYPES = {
     // A channel already has 500 open tasks (REQ-TASK-01).
     MAX_OPEN_TASKS_REACHED: 'MAX_OPEN_TASKS_REACHED',
 
+    // Study errors (SRS appendix A)
+    // The room already has a session, or the person is already in another one
+    // (REQ-STUDY-02, REQ-STUDY-05).
+    FOCUS_SESSION_ACTIVE: 'FOCUS_SESSION_ACTIVE',
+
     // Realtime errors (SRS 5.2)
     // A socket offered no ticket, a made-up one, or one spent or out of time:
     // buy a new one (POST /realtime/ticket) and connect again.
@@ -166,6 +171,7 @@ export const ERROR_CODES = {
     MAX_PINS_REACHED: '409400',
     MAX_REACTIONS_REACHED: '409401',
     MAX_OPEN_TASKS_REACHED: '409500',
+    FOCUS_SESSION_ACTIVE: '409900',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)
     UPLOAD_INVALID_FILE: '400002',

@@ -50,7 +50,7 @@ a request.
 
 Prisma models live in one file per module, under `prisma/models/`
 (`users.prisma` holds two models, `auth.prisma` five, `servers.prisma` nine,
-`messaging.prisma` six, `tasks.prisma` three, `notifications.prisma` and `voice.prisma` one each):
+`messaging.prisma` six, `tasks.prisma` three, `notifications.prisma` and `voice.prisma` one each, `study.prisma` five):
 
 ```prisma
 // prisma/models/orders.prisma
@@ -158,14 +158,18 @@ it there first, under the same key in both:
 ```typescript
 // ERROR_TYPES
 ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
-// ERROR_CODES: the HTTP status, then a number in the module's own hundred
-ORDER_NOT_FOUND: '404900',
+// ERROR_CODES: the HTTP status, then a number in the module's own range
+ORDER_NOT_FOUND: '404980',
 ```
 
 A code is the HTTP status and three digits. A new code takes its module's
-hundred: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, messaging's
+range: auth's are `x1xx`, users' `x2xx`, servers' `x3xx`, messaging's
 `x4xx`, tasks' `x5xx`, realtime's `x6xx`, notifications' `x7xx`, voice's `x8xx`, shared
-ones `x0xx`, so `orders` takes `x9xx` (`404900`, then `409900`, ...). Most existing codes are older
+ones `x0xx`. The last hundred, `x9xx`, is split by tens among the modules
+that came after it, since each has only a few codes (NezFocus D-219): study's
+are `x90x` (`409900` `FOCUS_SESSION_ACTIVE`), social's `x92x`, reports'
+`x94x`; a module after those takes a free ten, so `orders` takes `x98x`
+(`404980`, then `409980`, ...). Most existing codes are older
 than that rule and were numbered in turn under their status, auth's
 `401001`–`401008` and `403003`–`403004` and `USER_NOT_FOUND` `404001`
 among them. They keep their numbers: a code keeps one meaning for ever, in logs

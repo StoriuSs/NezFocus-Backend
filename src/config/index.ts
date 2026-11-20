@@ -10,6 +10,7 @@ export { default as redisConfig } from './redis.config'
 export { default as emailConfig } from './email.config'
 export { default as uploadConfig } from './upload.config'
 export { default as livekitConfig } from './livekit.config'
+export { default as studyConfig } from './study.config'
 
 // Security & Stability Configs
 export { default as authConfig } from './auth.config'

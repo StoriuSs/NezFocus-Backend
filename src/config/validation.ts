@@ -263,6 +263,20 @@ export const validationSchema = Joi.object({
         otherwise: Joi.string().empty('').default('secret')
     }),
 
+    // study.config.ts: how long a "minute" of study sessions lasts (D-221).
+    // The end-to-end tests and demos shorten it to see phases change; a
+    // release runs on real minutes only. An empty line means unset.
+    STUDY_MINUTE_MS: Joi.when('NODE_ENV', {
+        is: 'production',
+        then: Joi.number()
+            .integer()
+            .valid(60_000)
+            .empty('')
+            .default(60_000)
+            .messages({ 'any.only': '{{#label}} must be 60000 in production: study sessions run on real minutes' }),
+        otherwise: Joi.number().integer().min(100).max(60_000).empty('').default(60_000)
+    }),
+
     // pino.config.ts
     LOG_LEVEL: Joi.string().default('info'),
     // Unset picks json in containers/production, pretty in a terminal

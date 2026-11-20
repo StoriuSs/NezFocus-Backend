@@ -22,6 +22,7 @@ defaults that are right until you have a reason to change them.
   - [Limits and timeouts](#limits-and-timeouts)
   - [Admin pages](#admin-pages)
   - [Voice and video (LiveKit)](#voice-and-video-livekit)
+  - [Study sessions](#study-sessions)
   - [Uploads and storage](#uploads-and-storage)
   - [Email](#email)
   - [Logging and error tracking](#logging-and-error-tracking)
@@ -272,6 +273,19 @@ the project is set up.
 | `LIVEKIT_URL` | prod | `ws://localhost:7880` | Where browsers and the API reach LiveKit. `wss://` in production | app | The LiveKit Cloud project |
 | `LIVEKIT_API_KEY` | prod | `devkey` | The key tokens and webhooks are signed with. Also the local server's key (compose) | app, compose | The LiveKit Cloud project |
 | `LIVEKIT_API_SECRET` | prod | `secret` | Its secret, at least 32 characters in production. Also the local server's (compose) | app, compose | The LiveKit Cloud project |
+
+### Study sessions
+
+A study session's phases, a Solo's 10 minutes of waiting, a room's 5 minutes
+empty and a person's 3 minutes away are all counted in "minutes" of the study
+module (D-221). The end-to-end tests and demos shorten that minute to watch
+phases change in seconds; the client counts down to the `phase_ends_at` the
+API sends, so it needs no setting. Seconds studied are counted in real time
+either way. Unit and integration tests use fake clocks instead.
+
+| Variable | Required | Default | What it does | Read by | Set up |
+| --- | --- | --- | --- | --- | --- |
+| `STUDY_MINUTE_MS` | no | `60000` | How long a study minute lasts, in ms: 100 to 60000, and only 60000 in production | app | Leave unset; 1000 for end-to-end tests |
 
 ### Uploads and storage
 

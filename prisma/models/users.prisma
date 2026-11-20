@@ -85,6 +85,14 @@ model User {
   // because Prisma needs both sides of a relation.
   voiceState VoiceState?
 
+  // Owned by the study module (prisma/models/study.prisma); declared here only
+  // because Prisma needs both sides of a relation.
+  soloSessions   FocusSession[]  @relation("SoloSessionOwner")
+  hostedSessions FocusSession[]  @relation("RoomSessionHost")
+  participations Participation[]
+  dailyStudies   DailyStudy[]
+  streak         Streak?
+
   @@index([username])
   @@index([deletedAt])
   @@index([deletionRequestedAt])

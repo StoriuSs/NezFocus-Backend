@@ -14,6 +14,13 @@ export const QUEUES = {
     MAINTENANCE: 'maintenance',
     /** Messaging's own work: deleting a banned member's recent messages (D-181). */
     MESSAGING: 'messaging',
+    /**
+     * The study module's timed work (ARCHITECTURE 5): the end of a session's
+     * phase, a Solo's 10 minutes of waiting, a room's 5 minutes empty, a
+     * person's 3 minutes away (D-215). Each job carries the session's version
+     * and is dropped when it no longer matches.
+     */
+    STUDY: 'study',
     /** The tasks module's own work: taking a member who left off their tasks (D-195), the due-date reminders (REQ-TASK-04). */
     TASKS: 'tasks'
 } as const

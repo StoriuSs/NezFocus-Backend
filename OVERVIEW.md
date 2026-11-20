@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with nine modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port) and `voice` (voice and video rooms, whose media LiveKit carries) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far its tables, settings and queue) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications, voice"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications, voice, study"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -596,6 +596,15 @@ index of `VoiceState`, so its track is muted at LiveKit and its person told
 who shares (`voice.share_rejected`); the reconciliation sets right a screen
 whose start or stop was lost.
 
+`src/modules/study/` holds study sessions (SRS 4.6, ARCHITECTURE 5): Room
+Sessions in study rooms, Solo sessions, the seconds studied each day and
+streaks. So far (M5 L1) its tables and their checks (`study.prisma`, D-216,
+D-223: a Solo has one `Participation` like a person in a room, and one open
+`Participation` per person keeps anyone from being counted in two sessions),
+its settings (`STUDY_MINUTE_MS`, the length of a study minute, shortened only
+by the end-to-end tests, D-221) and its queue, `study`, for the timed jobs of
+the sessions to come (L2 to L4).
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -688,10 +697,11 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/tasks/          # Task Boards: tasks, the people on them, their history, search
 │   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up, a deleted account's inbox
 │   ├── modules/voice/          # Voice and video rooms: LiveKit behind MEDIA_ROOMS, who is in which room
+│   ├── modules/study/          # Study sessions in rooms and alone, seconds studied per day, streaks
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
-├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma, tasks.prisma, notifications.prisma, voice.prisma) and migrations
+├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma, tasks.prisma, notifications.prisma, voice.prisma, study.prisma) and migrations
 ├── test/                       # e2e and integration suites
 ├── k6/                         # Load-test scripts
 ├── monitoring/                 # Prometheus, Loki, Alloy, Grafana, Alertmanager

@@ -80,6 +80,15 @@ describe('validationSchema in production', () => {
         expect(errorFor({ ...prodEnv, LIVEKIT_API_SECRET: 'secret' })).toContain('LIVEKIT_API_SECRET')
         expect(errorFor({ ...prodEnv, LIVEKIT_API_SECRET: strong })).toContain('at least 32 characters')
     })
+
+    // D-221: shortened minutes are for the end-to-end tests and demos only.
+    it('runs study sessions on real minutes only', () => {
+        expect(errorFor({ ...prodEnv, STUDY_MINUTE_MS: '60000' })).toBeUndefined()
+        expect(errorFor({ ...prodEnv, STUDY_MINUTE_MS: '1000' })).toContain('must be 60000 in production')
+        // Joi reads numbers its own way; study.config.ts reads them the same (study.module.spec.ts).
+        expect(errorFor({ ...prodEnv, STUDY_MINUTE_MS: '6e4' })).toBeUndefined()
+        expect(validationSchema.validate(prodEnv).value).toMatchObject({ STUDY_MINUTE_MS: 60_000 })
+    })
 })
 
 describe('validationSchema for the database pool', () => {
@@ -102,5 +111,14 @@ describe('validationSchema in development', () => {
                 LIVEKIT_API_SECRET: 'secret'
             })
         }
+    })
+
+    it('lets the tests shorten a study minute, to a tenth of a second at least, and defaults to a real one', () => {
+        expect(validationSchema.validate({ ...devEnv, STUDY_MINUTE_MS: '' }).value).toMatchObject({
+            STUDY_MINUTE_MS: 60_000
+        })
+        expect(errorFor({ ...devEnv, STUDY_MINUTE_MS: '1000' })).toBeUndefined()
+        expect(errorFor({ ...devEnv, STUDY_MINUTE_MS: '99' })).toContain('STUDY_MINUTE_MS')
+        expect(errorFor({ ...devEnv, STUDY_MINUTE_MS: '120000' })).toContain('STUDY_MINUTE_MS')
     })
 })

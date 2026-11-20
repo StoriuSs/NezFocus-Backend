@@ -1,0 +1,183 @@
+// Owned by src/modules/study (SRS 4.6, 7; ARCHITECTURE 5): only it writes
+// them.
+//
+// A session is a Room Session in a study room or a Solo session of one
+// person. The seconds studied are the overlap of each person's time in a
+// session (Participation) with the stretches its focus phase ran
+// (FocusStretch, D-216), added up per local day (DailyStudy). Sessions and
+// their rows stay once ended: they are the history of D-105.
+//
+// What Prisma cannot say is in the migration (20261120200000_study): the
+// partial unique indexes (one open session per room and per person, one open
+// stretch per session, one open participation per person) and the CHECKs
+// that keep each row's shape.
+//
+// Ids are UUIDv7 (ARCHITECTURE 2.4).
+
+enum FocusSessionKind {
+  room
+  solo
+}
+
+/// ARCHITECTURE 5.1, SRS 7.2. waiting is a Solo's only: its break ended and
+/// it waits 10 minutes for "Học tiếp".
+enum FocusSessionStatus {
+  running
+  paused
+  waiting
+  ended
+}
+
+enum FocusPhase {
+  focus
+  short_break
+  long_break
+}
+
+/// Why a session ended (SRS 7.2, D-223). A Room Session: stopped, empty
+/// (5 minutes with nobody in the room), study_disabled, channel_deleted (its
+/// room or its server deleted). A Solo: stopped, expired (10 minutes waiting),
+/// signed_out, joined_room (its person became part of a Room Session, D-103).
+/// FocusSession_kind_check keeps each reason to its kind.
+enum FocusSessionEndReason {
+  stopped
+  empty
+  study_disabled
+  channel_deleted
+  expired
+  signed_out
+  joined_room
+}
+
+/// One study session and where it is now (ARCHITECTURE 5.1). Every change of
+/// state raises version: a timed job of the study queue carries the version it
+/// was set for and is dropped when they differ.
+model FocusSession {
+  id   String           @id @default(uuid(7))
+  kind FocusSessionKind
+
+  /// A Room Session's room and its server. Plain ids, not foreign keys
+  /// (D-223): deleting the channel leaves the session, so its end
+  /// (channel_deleted) can find it by channelId and the history keeps it,
+  /// without the room's name. Channels are read through CHANNEL_DIRECTORY.
+  serverId  String?
+  channelId String?
+  /// A Room Session's Host (SRS 5.3). Empty when nobody in the room may start
+  /// a session.
+  hostId    String?
+  host      User?   @relation("RoomSessionHost", fields: [hostId], references: [id], onDelete: SetNull)
+  /// A Solo session's person.
+  userId    String?
+  user      User?   @relation("SoloSessionOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The cycle, in study minutes (D-223), each STUDY_MINUTE_MS long (D-221):
+  /// the same ranges as a room's (FocusSession_cycle_check, like
+  /// Channel_study_cycle_check). Both long-break halves set, or neither.
+  focusMinutes      Int
+  shortBreakMinutes Int
+  longBreakMinutes  Int?
+  longBreakEvery    Int?
+
+  status            FocusSessionStatus @default(running)
+  phase             FocusPhase         @default(focus)
+  /// The phase's place in the session from 0: focus phases are the even ones
+  /// (FocusSession_phase_check), and focus phase n + 1 is phase 2n, which
+  /// tells when a long break comes.
+  phaseIndex        Int                @default(0)
+  /// When the current phase began.
+  phaseStartedAt    DateTime           @db.Timestamptz(6)
+  /// Set while running only: when the phase ends, the time of its job.
+  phaseEndsAt       DateTime?          @db.Timestamptz(6)
+  /// Set while paused only: what was left of the phase.
+  pausedRemainingMs Int?
+  /// Set while waiting only (a Solo): when it ends by itself (expired).
+  waitingUntil      DateTime?          @db.Timestamptz(6)
+  version           Int                @default(0)
+
+  startedAt   DateTime               @default(now()) @db.Timestamptz(6)
+  /// Both set once ended, neither before (FocusSession_status_check).
+  endedAt     DateTime?              @db.Timestamptz(6)
+  endedReason FocusSessionEndReason?
+  updatedAt   DateTime               @updatedAt @db.Timestamptz(6)
+
+  stretches      FocusStretch[]
+  participations Participation[]
+
+  // A person's Solo sessions, newest first: the cycle of the last one fills
+  // in the next (REQ-STUDY-05).
+  @@index([userId, startedAt])
+}
+
+/// A stretch of a session's focus phase while it ran (D-216): opened when a
+/// focus phase starts or is resumed, closed when it is paused, ends, is
+/// skipped or the session stops. At most one is open per session.
+model FocusStretch {
+  id        String       @id @default(uuid(7))
+  sessionId String
+  session   FocusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  startedAt DateTime     @db.Timestamptz(6)
+  /// Empty while the stretch runs.
+  endedAt   DateTime?    @db.Timestamptz(6)
+
+  @@index([sessionId, startedAt])
+}
+
+/// One person's time in a session (ARCHITECTURE 5.2): from joining the room
+/// (or the session's start) to leaving. Leaving and coming back makes a new
+/// row; a Solo has exactly one, the whole session (D-223). A person has one
+/// open row at most, whatever the session: one cannot be in two sessions at
+/// once, so no second is counted twice (D-103).
+model Participation {
+  id        String       @id @default(uuid(7))
+  sessionId String
+  session   FocusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  joinedAt     DateTime  @db.Timestamptz(6)
+  /// Empty while the person is in the session, away included.
+  leftAt       DateTime? @db.Timestamptz(6)
+  /// Left the room without meaning to (D-215): back within 3 minutes and the
+  /// time away counts; past them, the row closes at this time.
+  awaySince    DateTime? @db.Timestamptz(6)
+  /// The seconds before this time are already added to DailyStudy; the next
+  /// count starts here. joinedAt at first; never past leftAt, nor past
+  /// awaySince while away (Participation_time_check).
+  countedUntil DateTime  @db.Timestamptz(6)
+  /// The seconds counted so far: the person's own summary of the session
+  /// (D-49) and its line in the history (D-105).
+  seconds      Int       @default(0)
+
+  // A session's people, and its summaries.
+  @@index([sessionId])
+  // A person's history (D-105).
+  @@index([userId, joinedAt])
+}
+
+/// The seconds a person studied on one day of their time zone (D-104):
+/// focused = room + solo, 16 hours at most; what would go past it is dropped
+/// (D-222). Both kept by DailyStudy_seconds_check.
+model DailyStudy {
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The day in the person's time zone when the seconds were counted.
+  localDate      DateTime @db.Date
+  focusedSeconds Int      @default(0)
+  roomSeconds    Int      @default(0)
+  soloSeconds    Int      @default(0)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+
+  @@id([userId, localDate])
+}
+
+/// A person's days in a row with 15 minutes studied (REQ-STUDY-07). current
+/// is the run up to lastQualifiedDate: shown as 0 when that is neither today
+/// nor yesterday, which is worked out when it is read.
+model Streak {
+  userId            String    @id
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  current           Int       @default(0)
+  longest           Int       @default(0)
+  lastQualifiedDate DateTime? @db.Date
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+}
