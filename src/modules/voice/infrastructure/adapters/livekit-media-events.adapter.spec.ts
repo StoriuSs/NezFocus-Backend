@@ -21,9 +21,14 @@ const participant = { sid: 'PA_1', identity: 'user-1', joinedAt: '1795000000', j
 const track = (source: string) => ({ sid: 'TR_1', type: source === 'SCREEN_SHARE_AUDIO' ? 'AUDIO' : 'VIDEO', source })
 
 describe('LiveKitMediaEvents (D-210)', () => {
-    it('reads who joined and left', async () => {
+    it('reads who joined and left, and the sign-in session of their token (D-214)', async () => {
         const read = await adapter().read(
-            ...(await signed({ event: 'participant_joined', id: 'EV_1', room, participant }))
+            ...(await signed({
+                event: 'participant_joined',
+                id: 'EV_1',
+                room,
+                participant: { ...participant, attributes: { session_id: 'session-1' } }
+            }))
         )
 
         expect(read).toEqual({
@@ -32,8 +37,14 @@ describe('LiveKitMediaEvents (D-210)', () => {
             room: 'voice:c1',
             identity: 'user-1',
             participantSid: 'PA_1',
-            joinedAt: new Date(1795000000123)
+            joinedAt: new Date(1795000000123),
+            sessionId: 'session-1'
         })
+        // A token from before the attribute: no session known.
+        const older = await adapter().read(
+            ...(await signed({ event: 'participant_left', id: 'EV_1b', room, participant }))
+        )
+        expect(older).toMatchObject({ kind: 'left', sessionId: null })
     })
 
     it('reads a screen started and stopped, with its track (D-101)', async () => {

@@ -1,8 +1,17 @@
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { shownPerson } from '@/shared/domain'
+import { ConcurrencyLimiter, ConcurrencyLimitError } from '@/shared/utils/concurrency-limiter.util'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { SHOWN_PERSON } from '@/shared/infrastructure/persistence/shown-person'
-import { RoomOccupant, ScreenAlreadySharedError, VoiceState, VoiceStateRepositoryPort, VoiceWrite } from '../../domain'
+import {
+    MediaRoomsUnavailableError,
+    RoomOccupant,
+    ScreenAlreadySharedError,
+    VoiceState,
+    VoiceStateRepositoryPort,
+    VoiceWrite
+} from '../../domain'
 import { voiceMediaLock, voiceRoomLock, voiceStateLock } from './voice-locks'
 
 const STATE = {
@@ -10,6 +19,7 @@ const STATE = {
     channelId: true,
     participantSid: true,
     joinedAt: true,
+    sessionId: true,
     micOn: true,
     cameraOn: true,
     screenSharing: true,
@@ -23,6 +33,22 @@ const prismaCode = (error: unknown) => (error as { code?: string })?.code
  * most 5 seconds, the adapter's limit) and a row change, with room to spare.
  */
 const MEDIA_TURN_MS = 15_000
+
+/**
+ * A media turn or a room's list holds a pool connection for its advisory
+ * lock while its work asks for another. As many at once as the pool has
+ * connections would hold them all and wait on each other until the pool
+ * gives up, every one failing (a role given to many people in rooms fans out
+ * one turn each). At most a third of the pool holds a lock at a time, the
+ * rest queue in arrival order: each holder can still get its second
+ * connection, and the app keeps a third for everything else.
+ */
+const lockHolders = (poolMax: number) =>
+    new ConcurrencyLimiter({
+        concurrency: Math.max(1, Math.floor(poolMax / 3)),
+        maxQueued: 10_000,
+        maxWaitMs: 2 * MEDIA_TURN_MS
+    })
 
 /** The client of PrismaService, or of a transaction it runs. */
 type Db = PrismaService | Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
@@ -45,7 +71,24 @@ class RoomGone extends Error {}
 /** VoiceState rows: one per person in a room (D-210), changed under that person's lock. */
 @Injectable()
 export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
-    constructor(private readonly prisma: PrismaService) {}
+    private readonly holders: ConcurrencyLimiter
+
+    constructor(
+        private readonly prisma: PrismaService,
+        config: ConfigService
+    ) {
+        this.holders = lockHolders(config.get<number>('database.poolMax') ?? 10)
+    }
+
+    /** `task` once its place among the lock holders comes; none within the wait: a moment's unavailability (503). */
+    private async held<T>(task: () => Promise<T>): Promise<T> {
+        try {
+            return await this.holders.run(task)
+        } catch (error) {
+            if (error instanceof ConcurrencyLimitError) throw new MediaRoomsUnavailableError()
+            throw error
+        }
+    }
 
     find(userId: string): Promise<VoiceState | null> {
         return this.prisma.voiceState.findUnique({ where: { userId }, select: STATE })
@@ -84,7 +127,7 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
                     if (count === 0) return null
                     return { before, after: await tx.voiceState.findUnique({ where: { userId }, select: STATE }) }
                 }
-                const { channelId, participantSid, joinedAt } = write.connection
+                const { channelId, participantSid, joinedAt, sessionId = null } = write.connection
                 // The channel first, in the mode the row's foreign key takes
                 // anyway: a channel being deleted (which locks its row, then
                 // its VoiceState rows) is waited for here, and one gone is told
@@ -98,6 +141,7 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
                     channelId,
                     participantSid,
                     joinedAt,
+                    sessionId,
                     micOn: false,
                     cameraOn: false,
                     screenSharing: false,
@@ -130,18 +174,25 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
     }
 
     async inMediaTurn<T>(userId: string, work: () => Promise<T>): Promise<T> {
-        return this.prisma.$transaction(
-            async (tx) => {
-                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${voiceMediaLock(userId)}, 0))`
-                // The work runs on other connections: this one only holds the lock.
-                return work()
-            },
-            { timeout: MEDIA_TURN_MS, maxWait: MEDIA_TURN_MS }
+        return this.held(() =>
+            this.prisma.$transaction(
+                async (tx) => {
+                    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${voiceMediaLock(userId)}, 0))`
+                    // The work runs on other connections: this one only holds the lock.
+                    return work()
+                },
+                { timeout: MEDIA_TURN_MS, maxWait: MEDIA_TURN_MS }
+            )
         )
     }
 
     connections(): Promise<VoiceState[]> {
         return this.prisma.voiceState.findMany({ select: STATE })
+    }
+
+    ofSessions(sessionIds: string[]): Promise<VoiceState[]> {
+        if (sessionIds.length === 0) return Promise.resolve([])
+        return this.prisma.voiceState.findMany({ where: { sessionId: { in: sessionIds } }, select: STATE })
     }
 
     async occupantsOf(channelIds: string[]): Promise<RoomOccupant[]> {
@@ -150,11 +201,13 @@ export class PrismaVoiceStateRepository implements VoiceStateRepositoryPort {
     }
 
     async tellOccupants(channelId: string, tell: (occupants: RoomOccupant[]) => Promise<void>): Promise<void> {
-        await this.prisma.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${voiceRoomLock(channelId)}, 0))`
-            // Read once the lock is taken (read committed): it sees every
-            // change the list told before it saw, so it is never older.
-            await tell(await readOccupants(tx, [channelId]))
-        })
+        await this.held(() =>
+            this.prisma.$transaction(async (tx) => {
+                await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${voiceRoomLock(channelId)}, 0))`
+                // Read once the lock is taken (read committed): it sees every
+                // change the list told before it saw, so it is never older.
+                await tell(await readOccupants(tx, [channelId]))
+            })
+        )
     }
 }

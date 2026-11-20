@@ -11,6 +11,8 @@ export interface JoinGrant {
     name: string
     /** What the person's permissions allow: SPEAK the microphone, VIDEO the camera and the screen. None: listen only. */
     sources: MediaSource[]
+    /** The sign-in session asking: carried by the connection, which goes when the session ends (D-214). */
+    sessionId: string
 }
 
 /** Someone connected to a room, as the media server sees them. */
@@ -20,6 +22,8 @@ export interface RoomParticipant {
     /** The media server's id of this connection; a reload makes a new one. */
     sid: string
     joinedAt: Date
+    /** The sign-in session the token was issued to (D-214); null when the token had none. */
+    sessionId: string | null
     /** Whether they send a screen (D-101): one muted (a second in the room, stopped) is not sent. */
     sharing: boolean
 }
@@ -56,6 +60,14 @@ export interface MediaRoomsPort {
      * @throws MediaRoomsUnavailableError when the media server cannot be reached
      */
     removeParticipant(room: string, identity: string): Promise<boolean>
+
+    /**
+     * Ends one connection of a person: only while it is the one the media
+     * server holds for them, so a newer one (another tab or sign-in since)
+     * stays (D-214). True when it ended it.
+     * @throws MediaRoomsUnavailableError when the media server cannot be reached
+     */
+    removeConnection(room: string, identity: string, participantSid: string): Promise<boolean>
 
     /**
      * Changes what a person connected to a room may send (D-207, D-210): a

@@ -106,7 +106,8 @@ describe('Voice rooms (integration)', () => {
         who: Who,
         channelId: string,
         sid: string,
-        joinedAt: Date
+        joinedAt: Date,
+        attributes?: Record<string, string>
     ) => ({
         event: kind,
         id: `EV_${randomUUID()}`,
@@ -116,11 +117,21 @@ describe('Voice rooms (integration)', () => {
             sid,
             identity: users[who].id,
             joinedAt: String(Math.floor(joinedAt.getTime() / 1000)),
-            joinedAtMs: String(joinedAt.getTime())
+            joinedAtMs: String(joinedAt.getTime()),
+            ...(attributes ? { attributes } : {})
         }
     })
-    const joins = (who: Who, channelId: string, sid: string, joinedAt = new Date()) =>
-        webhook(participantEvent('participant_joined', who, channelId, sid, joinedAt))
+    const joins = (who: Who, channelId: string, sid: string, joinedAt = new Date(), sessionId?: string) =>
+        webhook(
+            participantEvent(
+                'participant_joined',
+                who,
+                channelId,
+                sid,
+                joinedAt,
+                sessionId ? { session_id: sessionId } : undefined
+            )
+        )
     const leaves = (who: Who, channelId: string, sid: string, joinedAt = new Date()) =>
         webhook(participantEvent('participant_left', who, channelId, sid, joinedAt))
 
@@ -261,7 +272,8 @@ describe('Voice rooms (integration)', () => {
                     room,
                     identity: users.an.id,
                     name: 'An',
-                    sources: [...sources]
+                    sources: [...sources],
+                    sessionId: 's1'
                 })
                 expect(url).toBe(livekitTarget.url)
                 expect(await livekitTakes(token)).toBe(200)
@@ -274,7 +286,13 @@ describe('Voice rooms (integration)', () => {
                 apiSecret: 'not-the-secret-of-this-livekit'
             }
             const other = new LiveKitMediaRooms(new ConfigService({ livekit: settings }))
-            const { token } = await other.issueJoinToken({ room, identity: users.an.id, name: 'An', sources: [] })
+            const { token } = await other.issueJoinToken({
+                room,
+                identity: users.an.id,
+                name: 'An',
+                sources: [],
+                sessionId: 's1'
+            })
             expect(await livekitTakes(token)).toBe(401)
         })
 
@@ -528,6 +546,67 @@ describe('Voice rooms (integration)', () => {
             expect((await webhook(started)).status).toBe(200)
             const call = participantEvent('participant_joined', 'binh', roomId, 'PA_c', new Date())
             expect((await webhook({ ...call, room: { name: `call:${roomId}` } })).status).toBe(200)
+            expect(await rowOf('binh')).toBeNull()
+        })
+    })
+
+    describe('sign-in sessions ending (SessionsEndedEvent, D-214)', () => {
+        afterEach(emptyRooms)
+
+        /** Another sign-in of `who`: a session of its own, with its access token. */
+        const signInAgain = async (who: Who) => {
+            const res = await post('auth/login', { email: `${PREFIX}-${who}@example.test`, password: PASSWORD })
+            expect(res.status).toBe(200)
+            return res.body.data.access_token as string
+        }
+        /** The session a token of `accessToken` names, as LiveKit reads it from the token. */
+        const sessionOfToken = async (accessToken: string) => {
+            const res = await anyone(api().post('/api/v1/voice/token'))
+                .set('Authorization', `Bearer ${accessToken}`)
+                .send({ channel_id: roomId })
+            expect(res.status).toBe(201)
+            const { attributes } = await claimsOf(res.body.data.token)
+            return attributes?.session_id as string
+        }
+        const revoke = (sessionId: string) =>
+            as('binh', api().delete(`/api/v1/auth/sessions/${sessionId}`)).then((res) => res.status)
+
+        it("puts out the connection a session made once it ends, not on another session's end", async () => {
+            const laptop = await signInAgain('binh')
+            const phone = await signInAgain('binh')
+            const laptopSession = await sessionOfToken(laptop)
+            const phoneSession = await sessionOfToken(phone)
+            expect(laptopSession).toEqual(expect.any(String))
+            expect(laptopSession).not.toBe(phoneSession)
+            await joins('binh', roomId, 'PA_laptop', new Date(), laptopSession)
+            expect(await prisma.voiceState.findUnique({ where: { userId: users.binh.id } })).toMatchObject({
+                participantSid: 'PA_laptop',
+                sessionId: laptopSession
+            })
+
+            // The phone signed out: the laptop stays in the room.
+            expect(await revoke(phoneSession)).toBe(200)
+            await new Promise((resolve) => setTimeout(resolve, 500))
+            expect(await rowOf('binh')).not.toBeNull()
+
+            // The laptop's session ended (signed out from elsewhere): its connection goes.
+            const heard = collect(await connectAs('chi'), 'voice_state.updated')
+            expect(await revoke(laptopSession)).toBe(200)
+            for (let tries = 0; tries < 20 && (await rowOf('binh')) !== null; tries++) {
+                await new Promise((resolve) => setTimeout(resolve, 100))
+            }
+            expect(await rowOf('binh')).toBeNull()
+            const events = (await heard()) as { voice_states: unknown[] }[]
+            expect(events.at(-1)?.voice_states).toEqual([])
+        })
+
+        it('keeps out a join made with the token of a session already ended (a token kept from before)', async () => {
+            const stolen = await signInAgain('binh')
+            const stolenSession = await sessionOfToken(stolen)
+            expect(await revoke(stolenSession)).toBe(200)
+
+            await joins('binh', roomId, 'PA_stolen', new Date(), stolenSession)
+
             expect(await rowOf('binh')).toBeNull()
         })
     })

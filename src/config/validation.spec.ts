@@ -82,6 +82,14 @@ describe('validationSchema in production', () => {
     })
 })
 
+describe('validationSchema for the database pool', () => {
+    // A voice lock holder needs a second connection for its work (backend-review M4 14.2): one alone waits on itself.
+    it('refuses a pool of one connection', () => {
+        expect(errorFor({ ...devEnv, DB_POOL_MAX: '1' })).toContain('DB_POOL_MAX')
+        expect(errorFor({ ...devEnv, DB_POOL_MAX: '2' })).toBeUndefined()
+    })
+})
+
 describe('validationSchema in development', () => {
     it('defaults LiveKit to the local development server (docker-compose.dev.yaml), also for an empty line', () => {
         const empty = { LIVEKIT_URL: '', LIVEKIT_API_KEY: '', LIVEKIT_API_SECRET: '' }

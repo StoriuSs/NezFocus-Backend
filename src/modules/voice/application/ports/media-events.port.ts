@@ -15,6 +15,8 @@ export type MediaEvent =
           participantSid: string
           /** When the connection joined. */
           joinedAt: Date
+          /** The sign-in session the token was issued to (D-214); null when the token had none. */
+          sessionId: string | null
       }
     | {
           id: string

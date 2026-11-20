@@ -15,7 +15,7 @@ const at = (minutes: number) => new Date(Date.UTC(2026, 10, 18, 10, minutes))
 const NOW = at(10)
 
 /** Someone LiveKit lists; with no screen unless said. */
-type Listed = Omit<RoomParticipant, 'sharing'> & { sharing?: boolean }
+type Listed = Omit<RoomParticipant, 'sharing' | 'sessionId'> & { sharing?: boolean; sessionId?: string | null }
 
 function setup(rows: VoiceState[], rooms: Record<string, Listed[]>, gone: string[] = [], shut: string[] = []) {
     const byUser = new Map(rows.map((row) => [row.userId, row]))
@@ -23,7 +23,7 @@ function setup(rows: VoiceState[], rooms: Record<string, Listed[]>, gone: string
         listRooms: jest.fn().mockResolvedValue(Object.keys(rooms)),
         listParticipants: jest.fn(
             async (room: string): Promise<RoomParticipant[]> =>
-                (rooms[room] ?? []).map((listed) => ({ sharing: false, ...listed }))
+                (rooms[room] ?? []).map((listed) => ({ sharing: false, sessionId: null, ...listed }))
         ),
         removeParticipant: jest.fn().mockResolvedValue(true)
     }
@@ -83,7 +83,7 @@ function setup(rows: VoiceState[], rooms: Record<string, Listed[]>, gone: string
         publisher as unknown as EventPublisherPort,
         events as unknown as EventBus
     )
-    return { handler, media, events, publisher }
+    return { handler, media, events, publisher, byUser }
 }
 
 const state = (userId: string, channelId: string, participantSid: string, joinedAt: Date): VoiceState => ({
@@ -99,14 +99,14 @@ const state = (userId: string, channelId: string, participantSid: string, joined
 
 describe('Reconciling voice rooms with LiveKit (D-210)', () => {
     it("reads every room with a row and every voice room LiveKit has, and sets each side's misses right", async () => {
-        const { handler, media, events } = setup(
+        const { handler, media, events, byUser } = setup(
             // An's participant_left was lost; Binh is where the row says.
             [state('an', STUDY, 'PA_an', at(0)), state('binh', LOUNGE, 'PA_binh', at(1))],
             {
                 [`voice:${LOUNGE}`]: [
                     { identity: 'binh', sid: 'PA_binh', joinedAt: at(1) },
                     // Chi's participant_joined was lost.
-                    { identity: 'chi', sid: 'PA_chi', joinedAt: at(2) }
+                    { identity: 'chi', sid: 'PA_chi', joinedAt: at(2), sessionId: 'session-chi' }
                 ],
                 'call:someone': [{ identity: 'dung', sid: 'PA_dung', joinedAt: at(2) }]
             }
@@ -126,6 +126,8 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
             [new VoiceStateChangedEvent(STUDY, 'an', 'left', at(0))],
             [new VoiceStateChangedEvent(LOUNGE, 'chi', 'joined', at(2))]
         ])
+        // The row it writes knows the session of the connection, which ending puts it out (D-214).
+        expect(byUser.get('chi')).toMatchObject({ participantSid: 'PA_chi', sessionId: 'session-chi' })
     })
 
     it('empties a room whose channel is gone, telling who was in it, and drops its rows (D-212)', async () => {

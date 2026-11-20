@@ -22,6 +22,11 @@ model VoiceState {
   /// When LiveKit says the connection joined. A participant_joined older than
   /// this is a late one and changes nothing (D-210).
   joinedAt  DateTime @db.Timestamptz(6)
+  /// The sign-in session whose join token made the connection (the token's
+  /// session_id attribute): that session ending puts this connection out
+  /// (D-214). Null for a connection from before the attribute. Not a foreign
+  /// key: sessions are auth's, and an ended one is told by its event.
+  sessionId String?
 
   /// What the person's own browser reports through voice.self_state (D-206):
   /// only the icons beside the name; the people in the room see the tracks
@@ -40,4 +45,6 @@ model VoiceState {
 
   // The people of a room, in the order they joined.
   @@index([channelId, joinedAt])
+  // The connections of sessions just ended (D-214).
+  @@index([sessionId])
 }

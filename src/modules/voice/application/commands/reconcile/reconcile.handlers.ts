@@ -97,7 +97,8 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
                     userId: participant.identity,
                     channelId,
                     participantSid: participant.sid,
-                    joinedAt: participant.joinedAt
+                    joinedAt: participant.joinedAt,
+                    sessionId: participant.sessionId
                 })
                 screens.push({ channelId, participantSid: participant.sid, sharing: participant.sharing })
             }

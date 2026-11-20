@@ -22,8 +22,9 @@ export * from './services/room-people'
 export * from './events/voice-state-changed.event'
 
 // Event handlers (VoiceSelfStateSignalledEvent is realtime's, MemberChangedEvent and
-// ServerChangedEvent servers', AccountDeletionRequestedEvent auth's)
+// ServerChangedEvent servers', AccountDeletionRequestedEvent and SessionsEndedEvent auth's)
 export * from './events/handlers/leave-deleted-account-room.handler'
+export * from './events/handlers/leave-ended-session-rooms.handler'
 export * from './events/handlers/publish-room-people.handler'
 export * from './events/handlers/recheck-member-room.handler'
 export * from './events/handlers/recheck-server-rooms.handler'

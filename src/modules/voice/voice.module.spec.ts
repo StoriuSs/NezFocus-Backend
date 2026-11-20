@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { AccessToken, TokenVerifier } from 'livekit-server-sdk'
 import { livekitConfig } from '@/config'
+import { PRINCIPAL } from '@/modules/auth'
+import { AuthModule } from '@/modules/auth/auth.module'
 import { PERMISSION_CHECKER } from '@/modules/permissions'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { EVENT_PUBLISHER } from '@/modules/realtime'
@@ -62,6 +64,8 @@ describe('VoiceModule (D-204)', () => {
                 VoiceModule
             ]
         })
+            .overrideModule(AuthModule)
+            .useModule(stand(PRINCIPAL))
             .overrideModule(PermissionsModule)
             .useModule(stand(PERMISSION_CHECKER))
             .overrideModule(RealtimeModule)
@@ -77,7 +81,7 @@ describe('VoiceModule (D-204)', () => {
 
         const { token, url } = await module
             .get<MediaRoomsPort>(MEDIA_ROOMS)
-            .issueJoinToken({ room: 'voice:c1', identity: 'user-1', name: 'An', sources: [] })
+            .issueJoinToken({ room: 'voice:c1', identity: 'user-1', name: 'An', sources: [], sessionId: 'session-1' })
 
         expect(url).toBe(settings.LIVEKIT_URL)
         const granted = await new TokenVerifier(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET).verify(token)

@@ -7,7 +7,9 @@
 export class IssueJoinTokenCommand {
     constructor(
         public readonly userId: string,
-        public readonly channelId: string
+        public readonly channelId: string,
+        /** The sign-in session asking: its end puts the connection out (D-214). */
+        public readonly sessionId: string
     ) {}
 }
 

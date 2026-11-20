@@ -33,7 +33,8 @@ export class VoiceController {
      * one may not view is NOT_FOUND; no CONNECT FORBIDDEN_ERROR; a timeout
      * MEMBER_TIMED_OUT with `timeout_until`; LiveKit unreachable
      * SERVICE_UNAVAILABLE_ERROR. Not `@Idempotent()`: a retry is simply
-     * another token.
+     * another token. The token carries this request's sign-in session, whose
+     * end puts the connection out (D-214).
      */
     @Post('token')
     @HttpCode(HttpStatus.CREATED)
@@ -42,7 +43,9 @@ export class VoiceController {
         @CurrentUser() user: AuthenticatedUser,
         @Body() dto: JoinVoiceRequestDto
     ): Promise<ServiceResponse<VoiceTokenResponseDto>> {
-        const issued: JoinToken = await this.commandBus.execute(new IssueJoinTokenCommand(user.id, dto.channelId))
+        const issued: JoinToken = await this.commandBus.execute(
+            new IssueJoinTokenCommand(user.id, dto.channelId, user.sessionId)
+        )
         return createResponse(MESSAGES.VOICE.TOKEN_ISSUED, validateAndTransform(VoiceTokenResponseDto, issued))
     }
 

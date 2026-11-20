@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { AccessToken, RoomServiceClient, ServerError, TrackSource } from 'livekit-server-sdk'
 import { JoinGrant, MediaRoomsPort, MediaSource, RoomParticipant } from '@/modules/voice/application'
 import { JOIN_TOKEN_TTL_SECONDS, MediaRoomsUnavailableError } from '@/modules/voice/domain'
+import { SESSION_ATTRIBUTE, sessionOf } from './session-attribute'
 
 /**
  * How long one call to LiveKit may take. A request that waits on it (joining,
@@ -67,7 +68,10 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
         const token = new AccessToken(this.apiKey, this.apiSecret, {
             identity: grant.identity,
             name: grant.name,
-            ttl: JOIN_TOKEN_TTL_SECONDS
+            ttl: JOIN_TOKEN_TTL_SECONDS,
+            // Read back from the webhooks and listParticipants; the grant has
+            // no canUpdateOwnMetadata, so the browser cannot change it (D-214).
+            attributes: { [SESSION_ATTRIBUTE]: grant.sessionId }
         })
         token.addGrant({ roomJoin: true, room: grant.room, ...permissionFor(grant.sources) })
         return { token: await token.toJwt(), url: this.url }
@@ -80,6 +84,7 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
                 identity: participant.identity,
                 sid: participant.sid,
                 joinedAt: new Date(Number(participant.joinedAtMs)),
+                sessionId: sessionOf(participant),
                 sharing: participant.tracks.some((track) => track.source === TrackSource.SCREEN_SHARE && !track.muted)
             }))
         } catch (error) {
@@ -105,6 +110,20 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
         } catch (error) {
             if (isNotFound(error)) return false
             throw this.unavailable('put a person out of', room, error)
+        }
+    }
+
+    async removeConnection(room: string, identity: string, participantSid: string): Promise<boolean> {
+        try {
+            // One identity, one connection at LiveKit: asked first, a newer
+            // connection of the same person is told apart and left.
+            const participant = await this.rooms.getParticipant(room, identity)
+            if (participant.sid !== participantSid) return false
+            await this.rooms.removeParticipant(room, identity)
+            return true
+        } catch (error) {
+            if (isNotFound(error)) return false
+            throw this.unavailable('put a connection out of', room, error)
         }
     }
 

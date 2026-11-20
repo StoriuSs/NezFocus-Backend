@@ -131,7 +131,8 @@ export const validationSchema = Joi.object({
     // The host side of the db port mapping (compose), and what DATABASE_URL
     // uses on this machine.
     DB_PORT: Joi.number().default(5432),
-    DB_POOL_MAX: Joi.number().integer().min(1).default(10),
+    // At least 2: a voice lock holder needs a second connection for its work (voice repository, lockHolders).
+    DB_POOL_MAX: Joi.number().integer().min(2).default(10),
     DB_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().min(0).default(30000),
     DB_POOL_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(0).default(10000),
     DB_NAME: Joi.string()

@@ -14,6 +14,12 @@ export interface VoiceConnection {
     participantSid: string
     /** When LiveKit says the connection joined. */
     joinedAt: Date
+    /**
+     * The sign-in session whose token made the connection (the token's
+     * `session_id` attribute): that session ending ends it (D-214). Null or
+     * absent when unknown (a connection from before the attribute).
+     */
+    sessionId?: string | null
 }
 
 /** A person in a room now, with the icons beside their name (D-206, D-207, D-101). */

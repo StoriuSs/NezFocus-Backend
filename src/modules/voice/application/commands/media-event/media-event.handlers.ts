@@ -1,6 +1,8 @@
 import { Inject } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
+import { PRINCIPAL, PrincipalPort } from '@/modules/auth'
 import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
+import { DomainError } from '@/shared/domain/domain-error'
 import { EVENT_PUBLISHER, EventPublisherPort } from '@/modules/realtime'
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
 import {
@@ -69,7 +71,8 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisherPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(PRINCIPAL) private readonly principals: PrincipalPort
     ) {}
 
     async execute({ body, authorization }: ApplyMediaEventCommand): Promise<void> {
@@ -90,10 +93,12 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             userId: event.identity,
             channelId,
             participantSid: event.participantSid,
-            joinedAt: event.joinedAt
+            joinedAt: event.joinedAt,
+            sessionId: event.sessionId
         }
         let result: Awaited<ReturnType<VoiceStateRepositoryPort['change']>>
         try {
+            if (event.kind === 'joined' && !(await this.sessionLive(event))) return
             if (event.kind === 'joined' && !(await this.mayStay(event.room, channelId, event.identity))) return
             result = await this.states.change(event.identity, (current) =>
                 event.kind === 'joined' ? joinWrite(current, connection) : leaveWrite(current, event.participantSid)
@@ -130,6 +135,28 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             return
         }
         for (const changed of changeEvents(result)) this.events.publish(changed)
+    }
+
+    /**
+     * Whether the sign-in session the joining connection's token was issued
+     * to is still live (D-214); if not, that connection is put out, not
+     * listed, not told (its tabs are signed out). A token kept from before
+     * the session ended would otherwise let someone who took it over back
+     * in. A connection with no session (a token from before D-214) is taken
+     * as before. The session store unreachable throws: the event is sent
+     * again.
+     */
+    private async sessionLive(event: Extract<MediaEvent, { kind: 'joined' | 'left' }>): Promise<boolean> {
+        if (!event.sessionId) return true
+        try {
+            await this.principals.resolve({ userId: event.identity, sessionId: event.sessionId })
+            return true
+        } catch (error) {
+            // Any refusal of auth's (session ended, account gone): no infrastructure failure.
+            if (!(error instanceof DomainError)) throw error
+        }
+        await this.media.removeConnection(event.room, event.identity, event.participantSid)
+        return false
     }
 
     /**

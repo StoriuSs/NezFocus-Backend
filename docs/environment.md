@@ -218,7 +218,7 @@ seconds. [auth/in-the-code.md](./auth/in-the-code.md) says where to change them.
 | `DB_USERNAME` | always | | The database user. Prod: URL-safe characters only | app, compose, backup | |
 | `DB_PASSWORD` | always | | Prod: URL-safe **and** strong (see [the rules](#production-is-stricter)) | app, compose, backup | `openssl rand -hex 24` |
 | `DB_PORT` | | `5432` | Host side of the db port mapping; must match `DATABASE_URL`. Keep it in the file: compose uses it without a default | app, compose | |
-| `DB_POOL_MAX` | | `10` | Connections per app instance. × instances must stay under Postgres' `max_connections` (100 here) ([scaling.md](./scaling.md)) | app | |
+| `DB_POOL_MAX` | | `10` | Connections per app instance, at least 2 (a voice lock holder needs a second connection). × instances must stay under Postgres' `max_connections` (100 here) ([scaling.md](./scaling.md)) | app | |
 | `DB_POOL_IDLE_TIMEOUT_MS` | | `30000` | How long an idle pooled connection is kept | app | |
 | `DB_POOL_CONNECTION_TIMEOUT_MS` | | `10000` | How long to wait for a free connection before failing | app | |
 | `SHADOW_DATABASE_URL` | for `prisma:check` | | An empty scratch database where `pnpm prisma:check` replays the migrations to compare them with the schema. Each run wipes it | tool (`prisma.config.ts`) | [prisma-module.md](./prisma-module.md) |

@@ -17,12 +17,14 @@ describe('LiveKitMediaRooms join tokens (D-210)', () => {
             room: 'voice:c1',
             identity: 'user-1',
             name: 'An',
-            sources: ['microphone', 'camera', 'screen_share', 'screen_share_audio']
+            sources: ['microphone', 'camera', 'screen_share', 'screen_share_audio'],
+            sessionId: 'session-1'
         })
 
         expect(url).toBe(livekit.url)
         const granted = await claims(token)
-        expect(granted).toMatchObject({ sub: 'user-1', name: 'An' })
+        // The session it was asked in, which the person cannot change (no canUpdateOwnMetadata): D-214.
+        expect(granted).toMatchObject({ sub: 'user-1', name: 'An', attributes: { session_id: 'session-1' } })
         expect(granted.exp! - granted.nbf!).toBe(600)
         expect(granted.video).toEqual({
             roomJoin: true,
@@ -39,7 +41,8 @@ describe('LiveKitMediaRooms join tokens (D-210)', () => {
             room: 'voice:c1',
             identity: 'user-2',
             name: 'Bình',
-            sources: []
+            sources: [],
+            sessionId: 'session-2'
         })
 
         expect((await claims(token)).video).toMatchObject({
@@ -54,7 +57,8 @@ describe('LiveKitMediaRooms join tokens (D-210)', () => {
             room: 'voice:c1',
             identity: 'user-3',
             name: 'Chi',
-            sources: ['microphone']
+            sources: ['microphone'],
+            sessionId: 'session-3'
         })
 
         expect((await claims(token)).video).toMatchObject({ canPublish: true, canPublishSources: ['microphone'] })
@@ -75,9 +79,15 @@ describe('LiveKitMediaRooms asking LiveKit', () => {
     ) => jest.spyOn(RoomServiceClient.prototype, method).mockImplementation(outcome as never)
     const logged = (level: 'warn' | 'error') => jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined)
 
-    it('lists who is in a room, with when they joined and whether they send a screen (D-101)', async () => {
+    it('lists who is in a room, with when they joined, their session and whether they send a screen (D-101)', async () => {
         answers('listParticipants', async () => [
-            { identity: 'user-1', sid: 'PA_1', joinedAtMs: 1795000000123n, tracks: [] },
+            {
+                identity: 'user-1',
+                sid: 'PA_1',
+                joinedAtMs: 1795000000123n,
+                tracks: [],
+                attributes: { session_id: 'session-1' }
+            },
             {
                 identity: 'user-2',
                 sid: 'PA_2',
@@ -100,11 +110,40 @@ describe('LiveKitMediaRooms asking LiveKit', () => {
         ])
 
         expect(await adapter().listParticipants('voice:c1')).toEqual([
-            { identity: 'user-1', sid: 'PA_1', joinedAt: new Date(1795000000123), sharing: false },
-            { identity: 'user-2', sid: 'PA_2', joinedAt: new Date(1795000000456), sharing: true },
-            { identity: 'user-3', sid: 'PA_3', joinedAt: new Date(1795000000789), sharing: false },
-            { identity: 'user-4', sid: 'PA_4', joinedAt: new Date(1795000000999), sharing: false }
+            {
+                identity: 'user-1',
+                sid: 'PA_1',
+                joinedAt: new Date(1795000000123),
+                sessionId: 'session-1',
+                sharing: false
+            },
+            { identity: 'user-2', sid: 'PA_2', joinedAt: new Date(1795000000456), sessionId: null, sharing: true },
+            { identity: 'user-3', sid: 'PA_3', joinedAt: new Date(1795000000789), sessionId: null, sharing: false },
+            { identity: 'user-4', sid: 'PA_4', joinedAt: new Date(1795000000999), sessionId: null, sharing: false }
         ])
+    })
+
+    it('ends one connection of a person only while LiveKit holds that one, leaving a newer (D-214)', async () => {
+        logged('warn')
+        answers('getParticipant', async () => ({ sid: 'PA_old' }))
+        const remove = answers('removeParticipant', async () => ({}))
+        expect(await adapter().removeConnection('voice:c1', 'user-1', 'PA_old')).toBe(true)
+        expect(remove).toHaveBeenCalledWith('voice:c1', 'user-1')
+
+        // The same person connected again since (another tab, another session): left alone.
+        remove.mockClear()
+        answers('getParticipant', async () => ({ sid: 'PA_new' }))
+        expect(await adapter().removeConnection('voice:c1', 'user-1', 'PA_old')).toBe(false)
+        answers('getParticipant', () =>
+            Promise.reject(new ServerError('not_found', 'participant does not exist', 404, 'not_found'))
+        )
+        expect(await adapter().removeConnection('voice:c1', 'user-1', 'PA_old')).toBe(false)
+        expect(remove).not.toHaveBeenCalled()
+
+        answers('getParticipant', () => Promise.reject(new Error('connect ECONNREFUSED')))
+        await expect(adapter().removeConnection('voice:c1', 'user-1', 'PA_old')).rejects.toBeInstanceOf(
+            MediaRoomsUnavailableError
+        )
     })
 
     it("mutes one track of a person's, nothing when it or they are gone, and reports LiveKit out of reach", async () => {

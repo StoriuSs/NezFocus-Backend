@@ -5131,7 +5131,7 @@
             "bearer": []
           }
         ],
-        "summary": "A token to join a voice room (CONNECT), sending what SPEAK and VIDEO\nallow (D-210). Being in another room puts one out of it first. A room\none may not view is NOT_FOUND; no CONNECT FORBIDDEN_ERROR; a timeout\nMEMBER_TIMED_OUT with `timeout_until`; LiveKit unreachable\nSERVICE_UNAVAILABLE_ERROR. Not `@Idempotent()`: a retry is simply\nanother token.",
+        "summary": "A token to join a voice room (CONNECT), sending what SPEAK and VIDEO\nallow (D-210). Being in another room puts one out of it first. A room\none may not view is NOT_FOUND; no CONNECT FORBIDDEN_ERROR; a timeout\nMEMBER_TIMED_OUT with `timeout_until`; LiveKit unreachable\nSERVICE_UNAVAILABLE_ERROR. Not `@Idempotent()`: a retry is simply\nanother token. The token carries this request's sign-in session, whose\nend puts the connection out (D-214).",
         "tags": [
           "voice"
         ]

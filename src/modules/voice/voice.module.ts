@@ -1,5 +1,6 @@
 import { Global, Logger, Module, OnApplicationBootstrap } from '@nestjs/common'
 import { CommandBus, CqrsModule } from '@nestjs/cqrs'
+import { AuthModule } from '@/modules/auth/auth.module'
 import { PermissionsModule } from '@/modules/permissions/permissions.module'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ROOM_PEOPLE } from '@/modules/servers'
@@ -11,6 +12,7 @@ import {
     EVENT_RECEIPTS,
     MEDIA_EVENT_COMMAND_HANDLERS,
     LeaveDeletedAccountRoomHandler,
+    LeaveEndedSessionRoomsHandler,
     MEDIA_EVENTS,
     MEDIA_ROOMS,
     MODERATION_COMMAND_HANDLERS,
@@ -47,7 +49,7 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
  * REDIS_CLIENT from the global CacheModule.
  */
 @Module({
-    imports: [CqrsModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
+    imports: [CqrsModule, AuthModule, PermissionsModule, RealtimeModule, ServersModule, UsersModule],
     controllers: [VoiceController, LiveKitWebhookController],
     providers: [
         { provide: MEDIA_ROOMS, useClass: LiveKitMediaRooms },
@@ -63,7 +65,8 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
         RecordSelfStateHandler,
         RecheckMemberRoomHandler,
         RecheckServerRoomsHandler,
-        LeaveDeletedAccountRoomHandler
+        LeaveDeletedAccountRoomHandler,
+        LeaveEndedSessionRoomsHandler
     ]
 })
 export class VoiceModule implements OnApplicationBootstrap {

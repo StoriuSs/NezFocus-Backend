@@ -38,7 +38,7 @@ export class IssueJoinTokenHandler implements ICommandHandler<IssueJoinTokenComm
         private readonly events: EventBus
     ) {}
 
-    async execute({ userId, channelId }: IssueJoinTokenCommand): Promise<JoinToken> {
+    async execute({ userId, channelId, sessionId }: IssueJoinTokenCommand): Promise<JoinToken> {
         const { sources } = await openRoom(
             { channels: this.channels, checker: this.checker },
             channelId,
@@ -52,7 +52,7 @@ export class IssueJoinTokenHandler implements ICommandHandler<IssueJoinTokenComm
         // The name everyone in the room sees: none for an account shown as deleted (D-182).
         const user = await this.users.findById(userId)
         const name = user && !isHidden(user) ? (user.displayName ?? user.username ?? '') : ''
-        return this.media.issueJoinToken({ room: voiceRoomOf(channelId), identity: userId, name, sources })
+        return this.media.issueJoinToken({ room: voiceRoomOf(channelId), identity: userId, name, sources, sessionId })
     }
 }
 

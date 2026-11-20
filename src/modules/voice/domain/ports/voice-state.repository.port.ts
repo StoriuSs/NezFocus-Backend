@@ -47,6 +47,9 @@ export interface VoiceStateRepositoryPort {
     /** Every row: the rooms the reconciliation reads, and the screens it checks. */
     connections(): Promise<VoiceState[]>
 
+    /** The rows of connections made by these sign-in sessions (D-214). */
+    ofSessions(sessionIds: string[]): Promise<VoiceState[]>
+
     /** The people in these rooms, in the order they joined each. */
     occupantsOf(channelIds: string[]): Promise<RoomOccupant[]>
 

@@ -93,7 +93,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
     it('is for the room, the person by id and name, sending what SPEAK and VIDEO allow', async () => {
         const { token, media } = setup()
 
-        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE))).resolves.toEqual({
+        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))).resolves.toEqual({
             token: 'jwt',
             url: 'ws://localhost:7880'
         })
@@ -101,7 +101,9 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
             room: `voice:${LOUNGE}`,
             identity: 'an',
             name: 'An',
-            sources: ['microphone', 'camera', 'screen_share', 'screen_share_audio']
+            sources: ['microphone', 'camera', 'screen_share', 'screen_share_audio'],
+            // The session asking: it ending puts the connection out (D-214).
+            sessionId: 'session-an'
         })
     })
 
@@ -115,7 +117,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
             deletionRequestedAt: NOW
         })
 
-        await token.execute(new IssueJoinTokenCommand('an', LOUNGE))
+        await token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
 
         expect(media.issueJoinToken).toHaveBeenCalledWith(expect.objectContaining({ name: '' }))
     })
@@ -125,7 +127,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
             access: server(EVERYONE_DEFAULT_PERMISSIONS & ~Permission.SPEAK & ~Permission.VIDEO)
         })
 
-        await token.execute(new IssueJoinTokenCommand('an', LOUNGE))
+        await token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
 
         expect(media.issueJoinToken).toHaveBeenCalledWith(expect.objectContaining({ sources: [] }))
     })
@@ -133,7 +135,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
     it('sends the microphone only without VIDEO', async () => {
         const { token, media } = setup({ access: server(EVERYONE_DEFAULT_PERMISSIONS & ~Permission.VIDEO) })
 
-        await token.execute(new IssueJoinTokenCommand('an', LOUNGE))
+        await token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
 
         expect(media.issueJoinToken).toHaveBeenCalledWith(expect.objectContaining({ sources: ['microphone'] }))
     })
@@ -141,14 +143,14 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
     it('is NOT_FOUND for a room one may not view, a text channel, or no channel at all (NFR-SEC-05)', async () => {
         const { token, channels, media } = setup()
 
-        await expect(token.execute(new IssueJoinTokenCommand('an', 'secret'))).rejects.toBeInstanceOf(
+        await expect(token.execute(new IssueJoinTokenCommand('an', 'secret', 'session-an'))).rejects.toBeInstanceOf(
             VoiceRoomNotFoundError
         )
-        await expect(token.execute(new IssueJoinTokenCommand('an', 'chat'))).rejects.toBeInstanceOf(
+        await expect(token.execute(new IssueJoinTokenCommand('an', 'chat', 'session-an'))).rejects.toBeInstanceOf(
             VoiceRoomNotFoundError
         )
         channels.serverIdOf.mockResolvedValue(null)
-        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE))).rejects.toBeInstanceOf(
+        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))).rejects.toBeInstanceOf(
             VoiceRoomNotFoundError
         )
         expect(media.issueJoinToken).not.toHaveBeenCalled()
@@ -157,14 +159,16 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
     it('is FORBIDDEN without CONNECT', async () => {
         const { token, media } = setup({ access: server(EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CONNECT) })
 
-        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE))).rejects.toBeInstanceOf(CannotConnectError)
+        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))).rejects.toBeInstanceOf(
+            CannotConnectError
+        )
         expect(media.issueJoinToken).not.toHaveBeenCalled()
     })
 
     it('is MEMBER_TIMED_OUT, saying until when, for a member timed out', async () => {
         const { token } = setup({ timeoutUntil: LATER })
 
-        const refused = token.execute(new IssueJoinTokenCommand('an', LOUNGE))
+        const refused = token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
 
         await expect(refused).rejects.toBeInstanceOf(VoiceTimedOutError)
         await expect(refused).rejects.toMatchObject({ details: { timeoutUntil: LATER.toISOString() } })
@@ -173,7 +177,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
     it('puts someone in another room out of it first, and tells that room (one connection per account)', async () => {
         const { token, media, writes, events } = setup({ current: row() })
 
-        await token.execute(new IssueJoinTokenCommand('an', LOUNGE))
+        await token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
 
         expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${STUDY}`, 'an')
         expect(writes).toEqual([{ kind: 'remove' }])
@@ -186,7 +190,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
     it('leaves someone in the same room where they are: LiveKit pushes the older tab out itself', async () => {
         const { token, media } = setup({ current: row({ channelId: LOUNGE }) })
 
-        await token.execute(new IssueJoinTokenCommand('an', LOUNGE))
+        await token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
 
         expect(media.removeParticipant).not.toHaveBeenCalled()
     })
@@ -195,7 +199,7 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
         const { token, media, writes } = setup({ current: row() })
         media.removeParticipant.mockRejectedValue(new MediaRoomsUnavailableError())
 
-        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE))).rejects.toBeInstanceOf(
+        await expect(token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))).rejects.toBeInstanceOf(
             MediaRoomsUnavailableError
         )
         expect(writes).toEqual([])

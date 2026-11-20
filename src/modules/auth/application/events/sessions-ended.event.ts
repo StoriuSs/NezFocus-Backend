@@ -5,7 +5,9 @@
  * reset, revoking one or all other sessions, a refresh token used twice, a
  * deleted account, and the hourly clean-up's ending of sessions left to a
  * deleted account. The realtime module reacts by telling each session's
- * sockets (`session.revoked`) and cutting them off (ARCHITECTURE 3.1).
+ * sockets (`session.revoked`) and cutting them off (ARCHITECTURE 3.1); the
+ * voice module puts the voice connections those sessions made out of their
+ * rooms (D-214).
  *
  * A session that simply runs out (its refresh cookie expires) is not ended
  * by anyone, so it is not here: its socket stays open until the tab's next

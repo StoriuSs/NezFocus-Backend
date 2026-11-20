@@ -28,6 +28,19 @@ export async function leaveRoom({ media, states, events }: LeaveSources, state: 
     return connected || result !== null
 }
 
+/**
+ * Like leaveRoom, for one connection rather than the person: LiveKit ends
+ * it only while it is the one it holds for them, so a newer connection of
+ * the same account (another sign-in, joined since the row was read) stays
+ * (D-214). True when it put that connection out of something.
+ */
+export async function leaveConnection({ media, states, events }: LeaveSources, state: VoiceState): Promise<boolean> {
+    const connected = await media.removeConnection(voiceRoomOf(state.channelId), state.userId, state.participantSid)
+    const result = await states.change(state.userId, (current) => leaveWrite(current, state.participantSid))
+    for (const event of changeEvents(result)) events.publish(event)
+    return connected || result !== null
+}
+
 /** What putting someone out and telling them why needs. */
 export interface PutOutSources extends LeaveSources {
     publisher: EventPublisherPort

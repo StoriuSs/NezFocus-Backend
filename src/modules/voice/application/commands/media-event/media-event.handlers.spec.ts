@@ -1,7 +1,9 @@
 import { EventBus } from '@nestjs/cqrs'
+import { PrincipalPort } from '@/modules/auth'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { EventPublisherPort } from '@/modules/realtime'
 import { ChannelDirectoryPort } from '@/modules/servers'
+import { DomainError } from '@/shared/domain/domain-error'
 import {
     MediaEventRejectedError,
     ScreenAlreadySharedError,
@@ -24,6 +26,7 @@ const joined = (over: Partial<Extract<MediaEvent, { kind: 'joined' | 'left' }>> 
     identity: 'an',
     participantSid: 'PA_new',
     joinedAt: at(10),
+    sessionId: 'session-an',
     ...over
 })
 const share = (over: Partial<Extract<MediaEvent, { kind: 'share_started' | 'share_stopped' }>> = {}): MediaEvent => ({
@@ -47,6 +50,15 @@ const row = (over: Partial<VoiceState> = {}): VoiceState => ({
     ...over
 })
 
+/** What auth's PRINCIPAL throws for a session ended (SessionRevokedError, which auth does not export). */
+class SessionEnded extends DomainError {
+    readonly kind = 'unauthenticated' as const
+    readonly errorKey = 'AUTH_TOKEN_REVOKED' as const
+    constructor() {
+        super('This session has ended. Sign in again.')
+    }
+}
+
 /** A repository holding one person's row, written as the real one would. */
 function setup(event: MediaEvent | Error, current: VoiceState | null = null, everyone = EVERYONE_DEFAULT_PERMISSIONS) {
     const mediaEvents = {
@@ -55,8 +67,11 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null, eve
     const receipts = { firstSight: jest.fn().mockResolvedValue(true), forget: jest.fn().mockResolvedValue(undefined) }
     const media = {
         removeParticipant: jest.fn().mockResolvedValue(true),
+        removeConnection: jest.fn().mockResolvedValue(true),
         muteTrack: jest.fn().mockResolvedValue(undefined)
     }
+    // Every session live, unless a test ends one.
+    const principals = { resolve: jest.fn().mockResolvedValue({ user: {}, sessionId: 'session-an' }) }
     const server = {
         ownerId: 'owner',
         roles: [{ id: 'everyone', permissions: everyone, position: 0, isEveryone: true }],
@@ -96,10 +111,11 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null, eve
         channels as unknown as ChannelDirectoryPort,
         checker as unknown as PermissionCheckerPort,
         publisher as unknown as EventPublisherPort,
-        events as unknown as EventBus
+        events as unknown as EventBus,
+        principals as unknown as PrincipalPort
     )
     const run = () => handler.execute(new ApplyMediaEventCommand('{"event":"…"}', 'Bearer jwt'))
-    return { run, mediaEvents, receipts, media, states, events, channels, checker, publisher }
+    return { run, mediaEvents, receipts, media, states, events, channels, checker, publisher, principals }
 }
 
 describe("LiveKit's webhooks (D-210)", () => {
@@ -118,6 +134,33 @@ describe("LiveKit's webhooks (D-210)", () => {
             reason: 'permission'
         })
         expect(states.change).not.toHaveBeenCalled()
+    })
+
+    it('puts out, never listed nor told, a connection whose sign-in session has ended: a token kept from before (D-214)', async () => {
+        const { run, media, states, publisher, principals } = setup(joined())
+        principals.resolve.mockRejectedValue(new SessionEnded())
+
+        await run()
+
+        expect(principals.resolve).toHaveBeenCalledWith({ userId: 'an', sessionId: 'session-an' })
+        // That connection only: one of a live sign-in that joined since stays.
+        expect(media.removeConnection).toHaveBeenCalledWith(`voice:${LOUNGE}`, 'an', 'PA_new')
+        expect(publisher.toUser).not.toHaveBeenCalled()
+        expect(states.change).not.toHaveBeenCalled()
+    })
+
+    it('takes a join with no session (a token from before D-214) as before, and fails one it cannot check', async () => {
+        const unknown = setup(joined({ sessionId: null }))
+        await unknown.run()
+        expect(unknown.principals.resolve).not.toHaveBeenCalled()
+        expect(unknown.states.change).toHaveBeenCalled()
+
+        // The session store unreachable: the event is forgotten, so LiveKit's retry is taken.
+        const down = setup(joined())
+        down.principals.resolve.mockRejectedValue(new Error('redis down'))
+        await expect(down.run()).rejects.toThrow('redis down')
+        expect(down.receipts.forget).toHaveBeenCalledWith('EV_1')
+        expect(down.media.removeConnection).not.toHaveBeenCalled()
     })
 
     it('puts out one who joined after leaving the server (a token used after a ban), and a deleted room', async () => {
@@ -164,12 +207,24 @@ describe("LiveKit's webhooks (D-210)", () => {
         }
     })
 
-    it('puts someone who joined in the room and tells it', async () => {
-        const { run, events } = setup(joined())
+    it('puts someone who joined in the room, with the session of their token, and tells it', async () => {
+        const { run, events, states } = setup(joined())
 
         await run()
 
         expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'joined', at(10))]])
+        // The session ending puts this connection out (D-214).
+        const decide = states.change.mock.calls[0]![1]
+        expect(decide(null)).toEqual({
+            kind: 'put',
+            connection: {
+                userId: 'an',
+                channelId: LOUNGE,
+                participantSid: 'PA_new',
+                joinedAt: at(10),
+                sessionId: 'session-an'
+            }
+        })
     })
 
     it('takes an event sent again once', async () => {

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { TrackSource, WebhookEvent, WebhookReceiver } from 'livekit-server-sdk'
 import { MediaEvent, MediaEventsPort } from '@/modules/voice/application'
 import { MediaEventRejectedError } from '@/modules/voice/domain'
+import { sessionOf } from './session-attribute'
 
 /** LiveKit's events voice acts on, by kind; any other is `other`. */
 const KINDS: Partial<Record<WebhookEvent['event'], 'joined' | 'left'>> = {
@@ -66,7 +67,8 @@ export class LiveKitMediaEvents implements MediaEventsPort {
             room: room.name,
             identity: participant.identity,
             participantSid: participant.sid,
-            joinedAt: new Date(Number(participant.joinedAtMs || participant.joinedAt * 1000n))
+            joinedAt: new Date(Number(participant.joinedAtMs || participant.joinedAt * 1000n)),
+            sessionId: sessionOf(participant)
         }
     }
 }
