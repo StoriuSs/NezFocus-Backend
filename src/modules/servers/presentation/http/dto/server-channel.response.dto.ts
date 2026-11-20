@@ -41,6 +41,37 @@ export class ServerChannelResponseDto {
     @IsBoolean()
     isStudyRoom: boolean
 
+    /**
+     * Who may start a session in it, and the cycle a session starts with
+     * (REQ-STUDY-01). Kept while the room is not a study room; a text channel
+     * has the defaults, meaningless there.
+     */
+    @ApiProperty({ enum: ['anyone', 'managers'] })
+    @Expose()
+    @IsIn(['anyone', 'managers'])
+    studyStarter: 'anyone' | 'managers'
+
+    @Expose()
+    @IsInt()
+    studyFocusMinutes: number
+
+    @Expose()
+    @IsInt()
+    studyShortBreakMinutes: number
+
+    /** Both null: no long break. */
+    @ApiProperty({ type: Number, nullable: true })
+    @Expose()
+    @IsOptional()
+    @IsInt()
+    studyLongBreakMinutes: number | null
+
+    @ApiProperty({ type: Number, nullable: true })
+    @Expose()
+    @IsOptional()
+    @IsInt()
+    studyLongBreakEvery: number | null
+
     @Expose()
     @IsBoolean()
     taskBoardEnabled: boolean

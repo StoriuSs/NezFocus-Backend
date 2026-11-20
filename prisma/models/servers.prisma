@@ -112,7 +112,8 @@ model Channel {
   studyStarter           StudyStarter @default(anyone)
   /// The cycle a new session starts with (SRS 2): focus 5–120 minutes, short
   /// break 1–30, and optionally a long break of 5–60 after every 2–8 focus
-  /// phases (both empty: no long break).
+  /// phases (both empty: no long break). Checked by Channel_study_cycle_check
+  /// (migration 20261120000000_channel_study_checks).
   studyFocusMinutes      Int          @default(25)
   studyShortBreakMinutes Int          @default(5)
   studyLongBreakMinutes  Int?

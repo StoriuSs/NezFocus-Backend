@@ -202,6 +202,169 @@ describe('Channel list over HTTP (integration)', () => {
         expect(await prisma.channelViewRole.count({ where: { channelId: id } })).toBe(0)
     })
 
+    describe('room settings (S-SET-06, REQ-STUDY-01, D-210)', () => {
+        type Room = Channel & {
+            is_study_room: boolean
+            study_starter: string
+            study_focus_minutes: number
+            study_short_break_minutes: number
+            study_long_break_minutes: number | null
+            study_long_break_every: number | null
+        }
+        const roomIn = async (who: Who, serverId: string, name: string) =>
+            (await view(who, serverId)).channels.find((c) => c.name === name) as Room
+
+        it('saves who may start and the cycle, and turns the study room off and on again', async () => {
+            const { serverId } = await studyServer()
+            const room = await roomIn('an', serverId, 'Phòng học im lặng')
+            expect(room).toMatchObject({
+                is_study_room: true,
+                study_starter: 'anyone',
+                study_focus_minutes: 25,
+                study_short_break_minutes: 5,
+                study_long_break_minutes: null,
+                study_long_break_every: null
+            })
+
+            const saved = await send('chi', 'patch', `${serverId}/channels/${room.id}`, {
+                study_starter: 'managers',
+                study_focus_minutes: 50,
+                study_short_break_minutes: 10,
+                study_long_break_minutes: 20,
+                study_long_break_every: 4
+            })
+            expect(saved.status).toBe(200)
+            expect(await roomIn('phong', serverId, 'Phòng học im lặng')).toMatchObject({
+                study_starter: 'managers',
+                study_focus_minutes: 50,
+                study_long_break_minutes: 20,
+                study_long_break_every: 4
+            })
+
+            const off = await send('an', 'patch', `${serverId}/channels/${room.id}`, {
+                is_study_room: false,
+                study_long_break_minutes: null,
+                study_long_break_every: null
+            })
+            expect(off.status).toBe(200)
+            expect(await roomIn('an', serverId, 'Phòng học im lặng')).toMatchObject({
+                is_study_room: false,
+                study_focus_minutes: 50,
+                study_long_break_minutes: null
+            })
+
+            const on = await send('an', 'patch', `${serverId}/channels/${room.id}`, { is_study_room: true })
+            expect(on.status).toBe(200)
+            expect(await roomIn('an', serverId, 'Phòng học im lặng')).toMatchObject({
+                is_study_room: true,
+                study_starter: 'managers',
+                study_focus_minutes: 50
+            })
+        })
+
+        it('refuses a cycle out of range, half a long break, and study settings on a text channel', async () => {
+            const { serverId } = await studyServer()
+            const room = await roomIn('an', serverId, 'Phòng học im lặng')
+            const text = await roomIn('an', serverId, 'hoi-dap')
+            const patch = (id: string, body: object) => send('an', 'patch', `${serverId}/channels/${id}`, body)
+
+            expect((await patch(room.id, { study_focus_minutes: 150 })).status).toBe(422)
+            expect((await patch(room.id, { study_long_break_every: 9, study_long_break_minutes: 15 })).status).toBe(422)
+            expect(rule(await patch(room.id, { study_long_break_minutes: 15 }))).toEqual([
+                422,
+                'VALIDATION_ERROR',
+                'study_cycle'
+            ])
+            expect(rule(await patch(text.id, { is_study_room: true }))).toEqual([
+                422,
+                'VALIDATION_ERROR',
+                'not_for_type'
+            ])
+        })
+
+        it('answers VALIDATION_ERROR, not a server error, to null where a value is needed', async () => {
+            const { serverId } = await studyServer()
+            const room = await roomIn('an', serverId, 'Phòng học im lặng')
+            const text = await roomIn('an', serverId, 'hoi-dap')
+            for (const [id, body] of [
+                [text.id, { name: null }],
+                [text.id, { send_mode: null }],
+                [text.id, { task_board_enabled: null }],
+                [room.id, { is_study_room: null }],
+                [room.id, { study_starter: null }],
+                [room.id, { study_focus_minutes: null }],
+                [room.id, { study_short_break_minutes: null }]
+            ] as const) {
+                const res = await send('an', 'patch', `${serverId}/channels/${id}`, body)
+                expect([Object.keys(body)[0], res.status, res.body.meta?.type]).toEqual([
+                    Object.keys(body)[0],
+                    422,
+                    'VALIDATION_ERROR'
+                ])
+            }
+        })
+
+        it('lets MANAGE_STUDY_ROOMS change only the study part of a room (study-only)', async () => {
+            const { serverId } = await studyServer()
+            const coach = await prisma.role.create({
+                data: {
+                    serverId,
+                    name: 'Điều phối phòng học',
+                    nameKey: 'điều phối phòng học',
+                    permissions: Permission.MANAGE_STUDY_ROOMS,
+                    position: 3
+                }
+            })
+            await prisma.memberRole.create({ data: { serverId, userId: users.phong.id, roleId: coach.id } })
+            const room = await roomIn('phong', serverId, 'Phòng học im lặng')
+            const text = await roomIn('phong', serverId, 'hoi-dap')
+            const patch = (id: string, body: object) => send('phong', 'patch', `${serverId}/channels/${id}`, body)
+
+            expect((await patch(room.id, { study_starter: 'managers', study_focus_minutes: 45 })).status).toBe(200)
+            expect((await patch(room.id, { name: 'Phòng học im lặng' })).status).toBe(200)
+            const rename = await patch(room.id, { name: 'Phòng mới' })
+            expect([rename.status, rename.body.meta.type]).toEqual([403, 'FORBIDDEN_ERROR'])
+            expect((await patch(text.id, { task_board_enabled: true })).status).toBe(403)
+            expect((await send('phong', 'delete', `${serverId}/channels/${room.id}`)).status).toBe(403)
+            expect(await roomIn('an', serverId, 'Phòng học im lặng')).toMatchObject({
+                name: 'Phòng học im lặng',
+                study_starter: 'managers',
+                study_focus_minutes: 45
+            })
+        })
+
+        it('the database keeps the cycle in range and the long break whole (Channel_study_cycle_check)', async () => {
+            const { serverId } = await studyServer()
+            const room = await roomIn('an', serverId, 'Phòng học im lặng')
+            type DatabaseError = { meta?: { driverAdapterError?: { cause?: { originalMessage?: string } } } }
+            const refusedBy = (data: object): Promise<string> =>
+                prisma.channel.update({ where: { id: room.id }, data, select: { id: true } }).then(
+                    () => 'written',
+                    (error: DatabaseError) => {
+                        const said = error.meta?.driverAdapterError?.cause?.originalMessage ?? String(error)
+                        return /constraint "([^"]+)"/.exec(said)?.[1] ?? said
+                    }
+                )
+            expect(await refusedBy({ studyFocusMinutes: 120, studyShortBreakMinutes: 30 })).toBe('written')
+            expect(await refusedBy({ studyLongBreakMinutes: 60, studyLongBreakEvery: 8 })).toBe('written')
+            expect(await refusedBy({ studyLongBreakMinutes: null, studyLongBreakEvery: null })).toBe('written')
+            for (const wrong of [
+                { studyFocusMinutes: 4 },
+                { studyFocusMinutes: 121 },
+                { studyShortBreakMinutes: 0 },
+                { studyShortBreakMinutes: 31 },
+                { studyLongBreakMinutes: 15 },
+                { studyLongBreakEvery: 4 },
+                { studyLongBreakMinutes: 4, studyLongBreakEvery: 4 },
+                { studyLongBreakMinutes: 61, studyLongBreakEvery: 4 },
+                { studyLongBreakMinutes: 15, studyLongBreakEvery: 1 },
+                { studyLongBreakMinutes: 15, studyLongBreakEvery: 9 }
+            ]) {
+                expect([wrong, await refusedBy(wrong)]).toEqual([wrong, 'Channel_study_cycle_check'])
+            }
+        })
+    })
+
     it('moves one channel per drop, leaving a channel the mover cannot see where it was (D-149)', async () => {
         const { serverId, info, rooms, lead } = await studyServer()
         const secret = await send('an', 'post', `${serverId}/channels`, {

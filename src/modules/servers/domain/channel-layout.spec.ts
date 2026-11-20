@@ -12,6 +12,7 @@ import {
 } from './channel-layout'
 import { MAX_CHANNELS_AND_CATEGORIES } from './channel-name.rules'
 import { ChannelSnapshot, ServerSnapshot } from './member-view'
+import { DEFAULT_STUDY_SETTINGS } from './study-room.rules'
 
 const NOW = new Date('2026-11-09T21:47:00Z')
 
@@ -25,6 +26,7 @@ const channel = (id: string, extra: Partial<ChannelSnapshot> = {}): ChannelSnaps
     name: id,
     position: 0,
     isStudyRoom: false,
+    ...DEFAULT_STUDY_SETTINGS,
     taskBoardEnabled: false,
     ...extra
 })
@@ -299,6 +301,166 @@ describe('channel settings (S-SET-05)', () => {
         expect(planUpdateChannel(as(AN), 'bi-mat', { isPrivate: true, viewRoleIds: ['lead'] }, NOW)).toEqual([])
         expect(error(() => planUpdateChannel(as(AN), 'hoi-dap', { viewRoleIds: ['lead'] }, NOW))).toBe(
             'LayoutRuleError:view_roles'
+        )
+    })
+})
+
+describe('room settings (S-SET-06, REQ-STUDY-01, D-210)', () => {
+    /** Bình: Trưởng nhóm with MANAGE_STUDY_ROOMS, not MANAGE_CHANNELS. */
+    const BINH = member('binh', ['coach'])
+    const withCoach = as(BINH, {
+        roles: [
+            ...server.roles,
+            {
+                id: 'coach',
+                name: 'Điều phối phòng học',
+                permissions: Permission.MANAGE_STUDY_ROOMS,
+                position: 3,
+                isEveryone: false
+            }
+        ]
+    })
+
+    it('turns a room into a study room and back, with who may start and the cycle', () => {
+        expect(planUpdateChannel(as(CHI), 'phong-on', { isStudyRoom: false }, NOW)).toEqual([
+            { kind: 'updateChannel', id: 'phong-on', changes: { isStudyRoom: false } }
+        ])
+        expect(
+            planUpdateChannel(
+                as(CHI),
+                'phong-on',
+                {
+                    studyStarter: 'managers',
+                    studyFocusMinutes: 50,
+                    studyShortBreakMinutes: 10,
+                    studyLongBreakMinutes: 20,
+                    studyLongBreakEvery: 4
+                },
+                NOW
+            )
+        ).toEqual([
+            {
+                kind: 'updateChannel',
+                id: 'phong-on',
+                changes: {
+                    studyStarter: 'managers',
+                    studyFocusMinutes: 50,
+                    studyShortBreakMinutes: 10,
+                    studyLongBreakMinutes: 20,
+                    studyLongBreakEvery: 4
+                }
+            }
+        ])
+        expect(planUpdateChannel(as(CHI), 'phong-on', { isStudyRoom: true, studyFocusMinutes: 25 }, NOW)).toEqual([])
+    })
+
+    it('keeps the cycle of a room that is not a study room yet', () => {
+        const plain = as(CHI, {
+            channels: server.channels.map((c) => (c.id === 'phong-on' ? { ...c, isStudyRoom: false } : c))
+        })
+        expect(planUpdateChannel(plain, 'phong-on', { studyFocusMinutes: 45 }, NOW)).toEqual([
+            { kind: 'updateChannel', id: 'phong-on', changes: { studyFocusMinutes: 45 } }
+        ])
+        expect(planUpdateChannel(plain, 'phong-on', { isStudyRoom: true, studyFocusMinutes: 45 }, NOW)).toEqual([
+            { kind: 'updateChannel', id: 'phong-on', changes: { isStudyRoom: true, studyFocusMinutes: 45 } }
+        ])
+    })
+
+    it('turns the long break off with both halves, and refuses one half alone', () => {
+        const longBreak = as(CHI, {
+            channels: server.channels.map((c) =>
+                c.id === 'phong-on' ? { ...c, studyLongBreakMinutes: 15, studyLongBreakEvery: 4 } : c
+            )
+        })
+        expect(
+            planUpdateChannel(longBreak, 'phong-on', { studyLongBreakMinutes: null, studyLongBreakEvery: null }, NOW)
+        ).toEqual([
+            {
+                kind: 'updateChannel',
+                id: 'phong-on',
+                changes: { studyLongBreakMinutes: null, studyLongBreakEvery: null }
+            }
+        ])
+        expect(error(() => planUpdateChannel(longBreak, 'phong-on', { studyLongBreakEvery: null }, NOW))).toBe(
+            'LayoutRuleError:study_cycle'
+        )
+        expect(error(() => planUpdateChannel(as(CHI), 'phong-on', { studyLongBreakMinutes: 15 }, NOW))).toBe(
+            'LayoutRuleError:study_cycle'
+        )
+        expect(error(() => planUpdateChannel(as(CHI), 'phong-on', { studyFocusMinutes: 150 }, NOW))).toBe(
+            'LayoutRuleError:study_cycle'
+        )
+    })
+
+    it('says which part of the cycle is wrong', () => {
+        try {
+            planUpdateChannel(as(CHI), 'phong-on', { studyFocusMinutes: 150 }, NOW)
+        } catch (caught) {
+            expect((caught as { details: unknown }).details).toEqual({ rule: 'study_cycle', problem: 'focus_minutes' })
+        }
+        expect.assertions(1)
+    })
+
+    it('has no study settings on a text channel', () => {
+        expect(error(() => planUpdateChannel(as(AN), 'hoi-dap', { isStudyRoom: true }, NOW))).toBe(
+            'LayoutRuleError:not_for_type'
+        )
+        expect(error(() => planUpdateChannel(as(AN), 'hoi-dap', { studyStarter: 'managers' }, NOW))).toBe(
+            'LayoutRuleError:not_for_type'
+        )
+        expect(error(() => planUpdateChannel(as(AN), 'hoi-dap', { studyFocusMinutes: 50 }, NOW))).toBe(
+            'LayoutRuleError:not_for_type'
+        )
+        expect(planUpdateChannel(as(AN), 'hoi-dap', { isStudyRoom: false, studyFocusMinutes: 25 }, NOW)).toEqual([])
+    })
+
+    it('lets MANAGE_STUDY_ROOMS change the study part of a room only (study-only)', () => {
+        expect(planUpdateChannel(withCoach, 'phong-on', { isStudyRoom: false, studyStarter: 'managers' }, NOW)).toEqual(
+            [{ kind: 'updateChannel', id: 'phong-on', changes: { isStudyRoom: false, studyStarter: 'managers' } }]
+        )
+        // What did not change is no reason to refuse: the dialog sends what differs, a stale one may send it all.
+        expect(planUpdateChannel(withCoach, 'phong-on', { name: 'Phòng ôn', isPrivate: false }, NOW)).toEqual([])
+        expect(error(() => planUpdateChannel(withCoach, 'phong-on', { name: 'Phòng mới' }, NOW))).toBe(
+            'MissingPermissionError'
+        )
+        expect(
+            error(() => planUpdateChannel(withCoach, 'phong-on', { isPrivate: true, viewRoleIds: ['lead'] }, NOW))
+        ).toBe('MissingPermissionError')
+        expect(error(() => planDeleteChannel(withCoach, 'phong-on', NOW))).toBe('MissingPermissionError')
+    })
+
+    it('refuses MANAGE_STUDY_ROOMS any view roles: they were never shown them, so a match must not answer', () => {
+        const privateRoom = as(BINH, {
+            roles: withCoach.server.roles,
+            channels: server.channels.map((c) =>
+                c.id === 'phong-on' ? { ...c, isPrivate: true, viewRoleIds: ['lead', 'coach'] } : c
+            )
+        })
+        expect(error(() => planUpdateChannel(privateRoom, 'phong-on', { viewRoleIds: ['lead', 'coach'] }, NOW))).toBe(
+            'MissingPermissionError'
+        )
+        expect(planUpdateChannel(privateRoom, 'phong-on', { isPrivate: true }, NOW)).toEqual([])
+    })
+
+    it('refuses MANAGE_STUDY_ROOMS a name change before saying whether the name is taken', () => {
+        const twoRooms = as(BINH, {
+            roles: withCoach.server.roles,
+            channels: [
+                ...server.channels,
+                channel('phong-2', { categoryId: 'rooms', type: 'voice', name: 'Phòng hai', position: 1 })
+            ]
+        })
+        expect(error(() => planUpdateChannel(twoRooms, 'phong-on', { name: 'Phòng hai' }, NOW))).toBe(
+            'MissingPermissionError'
+        )
+    })
+
+    it('gives MANAGE_STUDY_ROOMS nothing on a text channel, and nothing to someone with neither', () => {
+        expect(error(() => planUpdateChannel(withCoach, 'hoi-dap', { taskBoardEnabled: false }, NOW))).toBe(
+            'MissingPermissionError'
+        )
+        expect(error(() => planUpdateChannel(as(PHONG), 'phong-on', { isStudyRoom: false }, NOW))).toBe(
+            'MissingPermissionError'
         )
     })
 })

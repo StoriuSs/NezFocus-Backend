@@ -294,6 +294,8 @@ export class UpdateProfileResponseDto {
 }
 ```
 
+`@IsOptional()` lets **null** through as well as a missing field. In a request body where a field may be left out but never set to null (a PATCH body: left out means "unchanged"), use `@ValidateIf(sent)` instead, with `sent` from the module's `dto/shared/fields.ts` (servers: `update-channel.request.dto.ts`, `update-server.request.dto.ts`). Otherwise null reaches the domain or Prisma and answers 500. Keep `@IsOptional()` where null means something (a welcome channel of none, no long break).
+
 #### Step 2: Use `validateAndTransform()` in Services
 
 ```typescript

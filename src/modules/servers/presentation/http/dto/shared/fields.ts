@@ -13,3 +13,10 @@ export const TYPED_MAX = CHANNEL_NAME_MAX_LENGTH * 4
 export const MAX_PAGE = 100_000
 /** More view roles than a server can have (50) is not a real request. */
 export const MAX_VIEW_ROLES = 100
+
+/**
+ * For `@ValidateIf(sent)` on a field of a PATCH body that may be left out but
+ * never set to null: `@IsOptional()` lets null through too, and null is not
+ * "unchanged" (it reached the domain and answered 500).
+ */
+export const sent = (_: object, value: unknown) => value !== undefined

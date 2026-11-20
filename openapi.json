@@ -6231,6 +6231,23 @@
       "ServerChannelResponseDto": {
         "type": "object",
         "properties": {
+          "study_starter": {
+            "description": "Who may start a session in it, and the cycle a session starts with\n(REQ-STUDY-01). Kept while the room is not a study room; a text channel\nhas the defaults, meaningless there.",
+            "enum": [
+              "anyone",
+              "managers"
+            ],
+            "type": "string"
+          },
+          "study_long_break_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Both null: no long break."
+          },
+          "study_long_break_every": {
+            "type": "number",
+            "nullable": true
+          },
           "permissions": {
             "type": "string",
             "description": "What they may do in this channel (appendix B, steps 1–6).",
@@ -6288,11 +6305,20 @@
           "is_study_room": {
             "type": "boolean"
           },
+          "study_focus_minutes": {
+            "type": "number"
+          },
+          "study_short_break_minutes": {
+            "type": "number"
+          },
           "task_board_enabled": {
             "type": "boolean"
           }
         },
         "required": [
+          "study_starter",
+          "study_long_break_minutes",
+          "study_long_break_every",
           "permissions",
           "view_role_ids",
           "voice_states",
@@ -6304,6 +6330,8 @@
           "is_private",
           "send_mode",
           "is_study_room",
+          "study_focus_minutes",
+          "study_short_break_minutes",
           "task_board_enabled"
         ]
       },
@@ -6624,6 +6652,43 @@
           "task_board_enabled": {
             "type": "boolean",
             "description": "Text channels: off hides its tasks and stops their reminders; on shows them again (REQ-TASK-01)."
+          },
+          "is_study_room": {
+            "type": "boolean",
+            "description": "Rooms: a shared Pomodoro (REQ-STUDY-01). Off keeps the settings below for when it is on again."
+          },
+          "study_starter": {
+            "description": "Rooms: who may start a session, anyone in the room or only MANAGE_STUDY_ROOMS.",
+            "enum": [
+              "anyone",
+              "managers"
+            ],
+            "type": "string"
+          },
+          "study_focus_minutes": {
+            "type": "number",
+            "description": "Rooms: the cycle a new session starts with.",
+            "minimum": 5,
+            "maximum": 120
+          },
+          "study_short_break_minutes": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "study_long_break_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null, with `study_long_break_every` null: no long break. One without the other is refused (`study_cycle`).",
+            "minimum": 5,
+            "maximum": 60
+          },
+          "study_long_break_every": {
+            "type": "number",
+            "nullable": true,
+            "description": "A long break after every this many focus phases.",
+            "minimum": 2,
+            "maximum": 8
           }
         }
       },

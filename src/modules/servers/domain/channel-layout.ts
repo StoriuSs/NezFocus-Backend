@@ -8,6 +8,7 @@ import {
 } from './channel-name.rules'
 import { ChannelSnapshot, ServerSnapshot } from './member-view'
 import { nameKey } from './name-key'
+import { StudyStarter, studyCycleProblem } from './study-room.rules'
 import { CategoryNotFoundError, ChannelNotFoundError, LayoutRuleError, MissingPermissionError } from './errors'
 
 /*
@@ -40,7 +41,7 @@ export interface ChannelDraft {
     viewRoleIds: string[]
 }
 
-/** What "Channel settings" (S-SET-05) changes; anything left out stays. */
+/** What "Channel settings" (S-SET-05) and "Room settings" (S-SET-06) change; anything left out stays. */
 export interface ChannelEdit {
     name?: string
     /** Text channels only. */
@@ -49,7 +50,26 @@ export interface ChannelEdit {
     viewRoleIds?: string[]
     /** Text channels only (REQ-TASK-01): off hides its tasks, on shows them again. */
     taskBoardEnabled?: boolean
+    /** Rooms only, with the four below (REQ-STUDY-01): MANAGE_STUDY_ROOMS may change these alone (D-210). */
+    isStudyRoom?: boolean
+    studyStarter?: StudyStarter
+    studyFocusMinutes?: number
+    studyShortBreakMinutes?: number
+    /** Null, with `studyLongBreakEvery` null: no long break. */
+    studyLongBreakMinutes?: number | null
+    studyLongBreakEvery?: number | null
 }
+
+/** The study settings of a room (S-SET-06): what MANAGE_STUDY_ROOMS may change (D-210). */
+const STUDY_FIELDS = [
+    'isStudyRoom',
+    'studyStarter',
+    'studyFocusMinutes',
+    'studyShortBreakMinutes',
+    'studyLongBreakMinutes',
+    'studyLongBreakEvery'
+] as const
+type StudyField = (typeof STUDY_FIELDS)[number]
 
 /** One drop (D-149): it goes right after `afterId`, or first when that is null. */
 export type LayoutMove =
@@ -75,6 +95,12 @@ export interface ChannelChanges {
     /** Replaces the whole set. */
     viewRoleIds?: string[]
     taskBoardEnabled?: boolean
+    isStudyRoom?: boolean
+    studyStarter?: StudyStarter
+    studyFocusMinutes?: number
+    studyShortBreakMinutes?: number
+    studyLongBreakMinutes?: number | null
+    studyLongBreakEvery?: number | null
 }
 
 /** The server row itself (S-SET-01): its name, its welcome channel (null: none). */
@@ -113,14 +139,37 @@ function sees({ server, member }: LayoutState, channel: ChannelSnapshot, now: Da
     return channelPermissions(accessOf(server), member, channel, now) !== 0n
 }
 
-/** The channel, if they see it and hold MANAGE_CHANNELS in it. */
-function requireManageChannel(state: LayoutState, channelId: string, now: Date): ChannelSnapshot {
+/** The channel and what they may do in it; not there when they cannot see it (NFR-SEC-05). */
+function requireSeen(state: LayoutState, channelId: string, now: Date): { channel: ChannelSnapshot; granted: bigint } {
     const channel = state.server.channels.find((c) => c.id === channelId)
     if (!channel) throw new ChannelNotFoundError(channelId)
     const granted = channelPermissions(accessOf(state.server), state.member, channel, now)
     if (granted === 0n) throw new ChannelNotFoundError(channelId)
+    return { channel, granted }
+}
+
+/** The channel, if they see it and hold MANAGE_CHANNELS in it. */
+function requireManageChannel(state: LayoutState, channelId: string, now: Date): ChannelSnapshot {
+    const { channel, granted } = requireSeen(state, channelId, now)
     if ((granted & Permission.MANAGE_CHANNELS) === 0n) throw new MissingPermissionError('MANAGE_CHANNELS')
     return channel
+}
+
+/**
+ * The channel, if they see it and may open its settings: MANAGE_CHANNELS in
+ * it, or MANAGE_STUDY_ROOMS in a room (S-SET-06 `study-only`, D-210).
+ * `manages`: they may change more than its study settings.
+ */
+function requireChannelEditor(
+    state: LayoutState,
+    channelId: string,
+    now: Date
+): { channel: ChannelSnapshot; manages: boolean } {
+    const { channel, granted } = requireSeen(state, channelId, now)
+    const manages = (granted & Permission.MANAGE_CHANNELS) !== 0n
+    const studies = channel.type === 'voice' && (granted & Permission.MANAGE_STUDY_ROOMS) !== 0n
+    if (!manages && !studies) throw new MissingPermissionError('MANAGE_CHANNELS')
+    return { channel, manages }
 }
 
 function requireCategory(state: LayoutState, categoryId: string) {
@@ -131,9 +180,12 @@ function requireCategory(state: LayoutState, categoryId: string) {
 
 // --- Names and groups ------------------------------------------------------
 
+const normaliseChannelName = (type: ChannelType, typed: string) =>
+    type === 'text' ? normaliseTextChannelName(typed) : normaliseFreeName(typed)
+
 /** The name as stored, with its key; refused when nothing usable is left. */
 function channelName(type: ChannelType, typed: string): { name: string; nameKey: string } {
-    const name = type === 'text' ? normaliseTextChannelName(typed) : normaliseFreeName(typed)
+    const name = normaliseChannelName(type, typed)
     const problem = type === 'text' ? textChannelNameProblem(name) : freeNameProblem(name)
     if (problem) throw new LayoutRuleError('name_invalid', { problem })
     return { name, nameKey: nameKey(name) }
@@ -171,6 +223,11 @@ function requireRoom(server: ServerSnapshot): void {
     if (server.categories.length + server.channels.length >= MAX_CHANNELS_AND_CATEGORIES) {
         throw new LayoutRuleError('limit')
     }
+}
+
+const sameSet = (a: string[], b: string[]) => {
+    const unique = new Set(a)
+    return unique.size === b.length && b.every((id) => unique.has(id))
 }
 
 /** The roles that will see a channel: none when public; real, non-@everyone roles when private. */
@@ -259,25 +316,38 @@ export function planCreateChannel(state: LayoutState, draft: ChannelDraft, now: 
     ]
 }
 
-/** One save of "Channel settings" (S-SET-05). Nothing that differs: no write. */
+/**
+ * One save of "Channel settings" (S-SET-05) or "Room settings" (S-SET-06).
+ * Nothing that differs: no write. A field that differs, other than the study
+ * settings, needs MANAGE_CHANNELS, checked before its own rules: someone who
+ * only manages study rooms learns nothing of the names in the group (D-210).
+ * The view roles were never sent to them (memberView), so any they send is
+ * refused: a match must not answer differently from a guess that misses.
+ */
 export function planUpdateChannel(state: LayoutState, channelId: string, edit: ChannelEdit, now: Date): LayoutWrite[] {
-    const channel = requireManageChannel(state, channelId, now)
+    const { channel, manages } = requireChannelEditor(state, channelId, now)
+    const requireManages = () => {
+        if (!manages) throw new MissingPermissionError('MANAGE_CHANNELS')
+    }
     const changes: ChannelChanges = {}
 
-    if (edit.name !== undefined) {
+    if (edit.name !== undefined && normaliseChannelName(channel.type, edit.name) !== channel.name) {
+        requireManages()
         const { name, nameKey: key } = channelName(channel.type, edit.name)
         if (clashesInGroup(state.server, channel.categoryId, channel.type, key, channel.id)) {
             throw new LayoutRuleError('name_taken')
         }
-        if (name !== channel.name) Object.assign(changes, { name, nameKey: key })
+        Object.assign(changes, { name, nameKey: key })
     }
 
     if (edit.sendMode !== undefined && edit.sendMode !== channel.sendMode) {
+        requireManages()
         if (channel.type !== 'text') throw new LayoutRuleError('not_for_type')
         changes.sendMode = edit.sendMode
     }
 
     if (edit.taskBoardEnabled !== undefined && edit.taskBoardEnabled !== channel.taskBoardEnabled) {
+        requireManages()
         if (channel.type !== 'text') throw new LayoutRuleError('not_for_type')
         changes.taskBoardEnabled = edit.taskBoardEnabled
     }
@@ -285,14 +355,37 @@ export function planUpdateChannel(state: LayoutState, channelId: string, edit: C
     if (edit.isPrivate !== undefined || edit.viewRoleIds !== undefined) {
         const isPrivate = edit.isPrivate ?? channel.isPrivate
         const ids = edit.viewRoleIds ?? (isPrivate ? channel.viewRoleIds : [])
+        if (edit.viewRoleIds !== undefined || isPrivate !== channel.isPrivate) requireManages()
         const roles = viewRoles(state.server, isPrivate, ids)
-        const sameRoles =
-            roles.length === channel.viewRoleIds.length && roles.every((id) => channel.viewRoleIds.includes(id))
         if (isPrivate !== channel.isPrivate) changes.isPrivate = isPrivate
-        if (!sameRoles) changes.viewRoleIds = roles
+        if (!sameSet(roles, channel.viewRoleIds)) changes.viewRoleIds = roles
     }
 
+    Object.assign(changes, studyChanges(channel, edit))
+
     return Object.keys(changes).length === 0 ? [] : [{ kind: 'updateChannel', id: channelId, changes }]
+}
+
+/**
+ * The study settings that differ (REQ-STUDY-01). Rooms only; kept while the
+ * room is not a study room. The cycle as it will be stored must be whole:
+ * in range, and both halves of a long break or neither.
+ */
+function studyChanges(channel: ChannelSnapshot, edit: ChannelEdit): Pick<ChannelChanges, StudyField> {
+    const after = <K extends StudyField>(field: K) =>
+        (edit[field] === undefined ? channel[field] : edit[field]) as ChannelSnapshot[K]
+    const changed = STUDY_FIELDS.filter((field) => after(field) !== channel[field])
+    if (changed.length === 0) return {}
+    if (channel.type !== 'voice') throw new LayoutRuleError('not_for_type')
+
+    const problem = studyCycleProblem({
+        focusMinutes: after('studyFocusMinutes'),
+        shortBreakMinutes: after('studyShortBreakMinutes'),
+        longBreakMinutes: after('studyLongBreakMinutes'),
+        longBreakEvery: after('studyLongBreakEvery')
+    })
+    if (problem) throw new LayoutRuleError('study_cycle', { problem })
+    return Object.fromEntries(changed.map((field) => [field, after(field)])) as Pick<ChannelChanges, StudyField>
 }
 
 /** Deleted with whatever it holds; the welcome channel's server then sends none (D-83). */

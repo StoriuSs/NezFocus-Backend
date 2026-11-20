@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
+import { IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator'
 import { SERVER_NAME_MAX_LENGTH } from '../../../domain'
+import { sent } from './shared/fields'
 
 /**
  * PATCH /servers/{id} (S-SET-01). A field left out stays as it is. The name
@@ -9,7 +10,7 @@ import { SERVER_NAME_MAX_LENGTH } from '../../../domain'
  */
 export class UpdateServerRequestDto {
     @ApiPropertyOptional({ minLength: 2, maxLength: SERVER_NAME_MAX_LENGTH })
-    @IsOptional()
+    @ValidateIf(sent)
     @IsString()
     @MaxLength(SERVER_NAME_MAX_LENGTH * 4)
     name?: string

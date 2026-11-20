@@ -25,6 +25,11 @@ export const membershipSelect = {
                     isPrivate: true,
                     sendMode: true,
                     isStudyRoom: true,
+                    studyStarter: true,
+                    studyFocusMinutes: true,
+                    studyShortBreakMinutes: true,
+                    studyLongBreakMinutes: true,
+                    studyLongBreakEvery: true,
                     taskBoardEnabled: true,
                     viewRoles: { select: { roleId: true } }
                 }

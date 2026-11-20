@@ -1,5 +1,6 @@
 import { ALL_PERMISSIONS, AccessMember, EVERYONE_DEFAULT_PERMISSIONS, Permission } from '@/modules/permissions'
 import { ChannelSnapshot, memberView, ServerSnapshot } from './member-view'
+import { DEFAULT_STUDY_SETTINGS } from './study-room.rules'
 
 const NOW = new Date('2026-11-09T21:47:00Z')
 
@@ -13,6 +14,7 @@ const channel = (id: string, extra: Partial<ChannelSnapshot> = {}): ChannelSnaps
     name: id,
     position: 0,
     isStudyRoom: false,
+    ...DEFAULT_STUDY_SETTINGS,
     taskBoardEnabled: false,
     ...extra
 })

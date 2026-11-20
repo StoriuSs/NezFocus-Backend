@@ -6,6 +6,7 @@ import {
     Permission,
     serverPermissions
 } from '@/modules/permissions'
+import { StudyStarter } from './study-room.rules'
 
 /** A role as the channel list needs it: the private-channel picker lists roles by name. */
 export interface RoleSnapshot extends AccessRole {
@@ -23,6 +24,13 @@ export interface ChannelSnapshot extends AccessChannel {
     name: string
     position: number
     isStudyRoom: boolean
+    /** Rooms only (REQ-STUDY-01); kept while it is not a study room, so turning it on again finds them. */
+    studyStarter: StudyStarter
+    studyFocusMinutes: number
+    studyShortBreakMinutes: number
+    /** Both null: no long break. */
+    studyLongBreakMinutes: number | null
+    studyLongBreakEvery: number | null
 }
 
 /** A server as stored, everything one member's view is made from. */

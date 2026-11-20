@@ -1,7 +1,13 @@
 import { EventBus } from '@nestjs/cqrs'
 import { EVERYONE_DEFAULT_PERMISSIONS, PermissionCachePort } from '@/modules/permissions'
 import { ServerChangedEvent } from '../../events/server-changed.event'
-import { LayoutState, LayoutWrite, ServerNotFoundError, ServerRepositoryPort } from '../../../domain'
+import {
+    LayoutState,
+    LayoutWrite,
+    ServerNotFoundError,
+    ServerRepositoryPort,
+    DEFAULT_STUDY_SETTINGS
+} from '../../../domain'
 import {
     CreateCategoryCommand,
     CreateChannelCommand,
@@ -41,6 +47,7 @@ const STATE: LayoutState = {
                 viewRoleIds: [],
                 sendMode: 'everyone',
                 isStudyRoom: false,
+                ...DEFAULT_STUDY_SETTINGS,
                 taskBoardEnabled: false
             }
         ],

@@ -108,6 +108,9 @@ describe('Server overview over HTTP (integration)', () => {
         expect((await view('phong', serverId)).name).toBe('Ôn thi Giải tích 2 – K22')
 
         expect(rule(await patch('an', serverId, { name: ' Ô ' }))).toEqual([422, 'VALIDATION_ERROR', 'name_invalid'])
+        // Null is not "unchanged": refused, not a server error.
+        const nameless = await patch('an', serverId, { name: null })
+        expect([nameless.status, nameless.body.meta.type]).toEqual([422, 'VALIDATION_ERROR'])
         expect((await patch('phong', serverId, { name: 'Của Phong' })).status).toBe(403)
         const stranger = await patch('an', randomUUID(), { name: 'Không có' })
         expect(stranger.status).toBe(404)

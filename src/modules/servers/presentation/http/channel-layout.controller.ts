@@ -134,14 +134,32 @@ export class ChannelLayoutController {
         @Param() { serverId, channelId }: ServerChannelParamsDto,
         @Body() dto: UpdateChannelRequestDto
     ): Promise<ServiceResponse<ServerResponseDto>> {
-        const { name, sendMode, isPrivate, viewRoleIds, taskBoardEnabled } = dto
+        const {
+            name,
+            sendMode,
+            isPrivate,
+            viewRoleIds,
+            taskBoardEnabled,
+            isStudyRoom,
+            studyStarter,
+            studyFocusMinutes,
+            studyShortBreakMinutes,
+            studyLongBreakMinutes,
+            studyLongBreakEvery
+        } = dto
         await this.commandBus.execute(
             new UpdateChannelCommand(user.id, serverId, channelId, {
                 name,
                 sendMode,
                 isPrivate,
                 viewRoleIds,
-                taskBoardEnabled
+                taskBoardEnabled,
+                isStudyRoom,
+                studyStarter,
+                studyFocusMinutes,
+                studyShortBreakMinutes,
+                studyLongBreakMinutes,
+                studyLongBreakEvery
             })
         )
         return createResponse(MESSAGES.SERVER.CHANNEL_UPDATED, await this.view(user.id, serverId))
