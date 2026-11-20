@@ -238,6 +238,10 @@ services:
           udp_port: 7882
           use_external_ip: false
           node_ip: 127.0.0.1
+        # How often LiveKit tells rooms who is speaking, in ms (default 500):
+        # 200 keeps the speaking ring within 300 ms of the voice (VC-03).
+        audio:
+          update_interval: 200
         webhook:
           api_key: ${LIVEKIT_API_KEY:-devkey}
           urls:

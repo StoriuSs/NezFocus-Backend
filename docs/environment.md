@@ -260,6 +260,13 @@ Voice rooms therefore need the API run on the host (`pnpm start:dev`,
 `pnpm start`): the app container of `pnpm docker:dev` finds no LiveKit at
 `localhost` and gets no webhooks (M4 L1, by choice).
 
+The local server tells rooms who is speaking every 200 ms
+(`audio.update_interval` in `LIVEKIT_CONFIG`; LiveKit's default is 500): with
+the default the speaking ring lit up to about 460 ms after the voice, past
+the 300 ms of VC-03 (M4 A3). A self-hosted LiveKit in production needs the
+same line in its config; on LiveKit Cloud, check the ring against VC-03 once
+the project is set up.
+
 | Variable | Required | Default | What it does | Read by | Set up |
 | --- | --- | --- | --- | --- | --- |
 | `LIVEKIT_URL` | prod | `ws://localhost:7880` | Where browsers and the API reach LiveKit. `wss://` in production | app | The LiveKit Cloud project |
