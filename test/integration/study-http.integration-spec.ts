@@ -21,7 +21,7 @@ import { localDateOf, shownStreak, STUDY_TIME_REPOSITORY, StudyTimeRepositoryPor
 import { VoiceStateChangedEvent } from '@/modules/voice'
 import { QUEUES } from '@/shared/infrastructure/queue/queues'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
+import { bootApp, closeApp, completeAccount, cookieOf, FRONTEND, pair, signInWithCode } from './helpers'
 import { testClientIp } from './targets'
 
 /**
@@ -29,7 +29,8 @@ import { testClientIp } from './targets'
  * D-225). The tables of M5 L1 and what the database itself refuses, the
  * counting of the seconds studied (L2), Room Sessions started, controlled
  * and moved by their phase jobs (L3a), who joins and leaves them, their
- * Host, an empty room and a room gone (L3b); Solo comes with L4.
+ * Host, an empty room and a room gone (L3b), and the Solo, which yields to a
+ * Room Session (L4a).
  *
  * Requires Postgres, Redis, Mailpit and LiveKit: `pnpm test:services:up`,
  * then `pnpm test:integration`.
@@ -632,7 +633,7 @@ describe('Study sessions (integration)', () => {
             await prisma.$executeRaw`
                 UPDATE "FocusSession" SET "phaseStartedAt" = "phaseStartedAt" - ${back},
                     "phaseEndsAt" = "phaseEndsAt" - ${back}, "startedAt" = "startedAt" - ${back},
-                    "emptySince" = "emptySince" - ${back}
+                    "emptySince" = "emptySince" - ${back}, "waitingUntil" = "waitingUntil" - ${back}
                 WHERE "id" = ${sessionId}`
             await prisma.$executeRaw`
                 UPDATE "FocusStretch" SET "startedAt" = "startedAt" - ${back}, "endedAt" = "endedAt" - ${back}
@@ -728,6 +729,7 @@ describe('Study sessions (integration)', () => {
             for (const socket of opened.splice(0)) socket.disconnect()
             await prisma.voiceState.deleteMany({ where: { userId: { in: Object.values(people).map((p) => p.id) } } })
             await prisma.focusSession.deleteMany({ where: { serverId } })
+            await prisma.focusSession.deleteMany({ where: { userId: { in: Object.values(people).map((p) => p.id) } } })
         })
 
         afterAll(async () => {
@@ -1025,7 +1027,14 @@ describe('Study sessions (integration)', () => {
                 expect(event.summaries).toEqual(
                     [people.an.id, people.binh.id].sort().map((userId) => ({ user_id: userId, seconds: 1560 }))
                 )
-                expect((await streak())[0]).toMatchObject({ current: 1, today_seconds: expect.any(Number) })
+                // The streak as stored once counted: 1, or 2 when an earlier rewind of this run reached yesterday
+                // (a run just after midnight in the person's zone).
+                const stored = await prisma.streak.findUniqueOrThrow({ where: { userId: people.an.id } })
+                expect(stored.current).toBeGreaterThanOrEqual(1)
+                expect((await streak())[0]).toMatchObject({
+                    current: stored.current,
+                    today_seconds: expect.any(Number)
+                })
                 const said = await prisma.message.findFirst({
                     where: { channelId: room, systemEvent: 'study_session_ended' }
                 })
@@ -1444,6 +1453,240 @@ describe('Study sessions (integration)', () => {
                 await as('an', api().delete(`/api/v1/servers/${serverId}/channels/${gone}`)).expect(200)
                 await until(async () => (await sessionRow(id)).status === 'ended')
                 expect(await sessionRow(id)).toMatchObject({ endedReason: 'channel_deleted' })
+            })
+        })
+
+        describe('Solo (REQ-STUDY-05, D-103, D-229)', () => {
+            const startSolo = (who: Person, body: object = {}) =>
+                as(who, api().post('/api/v1/me/solo-session')).set('Idempotency-Key', randomUUID()).send(body)
+            const soloOf = (who: Person) => as(who, api().get('/api/v1/me/solo-session'))
+            const row = (id: string) => prisma.focusSession.findUniqueOrThrow({ where: { id } })
+            const placeIn = (sessionId: string, who: Person = 'an') =>
+                prisma.participation.findFirstOrThrow({ where: { sessionId, userId: people[who].id } })
+            const FIRST = {
+                focus_minutes: 25,
+                short_break_minutes: 5,
+                long_break_minutes: null,
+                long_break_every: null
+            }
+
+            /** Waits until `check` gives something truthy, or fails after 5 s. */
+            async function until<T>(check: () => Promise<T | null | undefined | false>): Promise<T> {
+                for (let i = 0; i < 50; i++) {
+                    const found = await check()
+                    if (found) return found
+                    await new Promise((resolve) => setTimeout(resolve, 100))
+                }
+                throw new Error('waited 5 s for nothing')
+            }
+
+            /** A Solo of An's, 5/1, brought to waiting: its focus phase counted (300 s), its break over by its job. */
+            async function waitingSolo(): Promise<{ id: string; breakEnd: Date }> {
+                const id = (await startSolo('an', { focus_minutes: 5, short_break_minutes: 1 })).body.data.id as string
+                await rewind(id, 5 * 60 + 1)
+                await bus().execute(new EndFocusPhaseCommand(id, 0))
+                await rewind(id, 60 + 1)
+                await bus().execute(new EndFocusPhaseCommand(id, 1))
+                const waiting = await row(id)
+                return { id, breakEnd: new Date(waiting.phaseStartedAt.getTime() + 60_000) }
+            }
+
+            it('starts with the cycle sent; its person alone hears it; a reload reads it back with the next start’s cycle', async () => {
+                const socket = await connectAs('an')
+                const heard = collect(socket, 'solo_session.updated')
+                const res = await startSolo('an', { focus_minutes: 50, short_break_minutes: 10 })
+                expect(res.status).toBe(201)
+                const id = res.body.data.id as string
+                expect(res.body.data).toMatchObject({
+                    kind: 'solo',
+                    channel_id: null,
+                    host_id: null,
+                    focus_minutes: 50,
+                    status: 'running',
+                    phase: 'focus',
+                    version: 0
+                })
+                expect((await soloOf('an')).body.data).toMatchObject({
+                    session: { id, status: 'running', stretch_started_at: res.body.data.started_at },
+                    start_cycle: {
+                        focus_minutes: 50,
+                        short_break_minutes: 10,
+                        long_break_minutes: null,
+                        long_break_every: null
+                    }
+                })
+                expect(await heard()).toEqual([
+                    expect.objectContaining({ id, action: 'start', actor_id: people.an.id })
+                ])
+                expect((await soloOf('binh')).body.data).toEqual({ session: null, start_cycle: FIRST })
+            })
+
+            it('starts the next with the last one’s cycle when sent none; FOCUS_SESSION_ACTIVE while one runs, or in a Room Session', async () => {
+                const first = (await startSolo('an', { focus_minutes: 50, short_break_minutes: 10 })).body.data
+                expect(outcome(await startSolo('an'))).toEqual([409, 'FOCUS_SESSION_ACTIVE', undefined])
+                await command('an', first.id, 'stop', { version: 0 })
+                expect((await soloOf('an')).body.data.session).toBeNull()
+                const second = (await startSolo('an', { focus_minutes: 40, short_break_minutes: 8 })).body.data
+                await command('an', second.id, 'stop', { version: 0 })
+                expect((await startSolo('an')).body.data).toMatchObject({ focus_minutes: 40, short_break_minutes: 8 })
+
+                await enter(room, 'binh')
+                await start('binh', room)
+                expect(outcome(await startSolo('binh'))).toEqual([409, 'FOCUS_SESSION_ACTIVE', undefined])
+            })
+
+            it('starts one Solo only for two starts at once (Participation_one_open_per_person)', async () => {
+                const both = await Promise.all([startSolo('phong'), startSolo('phong')])
+                expect(both.map((res) => res.status).sort()).toEqual([201, 409])
+                expect(
+                    await prisma.focusSession.count({ where: { userId: people.phong.id, status: { not: 'ended' } } })
+                ).toBe(1)
+            })
+
+            it('lets only its person control it: anyone else, a manager too, is NOT_FOUND', async () => {
+                const id = (await startSolo('an')).body.data.id as string
+                expect(outcome(await command('chi', id, 'pause', { version: 0 }))[0]).toBe(404)
+                expect((await command('an', id, 'pause', { version: 0 })).body.data).toMatchObject({
+                    status: 'paused',
+                    version: 1
+                })
+            })
+
+            it('waits 10 minutes once its break ends; Học tiếp begins focus at the press, the seconds before kept', async () => {
+                const { id, breakEnd } = await waitingSolo()
+                const waiting = await row(id)
+                expect(waiting).toMatchObject({ status: 'waiting', version: 2, phaseEndsAt: null })
+                expect(waiting.waitingUntil!.getTime() - breakEnd.getTime()).toBe(10 * 60_000)
+                expect(await studyQueue().getJob(`focus-${id}-2`)).toBeDefined()
+
+                await rewind(id, 4 * 60)
+                const pressed = Date.now()
+                const res = await command('an', id, 'continue', { version: 2 })
+                expect(res.body.data).toMatchObject({ status: 'running', phase: 'focus', phase_index: 2, version: 3 })
+                expect(Date.parse(res.body.data.phase_started_at)).toBeGreaterThan(pressed - 2000)
+                expect(res.body.data.stretch_started_at).toBe(res.body.data.phase_started_at)
+                expect((await placeIn(id)).seconds).toBe(300)
+            })
+
+            it('ends a wait not taken up as expired, at the end of its break, its job lost: the sweep (D-225)', async () => {
+                const { id, breakEnd } = await waitingSolo()
+                await rewind(id, 10 * 60 + 1)
+                await bus().execute(new SweepStudyTimersCommand(new Date()))
+                const ended = await row(id)
+                expect(ended).toMatchObject({ status: 'ended', endedReason: 'expired', waitingUntil: null })
+                expect(ended.endedAt!.getTime()).toBe(breakEnd.getTime() - (10 * 60 + 1) * 1000)
+                expect(await placeIn(id)).toMatchObject({ seconds: 300, leftAt: ended.endedAt })
+            })
+
+            it('ends An’s Solo when another starts a session in An’s room: +18 minutes kept, An in from that second (D-103)', async () => {
+                await enter(room, 'an', 'binh')
+                const soloId = (await startSolo('an')).body.data.id as string
+                await rewind(soloId, 18 * 60)
+                const socket = await connectAs('an')
+                const heard = collect(socket, 'solo_session.updated')
+                const id = (await start('binh', room)).body.data.id as string
+
+                const solo = await row(soloId)
+                expect(solo).toMatchObject({ status: 'ended', endedReason: 'joined_room' })
+                const soloPlace = await placeIn(soloId)
+                expect(soloPlace.seconds).toBeGreaterThanOrEqual(18 * 60)
+                expect(soloPlace.seconds).toBeLessThan(18 * 60 + 5)
+                expect(soloPlace.leftAt).toEqual(solo.endedAt)
+                // No second lost or counted twice: the room counts An from the second the Solo ended.
+                expect((await placeIn(id)).joinedAt).toEqual(solo.endedAt)
+                expect(await heard()).toEqual([
+                    expect.objectContaining({
+                        id: soloId,
+                        status: 'ended',
+                        ended_reason: 'joined_room',
+                        action: 'end',
+                        actor_id: null,
+                        summaries: [{ user_id: people.an.id, seconds: soloPlace.seconds }]
+                    })
+                ])
+            })
+
+            it('ends the Solo of one who comes into a room with a session, in from when it ended; none in a room with no session', async () => {
+                const soloId = (await startSolo('an')).body.data.id as string
+                await enter(plainRoom, 'an')
+                await bus().execute(new JoinStudyRoomCommand(plainRoom, people.an.id))
+                expect((await row(soloId)).status).toBe('running')
+                await prisma.voiceState.deleteMany({ where: { userId: people.an.id } })
+
+                await enter(room, 'binh')
+                const id = (await start('binh', room)).body.data.id as string
+                await enter(room, 'an')
+                await bus().execute(new JoinStudyRoomCommand(room, people.an.id))
+                const solo = await row(soloId)
+                expect(solo).toMatchObject({ status: 'ended', endedReason: 'joined_room' })
+                expect((await placeIn(id)).joinedAt).toEqual(solo.endedAt)
+            })
+
+            it('keeps a Solo going when its person leaves a voice room with no session, however they leave (D-228)', async () => {
+                const soloId = (await startSolo('an')).body.data.id as string
+                await enter(plainRoom, 'an')
+                await bus().execute(new JoinStudyRoomCommand(plainRoom, people.an.id))
+                await bus().execute(new LeaveStudyRoomCommand(plainRoom, people.an.id, true))
+                await bus().execute(new LeaveStudyRoomCommand(plainRoom, people.an.id, false))
+                await bus().execute(new LeaveStudyRoomCommand(null, people.an.id, false))
+                expect((await row(soloId)).status).toBe('running')
+                expect((await placeIn(soloId)).leftAt).toBeNull()
+            })
+
+            it('takes part from when the Solo ended when its times run ahead of this clock (another instance): no second twice', async () => {
+                /** An's Solo as another instance a few seconds ahead wrote it: its phase and stretch begin then. */
+                const soloAhead = async () => {
+                    const id = (await startSolo('an')).body.data.id as string
+                    const ahead = new Date(Math.ceil(Date.now() / 1000) * 1000 + 3000)
+                    await prisma.focusSession.update({
+                        where: { id },
+                        data: { phaseStartedAt: ahead, phaseEndsAt: new Date(ahead.getTime() + 25 * 60_000) }
+                    })
+                    await prisma.focusStretch.updateMany({ where: { sessionId: id }, data: { startedAt: ahead } })
+                    return { id, ahead }
+                }
+                // A session started in An's room.
+                await enter(room, 'an', 'binh')
+                const first = await soloAhead()
+                const started = (await start('binh', room)).body.data.id as string
+                expect((await row(first.id)).endedAt).toEqual(first.ahead)
+                expect((await placeIn(started)).joinedAt).toEqual(first.ahead)
+                await command('binh', started, 'stop', { version: 0 })
+
+                // An coming into a room with a session.
+                await prisma.voiceState.deleteMany({ where: { userId: people.an.id } })
+                const second = await soloAhead()
+                const id = (await start('binh', room)).body.data.id as string
+                await enter(room, 'an')
+                await bus().execute(new JoinStudyRoomCommand(room, people.an.id))
+                expect((await row(second.id)).endedAt).toEqual(second.ahead)
+                expect((await placeIn(id)).joinedAt).toEqual(second.ahead)
+            })
+
+            it('ends the Solo of one who presses Đăng xuất, on another device than the one that started it (D-229)', async () => {
+                const login = await post('auth/login', { email: `${PREFIX}-l3-binh@example.test`, password: PASSWORD })
+                expect(login.status).toBe(200)
+                const soloId = (await startSolo('binh')).body.data.id as string
+                expect((await post('auth/logout').set('Cookie', pair(cookieOf(login, 'refresh_token')))).status).toBe(
+                    200
+                )
+                await until(async () => (await row(soloId)).status === 'ended')
+                expect(await row(soloId)).toMatchObject({ endedReason: 'signed_out' })
+                expect((await placeIn(soloId, 'binh')).leftAt).not.toBeNull()
+            })
+
+            it('ends the Solo of an account that starts to wait for deletion, signed out everywhere (D-229)', async () => {
+                const { accessToken } = await signInWithCode(post, `${PREFIX}-l4-xoa@example.test`)
+                await completeAccount(post, accessToken, PASSWORD)
+                const started = await anyone(api().post('/api/v1/me/solo-session'))
+                    .set('Authorization', `Bearer ${accessToken}`)
+                    .set('Idempotency-Key', randomUUID())
+                    .send({})
+                expect(started.status).toBe(201)
+                const soloId = started.body.data.id as string
+                expect((await post('auth/account/delete', { password: PASSWORD }, accessToken)).status).toBe(200)
+                await until(async () => (await row(soloId)).status === 'ended')
+                expect(await row(soloId)).toMatchObject({ endedReason: 'signed_out' })
             })
         })
 

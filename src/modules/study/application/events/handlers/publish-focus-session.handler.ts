@@ -10,20 +10,22 @@ import { sessionView } from '../../services/session-views'
  * room stays private. Each carries the whole session with the server's
  * clock, what was done and by whom (the toasts of spec 07: "An đã tạm
  * dừng"; no one for the end of a phase), and, once ended, every
- * participant's seconds (D-49). A Solo is its person's: M5 L4.
+ * participant's seconds (D-49). A Solo is its person's alone:
+ * `solo_session.updated` to them, from its start to its end, the same body
+ * (D-222), so each of their tabs and devices follows it.
  */
 @EventsHandler(FocusSessionChangedEvent)
 export class PublishFocusSessionHandler implements IEventHandler<FocusSessionChangedEvent> {
     constructor(@Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisherPort) {}
 
     handle({ before, after, action, actorId, summaries }: FocusSessionChangedEvent): void {
-        if (after.kind !== 'room' || !after.channelId) return
+        const body = { ...sessionView(after, new Date()), action, actorId, ...(summaries && { summaries }) }
+        if (after.kind === 'solo' && after.userId) {
+            this.publisher.toUser(after.userId, 'solo_session.updated', body)
+            return
+        }
+        if (!after.channelId) return
         const name = !before ? 'started' : after.status === 'ended' ? 'ended' : 'updated'
-        this.publisher.toChannel(after.channelId, `focus_session.${name}`, {
-            ...sessionView(after, new Date()),
-            action,
-            actorId,
-            ...(summaries && { summaries })
-        })
+        this.publisher.toChannel(after.channelId, `focus_session.${name}`, body)
     }
 }

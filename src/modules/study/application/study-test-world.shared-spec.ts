@@ -13,6 +13,8 @@ import {
     MayHost,
     PresenceChange,
     presenceMove,
+    SessionChange,
+    stopMove,
     stretchAfter,
     StudyCount,
     StudyForbiddenError,
@@ -94,6 +96,19 @@ export function roomSession(shape: Partial<FocusSession> = {}): FocusSession {
         ...firstClock(cycle, NOW, MINUTE),
         ...shape
     }
+}
+
+/** An's Solo started at NOW, 25/5, running its first focus phase. */
+export function soloSession(shape: Partial<FocusSession> = {}): FocusSession {
+    return roomSession({
+        id: 'solo',
+        kind: 'solo',
+        channelId: null,
+        serverId: null,
+        hostId: null,
+        userId: 'an',
+        ...shape
+    })
 }
 
 /** One session as each change leaves it: running, paused, ended; and a Solo. */
@@ -218,6 +233,25 @@ export function studyWorld() {
     const sessionOf = (userId: string) =>
         [...participants].find(([id, people]) => people.includes(userId) && sessions.get(id)?.status !== 'ended')?.[0]
 
+    /** Ends a Solo as its person takes part in a Room Session at `at` (D-103): counted, closed, as `joined_room`. */
+    const yieldSolo = async (soloId: string, zoneOf: ZoneOf): Promise<SessionChange> => {
+        const before = sessions.get(soloId)!
+        const move = stopMove(before, at, 'joined_room')!
+        const after = write(soloId, { ...move.clock, version: before.version + 1, stretchStartedAt: null })
+        const userId = before.userId!
+        return {
+            before,
+            after,
+            changed: true,
+            counts: [countOf(userId, soloId, await zoneOf(userId))],
+            summaries: [{ userId, seconds: 60 }]
+        }
+    }
+    const soloOf = (userId: string) => {
+        const id = sessionOf(userId)
+        return id && sessions.get(id)!.kind === 'solo' ? id : undefined
+    }
+
     const repository: FocusSessionRepositoryPort = {
         find: jest.fn(async (id: string) => sessions.get(id) ?? null),
         openInRooms: jest.fn(
@@ -228,7 +262,30 @@ export function studyWorld() {
                         .map((session) => [session.channelId!, session])
                 )
         ),
-        startInRoom: jest.fn(async (start, peopleIn) => {
+        openSolo: jest.fn(async (userId: string) => {
+            const id = soloOf(userId)
+            return id ? sessions.get(id)! : null
+        }),
+        lastSoloCycle: jest.fn(async (userId: string) => {
+            const solos = [...sessions.values()].filter((session) => session.userId === userId)
+            solos.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+            return solos[0]?.cycle ?? null
+        }),
+        startSolo: jest.fn(async ({ userId, cycle, minuteMs }) => {
+            if (sessionOf(userId)) throw new FocusSessionActiveError(`person ${userId}`)
+            const session = soloSession({
+                id: `solo-${sessions.size + 1}`,
+                userId,
+                cycle,
+                ...firstClock(cycle, at, minuteMs),
+                startedAt: at,
+                stretchStartedAt: at
+            })
+            sessions.set(session.id, session)
+            participants.set(session.id, [userId])
+            return session
+        }),
+        startInRoom: jest.fn(async (start, peopleIn, zoneOf) => {
             const open = [...sessions.values()].some(
                 (session) => session.channelId === start.channelId && session.status !== 'ended'
             )
@@ -246,8 +303,13 @@ export function studyWorld() {
             const people = (await peopleIn()).sort()
             // Its Host takes part, or there is no session (the Prisma repository rolls it back).
             if (!people.includes(start.hostId)) throw new StudyForbiddenError('not_in_room')
+            const yielded: SessionChange[] = []
+            for (const userId of people) {
+                const solo = soloOf(userId)
+                if (solo) yielded.push(await yieldSolo(solo, zoneOf))
+            }
             participants.set(session.id, people)
-            return { session, participantIds: participants.get(session.id)! }
+            return { session, participantIds: participants.get(session.id)!, yielded }
         }),
         change: jest.fn(async (id, version, decide, zoneOf) => {
             const before = sessions.get(id)
@@ -275,24 +337,31 @@ export function studyWorld() {
         }),
         overdue: jest.fn(async (now: Date, limit: number) =>
             [...sessions.values()]
-                .filter((session) => session.status === 'running' && session.phaseEndsAt! <= now)
+                .filter(
+                    (session) =>
+                        (session.status === 'running' && session.phaseEndsAt! <= now) ||
+                        (session.status === 'waiting' && session.waitingUntil! <= now)
+                )
                 .slice(0, limit)
                 .map(({ id, version }) => ({ id, version }))
         ),
         openInServer: jest.fn(async (serverId: string) =>
             [...sessions.values()].filter((session) => session.serverId === serverId && session.status !== 'ended')
         ),
-        joinRoom: jest.fn(async (channelId: string, userId: string, mayHost: boolean | null) => {
+        joinRoom: jest.fn(async (channelId: string, userId: string, mayHost: boolean | null, zone: string | null) => {
             const session = openIn(channelId)
-            const elsewhere = sessionOf(userId)
+            const solo = soloOf(userId)
+            const elsewhere = solo ? undefined : sessionOf(userId)
             if (elsewhere && elsewhere !== session?.id) return { kind: 'elsewhere' as const, sessionId: elsewhere }
             if (!session) return { kind: 'no_session' as const }
+            if (solo && zone === null) return { kind: 'zone' as const }
             const move = joinMove(
                 session,
                 elsewhere ? { awaySince: away.get(placeOf(session.id, userId)) ?? null } : null,
                 mayHost
             )
             if (move === 'ask') return { kind: 'ask' as const }
+            const yielded = solo ? await yieldSolo(solo, async () => zone!) : null
             if (move.opens) participants.set(session.id, [...(participants.get(session.id) ?? []), userId])
             if (move.back) away.delete(placeOf(session.id, userId))
             const after = write(session.id, {
@@ -309,7 +378,8 @@ export function studyWorld() {
                     summaries: null,
                     away: null,
                     emptySince: null
-                }
+                },
+                yielded
             }
         }),
         leave: jest.fn(async (from, userId, lost, mayHost, zoneOf) => {

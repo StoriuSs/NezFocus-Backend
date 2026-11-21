@@ -4,7 +4,7 @@ import { awayCloseDue, FocusSessionRepositoryPort, MayHost, PresenceChange } fro
 import { FocusSessionChangedEvent } from '../events/focus-session-changed.event'
 import { RoomPresenceChangedEvent } from '../events/room-presence-changed.event'
 import { StudyCountedEvent } from '../events/study-counted.event'
-import { zoneOf } from './change-session'
+import { tellChange, zoneOf } from './change-session'
 
 /** What changing who is present needs. */
 export interface PresenceSources {
@@ -31,7 +31,10 @@ export function tellPresence(events: EventBus, change: PresenceChange | null): v
     }
 }
 
-/** How many times a join runs at most: once more to ask about the Host, once more to close a place elsewhere. */
+/**
+ * How many times a join runs at most: once more to ask about the Host, once
+ * more to close a place elsewhere or to read the zone of one whose Solo ends.
+ */
 const JOIN_RUNS = 3
 
 /**
@@ -42,26 +45,32 @@ const JOIN_RUNS = 3
  * its leaving not taken yet) is closed first, there, as a leaving, whether
  * or not this room has a session (D-215: another room closes it at the time
  * they went away). A room with no Host gets them as Host if they may start a
- * session in it (REQ-STUDY-03), asked only then. True when they joined a
+ * session in it (REQ-STUDY-03), asked only then. A Solo of theirs ends as
+ * they join a room with a session, in the same transaction (D-103), and they
+ * hear it (`solo_session.updated`, `joined_room`). True when they joined a
  * session; false in a room with none. Throws when it did not settle within
  * JOIN_RUNS (each run met a change made meanwhile): the sweep joins them.
  */
 export async function joinStudyRoom(sources: PresenceSources, channelId: string, userId: string): Promise<boolean> {
     const { sessions, users, events, mayHost } = sources
     let may: boolean | null = null
+    let zone: string | null = null
     for (let run = 0; run < JOIN_RUNS; run++) {
-        const outcome = await sessions.joinRoom(channelId, userId, may)
+        const outcome = await sessions.joinRoom(channelId, userId, may, zone)
         switch (outcome.kind) {
             case 'no_session':
                 return false
             case 'joined':
+                if (outcome.yielded) tellChange(events, outcome.yielded, 'end', null)
                 tellPresence(events, outcome.change)
                 return true
             case 'ask':
                 may = await mayHost(channelId, userId)
                 break
+            case 'zone':
+                zone = await zoneOf(users)(userId)
+                break
             case 'elsewhere':
-                // A Solo yields here from M5 L4 (D-103).
                 tellPresence(
                     events,
                     await sessions.leave({ sessionId: outcome.sessionId }, userId, false, mayHost, zoneOf(users))

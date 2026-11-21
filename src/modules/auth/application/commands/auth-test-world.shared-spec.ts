@@ -371,7 +371,7 @@ class FakeSessions implements SessionRepositoryPort {
         const s = this.sessions.find((x) => x.tokenHash === tokenHash && !x.revoked)
         if (!s) return null
         s.revoked = reason
-        return s.id
+        return { sessionId: s.id, userId: s.userId }
     }
     async revokeOne(userId: string, sessionId: string, reason: RevokeReason) {
         const s = this.sessions.find((x) => x.id === sessionId && x.userId === userId)
@@ -626,7 +626,7 @@ export function setup() {
         sendCode: new SendEmailCodeHandler(directory, limiter, codeIssuer),
         verifyCode: new VerifyEmailCodeHandler(directory, limiter, events, codeIssuer, gate),
         login: new LoginHandler(directory, credentials, hasher, limiter, events, gate),
-        logout: new LogoutHandler(sessions, tokens, sessionEnds),
+        logout: new LogoutHandler(sessions, tokens, sessionEnds, bus),
         refresh: new RefreshHandler(sessions, tokens, cache, sessionEnds, events, settings),
         listSessions: new ListSessionsHandler(sessions),
         revokeSession: new RevokeSessionHandler(sessions, sessionEnds),

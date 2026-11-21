@@ -1,7 +1,9 @@
 import {
     caughtUp,
+    continueMove,
     Cycle,
     cycleMove,
+    FIRST_SOLO_CYCLE,
     firstClock,
     FocusSession,
     mayControl,
@@ -11,7 +13,9 @@ import {
     phaseOf,
     resumeMove,
     skipMove,
-    stopMove
+    stopMove,
+    timerDueAt,
+    WAIT_MINUTES
 } from './focus-session.rules'
 
 const MINUTE = 60_000
@@ -308,5 +312,109 @@ describe('who may do what (REQ-STUDY-01, STUDY-03, D-119)', () => {
         expect(mayStart('anyone', false)).toBe(true)
         expect(mayStart('managers', false)).toBe(false)
         expect(mayStart('managers', true)).toBe(true)
+    })
+})
+
+describe('a Solo (REQ-STUDY-05)', () => {
+    /** An's Solo started at 21:30 (25/5): its break runs 21:55 to 22:00. */
+    const solo = (): FocusSession => ({
+        ...session(PLAIN, at('21:30:00')),
+        kind: 'solo',
+        serverId: null,
+        channelId: null,
+        hostId: null,
+        userId: 'an'
+    })
+    const onBreak = () => after(solo(), phaseEndMove(solo(), MINUTE) as never)
+    const waiting = () => after(onBreak(), phaseEndMove(onBreak(), MINUTE) as never)
+
+    it('waits WAIT_MINUTES once a break ends, instead of focusing again', () => {
+        expect(WAIT_MINUTES).toBe(10)
+        expect(phaseEndMove(onBreak(), MINUTE)).toMatchObject({
+            at: at('22:00:00'),
+            clock: {
+                status: 'waiting',
+                phase: 'short_break',
+                phaseIndex: 1,
+                phaseEndsAt: null,
+                waitingUntil: at('22:10:00')
+            },
+            stretches: []
+        })
+    })
+
+    it('begins a new focus phase when Học tiếp is pressed: ended 22:00, pressed 22:04, counted from 22:04', () => {
+        expect(continueMove(waiting(), at('22:04:00'), MINUTE)).toMatchObject({
+            at: at('22:04:00'),
+            clock: {
+                status: 'running',
+                phase: 'focus',
+                phaseIndex: 2,
+                phaseStartedAt: at('22:04:00'),
+                phaseEndsAt: at('22:29:00'),
+                waitingUntil: null
+            },
+            stretches: [{ open: at('22:04:00') }]
+        })
+    })
+
+    it('ends, as expired, at the end of its break once WAIT_MINUTES pass without Học tiếp', () => {
+        expect(phaseEndMove(waiting(), MINUTE)).toMatchObject({
+            at: at('22:00:00'),
+            clock: { status: 'ended', endedAt: at('22:00:00'), endedReason: 'expired', waitingUntil: null },
+            stretches: []
+        })
+    })
+
+    it('goes straight into focus when a break is skipped, without waiting', () => {
+        expect(skipMove(onBreak(), at('21:57:00'), MINUTE)).toMatchObject({
+            clock: { status: 'running', phase: 'focus', phaseStartedAt: at('21:57:00') },
+            stretches: [{ open: at('21:57:00') }]
+        })
+    })
+
+    it('only continues while waiting; pause, resume, skip and a new cycle do nothing then, stop ends it now', () => {
+        expect(continueMove(solo(), at('21:40:00'), MINUTE)).toBeNull()
+        expect(continueMove(onBreak(), at('21:57:00'), MINUTE)).toBeNull()
+        expect(pauseMove(waiting(), at('22:03:00'))).toBeNull()
+        expect(resumeMove(waiting(), at('22:03:00'))).toBeNull()
+        expect(skipMove(waiting(), at('22:03:00'), MINUTE)).toBeNull()
+        expect(cycleMove(waiting(), POMODORO, at('22:03:00'), MINUTE)).toBeNull()
+        expect(stopMove(waiting(), at('22:03:00'), 'stopped')).toMatchObject({
+            clock: { status: 'ended', endedAt: at('22:03:00'), waitingUntil: null },
+            stretches: []
+        })
+    })
+
+    it('never makes a Room Session wait: its break ends into focus', () => {
+        const roomBreak = after(session(), phaseEndMove(session(), MINUTE) as never)
+        expect(phaseEndMove(roomBreak, MINUTE)?.clock.status).toBe('running')
+    })
+
+    it('makes a missed break end and expiry first when a command comes late (caughtUp, D-225)', () => {
+        // The break end's job is lost: Học tiếp at 22:03 still begins focus then.
+        expect(caughtUp(onBreak(), at('22:03:00'), MINUTE, (s, now) => continueMove(s, now, MINUTE))).toMatchObject({
+            clock: { status: 'running', phase: 'focus', phaseStartedAt: at('22:03:00') },
+            stretches: [{ open: at('22:03:00') }]
+        })
+        // Pressed at 22:10 sharp, as the wait ends: too late, as its job then is.
+        expect(caughtUp(waiting(), at('22:10:00'), MINUTE, (s, now) => continueMove(s, now, MINUTE))).toMatchObject({
+            clock: { status: 'ended', endedReason: 'expired' }
+        })
+        // Pressed at 22:15, past the wait: it ended at 22:00, and Học tiếp does nothing.
+        expect(caughtUp(onBreak(), at('22:15:00'), MINUTE, (s, now) => continueMove(s, now, MINUTE))).toMatchObject({
+            clock: { status: 'ended', endedReason: 'expired', endedAt: at('22:00:00') },
+            stretches: []
+        })
+    })
+
+    it('is due for its timer when its phase ends while running, when its wait ends while waiting, else never', () => {
+        expect(timerDueAt(solo())).toEqual(at('21:55:00'))
+        expect(timerDueAt(waiting())).toEqual(at('22:10:00'))
+        expect(timerDueAt(after(solo(), pauseMove(solo(), at('21:40:00')) as never))).toBeNull()
+    })
+
+    it('starts with the 25/5 cycle with no long break when there was no Solo before', () => {
+        expect(FIRST_SOLO_CYCLE).toEqual(PLAIN)
     })
 })

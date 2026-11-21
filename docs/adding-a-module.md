@@ -254,7 +254,8 @@ src/modules/servers/application/
 has none), each folder named like the files in it; `messaging`, `tasks`
 (`task`, `assignee`; D-190) and `voice` (`connection`, `media-event`,
 `moderation`, `reconcile`, `room`; D-211) and `study` (`room-session`,
-`room-presence`, `session-control`, `session-timer`; D-226) too;
+`room-presence`, `session-control`, `session-timer`, `solo-session`;
+D-226) too;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`

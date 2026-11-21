@@ -22,9 +22,11 @@ import {
 } from './dto'
 
 /**
- * Study sessions (SRS 5.1, REQ-STUDY-02, STUDY-03, D-222): starting one in a
- * study room and controlling it. Each answers the session as it is after,
- * which the room also hears as `focus_session.*`. A room or session one may
+ * Study sessions (SRS 5.1, REQ-STUDY-02, STUDY-03, STUDY-05, D-222):
+ * starting one in a study room, and controlling it or a Solo (started at
+ * POST /me/solo-session). Each answers the session as it is after, which
+ * the room also hears as `focus_session.*` (its person, for a Solo, as
+ * `solo_session.updated`). Another's Solo is NOT_FOUND (D-229). A room or session one may
  * not see is NOT_FOUND (NFR-SEC-05); one not allowed, FORBIDDEN with its
  * `reason`. A command sent with an old version changes nothing and answers
  * the session as it is (D-225).
@@ -94,6 +96,18 @@ export class FocusSessionsController {
         @Body() { version }: SessionVersionRequestDto
     ): Promise<ServiceResponse<FocusSessionResponseDto>> {
         return this.control(user, sessionId, 'skip', version)
+    }
+
+    /** Học tiếp of a waiting Solo: its next focus phase begins now (REQ-STUDY-05). Not waiting: nothing changes. */
+    @Post('focus-sessions/:sessionId/continue')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(FocusSessionResponseDto)
+    continue(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { sessionId }: FocusSessionIdParamsDto,
+        @Body() { version }: SessionVersionRequestDto
+    ): Promise<ServiceResponse<FocusSessionResponseDto>> {
+        return this.control(user, sessionId, 'continue', version)
     }
 
     /** End the session for the whole room; each one's seconds come in `focus_session.ended` (D-49). */

@@ -6,6 +6,7 @@ import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { VOICE_ROOMS, VoiceRoomsPort } from '@/modules/voice'
 import {
     caughtUp,
+    continueMove,
     ControlAction,
     cycleMove,
     FOCUS_SESSION_REPOSITORY,
@@ -35,11 +36,12 @@ interface ControlSources extends ChangeSources {
 }
 
 /**
- * The session `userId` may do `action` to (REQ-STUDY-03, D-222): one of a
- * room they may see (else NOT_FOUND, as for no such session), not timed out
- * (MEMBER_TIMED_OUT), as its Host or with MANAGE_STUDY_ROOMS, or, with no
- * Host, resuming it from inside the room (D-119); else FORBIDDEN `not_host`.
- * Decided on the session as read, before its lock.
+ * The session `userId` may do `action` to (REQ-STUDY-03, D-222): a Solo of
+ * theirs (another's is NOT_FOUND, as for no such session, D-229), or one of
+ * a room they may see (else NOT_FOUND), not timed out (MEMBER_TIMED_OUT), as
+ * its Host or with MANAGE_STUDY_ROOMS, or, with no Host, resuming it from
+ * inside the room (D-119); else FORBIDDEN `not_host`. Decided on the
+ * session as read, before its lock.
  */
 async function controllable(
     sources: ControlSources,
@@ -48,7 +50,7 @@ async function controllable(
     action: ControlAction | 'config'
 ): Promise<FocusSession> {
     const session = await sources.sessions.find(sessionId)
-    // A Solo is controlled by its person only: M5 L4.
+    if (session?.kind === 'solo' && session.userId === userId) return session
     if (!session || session.kind !== 'room' || !session.channelId) throw new StudyRoomNotFoundError(sessionId)
     const { managesStudyRooms } = await studyStanding(sources, session.channelId, userId, new Date())
     const inRoom =
@@ -81,8 +83,8 @@ async function control(
 }
 
 /**
- * Pause, resume, skip or stop a session (REQ-STUDY-03), for whoever may
- * (controllable). One already in that state, or changed since the version
+ * Pause, resume, skip or stop a session (REQ-STUDY-03), or Học tiếp of a
+ * waiting Solo (REQ-STUDY-05), for whoever may (controllable). One already in that state, or changed since the version
  * the client saw (someone else pressed first, or the phase moved), is left
  * as it is: answered as it is now, 200, no event (D-225). A phase its job
  * missed ends first, when it was due (caughtUp). Stopping counts
@@ -124,6 +126,8 @@ export class ControlFocusSessionHandler implements ICommandHandler<ControlFocusS
                 return (session, at) => skipMove(session, at, minuteMs)
             case 'stop':
                 return (session, at) => stopMove(session, at, 'stopped')
+            case 'continue':
+                return (session, at) => continueMove(session, at, minuteMs)
         }
     }
 }

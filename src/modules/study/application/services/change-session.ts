@@ -5,6 +5,7 @@ import {
     FocusSession,
     FocusSessionRepositoryPort,
     SessionAction,
+    SessionChange,
     SessionDecision,
     ZoneOf
 } from '../../domain'
@@ -25,6 +26,22 @@ export const zoneOf =
         (await users.timeZoneOf(userId)) ?? FALLBACK_TIME_ZONE
 
 /**
+ * What a committed change of a session tells, when something was written:
+ * each count (`streak.updated`) and the change (`focus_session.*` or
+ * `solo_session.updated`, the next job, the chat).
+ */
+export function tellChange(
+    events: EventBus,
+    change: SessionChange,
+    action: SessionAction,
+    actorId: string | null
+): void {
+    if (!change.changed) return
+    for (const count of change.counts) events.publish(new StudyCountedEvent(count))
+    events.publish(new FocusSessionChangedEvent(change.before, change.after, action, actorId, change.summaries))
+}
+
+/**
  * Changes a session as `decide` says (FocusSessionRepositoryPort.change),
  * then, once committed and only if something was written, tells each count
  * (`streak.updated`) and the change (`focus_session.*`, the next job, the
@@ -42,9 +59,6 @@ export async function changeSession(
 ): Promise<{ session: FocusSession; changed: boolean } | null> {
     const change = await sessions.change(sessionId, version, decide, zoneOf(users))
     if (!change) return null
-    if (change.changed) {
-        for (const count of change.counts) events.publish(new StudyCountedEvent(count))
-        events.publish(new FocusSessionChangedEvent(change.before, change.after, action, actorId, change.summaries))
-    }
+    tellChange(events, change, action, actorId)
     return { session: change.after, changed: change.changed }
 }

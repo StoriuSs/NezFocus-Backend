@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -644,7 +644,16 @@ the first who may and comes in. Nobody present marks the room empty
 (`empty-<sessionId>-<sinceMs>`, D-227). Servers' `ServerChangedEvent`
 reads a server's rooms again: one turned off or deleted ends its session.
 The sweep runs these timers too when their job was lost, and sets every
-room's people against who is really in it.
+room's people against who is really in it. Since L4a, the Solo
+(`commands/solo-session`, `POST` / `GET /me/solo-session`): started with the
+cycle sent or the last Solo's (25/5 the first time), controlled through the
+same routes by its person only, waiting 10 minutes for Học tiếp
+(`/focus-sessions/{id}/continue`) once a break ends and ended as expired
+when its wait is not taken up, by the same phase job; its person hears
+`solo_session.updated`. Becoming a participant of a Room Session ends it in
+the same transaction (`joined_room`, D-103), and auth's `SignedOutEvent`
+(the Đăng xuất button only) or `AccountDeletionRequestedEvent` ends it too
+(`signed_out`, D-229).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

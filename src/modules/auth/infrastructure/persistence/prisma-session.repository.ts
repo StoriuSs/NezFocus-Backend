@@ -156,14 +156,21 @@ export class PrismaSessionRepository implements SessionRepositoryPort {
         })
     }
 
-    async revokeByTokenHash(tokenHash: string, reason: RevokeReason, now: Date): Promise<string | null> {
-        const token = await this.prisma.refreshToken.findUnique({ where: { tokenHash }, select: { sessionId: true } })
+    async revokeByTokenHash(
+        tokenHash: string,
+        reason: RevokeReason,
+        now: Date
+    ): Promise<{ sessionId: string; userId: string } | null> {
+        const token = await this.prisma.refreshToken.findUnique({
+            where: { tokenHash },
+            select: { sessionId: true, session: { select: { userId: true } } }
+        })
         if (!token) return null
         const result = await this.prisma.session.updateMany({
             where: { id: token.sessionId, revokedAt: null },
             data: { revokedAt: now, revokedReason: reason }
         })
-        return result.count > 0 ? token.sessionId : null
+        return result.count > 0 ? { sessionId: token.sessionId, userId: token.session.userId } : null
     }
 
     async revokeOne(userId: string, sessionId: string, reason: RevokeReason, now: Date): Promise<boolean> {

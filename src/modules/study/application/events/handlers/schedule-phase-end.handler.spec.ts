@@ -1,4 +1,4 @@
-import { SESSIONS, studyWorld } from '../../study-test-world.shared-spec'
+import { NOW, SESSIONS, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { FocusSessionChangedEvent } from '../focus-session-changed.event'
 import { SchedulePhaseEndHandler } from './schedule-phase-end.handler'
 
@@ -25,6 +25,22 @@ describe('SchedulePhaseEndHandler', () => {
         )
         expect(jobs.dropPhaseEnd).not.toHaveBeenCalled()
         expect(jobs.endPhaseAt).toHaveBeenCalledWith('phien', 1, next.phaseEndsAt)
+    })
+
+    it('sets the job of a waiting Solo at the end of its wait, and drops it once Học tiếp is pressed (REQ-STUDY-05)', async () => {
+        const { jobs } = studyWorld()
+        const handler = new SchedulePhaseEndHandler(jobs)
+        const until = new Date(NOW.getTime() + 40 * 60_000)
+        const waiting = soloSession({ status: 'waiting', phaseEndsAt: null, waitingUntil: until, version: 2 })
+        await handler.handle(
+            new FocusSessionChangedEvent(soloSession({ version: 1 }), waiting, 'phase_end', null, null)
+        )
+        expect(jobs.endPhaseAt).toHaveBeenLastCalledWith('solo', 2, until)
+
+        const focus = soloSession({ version: 3 })
+        await handler.handle(new FocusSessionChangedEvent(waiting, focus, 'continue', 'an', null))
+        expect(jobs.dropPhaseEnd).toHaveBeenCalledWith('solo', 2)
+        expect(jobs.endPhaseAt).toHaveBeenLastCalledWith('solo', 3, focus.phaseEndsAt)
     })
 
     it('throws when the queue cannot be reached: the sweep runs that phase end (D-225)', async () => {

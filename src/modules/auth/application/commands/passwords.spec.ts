@@ -6,6 +6,7 @@ import {
 } from '@/modules/auth/domain'
 import { AUTH_RATE_LIMITS } from '../rate-limits'
 import { ChangePasswordCommand, ForgotPasswordCommand, ResetPasswordCommand } from '..'
+import { SignedOutEvent } from '../events/signed-out.event'
 import { CLIENT, IP, NEW_PASSWORD, otherCode, PASSWORD, setup, signIn } from './auth-test-world.shared-spec'
 
 describe('Passwords', () => {
@@ -29,6 +30,8 @@ describe('Passwords', () => {
         // Only the session the reset itself started is left.
         expect(w.sessions.live(user.id)).toEqual(['session-3'])
         expect(issued.accessToken).toBe(`access:${user.id}:session-3`)
+        // Not signing out: the study module leaves the Solo running (D-229).
+        expect(w.published.filter((event) => event instanceof SignedOutEvent)).toEqual([])
     })
 
     it('still signs in after a reset whose email or cache step fails: the password has changed', async () => {
@@ -58,6 +61,8 @@ describe('Passwords', () => {
         expect(w.credentials.hashes.get(user.id)).toBe(`hash:${NEW_PASSWORD}`)
         expect(w.sessions.live(user.id)).toEqual(['session-2'])
         expect(w.cache.endedSessions.sort()).toEqual(['session-1', 'session-3'])
+        // Not signing out: the study module leaves the Solo running (D-229).
+        expect(w.published.filter((event) => event instanceof SignedOutEvent)).toEqual([])
     })
 
     it('changes the password even when its email, cache or limit step fails: a retry would be refused (Kiểm 3 review)', async () => {

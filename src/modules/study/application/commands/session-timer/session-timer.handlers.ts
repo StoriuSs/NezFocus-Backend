@@ -11,7 +11,8 @@ import {
     FOCUS_SESSION_REPOSITORY,
     FocusSessionRepositoryPort,
     OpenRoom,
-    phaseEndMove
+    phaseEndMove,
+    timerDueAt
 } from '../../../domain'
 import { closeAwayPlace, joinStudyRoom, PresenceSources, tellPresence } from '../../services/change-presence'
 import { changeSession, ChangeSources, zoneOf } from '../../services/change-session'
@@ -35,7 +36,7 @@ const SWEEP_LIMIT = 100
  */
 const EARLY_MS = 1000
 
-/** The end of a phase as set for `version`, decided on the session once locked: true when it moved. */
+/** The end of a phase (or of a Solo's wait) as set for `version`, decided on the session once locked: true when it moved. */
 async function endPhase(
     sources: ChangeSources,
     minuteMs: number,
@@ -46,10 +47,10 @@ async function endPhase(
         sources,
         sessionId,
         version,
-        (session, at) =>
-            session.phaseEndsAt && session.phaseEndsAt.getTime() > at.getTime() + EARLY_MS
-                ? null
-                : phaseEndMove(session, minuteMs),
+        (session, at) => {
+            const due = timerDueAt(session)
+            return due && due.getTime() > at.getTime() + EARLY_MS ? null : phaseEndMove(session, minuteMs)
+        },
         'phase_end',
         null
     )
@@ -75,8 +76,10 @@ async function endEmpty(sources: ChangeSources, minuteMs: number, sessionId: str
  * skipped, stopped, or this phase ended already) is left alone. Else the
  * next phase begins when this one was due (phaseEndMove), the stretch is
  * closed or opened there, everyone in it counted, and the room told; the
- * next job is set by FocusSessionChangedEvent. A job run more than EARLY_MS
- * before the phase was due does nothing: the sweep ends it once due.
+ * next job is set by FocusSessionChangedEvent. A Solo's break ends into
+ * waiting, and the same job at its version ends a wait not taken up, as
+ * expired (REQ-STUDY-05). A job run more than EARLY_MS before it was due
+ * does nothing: the sweep makes it once due.
  */
 @CommandHandler(EndFocusPhaseCommand)
 export class EndFocusPhaseHandler implements ICommandHandler<EndFocusPhaseCommand> {
@@ -148,8 +151,8 @@ export class EndEmptyRoomHandler implements ICommandHandler<EndEmptyRoomCommand>
  * The study timers already due whose job was lost (Redis down when it was
  * set, the app stopped between the commit and setting it) or is late
  * (D-225), each run as its job would, so a job that comes meanwhile finds
- * it done and does nothing: the phase ends, the rooms empty 5 minutes, the
- * places away 3 minutes. A session caught up from far behind moves a phase
+ * it done and does nothing: the phase ends and the Solos' waits, the rooms
+ * empty 5 minutes, the places away 3 minutes. A session caught up from far behind moves a phase
  * per run here, its next job set each time with no delay.
  *
  * Then every room with a session, read again as it is: one that can hold

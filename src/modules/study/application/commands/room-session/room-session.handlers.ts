@@ -5,7 +5,6 @@ import { CHANNEL_DIRECTORY, ChannelDirectoryPort, studyCycleProblem } from '@/mo
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { VOICE_ROOMS, VoiceRoomsPort } from '@/modules/voice'
 import {
-    Cycle,
     FOCUS_SESSION_REPOSITORY,
     FocusSessionRepositoryPort,
     mayStart,
@@ -13,6 +12,8 @@ import {
     StudyForbiddenError
 } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { askedCycle } from '../../services/asked-cycle'
+import { tellChange, zoneOf } from '../../services/change-session'
 import { endIfRoomGone } from '../../services/end-gone-rooms'
 import { FocusSessionView, sessionView } from '../../services/session-views'
 import { studyStanding } from '../../services/study-access'
@@ -20,26 +21,12 @@ import { STUDY_SETTINGS, StudySettings } from '../../study-settings'
 import { EndGoneRoomSessionsCommand, StartRoomSessionCommand } from './room-session.commands'
 
 /**
- * The cycle a start asks for: none when no part of one is sent (the room's
- * default). A part left out is caught by studyCycleProblem as out of range:
- * focus and short break go together, the long break both halves or neither.
- */
-function askedCycle(cycle: Partial<Cycle>): Cycle | null {
-    if (Object.values(cycle).every((part) => part == null)) return null
-    return {
-        focusMinutes: cycle.focusMinutes as number,
-        shortBreakMinutes: cycle.shortBreakMinutes as number,
-        longBreakMinutes: cycle.longBreakMinutes ?? null,
-        longBreakEvery: cycle.longBreakEvery ?? null
-    }
-}
-
-/**
  * Starts a Room Session (REQ-STUDY-02, D-222): in a voice room one may see
  * (else NOT_FOUND), not timed out (MEMBER_TIMED_OUT), that is a study room,
  * whose setting lets them start (anyone, or MANAGE_STUDY_ROOMS), from inside
  * it (each else FORBIDDEN with its reason). They are its Host; everyone in
- * the room then takes part from now. A room with a session not yet ended:
+ * the room then takes part from now, a Solo of theirs ended first and told
+ * (`joined_room`, D-103). A room with a session not yet ended:
  * FOCUS_SESSION_ACTIVE. The cycle sent, or the room's default; one a study
  * room could not have is VALIDATION_ERROR `study_cycle`.
  */
@@ -50,6 +37,7 @@ export class StartRoomSessionHandler implements ICommandHandler<StartRoomSession
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(VOICE_ROOMS) private readonly voiceRooms: VoiceRoomsPort,
+        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(STUDY_SETTINGS) private readonly settings: StudySettings,
         private readonly events: EventBus
     ) {}
@@ -69,7 +57,14 @@ export class StartRoomSessionHandler implements ICommandHandler<StartRoomSession
         if ((await this.voiceRooms.roomOf(userId))?.channelId !== channelId)
             throw new StudyForbiddenError('not_in_room')
 
-        const { session } = await this.sessions.startInRoom(
+        // Their zones read before the transaction, for a Solo of theirs to count as it ends (D-103).
+        const zone = zoneOf(this.users)
+        const zones = new Map(
+            await Promise.all(
+                (await this.voiceRooms.peopleIn(channelId)).map(async ({ userId: id }) => [id, await zone(id)] as const)
+            )
+        )
+        const { session, yielded } = await this.sessions.startInRoom(
             {
                 serverId: room.serverId,
                 channelId,
@@ -82,8 +77,10 @@ export class StartRoomSessionHandler implements ICommandHandler<StartRoomSession
                 },
                 minuteMs: this.settings.minuteMs
             },
-            async () => (await this.voiceRooms.peopleIn(channelId)).map((person) => person.userId)
+            async () => (await this.voiceRooms.peopleIn(channelId)).map((person) => person.userId),
+            async (id) => zones.get(id) ?? zone(id)
         )
+        for (const solo of yielded) tellChange(this.events, solo, 'end', null)
         this.events.publish(new FocusSessionChangedEvent(null, session, 'start', userId, null))
         return sessionView(session, new Date())
     }

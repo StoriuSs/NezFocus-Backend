@@ -8,6 +8,7 @@ import {
     RevokeOtherSessionsCommand,
     RevokeSessionCommand
 } from '..'
+import { SignedOutEvent } from '../events/signed-out.event'
 import { IP, PASSWORD, setup, signIn, World } from './auth-test-world.shared-spec'
 
 describe('Signing in', () => {
@@ -138,6 +139,8 @@ describe('Refreshing and ending sessions', () => {
         })
         // The thief's copy and the owner's current cookie are both dead.
         await expect(w.refresh.execute(new RefreshCommand(next.refreshToken))).rejects.toThrow(RefreshFailedError)
+        // Not signing out: the study module leaves the Solo running (D-229).
+        expect(w.published.filter((event) => event instanceof SignedOutEvent)).toEqual([])
     })
 })
 
@@ -276,6 +279,8 @@ describe('The list of sessions, and ending them from it (D-75, D-138)', () => {
         expect(w.cache.endedSessions).toEqual(['session-1'])
         await expect(endedWith(w, phone.refreshToken)).resolves.toBe('revoked')
         await expect(endedWith(w, laptop.refreshToken)).resolves.toBe('still live')
+        // Not signing out: the study module leaves the Solo running (D-229).
+        expect(w.published.filter((event) => event instanceof SignedOutEvent)).toEqual([])
     })
 
     it('answers the same for a session that already ended or is someone else’s, and ends nothing of theirs', async () => {
@@ -311,6 +316,9 @@ describe('The list of sessions, and ending them from it (D-75, D-138)', () => {
         expect(w.cache.endedSessions.sort()).toEqual(['session-1', 'session-2'])
         await expect(endedWith(w, phone.refreshToken)).resolves.toBe('signed_out_everywhere')
         await expect(endedWith(w, laptop.refreshToken)).resolves.toBe('still live')
+        // Not signing out: the study module leaves the Solo running (D-229).
+        expect(w.published.filter((event) => event instanceof SignedOutEvent)).toEqual([])
+
         // Nothing left to end: none, and no error.
         await expect(w.revokeOtherSessions.execute(new RevokeOtherSessionsCommand(ada.id, 'session-3'))).resolves.toBe(
             0
@@ -331,6 +339,9 @@ describe('Signing out', () => {
         expect(w.cache.endedSessions).toEqual(['session-1'])
         // The realtime module cuts that session's sockets off (SessionsEndedEvent).
         expect(w.sessionsEnded).toEqual([['session-1']])
+        // The study module ends their Solo (D-229): signing out, and only that, says who signed out.
+        expect(w.published).toEqual([new SignedOutEvent(ada.id)])
+        expect(w.heard).toEqual(['SessionsEndedEvent', 'SignedOutEvent'])
     })
 
     it('does nothing without a cookie, or with one whose session already ended', async () => {
@@ -343,5 +354,6 @@ describe('Signing out', () => {
         await w.logout.execute(new LogoutCommand(phone.refreshToken))
 
         expect(w.sessionsEnded).toEqual([['session-1']])
+        expect(w.published).toHaveLength(1)
     })
 })

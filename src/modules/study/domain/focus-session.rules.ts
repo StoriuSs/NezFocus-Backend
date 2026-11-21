@@ -86,8 +86,19 @@ export const closesStretch = (move: SessionMove): boolean => move.stretches.some
 export const stretchAfter = (move: SessionMove, before: Date | null): Date | null =>
     move.stretches.reduce<Date | null>((open, change) => ('open' in change ? change.open : null), before)
 
-/** What a command asks of a session (the routes of SRS 5.1). */
-export type ControlAction = 'pause' | 'resume' | 'skip' | 'stop'
+/** What a command asks of a session (the routes of SRS 5.1): `continue` is a waiting Solo's Học tiếp. */
+export type ControlAction = 'pause' | 'resume' | 'skip' | 'stop' | 'continue'
+
+/** How long a Solo waits for Học tiếp once a break ends, in study minutes (REQ-STUDY-05). */
+export const WAIT_MINUTES = 10
+
+/** The cycle of a person's first Solo; each later one starts with the cycle of their last (D-103). */
+export const FIRST_SOLO_CYCLE: Cycle = {
+    focusMinutes: 25,
+    shortBreakMinutes: 5,
+    longBreakMinutes: null,
+    longBreakEvery: null
+}
 
 /**
  * What made a session change, as the room is told it (`focus_session.*`, for
@@ -231,15 +242,50 @@ export function skipMove(session: FocusSession, at: Date, minuteMs: number): Ses
 }
 
 /**
+ * When a session's timer is due (its job, or the sweep): the end of its phase
+ * while running, the end of its wait while waiting; null otherwise.
+ */
+export function timerDueAt(session: SessionClock): Date | null {
+    if (session.status === 'running') return session.phaseEndsAt
+    if (session.status === 'waiting') return session.waitingUntil
+    return null
+}
+
+/**
+ * When a waiting Solo's break ended: WAIT_MINUTES before its wait ends, by
+ * today's STUDY_MINUTE_MS. Fixed in production (D-221); a test or a demo that
+ * changes it while a Solo waits moves this time with it.
+ */
+const breakEndOf = (session: SessionClock, minuteMs: number): Date =>
+    new Date(session.waitingUntil!.getTime() - WAIT_MINUTES * minuteMs)
+
+/**
  * The end of the running phase, by its job (ARCHITECTURE 5.1): made at the
  * time the phase was due, not when the job runs, so the next phase begins on
  * time; a job late enough to find that one over too is followed by one with
- * no delay, and the session catches up a phase at a time (D-225). Null when
- * not running.
+ * no delay, and the session catches up a phase at a time (D-225). A Solo's
+ * break ends into waiting for Học tiếp instead (WAIT_MINUTES); a wait that
+ * ends so ends the Solo, as expired, when its break ended (REQ-STUDY-05).
+ * Null when neither running nor waiting.
  */
 export function phaseEndMove(session: FocusSession, minuteMs: number): SessionMove | null {
+    if (session.status === 'waiting') return stopMove(session, breakEndOf(session, minuteMs), 'expired')
     if (session.status !== 'running') return null
     const at = session.phaseEndsAt!
+    if (session.kind === 'solo' && session.phase !== 'focus') {
+        return {
+            at,
+            cycle: session.cycle,
+            clock: {
+                ...clockOf(session),
+                ...blank,
+                status: 'waiting',
+                phaseEndsAt: null,
+                waitingUntil: later(at, WAIT_MINUTES * minuteMs)
+            },
+            stretches: []
+        }
+    }
     const clock = nextPhase(session, at, minuteMs, false)
     return {
         at,
@@ -247,6 +293,13 @@ export function phaseEndMove(session: FocusSession, minuteMs: number): SessionMo
         clock,
         stretches: changes(closeAt(session, at), clock.phase === 'focus' ? at : null)
     }
+}
+
+/** Học tiếp (REQ-STUDY-05): a waiting Solo's next focus phase begins now. Null when not waiting. */
+export function continueMove(session: FocusSession, at: Date, minuteMs: number): SessionMove | null {
+    if (session.status !== 'waiting') return null
+    const clock = nextPhase(session, at, minuteMs, false)
+    return { at, cycle: session.cycle, clock, stretches: changes(null, at) }
 }
 
 /** End the session for `reason` (stopped, or one of its own ends). Null when it has ended already. */
@@ -286,12 +339,18 @@ export function cycleMove(session: FocusSession, cycle: Cycle, at: Date, minuteM
     }
 }
 
+/** Whether a session's timer (timerDueAt) is due at `at`. */
+const isDue = (session: SessionClock, at: Date): boolean => {
+    const due = timerDueAt(session)
+    return due !== null && due <= at
+}
+
 /** How many phase ends one catch-up makes at most: a guard, far past any outage the sweep leaves. */
 const MAX_CATCH_UP = 10_000
 
 /**
- * A command made at `at` on a session whose running phase is over by then
- * (its job late or lost, D-225): the phase ends it missed are made first,
+ * A command made at `at` on a session whose running phase (or a Solo's
+ * wait) is over by then (its job late or lost, D-225): the ends it missed are made first,
  * each when it was due (phaseEndMove), so the command acts on the phase the
  * room is really in and no focus second between is lost; then the command.
  * One move for both: one version, one count. Nothing missed: the command
@@ -305,7 +364,7 @@ export function caughtUp(
 ): SessionMove | null {
     let current = session
     const missed: StretchChange[] = []
-    for (let i = 0; i < MAX_CATCH_UP && current.status === 'running' && current.phaseEndsAt! <= at; i++) {
+    for (let i = 0; i < MAX_CATCH_UP && isDue(current, at); i++) {
         const end = phaseEndMove(current, minuteMs)!
         missed.push(...end.stretches)
         current = { ...current, ...end.clock, stretchStartedAt: stretchAfter(end, current.stretchStartedAt) }

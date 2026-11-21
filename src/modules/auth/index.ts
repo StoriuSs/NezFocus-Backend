@@ -16,6 +16,8 @@ export { TOKEN_SERVICE, type TokenServicePort } from './application/ports'
 // when sessions end, so their sockets are cut off (ARCHITECTURE 3.1).
 export { PRINCIPAL, type Principal, type PrincipalPort } from './application/ports/principal.port'
 export { SessionsEndedEvent } from './application/events/sessions-ended.event'
+// Signing out ends the person's Solo (D-229).
+export { SignedOutEvent } from './application/events/signed-out.event'
 // An account waiting to be deleted shows offline at once (D-182).
 export { AccountDeletionRequestedEvent } from './application/events/account-deletion-requested.event'
 

@@ -100,8 +100,12 @@ export interface SessionRepositoryPort {
 
     rotate(input: RotateInput): Promise<RotationOutcome>
 
-    /** @returns the id of the session the token belonged to, if it was active */
-    revokeByTokenHash(tokenHash: string, reason: RevokeReason, now: Date): Promise<string | null>
+    /** @returns the session the token belonged to and its user, if it was active */
+    revokeByTokenHash(
+        tokenHash: string,
+        reason: RevokeReason,
+        now: Date
+    ): Promise<{ sessionId: string; userId: string } | null>
 
     /**
      * End one session, if it is the user's. @returns whether it is theirs,

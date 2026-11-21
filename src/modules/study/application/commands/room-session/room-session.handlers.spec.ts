@@ -1,6 +1,6 @@
 import { Cycle } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
-import { MINUTE, NOW, roomSession, studyWorld } from '../../study-test-world.shared-spec'
+import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { EndGoneRoomSessionsCommand, StartRoomSessionCommand } from './room-session.commands'
 import { EndGoneRoomSessionsHandler, StartRoomSessionHandler } from './room-session.handlers'
 
@@ -13,6 +13,7 @@ function setup() {
         world.channels,
         world.checker,
         world.voiceRooms,
+        world.users,
         world.settings,
         world.events
     )
@@ -48,6 +49,27 @@ describe('StartRoomSessionHandler', () => {
         const [event] = world.published() as FocusSessionChangedEvent[]
         expect(event).toBeInstanceOf(FocusSessionChangedEvent)
         expect(event).toMatchObject({ before: null, action: 'start', actorId: 'an' })
+    })
+
+    it('ends the Solo of one in the room as the session starts, telling them first, counted in their zone (D-103)', async () => {
+        const { world, start } = setup()
+        world.put(soloSession({ userId: 'binh' }), ['binh'])
+        await start('an', 'phong-hoc')
+        expect(world.sessions.get('solo')).toMatchObject({ status: 'ended', endedReason: 'joined_room' })
+        expect(world.participants.get('phien-2')).toContain('binh')
+        const published = world.published()
+        expect(published.map((event) => event.constructor.name)).toEqual([
+            'StudyCountedEvent',
+            'FocusSessionChangedEvent',
+            'FocusSessionChangedEvent'
+        ])
+        expect(published[1]).toMatchObject({ action: 'end', actorId: null, after: { kind: 'solo', userId: 'binh' } })
+        expect(published[2]).toMatchObject({ action: 'start', actorId: 'an' })
+        expect(world.repository.startInRoom).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.any(Function),
+            expect.any(Function)
+        )
     })
 
     it('takes the cycle sent, and refuses half a long break', async () => {
@@ -90,7 +112,9 @@ describe('StartRoomSessionHandler', () => {
 
     it('starts nothing for one who left the room between the check and the start', async () => {
         const { world, start } = setup()
-        ;(world.voiceRooms.peopleIn as jest.Mock).mockResolvedValueOnce([])
+        // In the room when their zones are read, gone when the start reads the room under its lock.
+        const peopleIn = world.voiceRooms.peopleIn as jest.Mock
+        peopleIn.mockImplementationOnce(peopleIn.getMockImplementation()!).mockResolvedValueOnce([])
         expect(await refusal(start('an', 'phong-hoc'))).toBe('FORBIDDEN not_in_room')
         expect(world.published()).toEqual([])
     })

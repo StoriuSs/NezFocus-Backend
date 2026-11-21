@@ -5,6 +5,7 @@ import { ConcurrencyLimiter, ConcurrencyLimitError } from '@/shared/utils/concur
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
     closesStretch,
+    Cycle,
     firstClock,
     FocusSession,
     FocusSessionActiveError,
@@ -22,7 +23,9 @@ import {
     SessionChange,
     SessionDecision,
     SessionSummary,
+    SoloStart,
     StartedSession,
+    stopMove,
     StudyCount,
     StudyForbiddenError,
     StudyUnavailableError,
@@ -119,9 +122,61 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
         return rows.map(toSession)
     }
 
-    async startInRoom(start: RoomSessionStart, peopleIn: () => Promise<string[]>): Promise<StartedSession> {
+    async openSolo(userId: string): Promise<FocusSession | null> {
+        // `<> 'ended'`, as FocusSession_one_open_solo_per_person is written: so that index is used.
+        const row = await this.prisma.focusSession.findFirst({
+            where: { userId, status: { not: 'ended' } },
+            select: SESSION
+        })
+        return row && toSession(row)
+    }
+
+    async lastSoloCycle(userId: string): Promise<Cycle | null> {
+        // On FocusSession(userId, startedAt): only a Solo names a person (FocusSession_kind_check).
+        // Two started within one second (a time on a whole second) are told apart by their UUIDv7.
+        const row = await this.prisma.focusSession.findFirst({
+            where: { userId },
+            orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+            select: { focusMinutes: true, shortBreakMinutes: true, longBreakMinutes: true, longBreakEvery: true }
+        })
+        return row
+    }
+
+    async startSolo({ userId, cycle, minuteMs }: SoloStart): Promise<FocusSession> {
         try {
-            return await this.inRoomLock(() => this.startOnce(start, peopleIn))
+            return await this.prisma.$transaction(
+                async (tx) => {
+                    const at = wholeSecond(new Date())
+                    const { id } = await tx.focusSession.create({
+                        data: {
+                            kind: 'solo',
+                            userId,
+                            ...cycle,
+                            ...clockData(firstClock(cycle, at, minuteMs)),
+                            startedAt: at
+                        },
+                        select: { id: true }
+                    })
+                    await tx.focusStretch.create({ data: { sessionId: id, startedAt: at } })
+                    await tx.participation.create({ data: { sessionId: id, userId, joinedAt: at, countedUntil: at } })
+                    return toSession(await tx.focusSession.findUniqueOrThrow({ where: { id }, select: SESSION }))
+                },
+                { timeout: CHANGE_MS, maxWait: CHANGE_MS }
+            )
+        } catch (error) {
+            // Participation_one_open_per_person (or FocusSession_one_open_solo_per_person): in a session already.
+            if (prismaCode(error) === 'P2002') throw new FocusSessionActiveError(`person ${userId}`)
+            throw error
+        }
+    }
+
+    async startInRoom(
+        start: RoomSessionStart,
+        peopleIn: () => Promise<string[]>,
+        zoneOf: ZoneOf
+    ): Promise<StartedSession> {
+        try {
+            return await this.inRoomLock(() => this.startOnce(start, peopleIn, zoneOf))
         } catch (error) {
             // FocusSession_one_open_per_room: the room has one already.
             if (prismaCode(error) === 'P2002') throw new FocusSessionActiveError(`room ${start.channelId}`)
@@ -131,7 +186,8 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
 
     private startOnce(
         { serverId, channelId, hostId, cycle, minuteMs }: RoomSessionStart,
-        peopleIn: () => Promise<string[]>
+        peopleIn: () => Promise<string[]>,
+        zoneOf: ZoneOf
     ): Promise<StartedSession> {
         return this.prisma.$transaction(
             async (tx) => {
@@ -151,9 +207,21 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
                 })
                 await tx.focusStretch.create({ data: { sessionId: row.id, startedAt: at } })
                 const people = [...new Set(await peopleIn())].sort()
-                // Someone with a participation open elsewhere meets Participation_one_open_per_person, and is skipped.
+                // Each one in a Solo ends it here, in userId order, and takes part from when it ended (D-103).
+                const yielded: SessionChange[] = []
+                const joinedAt = new Map<string, Date>()
+                for (const solo of await solosOf(tx, people)) {
+                    const change = await yieldSolo(tx, solo.sessionId, at, zoneOf)
+                    if (!change) continue
+                    yielded.push(change)
+                    joinedAt.set(solo.userId, change.after.endedAt!)
+                }
+                // Someone still in another room's session meets Participation_one_open_per_person, and is skipped.
                 await tx.participation.createMany({
-                    data: people.map((userId) => ({ sessionId: row.id, userId, joinedAt: at, countedUntil: at })),
+                    data: people.map((userId) => {
+                        const from = joinedAt.get(userId) ?? at
+                        return { sessionId: row.id, userId, joinedAt: from, countedUntil: from }
+                    }),
                     skipDuplicates: true
                 })
                 const joined = (
@@ -164,14 +232,14 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
                     })
                 ).map(({ userId }) => userId)
                 // Its Host takes part, or there is no session: one who left the room since the check, or
-                // is still in another session (D-222; a Solo yields first from M5 L4), rolls it back.
+                // is still in another room's session (D-222), rolls it back.
                 if (!joined.includes(hostId)) {
                     throw people.includes(hostId)
                         ? new FocusSessionActiveError(`person ${hostId}`)
                         : new StudyForbiddenError('not_in_room')
                 }
                 const session = await tx.focusSession.findUniqueOrThrow({ where: { id: row.id }, select: SESSION })
-                return { session: toSession(session), participantIds: joined }
+                return { session: toSession(session), participantIds: joined, yielded }
             },
             { timeout: CHANGE_MS, maxWait: CHANGE_MS }
         )
@@ -198,18 +266,38 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
     }
 
     async overdue(now: Date, limit: number): Promise<{ id: string; version: number }[]> {
-        // On FocusSession_running_due: only the running sessions, the earliest due first.
-        return this.prisma.focusSession.findMany({
-            where: { status: 'running', phaseEndsAt: { lte: now } },
-            select: { id: true, version: true },
-            orderBy: { phaseEndsAt: 'asc' },
-            take: limit
-        })
+        // Two reads, each on its own partial index (FocusSession_running_due, FocusSession_waiting_due).
+        const [running, waiting] = await Promise.all([
+            this.prisma.focusSession.findMany({
+                where: { status: 'running', phaseEndsAt: { lte: now } },
+                select: { id: true, version: true, phaseEndsAt: true },
+                orderBy: { phaseEndsAt: 'asc' },
+                take: limit
+            }),
+            this.prisma.focusSession.findMany({
+                where: { status: 'waiting', waitingUntil: { lte: now } },
+                select: { id: true, version: true, waitingUntil: true },
+                orderBy: { waitingUntil: 'asc' },
+                take: limit
+            })
+        ])
+        return [
+            ...running.map(({ id, version, phaseEndsAt }) => ({ id, version, due: phaseEndsAt! })),
+            ...waiting.map(({ id, version, waitingUntil }) => ({ id, version, due: waitingUntil! }))
+        ]
+            .sort((a, b) => a.due.getTime() - b.due.getTime())
+            .slice(0, limit)
+            .map(({ id, version }) => ({ id, version }))
     }
 
-    async joinRoom(channelId: string, userId: string, mayHost: boolean | null): Promise<JoinOutcome> {
+    async joinRoom(
+        channelId: string,
+        userId: string,
+        mayHost: boolean | null,
+        zone: string | null
+    ): Promise<JoinOutcome> {
         return this.inRoomLock(() =>
-            this.prisma.$transaction((tx) => joinOnce(tx, channelId, userId, mayHost), {
+            this.prisma.$transaction((tx) => joinOnce(tx, channelId, userId, mayHost, zone), {
                 timeout: CHANGE_MS,
                 maxWait: CHANGE_MS
             })
@@ -428,10 +516,55 @@ async function changeOnce(
 }
 
 /**
- * One run of PrismaFocusSessionRepository.joinRoom in `tx`, decided by
- * joinMove on the rows once locked: the room, then its session.
+ * Who of `people` is in a Solo now, with its id, in userId order: the order
+ * a start ends them in.
  */
-async function joinOnce(tx: Tx, channelId: string, userId: string, mayHost: boolean | null): Promise<JoinOutcome> {
+async function solosOf(tx: Tx, people: string[]): Promise<{ sessionId: string; userId: string }[]> {
+    if (people.length === 0) return []
+    return tx.$queryRaw<{ sessionId: string; userId: string }[]>`
+        SELECT p."sessionId", p."userId" FROM "Participation" p JOIN "FocusSession" s ON s."id" = p."sessionId"
+        WHERE p."userId" IN (${Prisma.join(people)}) AND p."leftAt" IS NULL AND s."kind" = 'solo'
+        ORDER BY p."userId"
+    `
+}
+
+/**
+ * Ends, in `tx`, the Solo of one who takes part in a Room Session from `at`
+ * (D-103): as `joined_room`, counted in their zone and closed, as any end
+ * is (changeOnce), at `at` or, when its own times are later (another app's
+ * clock), then: the caller opens their participation in the room when it
+ * ended, so no second is lost or counted twice. Its timers left behind are
+ * not caught up first: a Solo's focus phase ends into a break, not into more
+ * focus, so no second is lost; only the reason and the end of one whose wait
+ * was over could differ (`joined_room` now, not `expired` at its break's
+ * end). Locks the Solo after the room's session, before the participations
+ * and days, as every writer does. Their zone comes from `zoneOf`, read
+ * before the transaction by the caller. Null when it had ended meanwhile.
+ */
+async function yieldSolo(tx: Tx, soloId: string, at: Date, zoneOf: ZoneOf): Promise<SessionChange | null> {
+    const change = await changeOnce(
+        tx,
+        soloId,
+        null,
+        (solo) => stopMove(solo, latest(at, solo.phaseStartedAt, solo.stretchStartedAt), 'joined_room'),
+        new Map(),
+        zoneOf
+    )
+    return change && 'after' in change && change.changed ? change : null
+}
+
+/**
+ * One run of PrismaFocusSessionRepository.joinRoom in `tx`, decided by
+ * joinMove on the rows once locked: the room, then its session, then a Solo
+ * to end (yieldSolo).
+ */
+async function joinOnce(
+    tx: Tx,
+    channelId: string,
+    userId: string,
+    mayHost: boolean | null,
+    zone: string | null
+): Promise<JoinOutcome> {
     await lockStudyRoom(tx, channelId)
     const [locked] = await tx.$queryRaw<{ id: string }[]>`
         SELECT "id" FROM "FocusSession" WHERE "channelId" = ${channelId} AND "status" <> 'ended' FOR UPDATE
@@ -441,17 +574,22 @@ async function joinOnce(tx: Tx, channelId: string, userId: string, mayHost: bool
         where: { userId, leftAt: null },
         select: { id: true, sessionId: true, awaySince: true, session: { select: { kind: true } } }
     })
-    // Another room's place closes on coming into any room (D-215); a Solo only yields to a
-    // Room Session (D-103, M5 L4).
-    if (open && open.sessionId !== locked?.id && (locked || open.session.kind === 'room')) {
+    // Another room's place closes on coming into any room (D-215), first, in its own transaction.
+    if (open && open.sessionId !== locked?.id && open.session.kind === 'room') {
         return { kind: 'elsewhere', sessionId: open.sessionId }
     }
     if (!locked) return { kind: 'no_session' }
+    // A Solo yields to a Room Session only (D-103), here.
+    const solo = open?.session.kind === 'solo' ? open : null
+    // Their zone, to count the Solo, read outside the transaction: none of its locks waits on another connection.
+    if (solo && zone === null) return { kind: 'zone' }
     const before = toSession(await tx.focusSession.findUniqueOrThrow({ where: { id: locked.id }, select: SESSION }))
-    const move = joinMove(before, open, mayHost)
+    const move = joinMove(before, solo ? null : open, mayHost)
     if (move === 'ask') return { kind: 'ask' }
 
-    const at = latest(wholeSecond(new Date()), before.phaseStartedAt, before.stretchStartedAt)
+    let at = latest(wholeSecond(new Date()), before.phaseStartedAt, before.stretchStartedAt)
+    const yielded = solo && (await yieldSolo(tx, solo.sessionId, at, async () => zone!))
+    if (yielded) at = yielded.after.endedAt!
     if (move.opens) {
         await tx.participation.create({ data: { sessionId: before.id, userId, joinedAt: at, countedUntil: at } })
     } else if (move.back) {
@@ -476,7 +614,8 @@ async function joinOnce(tx: Tx, channelId: string, userId: string, mayHost: bool
             summaries: null,
             away: null,
             emptySince: null
-        }
+        },
+        yielded: yielded || null
     }
 }
 

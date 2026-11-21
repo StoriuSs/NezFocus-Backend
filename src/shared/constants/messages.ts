@@ -130,7 +130,8 @@ export const MESSAGES = {
 
     STUDY: {
         SESSION_STARTED: 'Study session started',
-        SESSION_UPDATED: 'Study session updated'
+        SESSION_UPDATED: 'Study session updated',
+        SOLO_FETCHED: 'Solo session fetched'
     },
 
     NOTIFICATIONS: {

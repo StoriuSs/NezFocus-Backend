@@ -364,9 +364,10 @@ The study tables (M5) are the account's own: its sessions, its time in them,
 its days and its streak. They stay with the `User` row, and nobody else sees
 them once it is deleted (a Room Session's summaries show only when it ends).
 Their `onDelete: Cascade` on `User` never runs, as for `VoiceState`; a Room
-Session's Host is `SetNull`. The account's sign-in sessions end, which ends
-its Solo (`signed_out`), and it is put out of its room, which closes its time
-there (M5 L3, L4).
+Session's Host is `SetNull`. Its Solo ends (`signed_out`, D-229:
+`EndSoloOnSignOutHandler` hears `AccountDeletionRequestedEvent`, as it hears
+auth's `SignedOutEvent`), and it is put out of its room, which closes its time
+there (M5 L3, L4a).
 
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.

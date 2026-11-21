@@ -12,10 +12,14 @@ export * from './commands/session-control/session-control.commands'
 export * from './commands/session-control/session-control.handlers'
 export * from './commands/session-timer/session-timer.commands'
 export * from './commands/session-timer/session-timer.handlers'
+export * from './commands/solo-session/solo-session.commands'
+export * from './commands/solo-session/solo-session.handlers'
 
 // Queries
 export * from './queries/room-session/room-session.queries'
 export * from './queries/room-session/room-session.handlers'
+export * from './queries/solo-session/solo-session.queries'
+export * from './queries/solo-session/solo-session.handlers'
 
 // Services
 export * from './services/session-views'
@@ -27,6 +31,7 @@ export * from './events/study-counted.event'
 
 // Event handlers
 export * from './events/handlers/check-server-rooms.handler'
+export * from './events/handlers/end-solo-on-sign-out.handler'
 export * from './events/handlers/follow-voice-rooms.handler'
 export * from './events/handlers/post-session-message.handler'
 export * from './events/handlers/publish-focus-session.handler'

@@ -1,6 +1,6 @@
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
 import { RoomPresenceChangedEvent } from '../../events/room-presence-changed.event'
-import { NOW, roomSession, studyWorld } from '../../study-test-world.shared-spec'
+import { NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { JoinStudyRoomCommand, LeaveStudyRoomCommand } from './room-presence.commands'
 import { JoinStudyRoomHandler, LeaveStudyRoomHandler } from './room-presence.handlers'
 
@@ -26,6 +26,28 @@ describe('JoinStudyRoomHandler', () => {
         world.put(roomSession(), ['an'])
         await join('binh')
         expect(world.participants.get('phien')).toEqual(['an', 'binh'])
+        expect(world.published()).toEqual([])
+    })
+
+    it('ends the Solo of one who comes into a room with a session, telling them, and they take part (D-103)', async () => {
+        const { world, join } = setup()
+        world.put(roomSession(), ['an'])
+        world.put(soloSession({ userId: 'binh' }), ['binh'])
+        await join('binh')
+        expect(world.sessions.get('solo')).toMatchObject({ status: 'ended', endedReason: 'joined_room' })
+        expect(world.participants.get('phien')).toEqual(['an', 'binh'])
+        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent'])
+        expect(world.published()[1]).toMatchObject({ action: 'end', after: { kind: 'solo' } })
+        // Their zone read outside the transaction, only once a Solo is there to end.
+        expect((world.repository.joinRoom as jest.Mock).mock.calls.map((call) => call[3])).toEqual([null, 'UTC'])
+        expect((world.published()[0] as { count: { timeZone: string } }).count.timeZone).toBe('UTC')
+    })
+
+    it('keeps a Solo going in a room with no session (D-103)', async () => {
+        const { world, join } = setup()
+        world.put(soloSession({ userId: 'binh' }), ['binh'])
+        await join('binh')
+        expect(world.sessions.get('solo')?.status).toBe('running')
         expect(world.published()).toEqual([])
     })
 
@@ -56,8 +78,8 @@ describe('JoinStudyRoomHandler', () => {
         expect(world.sessions.get('phien')).toMatchObject({ hostId: 'chi', version: 1 })
         expect(told(world)).toEqual(['FocusSessionChangedEvent'])
         expect(world.published()[0]).toMatchObject({ action: 'host', actorId: null })
-        expect(world.repository.joinRoom).toHaveBeenNthCalledWith(1, 'phong-thi', 'binh', null)
-        expect(world.repository.joinRoom).toHaveBeenNthCalledWith(2, 'phong-thi', 'binh', false)
+        expect(world.repository.joinRoom).toHaveBeenNthCalledWith(1, 'phong-thi', 'binh', null, null)
+        expect(world.repository.joinRoom).toHaveBeenNthCalledWith(2, 'phong-thi', 'binh', false, null)
     })
 
     it('closes a place away in another room on coming into a room with no session too (D-215)', async () => {

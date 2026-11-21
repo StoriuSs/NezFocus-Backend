@@ -1,6 +1,6 @@
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
 import { RoomPresenceChangedEvent } from '../../events/room-presence-changed.event'
-import { MINUTE, NOW, roomSession, studyWorld } from '../../study-test-world.shared-spec'
+import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import {
     CloseAwayCommand,
     EndEmptyRoomCommand,
@@ -57,6 +57,50 @@ describe('EndFocusPhaseHandler', () => {
         expect(world.published().filter((event) => event.constructor.name === 'StudyCountedEvent')).toHaveLength(2)
     })
 
+    it('makes a Solo wait 10 minutes when its break ends (REQ-STUDY-05)', async () => {
+        const { world, end } = setup()
+        world.put(
+            soloSession({
+                phase: 'short_break',
+                phaseIndex: 1,
+                phaseStartedAt: later(25),
+                phaseEndsAt: later(30),
+                stretchStartedAt: null
+            }),
+            ['an']
+        )
+        world.at(later(30))
+        await end.execute(new EndFocusPhaseCommand('solo', 0))
+        expect(world.sessions.get('solo')).toMatchObject({ status: 'waiting', waitingUntil: later(40), version: 1 })
+    })
+
+    it('ends a Solo not taken up within its wait as expired, at the end of its break; a job run early does nothing', async () => {
+        const { world, end } = setup()
+        world.put(
+            soloSession({
+                status: 'waiting',
+                phase: 'short_break',
+                phaseIndex: 1,
+                phaseStartedAt: later(25),
+                phaseEndsAt: null,
+                waitingUntil: later(40),
+                stretchStartedAt: null
+            }),
+            ['an']
+        )
+        world.at(later(38))
+        await end.execute(new EndFocusPhaseCommand('solo', 0))
+        expect(world.sessions.get('solo')?.status).toBe('waiting')
+        world.at(later(40))
+        await end.execute(new EndFocusPhaseCommand('solo', 0))
+        expect(world.sessions.get('solo')).toMatchObject({
+            status: 'ended',
+            endedReason: 'expired',
+            endedAt: later(30)
+        })
+        expect(world.published().at(-1)).toMatchObject({ action: 'phase_end', actorId: null })
+    })
+
     it('does nothing for a version gone by, a session not running, or none', async () => {
         const { world, end } = setup()
         world.put(roomSession({ version: 3 }))
@@ -90,6 +134,24 @@ describe('SweepStudyTimersHandler', () => {
         expect(await sweep.execute(new SweepStudyTimersCommand(later(26)))).toBe(1)
         expect(world.sessions.get('qua-han')).toMatchObject({ phase: 'short_break', version: 1 })
         expect(world.sessions.get('chua-toi')).toMatchObject({ phase: 'focus', version: 0 })
+    })
+
+    it('ends a Solo whose wait is over and its job lost, as expired (REQ-STUDY-05)', async () => {
+        const { world, sweep } = setup()
+        const waiting = {
+            status: 'waiting' as const,
+            phase: 'short_break' as const,
+            phaseIndex: 1,
+            phaseStartedAt: later(25),
+            phaseEndsAt: null,
+            stretchStartedAt: null
+        }
+        world.put(soloSession({ ...waiting, waitingUntil: later(40) }), ['an'])
+        world.put(soloSession({ ...waiting, id: 'con-cho', userId: 'binh', waitingUntil: later(45) }), ['binh'])
+        world.at(later(41))
+        expect(await sweep.execute(new SweepStudyTimersCommand(later(41)))).toBe(1)
+        expect(world.sessions.get('solo')).toMatchObject({ status: 'ended', endedReason: 'expired' })
+        expect(world.sessions.get('con-cho')?.status).toBe('waiting')
     })
 
     it('goes on past a session whose phase end fails, leaving it for the next run', async () => {

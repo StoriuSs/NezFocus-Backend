@@ -1,7 +1,7 @@
 import { ControlAction, Cycle, FocusSession } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
 import { StudyCountedEvent } from '../../events/study-counted.event'
-import { MINUTE, NOW, roomSession, studyWorld } from '../../study-test-world.shared-spec'
+import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { ChangeFocusCycleCommand, ControlFocusSessionCommand } from './session-control.commands'
 import { ChangeFocusCycleHandler, ControlFocusSessionHandler } from './session-control.handlers'
 
@@ -108,19 +108,56 @@ describe('ControlFocusSessionHandler', () => {
         expect(await refusal(run('phong', 'resume'))).toBe('done')
     })
 
-    it('answers NOT_FOUND for no such session, and for a Solo (its person’s, M5 L4)', async () => {
-        const solo = roomSession({
-            id: 'solo',
-            kind: 'solo',
-            channelId: null,
-            serverId: null,
-            hostId: null,
-            userId: 'an'
-        })
+    it('answers NOT_FOUND for no such session, and for another’s Solo, even a manager (D-229)', async () => {
         const { world, run } = setup()
-        world.put(solo)
+        world.put(soloSession(), ['an'])
         expect(await refusal(run('an', 'pause', 0, 'khong-co'))).toBe('NOT_FOUND')
-        expect(await refusal(run('an', 'pause', 0, 'solo'))).toBe('NOT_FOUND')
+        expect(await refusal(run('binh', 'pause', 0, 'solo'))).toBe('NOT_FOUND')
+        expect(await refusal(run('chi', 'stop', 0, 'solo'))).toBe('NOT_FOUND')
+        expect(world.sessions.get('solo')?.status).toBe('running')
+    })
+
+    it('lets a Solo’s person control it, counting only them (REQ-STUDY-05)', async () => {
+        const { world, run } = setup(soloSession())
+        world.participants.set('solo', ['an'])
+        world.at(later(12))
+        expect(await run('an', 'stop')).toMatchObject({ status: 'ended', endedReason: 'stopped' })
+        expect(world.published().map((event) => event.constructor.name)).toEqual([
+            'StudyCountedEvent',
+            'FocusSessionChangedEvent'
+        ])
+    })
+
+    it('begins a waiting Solo’s focus phase at the press of Học tiếp: ended 20:30, pressed 20:34, from 20:34', async () => {
+        const { world, run } = setup(
+            soloSession({
+                status: 'waiting',
+                phase: 'short_break',
+                phaseIndex: 1,
+                phaseStartedAt: later(25),
+                phaseEndsAt: null,
+                waitingUntil: later(40),
+                stretchStartedAt: null
+            })
+        )
+        world.participants.set('solo', ['an'])
+        world.at(later(34))
+        expect(await run('an', 'continue')).toMatchObject({
+            status: 'running',
+            phase: 'focus',
+            phaseIndex: 2,
+            phaseStartedAt: later(34),
+            phaseEndsAt: later(59),
+            waitingUntil: null,
+            version: 1
+        })
+        expect(world.published().at(-1)).toMatchObject({ action: 'continue', actorId: 'an' })
+    })
+
+    it('leaves a session that is not waiting as it is on Học tiếp, telling nothing', async () => {
+        const { world, run } = setup()
+        expect(await run('an', 'continue')).toMatchObject({ status: 'running', version: 0 })
+        expect(world.published()).toEqual([])
     })
 
     it('answers NOT_FOUND when the session is gone by the time it is changed', async () => {

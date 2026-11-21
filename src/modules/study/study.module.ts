@@ -10,6 +10,7 @@ import { VoiceModule } from '@/modules/voice/voice.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import {
     CheckServerRoomsHandler,
+    EndSoloOnSignOutHandler,
     FollowVoiceRoomsHandler,
     PostSessionMessageHandler,
     PublishFocusSessionHandler,
@@ -22,6 +23,8 @@ import {
     SESSION_CONTROL_COMMAND_HANDLERS,
     SESSION_JOBS,
     SESSION_TIMER_COMMAND_HANDLERS,
+    SOLO_SESSION_COMMAND_HANDLERS,
+    SOLO_SESSION_QUERY_HANDLERS,
     STUDY_SETTINGS,
     StudySettings
 } from './application'
@@ -32,21 +35,22 @@ import {
     PrismaStudyTimeRepository,
     QueryBusRoomSessions
 } from './infrastructure'
-import { FocusSessionsController, StudyJobsConsumer } from './presentation'
+import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from './presentation'
 
 /**
  * Study sessions (SRS 4.6, ARCHITECTURE 5): Room Sessions in study rooms,
  * Solo sessions, the seconds studied each day, streaks. So far the Room
  * Sessions started and controlled from inside their room, their phases
  * moved by the study queue (M5 L3a), who joins and leaves them, their Host,
- * an empty room and a room gone (L3b), and the counting of the seconds
- * studied (L2); Solo comes with L4.
+ * an empty room and a room gone (L3b), the counting of the seconds studied
+ * (L2), and the Solo, which yields to a Room Session (L4a, D-103).
  *
  * Asks servers for a room's study settings (CHANNEL_DIRECTORY), permissions
  * what someone may do there (PERMISSION_CHECKER), voice who is in a room
  * (VOICE_ROOMS, D-225), users each person's time zone (USER_DIRECTORY).
- * Hears voice's VoiceStateChangedEvent (who comes and goes) and servers'
- * ServerChangedEvent (a room turned off or deleted, D-227).
+ * Hears voice's VoiceStateChangedEvent (who comes and goes), servers'
+ * ServerChangedEvent (a room turned off or deleted, D-227) and auth's
+ * SignedOutEvent (a Solo ends, D-229).
  * Tells the room and each person through realtime's EVENT_PUBLISHER, and
  * says a start and an end in the room's chat through messaging's
  * PostStudySessionCommand, sent over the bus. Answers servers' ROOM_SESSIONS
@@ -65,7 +69,7 @@ import { FocusSessionsController, StudyJobsConsumer } from './presentation'
         VoiceModule,
         registerQueues(QUEUES.STUDY)
     ],
-    controllers: [FocusSessionsController],
+    controllers: [FocusSessionsController, MyStudyController],
     providers: [
         { provide: STUDY_TIME_REPOSITORY, useClass: PrismaStudyTimeRepository },
         { provide: FOCUS_SESSION_REPOSITORY, useClass: PrismaFocusSessionRepository },
@@ -74,7 +78,9 @@ import { FocusSessionsController, StudyJobsConsumer } from './presentation'
         ...ROOM_PRESENCE_COMMAND_HANDLERS,
         ...SESSION_CONTROL_COMMAND_HANDLERS,
         ...SESSION_TIMER_COMMAND_HANDLERS,
+        ...SOLO_SESSION_COMMAND_HANDLERS,
         ...ROOM_SESSION_QUERY_HANDLERS,
+        ...SOLO_SESSION_QUERY_HANDLERS,
         PublishStreakUpdatedHandler,
         PublishFocusSessionHandler,
         SchedulePhaseEndHandler,
@@ -82,6 +88,7 @@ import { FocusSessionsController, StudyJobsConsumer } from './presentation'
         PostSessionMessageHandler,
         FollowVoiceRoomsHandler,
         CheckServerRoomsHandler,
+        EndSoloOnSignOutHandler,
         StudyJobsConsumer,
         {
             provide: STUDY_SETTINGS,
