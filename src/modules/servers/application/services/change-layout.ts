@@ -2,6 +2,7 @@ import { Inject } from '@nestjs/common'
 import { EventBus } from '@nestjs/cqrs'
 import { PERMISSION_CACHE, PermissionCachePort } from '@/modules/permissions'
 import {
+    ChannelChanges,
     LayoutState,
     LayoutWrite,
     SERVER_REPOSITORY,
@@ -19,9 +20,32 @@ import { ServerChange, ServerChangedEvent } from '../events/server-changed.event
 const SERVER_FIELD_CACHED: Record<keyof ServerChanges, boolean> = { name: false, welcomeChannelId: false }
 
 /**
+ * Whether each field of a channel is in the permission cache (AccessChannel):
+ * privacy, view roles, who may post, the Task Board (D-189). Its name and the
+ * study room settings are read fresh where needed (CHANNEL_DIRECTORY), so a
+ * new cycle or starter keeps the cache (D-222). A new field fails to compile
+ * until it is decided here.
+ */
+const CHANNEL_FIELD_CACHED: Record<keyof ChannelChanges, boolean> = {
+    name: false,
+    nameKey: false,
+    sendMode: true,
+    isPrivate: true,
+    viewRoleIds: true,
+    taskBoardEnabled: true,
+    isStudyRoom: false,
+    studyStarter: false,
+    studyFocusMinutes: false,
+    studyShortBreakMinutes: false,
+    studyLongBreakMinutes: false,
+    studyLongBreakEvery: false
+}
+
+/**
  * Whether a write changes what the permission cache holds of the server:
- * each channel's type, privacy, view roles and who may post. Categories and
- * order are not in it. Every kind is decided here, so a new one fails to
+ * each channel's type, privacy, view roles, who may post and Task Board
+ * (CHANNEL_FIELD_CACHED for a channel's edit). Categories and order are not
+ * in it. Every kind is decided here, so a new one fails to
  * compile rather than leave an old permission in force.
  */
 const CHANGES_CACHED: { [K in LayoutWrite['kind']]: (write: Extract<LayoutWrite, { kind: K }>) => boolean } = {
@@ -31,7 +55,8 @@ const CHANGES_CACHED: { [K in LayoutWrite['kind']]: (write: Extract<LayoutWrite,
     renameCategory: () => false,
     deleteCategory: () => false,
     createChannel: () => true,
-    updateChannel: () => true,
+    updateChannel: (write) =>
+        (Object.keys(write.changes) as (keyof ChannelChanges)[]).some((field) => CHANNEL_FIELD_CACHED[field]),
     deleteChannel: () => true,
     placeChannels: () => false,
     placeCategories: () => false

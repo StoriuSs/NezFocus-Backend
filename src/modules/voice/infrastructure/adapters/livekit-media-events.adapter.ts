@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { TrackSource, WebhookEvent, WebhookReceiver } from 'livekit-server-sdk'
+import { ParticipantInfo, TrackSource, WebhookEvent, WebhookReceiver } from 'livekit-server-sdk'
 import { MediaEvent, MediaEventsPort } from '@/modules/voice/application'
 import { MediaEventRejectedError } from '@/modules/voice/domain'
 import { sessionOf } from './session-attribute'
@@ -12,6 +12,16 @@ const KINDS: Partial<Record<WebhookEvent['event'], 'joined' | 'left'>> = {
     // Never got through: as good as gone.
     participant_connection_aborted: 'left'
 }
+
+/**
+ * Why LiveKit ended a connection, when it was the server's doing: the API
+ * removed it (PARTICIPANT_REMOVED = 4) or the room was deleted (ROOM_DELETED
+ * = 5), values of @livekit/protocol's DisconnectReason, which the SDK does
+ * not export by name. Any other (the client left, which a closed or reloaded
+ * page does too; a newer connection of the account; the link lost) is a
+ * lost connection (D-215, D-228).
+ */
+const REMOVED = new Set<ParticipantInfo['disconnectReason']>([4, 5])
 
 /** A screen's track published or unpublished (D-101); any other track is `other`. */
 const SHARES: Partial<Record<WebhookEvent['event'], 'share_started' | 'share_stopped'>> = {
@@ -68,7 +78,8 @@ export class LiveKitMediaEvents implements MediaEventsPort {
             identity: participant.identity,
             participantSid: participant.sid,
             joinedAt: new Date(Number(participant.joinedAtMs || participant.joinedAt * 1000n)),
-            sessionId: sessionOf(participant)
+            sessionId: sessionOf(participant),
+            ...(kind === 'left' && REMOVED.has(participant.disconnectReason) && { removed: true as const })
         }
     }
 }

@@ -7,7 +7,8 @@ import { FocusSessionChangedEvent } from '../focus-session-changed.event'
  * "{who} đã bắt đầu phiên học 25/5" when a Room Session starts, and "Phiên
  * học đã kết thúc" when it ends, in the room's chat (REQ-MSG-08, D-222),
  * through messaging's PostStudySessionCommand over the bus. Nothing for the
- * changes between. A failure is logged and thrown: the session is saved,
+ * changes between, nor for the end of a room deleted (`channel_deleted`):
+ * its chat is gone. A failure is logged and thrown: the session is saved,
  * and the message is lost.
  */
 @EventsHandler(FocusSessionChangedEvent)
@@ -28,7 +29,7 @@ export class PostSessionMessageHandler implements IEventHandler<FocusSessionChan
                       focusMinutes: after.cycle.focusMinutes,
                       shortBreakMinutes: after.cycle.shortBreakMinutes
                   }
-                : before && before.status !== 'ended' && after.endedReason
+                : before && before.status !== 'ended' && after.endedReason && after.endedReason !== 'channel_deleted'
                   ? { event: 'study_session_ended', sessionId: after.id, reason: after.endedReason }
                   : null
         if (!notice) return

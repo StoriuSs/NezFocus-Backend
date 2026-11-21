@@ -24,6 +24,7 @@ export const SESSION = {
     startedAt: true,
     endedAt: true,
     endedReason: true,
+    emptySince: true,
     // One open at most (FocusStretch_one_open_per_session).
     stretches: { where: { endedAt: null }, select: { startedAt: true }, take: 1 }
 } satisfies Prisma.FocusSessionSelect

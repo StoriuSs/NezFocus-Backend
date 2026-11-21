@@ -19,6 +19,7 @@ export * from './queries/room/room.handlers'
 export * from './services/room-people'
 
 // Events
+export * from './events/voice-leave-requested.event'
 export * from './events/voice-state-changed.event'
 
 // Event handlers (VoiceSelfStateSignalledEvent is realtime's, MemberChangedEvent and

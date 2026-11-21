@@ -1,6 +1,6 @@
 import { CommandBus } from '@nestjs/cqrs'
 import { Job } from 'bullmq'
-import { EndFocusPhaseCommand } from '../../application'
+import { CloseAwayCommand, EndEmptyRoomCommand, EndFocusPhaseCommand } from '../../application'
 import { STUDY_JOBS } from '../../infrastructure/adapters/study-jobs'
 import { StudyJobsConsumer } from './study-jobs.consumer'
 
@@ -15,6 +15,25 @@ describe('StudyJobsConsumer (ARCHITECTURE 5.1)', () => {
         const { commandBus, consumer } = setUp()
         await consumer.process(job)
         expect(commandBus.execute).toHaveBeenCalledWith(new EndFocusPhaseCommand('phien', 3))
+    })
+
+    it('closes a place away and ends an empty room through their commands, with the time each was set for', async () => {
+        const { commandBus, consumer } = setUp()
+        const since = '2026-11-21T20:10:00.000Z'
+        await consumer.process({
+            name: STUDY_JOBS.CLOSE_AWAY,
+            id: 'away-p-1',
+            data: { participationId: 'p', since }
+        } as Job)
+        await consumer.process({
+            name: STUDY_JOBS.END_EMPTY,
+            id: 'empty-phien-1',
+            data: { sessionId: 'phien', since }
+        } as Job)
+        expect(commandBus.execute.mock.calls).toEqual([
+            [new CloseAwayCommand('p', new Date(since))],
+            [new EndEmptyRoomCommand('phien', new Date(since))]
+        ])
     })
 
     it('a failure fails the job, for the queue to try again', async () => {

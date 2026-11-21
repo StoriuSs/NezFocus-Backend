@@ -1,6 +1,7 @@
 import { channelPermissions, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort, StudyRoomSettings } from '@/modules/servers'
-import { StudyRoomNotFoundError, StudyTimedOutError } from '../../domain'
+import { DomainError } from '@/shared/domain/domain-error'
+import { MayHost, mayStart, StudyRoomNotFoundError, StudyTimedOutError } from '../../domain'
 
 /** What deciding who may start or control a session reads. */
 export interface StudyAccessSources {
@@ -46,3 +47,22 @@ export async function studyStanding(
     }
     return { room, managesStudyRooms: (permissions & Permission.MANAGE_STUDY_ROOMS) !== 0n }
 }
+
+/**
+ * Who may be a study room's Host (REQ-STUDY-03, D-222): one who may start a
+ * session in it now, by its setting (anyone, or MANAGE_STUDY_ROOMS), and not
+ * timed out. One who may not see it any more, or a room that is no study
+ * room by now, may not.
+ */
+export const mayHostWith =
+    (sources: StudyAccessSources): MayHost =>
+    async (channelId, userId) => {
+        try {
+            const { room, managesStudyRooms } = await studyStanding(sources, channelId, userId, new Date())
+            return room.isStudyRoom && mayStart(room.studyStarter, managesStudyRooms)
+        } catch (error) {
+            // Not found or timed out: a refusal, not a failure.
+            if (error instanceof DomainError) return false
+            throw error
+        }
+    }

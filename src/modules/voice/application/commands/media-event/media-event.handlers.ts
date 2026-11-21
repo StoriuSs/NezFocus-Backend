@@ -107,7 +107,9 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             await this.receipts.forget(event.id)
             throw error
         }
-        for (const changed of changeEvents(result)) this.events.publish(changed)
+        // A participant_left the server did not cause is a lost connection: their place is kept 3 minutes (D-215, D-228).
+        for (const changed of changeEvents(result, event.kind === 'left' && !event.removed))
+            this.events.publish(changed)
 
         const before = result?.after ? result.before : null
         if (before && before.channelId !== channelId) {

@@ -12,3 +12,12 @@ export class StartRoomSessionCommand {
         readonly cycle: Partial<Cycle>
     ) {}
 }
+
+/**
+ * End the sessions of the server's rooms that can hold one no more (D-227):
+ * a room deleted, or its server (`channel_deleted`), or no study room any
+ * more (`study_disabled`). Sent when the server's channels changed.
+ */
+export class EndGoneRoomSessionsCommand {
+    constructor(readonly serverId: string) {}
+}

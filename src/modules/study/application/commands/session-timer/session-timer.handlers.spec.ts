@@ -1,15 +1,43 @@
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { RoomPresenceChangedEvent } from '../../events/room-presence-changed.event'
 import { MINUTE, NOW, roomSession, studyWorld } from '../../study-test-world.shared-spec'
-import { EndFocusPhaseCommand, SweepStudyTimersCommand } from './session-timer.commands'
-import { EndFocusPhaseHandler, SweepStudyTimersHandler } from './session-timer.handlers'
+import {
+    CloseAwayCommand,
+    EndEmptyRoomCommand,
+    EndFocusPhaseCommand,
+    SweepStudyTimersCommand
+} from './session-timer.commands'
+import {
+    CloseAwayHandler,
+    EndEmptyRoomHandler,
+    EndFocusPhaseHandler,
+    SweepStudyTimersHandler
+} from './session-timer.handlers'
 
 const later = (minutes: number) => new Date(NOW.getTime() + minutes * MINUTE)
 
 function setup() {
     const world = studyWorld()
     const end = new EndFocusPhaseHandler(world.repository, world.users, world.settings, world.events)
-    const sweep = new SweepStudyTimersHandler(world.repository, world.users, world.settings, world.events)
-    return { world, end, sweep }
+    const sweep = new SweepStudyTimersHandler(
+        world.repository,
+        world.channels,
+        world.checker,
+        world.voiceRooms,
+        world.users,
+        world.settings,
+        world.events
+    )
+    const closeAway = new CloseAwayHandler(
+        world.repository,
+        world.channels,
+        world.checker,
+        world.users,
+        world.settings,
+        world.events
+    )
+    const endEmpty = new EndEmptyRoomHandler(world.repository, world.users, world.settings, world.events)
+    return { world, end, sweep, closeAway, endEmpty }
 }
 
 describe('EndFocusPhaseHandler', () => {
@@ -84,5 +112,124 @@ describe('SweepStudyTimersHandler', () => {
         world.put(roomSession())
         ;(world.repository.overdue as jest.Mock).mockResolvedValueOnce([{ id: 'phien', version: 9 }])
         expect(await sweep.execute(new SweepStudyTimersCommand(later(26)))).toBe(0)
+    })
+})
+
+/** The names of the events published, in order. */
+const told = (world: ReturnType<typeof studyWorld>) => world.published().map((event) => event.constructor.name)
+
+describe('CloseAwayHandler', () => {
+    // The 3 minutes are read on the app's clock.
+    beforeEach(() => jest.useFakeTimers({ now: later(13) }))
+    afterEach(() => jest.useRealTimers())
+
+    it('closes the place of one still away since then, counting it, and hands a Host over (D-215)', async () => {
+        const { world, closeAway } = setup()
+        world.put(roomSession(), ['an', 'binh'])
+        world.away.set('phien:an', later(10))
+        await closeAway.execute(new CloseAwayCommand('phien:an', later(10)))
+        expect(world.participants.get('phien')).toEqual(['binh'])
+        expect(world.sessions.get('phien')).toMatchObject({ hostId: 'binh', version: 1 })
+        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent'])
+        expect(world.published()[1]).toMatchObject({ action: 'host', actorId: null })
+    })
+
+    it('leaves alone one back, or away again since', async () => {
+        const { world, closeAway } = setup()
+        world.put(roomSession(), ['an', 'binh'])
+        await closeAway.execute(new CloseAwayCommand('phien:an', later(10)))
+        world.away.set('phien:an', later(12))
+        await closeAway.execute(new CloseAwayCommand('phien:an', later(10)))
+        expect(world.participants.get('phien')).toEqual(['an', 'binh'])
+        expect(world.published()).toEqual([])
+    })
+
+    it('leaves alone one away less than 3 minutes: a job run early by another app, closed once due', async () => {
+        const { world, closeAway } = setup()
+        world.put(roomSession(), ['an', 'binh'])
+        world.away.set('phien:an', later(10.5))
+        await closeAway.execute(new CloseAwayCommand('phien:an', later(10.5)))
+        expect(world.participants.get('phien')).toEqual(['an', 'binh'])
+        expect(world.repository.closeAway).not.toHaveBeenCalled()
+    })
+})
+
+describe('EndEmptyRoomHandler', () => {
+    it('ends the session (empty) of a room still empty since then, 5 minutes on (D-227)', async () => {
+        const { world, endEmpty } = setup()
+        world.put(roomSession({ emptySince: later(10) }), [])
+        world.at(later(15))
+        await endEmpty.execute(new EndEmptyRoomCommand('phien', later(10)))
+        expect(world.sessions.get('phien')).toMatchObject({ status: 'ended', endedReason: 'empty' })
+        expect(world.published().at(-1)).toMatchObject({ action: 'end', actorId: null })
+    })
+
+    it('leaves alone a room someone came into, or empty again since, or not yet 5 minutes', async () => {
+        const { world, endEmpty } = setup()
+        world.put(roomSession({ emptySince: null }), [])
+        world.at(later(15))
+        await endEmpty.execute(new EndEmptyRoomCommand('phien', later(10)))
+        world.put(roomSession({ emptySince: later(12) }), [])
+        await endEmpty.execute(new EndEmptyRoomCommand('phien', later(10)))
+        world.at(later(14))
+        await endEmpty.execute(new EndEmptyRoomCommand('phien', later(12)))
+        expect(world.sessions.get('phien')).toMatchObject({ status: 'running' })
+        expect(world.published()).toEqual([])
+    })
+})
+
+describe('SweepStudyTimersHandler, presence', () => {
+    it('ends the rooms empty 5 minutes and closes the places away 3 minutes whose job was lost', async () => {
+        const { world, sweep } = setup()
+        world.put(roomSession({ id: 'trong', emptySince: later(10) }), [])
+        world.put(roomSession({ id: 'vang', channelId: 'phong-thi' }), ['chi'])
+        world.away.set('vang:chi', later(12))
+        world.inRoom.clear()
+        world.at(later(15))
+        expect(await sweep.execute(new SweepStudyTimersCommand(later(15)))).toBe(2)
+        expect(world.sessions.get('trong')).toMatchObject({ status: 'ended', endedReason: 'empty' })
+        expect(world.participants.get('vang')).toEqual([])
+    })
+
+    it('sets who is present against who is in the room: one gone is away, one there joins (D-225)', async () => {
+        const { world, sweep } = setup()
+        // Phong and Bình are in the room, An left it: their events were lost.
+        world.put(roomSession(), ['an', 'binh'])
+        world.inRoom.delete('an')
+        await sweep.execute(new SweepStudyTimersCommand(later(5)))
+        expect(world.participants.get('phien')).toEqual(['an', 'binh', 'phong'])
+        expect([...world.away.keys()]).toEqual(['phien:an'])
+        expect(world.published()).toEqual([
+            new RoomPresenceChangedEvent('phien', { participationId: 'phien:an', since: NOW }, null)
+        ])
+    })
+
+    it('joins one in the room whose place is still open in another room, closing that one first (D-215)', async () => {
+        const { world, sweep } = setup()
+        world.put(roomSession({ id: 'cu', channelId: 'phong-thi', hostId: 'chi' }), ['chi', 'binh'])
+        world.put(roomSession({ id: 'moi' }), ['an'])
+        world.inRoom.set('chi', 'phong-thi')
+        await sweep.execute(new SweepStudyTimersCommand(later(5)))
+        // Bình is in Phòng học (their move's events lost): out of the old room, in the new.
+        expect(world.participants.get('cu')).toEqual(['chi'])
+        expect(world.participants.get('moi')).toEqual(['an', 'binh', 'phong'])
+    })
+
+    it('ends the session of a room that is no study room any more, or gone (D-227)', async () => {
+        const { world, sweep } = setup()
+        world.put(roomSession({ id: 'tat', channelId: 'tan-gau' }), [])
+        world.put(roomSession({ id: 'xoa', channelId: 'da-xoa' }), [])
+        await sweep.execute(new SweepStudyTimersCommand(later(5)))
+        expect(world.sessions.get('tat')).toMatchObject({ status: 'ended', endedReason: 'study_disabled' })
+        expect(world.sessions.get('xoa')).toMatchObject({ status: 'ended', endedReason: 'channel_deleted' })
+    })
+
+    it('goes on past a room whose check fails', async () => {
+        const { world, sweep } = setup()
+        world.put(roomSession({ id: 'hong' }), ['an', 'binh'])
+        world.put(roomSession({ id: 'tot', channelId: 'phong-thi' }), [])
+        ;(world.voiceRooms.peopleIn as jest.Mock).mockRejectedValueOnce(new Error('database down'))
+        await sweep.execute(new SweepStudyTimersCommand(later(5)))
+        expect(world.participants.get('tot')).toEqual(['chi'])
     })
 })

@@ -11,6 +11,7 @@ import {
     VoiceTimedOutError,
     VoiceWrite
 } from '../../../domain'
+import { VoiceLeaveRequestedEvent } from '../../events/voice-leave-requested.event'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
 import { MediaRoomsPort } from '../../ports'
 import { IssueJoinTokenCommand, LeaveVoiceCommand } from './connection.commands'
@@ -208,22 +209,25 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
 })
 
 describe('Leaving a voice room (REQ-VC-02)', () => {
-    it('puts them out of LiveKit and off the list at once', async () => {
+    it('puts them out of LiveKit and off the list at once, and tells the leaving was meant (D-228)', async () => {
         const { leave, media, writes, events } = setup({ current: row() })
 
         await leave.execute(new LeaveVoiceCommand('an'))
 
         expect(media.removeParticipant).toHaveBeenCalledWith(`voice:${STUDY}`, 'an')
         expect(writes).toEqual([{ kind: 'remove' }])
-        expect(events.publish).toHaveBeenCalledTimes(1)
+        expect(events.publish.mock.calls.map(([event]) => event.constructor)).toEqual([
+            VoiceStateChangedEvent,
+            VoiceLeaveRequestedEvent
+        ])
     })
 
-    it('does nothing for someone in no room', async () => {
+    it('changes nothing for someone in no room, yet tells the leaving was meant: LiveKit’s leave came first (D-228)', async () => {
         const { leave, media, events } = setup()
 
         await leave.execute(new LeaveVoiceCommand('an'))
 
         expect(media.removeParticipant).not.toHaveBeenCalled()
-        expect(events.publish).not.toHaveBeenCalled()
+        expect(events.publish.mock.calls).toEqual([[new VoiceLeaveRequestedEvent('an')]])
     })
 })

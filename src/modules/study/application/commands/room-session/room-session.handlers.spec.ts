@@ -1,8 +1,8 @@
 import { Cycle } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
 import { MINUTE, NOW, roomSession, studyWorld } from '../../study-test-world.shared-spec'
-import { StartRoomSessionCommand } from './room-session.commands'
-import { StartRoomSessionHandler } from './room-session.handlers'
+import { EndGoneRoomSessionsCommand, StartRoomSessionCommand } from './room-session.commands'
+import { EndGoneRoomSessionsHandler, StartRoomSessionHandler } from './room-session.handlers'
 
 const FIFTY: Cycle = { focusMinutes: 50, shortBreakMinutes: 10, longBreakMinutes: null, longBreakEvery: null }
 
@@ -100,5 +100,44 @@ describe('StartRoomSessionHandler', () => {
         world.put(roomSession())
         expect(await refusal(start('an', 'phong-hoc'))).toBe('FOCUS_SESSION_ACTIVE')
         expect(world.published()).toEqual([])
+    })
+})
+
+describe('EndGoneRoomSessionsHandler', () => {
+    const setupEnd = () => {
+        const world = studyWorld()
+        const handler = new EndGoneRoomSessionsHandler(
+            world.repository,
+            world.channels,
+            world.users,
+            world.settings,
+            world.events
+        )
+        return { world, end: () => handler.execute(new EndGoneRoomSessionsCommand('ot')) }
+    }
+
+    it('ends the session of a room turned off (study_disabled) or deleted (channel_deleted), told as ending by itself', async () => {
+        const { world, end } = setupEnd()
+        world.put(roomSession({ id: 'tat', channelId: 'tan-gau' }))
+        world.put(roomSession({ id: 'xoa', channelId: 'da-xoa' }))
+        world.put(roomSession({ id: 'van-hoc' }))
+        expect(await end()).toBe(2)
+        expect(world.sessions.get('tat')).toMatchObject({ status: 'ended', endedReason: 'study_disabled' })
+        expect(world.sessions.get('xoa')).toMatchObject({ status: 'ended', endedReason: 'channel_deleted' })
+        expect(world.sessions.get('van-hoc')).toMatchObject({ status: 'running' })
+        const ends = world.published().filter((event) => event instanceof FocusSessionChangedEvent)
+        expect(ends).toEqual([
+            expect.objectContaining({ action: 'end', actorId: null }),
+            expect.objectContaining({ action: 'end', actorId: null })
+        ])
+    })
+
+    it('goes on past a session whose end fails', async () => {
+        const { world, end } = setupEnd()
+        world.put(roomSession({ id: 'hong', channelId: 'tan-gau' }))
+        world.put(roomSession({ id: 'tot', channelId: 'da-xoa' }))
+        ;(world.repository.change as jest.Mock).mockRejectedValueOnce(new Error('database down'))
+        expect(await end()).toBe(1)
+        expect(world.sessions.get('tot')).toMatchObject({ status: 'ended' })
     })
 })

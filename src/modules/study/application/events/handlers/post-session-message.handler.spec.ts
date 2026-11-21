@@ -32,6 +32,28 @@ describe('PostSessionMessageHandler', () => {
         ])
     })
 
+    it('says the end of a room turned off, and nothing for a room deleted: its chat is gone', async () => {
+        const { commandBus, handler } = setup()
+        const ended = (reason: 'study_disabled' | 'channel_deleted') =>
+            new FocusSessionChangedEvent(
+                running,
+                { ...running, status: 'ended', endedReason: reason },
+                'end',
+                null,
+                null
+            )
+        await handler.handle(ended('channel_deleted'))
+        expect(commandBus.execute).not.toHaveBeenCalled()
+        await handler.handle(ended('study_disabled'))
+        expect(commandBus.execute).toHaveBeenCalledWith(
+            new PostStudySessionCommand('ot', 'phong-hoc', {
+                event: 'study_session_ended',
+                sessionId: 'phien',
+                reason: 'study_disabled'
+            })
+        )
+    })
+
     it('says nothing for the changes between, nor for a Solo', async () => {
         const { commandBus, handler } = setup()
         await handler.handle(new FocusSessionChangedEvent(running, paused, 'pause', 'an', null))

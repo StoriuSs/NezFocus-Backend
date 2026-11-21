@@ -130,6 +130,32 @@ describe('channel list handlers', () => {
         ])
     })
 
+    it('keeps the cache on a channel edit of what it does not hold: a name, the study room settings (D-222)', async () => {
+        const { written, servers, cache, deps } = setUp()
+        const studyRoom = {
+            ...STATE.server.channels[0],
+            id: 'phong-hoc',
+            type: 'voice' as const,
+            name: 'phong-hoc',
+            isStudyRoom: true
+        }
+        const withRoom: LayoutState = { ...STATE, server: { ...STATE.server, channels: [studyRoom] } }
+        servers.changeLayout.mockImplementation(async (_serverId, _userId, decide) => {
+            written.push(...decide(withRoom))
+            return { createdId: null }
+        })
+        const update = (changes: ConstructorParameters<typeof UpdateChannelCommand>[3]) =>
+            new UpdateChannelHandler(...deps).execute(new UpdateChannelCommand('an', 'ot', 'phong-hoc', changes))
+        await update({ name: 'Phòng ôn thi' })
+        await update({ studyStarter: 'managers', studyFocusMinutes: 50, studyShortBreakMinutes: 10 })
+        await update({ isStudyRoom: false })
+        expect(written.map((w) => w.kind)).toEqual(['updateChannel', 'updateChannel', 'updateChannel'])
+        expect(cache.serverChanged).not.toHaveBeenCalled()
+
+        await update({ isPrivate: true })
+        expect(cache.serverChanged).toHaveBeenCalledWith('ot')
+    })
+
     it('names the channels whose Task Board was turned on, so their reminders are set again (REQ-TASK-01)', async () => {
         const { deps, published } = setUp()
         await new UpdateChannelHandler(...deps).execute(

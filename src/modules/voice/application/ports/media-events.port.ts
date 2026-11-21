@@ -17,6 +17,11 @@ export type MediaEvent =
           joinedAt: Date
           /** The sign-in session the token was issued to (D-214); null when the token had none. */
           sessionId: string | null
+          /**
+           * A leave because the server put them out (asked to, D-210) or the
+           * room went: no lost connection (D-228). Set only then.
+           */
+          removed?: true
       }
     | {
           id: string

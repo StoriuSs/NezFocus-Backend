@@ -1,6 +1,7 @@
 export * from './errors'
 export * from './focus-session.rules'
 export * from './ports'
+export * from './room-presence.rules'
 export * from './streak.rules'
 export * from './study-count.rules'
 export * from './study-time.rules'

@@ -78,6 +78,8 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
 
         const live: VoiceConnection[] = []
         const screens: LiveScreen[] = []
+        // Who this run put out of a room they may no longer be in: their row goes as put out, not as lost.
+        const putOut = new Set<string>()
         for (const [channelId, serverId] of servers) {
             const room = voiceRoomOf(channelId)
             for (const participant of await this.media.listParticipants(room)) {
@@ -85,6 +87,7 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
                 // LiveKit was not reached for, a token used after a ban) goes now.
                 const standing = await standingOf(this.checker, serverId, channelId, participant.identity, now)
                 if (standing.kind === 'out') {
+                    putOut.add(`${channelId}:${participant.identity}`)
                     if (await this.media.removeParticipant(room, participant.identity)) {
                         this.publisher.toUser(participant.identity, 'voice.disconnected', {
                             channelId,
@@ -106,7 +109,13 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
 
         const plan = reconcilePlan(rows, live, now)
         for (const row of plan.drop) {
-            this.publish(await this.states.change(row.userId, (current) => leaveWrite(current, row.participantSid)))
+            // Gone from LiveKit with no participant_left taken: a lost connection too (D-215), unless this
+            // run put them out (their room gone, or they may no longer be in it).
+            const lost = servers.has(row.channelId) && !putOut.has(`${row.channelId}:${row.userId}`)
+            this.publish(
+                await this.states.change(row.userId, (current) => leaveWrite(current, row.participantSid)),
+                lost
+            )
         }
         for (const connection of plan.join) {
             this.publish(await this.states.change(connection.userId, (current) => joinWrite(current, connection)))
@@ -137,8 +146,8 @@ export class ReconcileVoiceRoomsHandler implements ICommandHandler<ReconcileVoic
         }
     }
 
-    private publish(result: Awaited<ReturnType<VoiceStateRepositoryPort['change']>>): void {
-        for (const event of changeEvents(result)) this.events.publish(event)
+    private publish(result: Awaited<ReturnType<VoiceStateRepositoryPort['change']>>, lost = false): void {
+        for (const event of changeEvents(result, lost)) this.events.publish(event)
     }
 }
 

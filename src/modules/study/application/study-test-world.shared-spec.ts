@@ -9,9 +9,14 @@ import {
     FocusSession,
     FocusSessionActiveError,
     FocusSessionRepositoryPort,
+    joinMove,
+    MayHost,
+    PresenceChange,
+    presenceMove,
     stretchAfter,
     StudyCount,
-    StudyForbiddenError
+    StudyForbiddenError,
+    ZoneOf
 } from '../domain'
 import { SessionJobsPort } from './ports'
 import { StudySettings } from './study-settings'
@@ -85,6 +90,7 @@ export function roomSession(shape: Partial<FocusSession> = {}): FocusSession {
         version: 0,
         startedAt: NOW,
         stretchStartedAt: NOW,
+        emptySince: null,
         ...firstClock(cycle, NOW, MINUTE),
         ...shape
     }
@@ -128,7 +134,10 @@ const countOf = (userId: string, sessionId: string, timeZone: string): StudyCoun
 /**
  * The sessions, kept as the Prisma repository keeps them: a change decided
  * on the session as it is, at `at` (NOW unless set), with the version the
- * client saw; a closed stretch counts every participant.
+ * client saw; a closed stretch counts every participant. Who takes part:
+ * `participants` (open places, by session, in the order they came), `away`
+ * (`<sessionId>:<userId>` of those away, and since when); a participation's
+ * id is that key too.
  */
 export function studyWorld() {
     const sessions = new Map<string, FocusSession>()
@@ -139,7 +148,75 @@ export function studyWorld() {
         ['phong', 'phong-hoc'],
         ['chi', 'phong-thi']
     ])
+    const away = new Map<string, Date>()
     let at = NOW
+    const placeOf = (sessionId: string, userId: string) => `${sessionId}:${userId}`
+    const present = (sessionId: string) =>
+        (participants.get(sessionId) ?? []).filter((userId) => !away.has(placeOf(sessionId, userId)))
+    const write = (id: string, shape: Partial<FocusSession>) => {
+        const after = { ...sessions.get(id)!, ...shape }
+        sessions.set(id, after)
+        return after
+    }
+
+    /**
+     * One person away or gone, decided by presenceMove as the repository does:
+     * those present came in the order `participants` lists them (joinedAt a
+     * millisecond apart), every one of them asked whether they may be Host.
+     */
+    const changePresence = async (
+        sessionId: string,
+        userId: string,
+        what: 'away' | 'leave',
+        mayHost: MayHost,
+        zoneOf: ZoneOf
+    ): Promise<PresenceChange> => {
+        const before = sessions.get(sessionId)!
+        const place = placeOf(sessionId, userId)
+        const people = participants.get(sessionId) ?? []
+        const others = present(sessionId)
+            .filter((id) => id !== userId)
+            .map((id) => ({ userId: id, joinedAt: new Date(NOW.getTime() + people.indexOf(id)) }))
+        const asked = new Map<string, boolean>()
+        for (const other of others) asked.set(other.userId, await mayHost(before.channelId!, other.userId))
+        const move = presenceMove(
+            before,
+            { userId, awaySince: away.get(place) ?? null, countedUntil: NOW },
+            what,
+            at,
+            others,
+            asked
+        )!
+        const counts: StudyCount[] = []
+        if ('awaySince' in move.place) {
+            away.set(place, move.place.awaySince)
+        } else {
+            away.delete(place)
+            participants.set(
+                sessionId,
+                people.filter((id) => id !== userId)
+            )
+            counts.push(countOf(userId, sessionId, await zoneOf(userId)))
+        }
+        const changed = move.hostId !== before.hostId
+        const after = write(sessionId, {
+            ...(changed && { hostId: move.hostId, version: before.version + 1 }),
+            ...(move.emptySince && { emptySince: move.emptySince })
+        })
+        return {
+            before,
+            after,
+            changed,
+            counts,
+            summaries: null,
+            away: 'awaySince' in move.place ? { participationId: place, since: move.place.awaySince } : null,
+            emptySince: move.emptySince
+        }
+    }
+    const openIn = (channelId: string) =>
+        [...sessions.values()].find((session) => session.channelId === channelId && session.status !== 'ended')
+    const sessionOf = (userId: string) =>
+        [...participants].find(([id, people]) => people.includes(userId) && sessions.get(id)?.status !== 'ended')?.[0]
 
     const repository: FocusSessionRepositoryPort = {
         find: jest.fn(async (id: string) => sessions.get(id) ?? null),
@@ -201,6 +278,76 @@ export function studyWorld() {
                 .filter((session) => session.status === 'running' && session.phaseEndsAt! <= now)
                 .slice(0, limit)
                 .map(({ id, version }) => ({ id, version }))
+        ),
+        openInServer: jest.fn(async (serverId: string) =>
+            [...sessions.values()].filter((session) => session.serverId === serverId && session.status !== 'ended')
+        ),
+        joinRoom: jest.fn(async (channelId: string, userId: string, mayHost: boolean | null) => {
+            const session = openIn(channelId)
+            const elsewhere = sessionOf(userId)
+            if (elsewhere && elsewhere !== session?.id) return { kind: 'elsewhere' as const, sessionId: elsewhere }
+            if (!session) return { kind: 'no_session' as const }
+            const move = joinMove(
+                session,
+                elsewhere ? { awaySince: away.get(placeOf(session.id, userId)) ?? null } : null,
+                mayHost
+            )
+            if (move === 'ask') return { kind: 'ask' as const }
+            if (move.opens) participants.set(session.id, [...(participants.get(session.id) ?? []), userId])
+            if (move.back) away.delete(placeOf(session.id, userId))
+            const after = write(session.id, {
+                ...(move.endsEmptiness && { emptySince: null }),
+                ...(move.becomesHost && { hostId: userId, version: session.version + 1 })
+            })
+            return {
+                kind: 'joined' as const,
+                change: {
+                    before: session,
+                    after,
+                    changed: move.becomesHost,
+                    counts: [],
+                    summaries: null,
+                    away: null,
+                    emptySince: null
+                }
+            }
+        }),
+        leave: jest.fn(async (from, userId, lost, mayHost, zoneOf) => {
+            const sessionId =
+                'channelId' in from
+                    ? openIn(from.channelId)?.id
+                    : 'sessionId' in from
+                      ? from.sessionId
+                      : sessionOf(userId)
+            if (!sessionId || !(participants.get(sessionId) ?? []).includes(userId)) return null
+            if (lost && away.has(placeOf(sessionId, userId))) return null
+            return changePresence(sessionId, userId, lost ? 'away' : 'leave', mayHost, zoneOf)
+        }),
+        closeAway: jest.fn(async (participationId: string, since: Date, mayHost: MayHost, zoneOf: ZoneOf) => {
+            if (away.get(participationId)?.getTime() !== since.getTime()) return null
+            const [sessionId, userId] = participationId.split(':')
+            return changePresence(sessionId, userId, 'leave', mayHost, zoneOf)
+        }),
+        emptySince: jest.fn(async (before: Date, limit: number) =>
+            [...sessions.values()]
+                .filter((session) => session.emptySince && session.emptySince <= before)
+                .slice(0, limit)
+                .map(({ id, emptySince }) => ({ id, emptySince: emptySince! }))
+        ),
+        awaySince: jest.fn(async (before: Date, limit: number) =>
+            [...away]
+                .filter(([, since]) => since <= before)
+                .slice(0, limit)
+                .map(([id, since]) => ({ id, awaySince: since }))
+        ),
+        openRooms: jest.fn(async () =>
+            [...sessions.values()]
+                .filter((session) => session.kind === 'room' && session.status !== 'ended')
+                .map((session) => ({
+                    sessionId: session.id,
+                    channelId: session.channelId!,
+                    present: [...present(session.id)].sort()
+                }))
         )
     }
 
@@ -237,15 +384,23 @@ export function studyWorld() {
         timeZoneOf: jest.fn(async (userId: string) => (userId === 'an' ? 'Asia/Ho_Chi_Minh' : null))
     } as unknown as UserDirectoryPort
     const events = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
-    const jobs: SessionJobsPort & { endPhaseAt: jest.Mock; dropPhaseEnd: jest.Mock } = {
+    const jobs: SessionJobsPort & {
+        endPhaseAt: jest.Mock
+        dropPhaseEnd: jest.Mock
+        closeAwayAt: jest.Mock
+        endEmptyAt: jest.Mock
+    } = {
         endPhaseAt: jest.fn(async () => undefined),
-        dropPhaseEnd: jest.fn(async () => undefined)
+        dropPhaseEnd: jest.fn(async () => undefined),
+        closeAwayAt: jest.fn(async () => undefined),
+        endEmptyAt: jest.fn(async () => undefined)
     }
     const settings: StudySettings = { minuteMs: MINUTE }
 
     return {
         sessions,
         participants,
+        away,
         inRoom,
         repository,
         channels,

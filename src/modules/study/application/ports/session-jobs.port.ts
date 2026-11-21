@@ -1,8 +1,9 @@
 /**
  * Session Jobs Port: the timed work of study sessions handed to the `study`
  * queue (ARCHITECTURE 5.1), so it waits in Redis and survives a restart
- * (NFR-REL-02). Each job is named by its session and the version it was set
- * for, and does nothing once the session changed (D-222): one left behind
+ * (NFR-REL-02). Each job is named by what it acts on and the moment it was
+ * set for (a session's version, the time someone went away, the time a room
+ * went empty), and does nothing once that changed (D-222): one left behind
  * does no harm. The sweep runs what a lost job would have (D-225).
  */
 export interface SessionJobsPort {
@@ -11,6 +12,12 @@ export interface SessionJobsPort {
 
     /** Drop the phase end set for `version`, still waiting: the session changed. One running now is not stopped. */
     dropPhaseEnd(sessionId: string, version: number): Promise<void>
+
+    /** Close at `at` the place of one away since `since` (D-215), if still away since then. */
+    closeAwayAt(participationId: string, since: Date, at: Date): Promise<void>
+
+    /** End at `at` the session whose room is empty since `since` (D-227), if still empty since then. */
+    endEmptyAt(sessionId: string, since: Date, at: Date): Promise<void>
 }
 
 export const SESSION_JOBS = Symbol('SessionJobsPort')

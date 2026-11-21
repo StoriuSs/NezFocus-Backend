@@ -32,6 +32,7 @@ function session(cycle: Cycle = PLAIN, start = at('20:00:00')): FocusSession {
         version: 0,
         startedAt: start,
         stretchStartedAt: start,
+        emptySince: null,
         ...firstClock(cycle, start, MINUTE)
     }
 }

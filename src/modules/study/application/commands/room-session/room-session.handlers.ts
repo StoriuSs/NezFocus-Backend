@@ -1,7 +1,8 @@
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort, studyCycleProblem } from '@/modules/servers'
+import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { VOICE_ROOMS, VoiceRoomsPort } from '@/modules/voice'
 import {
     Cycle,
@@ -12,10 +13,11 @@ import {
     StudyForbiddenError
 } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { endIfRoomGone } from '../../services/end-gone-rooms'
 import { FocusSessionView, sessionView } from '../../services/session-views'
 import { studyStanding } from '../../services/study-access'
 import { STUDY_SETTINGS, StudySettings } from '../../study-settings'
-import { StartRoomSessionCommand } from './room-session.commands'
+import { EndGoneRoomSessionsCommand, StartRoomSessionCommand } from './room-session.commands'
 
 /**
  * The cycle a start asks for: none when no part of one is sent (the room's
@@ -87,4 +89,40 @@ export class StartRoomSessionHandler implements ICommandHandler<StartRoomSession
     }
 }
 
-export const ROOM_SESSION_COMMAND_HANDLERS = [StartRoomSessionHandler]
+/**
+ * The sessions of a server's rooms that can hold one no more, ended
+ * (REQ-STUDY-02, D-227): each room read again as it is now, so a change
+ * that did not touch it (a name, another room) ends nothing. A deleted
+ * server's rooms are gone with it. One that fails is logged and left to
+ * the sweep, which checks every room each minute: the others still end.
+ * Returns how many ended.
+ */
+@CommandHandler(EndGoneRoomSessionsCommand)
+export class EndGoneRoomSessionsHandler implements ICommandHandler<EndGoneRoomSessionsCommand> {
+    private readonly logger = new Logger(EndGoneRoomSessionsHandler.name)
+
+    constructor(
+        @Inject(FOCUS_SESSION_REPOSITORY) private readonly sessions: FocusSessionRepositoryPort,
+        @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
+        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
+        @Inject(STUDY_SETTINGS) private readonly settings: StudySettings,
+        private readonly events: EventBus
+    ) {}
+
+    async execute({ serverId }: EndGoneRoomSessionsCommand): Promise<number> {
+        const { sessions, channels, users, events } = this
+        let ended = 0
+        for (const session of await sessions.openInServer(serverId)) {
+            if (!session.channelId) continue
+            try {
+                const sources = { sessions, channels, users, events, minuteMs: this.settings.minuteMs }
+                if (await endIfRoomGone(sources, { id: session.id, channelId: session.channelId })) ended++
+            } catch (error) {
+                this.logger.error(`Session ${session.id} of a room gone not ended: ${String(error)}`)
+            }
+        }
+        return ended
+    }
+}
+
+export const ROOM_SESSION_COMMAND_HANDLERS = [StartRoomSessionHandler, EndGoneRoomSessionsHandler]

@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -576,7 +576,13 @@ right against LiveKit every minute (D-210). Each change becomes
 (`voice_state.updated` to `channel:<id>`, D-205); the same lists are in the
 rooms of `GET /servers`, through servers' `ROOM_PEOPLE` port, answered by
 the global `RoomPeopleModule` here. The study module asks who is in a room
-through `VOICE_ROOMS` (ids and times only, D-225). A tab's microphone and camera come over
+through `VOICE_ROOMS` (ids and times only, D-225), and hears each event: a
+`left` says whether LiveKit lost the connection (`lost`: its
+participant_left, or the reconciliation no longer finding them), which
+study keeps 3 minutes (D-215); every other leaving is meant or made, and a
+participant_left LiveKit sends because the server put them out or the room
+went says so (its disconnect reason). `POST /voice/leave` also publishes
+`VoiceLeaveRequestedEvent`, as LiveKit's leave often comes first (D-228). A tab's microphone and camera come over
 its socket (`voice.self_state`, D-206), received by realtime and handed on.
 Moderators mute, unmute and put people out (`commands/moderation`, D-207):
 MUTE_MEMBERS / MOVE_MEMBERS in the room and a higher rank, the mute being a
@@ -626,7 +632,19 @@ says a start or an end in the room's chat through messaging's
 runs; `study-sweep` (src/maintenance, every minute) runs the phase ends whose
 job was lost. Each voice room of `GET /servers` carries its session
 (`focus_session`, D-220), through servers' `ROOM_SESSIONS` port, answered by
-the global `RoomSessionsModule` here.
+the global `RoomSessionsModule` here. Since L3b, who is in a session
+(`commands/room-presence`): voice's `VoiceStateChangedEvent` opens a
+place for one who comes into a room with a session, under the room's lock
+as a start takes it; one who leaves is counted and closed at once, one whose
+connection was lost is away and keeps their place and their Host 3 minutes
+(`away-<participationId>-<sinceMs>`, D-215). A Host gone hands over to
+whoever came first of those present who may start (`nextHost`); with none,
+the first who may and comes in. Nobody present marks the room empty
+(`FocusSession.emptySince`), and 5 minutes on it ends
+(`empty-<sessionId>-<sinceMs>`, D-227). Servers' `ServerChangedEvent`
+reads a server's rooms again: one turned off or deleted ends its session.
+The sweep runs these timers too when their job was lost, and sets every
+room's people against who is really in it.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

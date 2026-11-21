@@ -29,3 +29,28 @@ describe('BullMqSessionJobs (ARCHITECTURE 5.1, D-222)', () => {
         expect(queue.remove).toHaveBeenCalledWith('focus-phien-3')
     })
 })
+
+describe('BullMqSessionJobs, presence (D-215, D-227)', () => {
+    afterEach(() => jest.useRealTimers())
+
+    it('waits until its time the close of a place away and the end of an empty room, named by the moment set for', async () => {
+        jest.useFakeTimers({ now: new Date('2026-11-21T20:10:00Z') })
+        const queue = { add: jest.fn().mockResolvedValue(undefined) }
+        const jobs = new BullMqSessionJobs(queue as unknown as Queue)
+        const since = new Date('2026-11-21T20:10:00Z')
+        await jobs.closeAwayAt('p', since, new Date('2026-11-21T20:13:00Z'))
+        await jobs.endEmptyAt('phien', since, new Date('2026-11-21T20:15:00Z'))
+        expect(queue.add.mock.calls).toEqual([
+            [
+                STUDY_JOBS.CLOSE_AWAY,
+                { participationId: 'p', since: since.toISOString() },
+                { jobId: `away-p-${since.getTime()}`, delay: 3 * 60_000 }
+            ],
+            [
+                STUDY_JOBS.END_EMPTY,
+                { sessionId: 'phien', since: since.toISOString() },
+                { jobId: `empty-phien-${since.getTime()}`, delay: 5 * 60_000 }
+            ]
+        ])
+    })
+})

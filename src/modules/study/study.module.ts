@@ -9,12 +9,16 @@ import { UsersModule } from '@/modules/users/users.module'
 import { VoiceModule } from '@/modules/voice/voice.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import {
+    CheckServerRoomsHandler,
+    FollowVoiceRoomsHandler,
     PostSessionMessageHandler,
     PublishFocusSessionHandler,
     PublishStreakUpdatedHandler,
+    ROOM_PRESENCE_COMMAND_HANDLERS,
     ROOM_SESSION_COMMAND_HANDLERS,
     ROOM_SESSION_QUERY_HANDLERS,
     SchedulePhaseEndHandler,
+    SchedulePresenceTimersHandler,
     SESSION_CONTROL_COMMAND_HANDLERS,
     SESSION_JOBS,
     SESSION_TIMER_COMMAND_HANDLERS,
@@ -34,17 +38,20 @@ import { FocusSessionsController, StudyJobsConsumer } from './presentation'
  * Study sessions (SRS 4.6, ARCHITECTURE 5): Room Sessions in study rooms,
  * Solo sessions, the seconds studied each day, streaks. So far the Room
  * Sessions started and controlled from inside their room, their phases
- * moved by the study queue (M5 L3a), and the counting of the seconds studied
- * (L2); who joins and leaves comes with L3b, Solo with L4.
+ * moved by the study queue (M5 L3a), who joins and leaves them, their Host,
+ * an empty room and a room gone (L3b), and the counting of the seconds
+ * studied (L2); Solo comes with L4.
  *
  * Asks servers for a room's study settings (CHANNEL_DIRECTORY), permissions
  * what someone may do there (PERMISSION_CHECKER), voice who is in a room
  * (VOICE_ROOMS, D-225), users each person's time zone (USER_DIRECTORY).
+ * Hears voice's VoiceStateChangedEvent (who comes and goes) and servers'
+ * ServerChangedEvent (a room turned off or deleted, D-227).
  * Tells the room and each person through realtime's EVENT_PUBLISHER, and
  * says a start and an end in the room's chat through messaging's
  * PostStudySessionCommand, sent over the bus. Answers servers' ROOM_SESSIONS
- * through RoomSessionsModule below. The sweep of src/maintenance runs a
- * phase end whose job was lost (D-225).
+ * through RoomSessionsModule below. The sweep of src/maintenance runs the
+ * timers whose job was lost and checks every room with a session (D-225).
  *
  * ConfigService comes from the global ConfigModule (study.config.ts).
  */
@@ -64,13 +71,17 @@ import { FocusSessionsController, StudyJobsConsumer } from './presentation'
         { provide: FOCUS_SESSION_REPOSITORY, useClass: PrismaFocusSessionRepository },
         { provide: SESSION_JOBS, useClass: BullMqSessionJobs },
         ...ROOM_SESSION_COMMAND_HANDLERS,
+        ...ROOM_PRESENCE_COMMAND_HANDLERS,
         ...SESSION_CONTROL_COMMAND_HANDLERS,
         ...SESSION_TIMER_COMMAND_HANDLERS,
         ...ROOM_SESSION_QUERY_HANDLERS,
         PublishStreakUpdatedHandler,
         PublishFocusSessionHandler,
         SchedulePhaseEndHandler,
+        SchedulePresenceTimersHandler,
         PostSessionMessageHandler,
+        FollowVoiceRoomsHandler,
+        CheckServerRoomsHandler,
         StudyJobsConsumer,
         {
             provide: STUDY_SETTINGS,

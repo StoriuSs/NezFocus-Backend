@@ -82,7 +82,9 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
     },
     {
         // Runs the study timers already due whose job was lost or is late:
-        // the end of a session's phase (D-225).
+        // the end of a session's phase, a room empty 5 minutes, a place away
+        // 3 minutes (D-225); and sets every room with a session right: gone,
+        // or who is in it (D-227).
         id: 'study-sweep',
         everyMs: MINUTE_MS,
         command: (now) => new SweepStudyTimersCommand(now)

@@ -57,6 +57,8 @@ export interface FocusSession extends SessionClock {
     startedAt: Date
     /** When the focus stretch running now began; null when none runs (D-224: the client adds what is not counted yet). */
     stretchStartedAt: Date | null
+    /** A Room Session's: since when nobody has been present in its room (D-227); null while someone is. */
+    emptySince: Date | null
 }
 
 /** A change to a session, made at `at`. */
@@ -87,8 +89,13 @@ export const stretchAfter = (move: SessionMove, before: Date | null): Date | nul
 /** What a command asks of a session (the routes of SRS 5.1). */
 export type ControlAction = 'pause' | 'resume' | 'skip' | 'stop'
 
-/** What made a session change, as the room is told it (`focus_session.*`, for the toasts of spec 07). */
-export type SessionAction = 'start' | ControlAction | 'config' | 'phase_end'
+/**
+ * What made a session change, as the room is told it (`focus_session.*`, for
+ * the toasts of spec 07): `host`, its Host changed (the one before left, or
+ * someone came into a room with none); `end`, it ended by itself (its room
+ * empty, no longer a study room, or deleted: `ended_reason` says which).
+ */
+export type SessionAction = 'start' | ControlAction | 'config' | 'phase_end' | 'host' | 'end'
 
 const later = (at: Date, ms: number) => new Date(at.getTime() + ms)
 

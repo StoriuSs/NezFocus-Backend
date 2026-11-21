@@ -263,7 +263,15 @@ describe("LiveKit's webhooks (D-210)", () => {
 
         await run()
 
-        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'left', at(0))]])
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'left', at(0), true)]])
+    })
+
+    it('takes someone the server put out of the room as put out, not as a lost connection (D-228)', async () => {
+        const { run, events } = setup(joined({ kind: 'left', participantSid: 'PA_old', removed: true }), row())
+
+        await run()
+
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'an', 'left', at(0), false)]])
     })
 
     it('puts someone who joined a room while still in another out of the other (one connection per account)', async () => {

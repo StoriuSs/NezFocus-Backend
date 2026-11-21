@@ -11,7 +11,8 @@
 // partial unique indexes (one open session per room and per person, one open
 // stretch per session, one open participation per person) and the CHECKs
 // that keep each row's shape; the running sessions by when their phase is
-// due, for the sweep of D-225 (20261121100000_study_timers).
+// due, for the sweep of D-225 (20261121100000_study_timers); the empty rooms
+// and the people away, for the same sweep (20261121200000_study_presence).
 //
 // Ids are UUIDv7 (ARCHITECTURE 2.4).
 
@@ -94,6 +95,11 @@ model FocusSession {
   /// Set while waiting only (a Solo): when it ends by itself (expired).
   waitingUntil      DateTime?          @db.Timestamptz(6)
   version           Int                @default(0)
+  /// A Room Session's only: since when nobody has been present in its room
+  /// (the last one left or went away, D-227). Empty 5 minutes and it ends
+  /// (empty); cleared when someone comes in, and when it ends
+  /// (FocusSession_empty_check).
+  emptySince        DateTime?          @db.Timestamptz(6)
 
   startedAt   DateTime               @default(now()) @db.Timestamptz(6)
   /// Both set once ended, neither before (FocusSession_status_check).

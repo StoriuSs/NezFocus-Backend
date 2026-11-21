@@ -123,7 +123,7 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
             [`voice:${LOUNGE}`, `voice:${STUDY}`].sort()
         )
         expect(events.publish.mock.calls).toEqual([
-            [new VoiceStateChangedEvent(STUDY, 'an', 'left', at(0))],
+            [new VoiceStateChangedEvent(STUDY, 'an', 'left', at(0), true)],
             [new VoiceStateChangedEvent(LOUNGE, 'chi', 'joined', at(2))]
         ])
         // The row it writes knows the session of the connection, which ending puts it out (D-214).
@@ -177,6 +177,19 @@ describe('Reconciling voice rooms with LiveKit (D-210)', () => {
             reason: 'permission'
         })
         expect(events.publish).not.toHaveBeenCalled()
+    })
+
+    it('drops the row of one it put out as put out, not as a lost connection (D-215)', async () => {
+        const { handler, events } = setup(
+            [state('binh', LOUNGE, 'PA_binh', at(1))],
+            { [`voice:${LOUNGE}`]: [{ identity: 'binh', sid: 'PA_binh', joinedAt: at(1) }] },
+            [],
+            ['binh']
+        )
+
+        await handler.execute(new ReconcileVoiceRoomsCommand(NOW))
+
+        expect(events.publish.mock.calls).toEqual([[new VoiceStateChangedEvent(LOUNGE, 'binh', 'left', at(1), false)]])
     })
 
     it('puts someone connected to two rooms out of the older one', async () => {

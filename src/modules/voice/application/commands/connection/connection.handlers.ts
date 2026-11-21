@@ -5,6 +5,7 @@ import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { isHidden } from '@/shared/domain'
 import { VOICE_STATE_REPOSITORY, VoiceStateRepositoryPort, voiceRoomOf } from '../../../domain'
+import { VoiceLeaveRequestedEvent } from '../../events/voice-leave-requested.event'
 import { MEDIA_ROOMS, MediaRoomsPort } from '../../ports'
 import { leaveRoom } from '../../services/leave-room'
 import { openRoom } from '../../services/room-access'
@@ -59,7 +60,9 @@ export class IssueJoinTokenHandler implements ICommandHandler<IssueJoinTokenComm
 /**
  * Leaving the room one is in (REQ-VC-02): put out of LiveKit and taken off
  * the room's list at once, not when the webhook comes. In no room: nothing
- * to do, no error (a second tab may have left first).
+ * to do, no error (a second tab may have left first, or LiveKit's leave,
+ * as the page leaves LiveKit before it asks). Either way study is told the
+ * leaving was meant (VoiceLeaveRequestedEvent, D-228).
  */
 @CommandHandler(LeaveVoiceCommand)
 export class LeaveVoiceHandler implements ICommandHandler<LeaveVoiceCommand> {
@@ -72,6 +75,7 @@ export class LeaveVoiceHandler implements ICommandHandler<LeaveVoiceCommand> {
     async execute({ userId }: LeaveVoiceCommand): Promise<void> {
         const current = await this.states.find(userId)
         if (current) await leaveRoom({ media: this.media, states: this.states, events: this.events }, current)
+        this.events.publish(new VoiceLeaveRequestedEvent(userId))
     }
 }
 

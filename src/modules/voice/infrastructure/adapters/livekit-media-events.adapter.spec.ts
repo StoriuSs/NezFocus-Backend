@@ -47,6 +47,24 @@ describe('LiveKitMediaEvents (D-210)', () => {
         expect(older).toMatchObject({ kind: 'left', sessionId: null })
     })
 
+    it('marks a leave the server caused as removed, and no other (D-228)', async () => {
+        const left = async (disconnectReason?: string) =>
+            adapter().read(
+                ...(await signed({
+                    event: 'participant_left',
+                    id: 'EV_9',
+                    room,
+                    participant: { ...participant, disconnectReason }
+                }))
+            )
+        for (const reason of ['PARTICIPANT_REMOVED', 'ROOM_DELETED']) {
+            expect(await left(reason)).toMatchObject({ kind: 'left', removed: true })
+        }
+        for (const reason of ['CLIENT_INITIATED', 'DUPLICATE_IDENTITY', 'SIGNAL_CLOSE', undefined]) {
+            expect(await left(reason)).not.toHaveProperty('removed')
+        }
+    })
+
     it('reads a screen started and stopped, with its track (D-101)', async () => {
         for (const [event, kind] of [
             ['track_published', 'share_started'],
