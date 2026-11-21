@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far its tables, settings and queue) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far its tables, settings and queue, and the counting of the seconds studied) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -603,7 +603,13 @@ D-223: a Solo has one `Participation` like a person in a room, and one open
 `Participation` per person keeps anyone from being counted in two sessions),
 its settings (`STUDY_MINUTE_MS`, the length of a study minute, shortened only
 by the end-to-end tests, D-221) and its queue, `study`, for the timed jobs of
-the sessions to come (L2 to L4).
+the sessions to come (L3, L4). Since L2 it counts the seconds studied: pure
+rules in `domain/` (the overlap of a stay with the focus stretches, split by
+the days of the person's zone, 16 hours a day at most, the streak) and one
+count written by `infrastructure/persistence/study-counts.ts` in the
+transaction of whatever caused it (D-224), its locks in a fixed order. From
+L3, whoever counts publishes `StudyCountedEvent` after the commit, and the
+person hears `streak.updated`.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

@@ -1,14 +1,16 @@
+import { Provider } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { Test } from '@nestjs/testing'
 import { studyConfig } from '@/config'
 import { STUDY_SETTINGS, StudySettings } from './application'
 import { StudyModule } from './study.module'
 
-// The module's own providers as the app builds them: STUDY_MINUTE_MS, read
-// by study.config.ts, reaches STUDY_SETTINGS. The end-to-end tests shorten
+// The module's own provider of STUDY_SETTINGS as the app builds it:
+// STUDY_MINUTE_MS, read by study.config.ts, reaches it. The end-to-end tests shorten
 // study minutes through it (D-221); a name drifting between the two would
 // leave them on real minutes, waiting for phases that end too late. The study
-// queue is left out: it would connect to Redis.
+// queue and the other providers are left out: they would need Redis, the
+// database and the sockets.
 describe('StudyModule (D-221)', () => {
     const before = process.env.STUDY_MINUTE_MS
 
@@ -22,7 +24,9 @@ describe('StudyModule (D-221)', () => {
         else process.env.STUDY_MINUTE_MS = minuteMs
         const module = await Test.createTestingModule({
             imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true, load })],
-            providers: Reflect.getMetadata('providers', StudyModule)
+            providers: (Reflect.getMetadata('providers', StudyModule) as Provider[]).filter(
+                (provider) => (provider as { provide?: unknown }).provide === STUDY_SETTINGS
+            )
         }).compile()
         const settings = module.get<StudySettings>(STUDY_SETTINGS)
         await module.close()

@@ -1,19 +1,26 @@
 import { Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { CqrsModule } from '@nestjs/cqrs'
+import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
-import { STUDY_SETTINGS, StudySettings } from './application'
+import { PublishStreakUpdatedHandler, STUDY_SETTINGS, StudySettings } from './application'
+import { STUDY_TIME_REPOSITORY } from './domain'
+import { PrismaStudyTimeRepository } from './infrastructure'
 
 /**
  * Study sessions (SRS 4.6, ARCHITECTURE 5): Room Sessions in study rooms,
  * Solo sessions, the seconds studied each day, streaks. So far the tables,
- * the settings and the study queue (M5 L1); the rules come with L2, the
- * sessions with L3 and L4.
+ * the settings and the study queue (M5 L1), and the counting of the seconds
+ * studied (L2); the sessions come with L3 and L4. After each count the
+ * person hears streak.updated through realtime's EVENT_PUBLISHER.
  *
  * ConfigService comes from the global ConfigModule (study.config.ts).
  */
 @Module({
-    imports: [registerQueues(QUEUES.STUDY)],
+    imports: [CqrsModule, RealtimeModule, registerQueues(QUEUES.STUDY)],
     providers: [
+        { provide: STUDY_TIME_REPOSITORY, useClass: PrismaStudyTimeRepository },
+        PublishStreakUpdatedHandler,
         {
             provide: STUDY_SETTINGS,
             inject: [ConfigService],
