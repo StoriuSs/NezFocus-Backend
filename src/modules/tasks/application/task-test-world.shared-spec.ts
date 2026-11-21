@@ -196,7 +196,9 @@ export function taskWorld() {
         serverIdOf: jest.fn(async (channelId: string) =>
             server.channels.some((channel) => channel.id === channelId) ? 'nd' : null
         ),
-        channelIdsOf: async () => []
+        channelIdsOf: async () => [],
+
+        studyRoomOf: async () => null
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (serverId: string, userId: string) =>

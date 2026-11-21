@@ -126,8 +126,10 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | `401 AUTH_REFRESH_FAILED` | `reason`: why the session ended; with `account_deleted` while the account waits to be deleted, `deletes_at` |
 | `403 ACCOUNT_PENDING_DELETION` | `deletes_at`: when the account is deleted unless restored |
 | `409 OWNERSHIP_TRANSFER_REQUIRED` | `servers`: `[{ id, name, member_count }]`, the servers to hand over before deleting the account |
-| `403 MEMBER_TIMED_OUT` | `timeout_until`: when the timeout ends (messages, tasks) |
+| `403 MEMBER_TIMED_OUT` | `timeout_until`: when the timeout ends (messages, tasks, voice rooms, study sessions) |
 | `403 FORBIDDEN_ERROR` (a Task Board) | `reason`: `task_board_disabled` when the channel's board is off, so the client says so rather than "you may not" |
+| `403 FORBIDDEN_ERROR` (a study session) | `reason`: `not_study_room`, `not_in_room` (a session starts only from inside its room), `cannot_start` (the room lets only managers start) or `not_host` (only its Host or MANAGE_STUDY_ROOMS controls it) |
+| `422 VALIDATION_ERROR` (a study session) | `rule`: `not_paused` (the cycle changes only while paused) or `study_cycle` with `problem` (a cycle a study room could not have) |
 | `400 INVALID_TASK_ASSIGNEE` | `user_ids`: those who cannot view the task's channel |
 
 A password the policy refuses:

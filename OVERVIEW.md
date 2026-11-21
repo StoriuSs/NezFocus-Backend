@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far its tables, settings and queue, and the counting of the seconds studied) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -575,7 +575,8 @@ right against LiveKit every minute (D-210). Each change becomes
 `VoiceStateChangedEvent`, and the room's viewers hear the whole list again
 (`voice_state.updated` to `channel:<id>`, D-205); the same lists are in the
 rooms of `GET /servers`, through servers' `ROOM_PEOPLE` port, answered by
-the global `RoomPeopleModule` here. A tab's microphone and camera come over
+the global `RoomPeopleModule` here. The study module asks who is in a room
+through `VOICE_ROOMS` (ids and times only, D-225). A tab's microphone and camera come over
 its socket (`voice.self_state`, D-206), received by realtime and handed on.
 Moderators mute, unmute and put people out (`commands/moderation`, D-207):
 MUTE_MEMBERS / MOVE_MEMBERS in the room and a higher rank, the mute being a
@@ -607,9 +608,25 @@ the sessions to come (L3, L4). Since L2 it counts the seconds studied: pure
 rules in `domain/` (the overlap of a stay with the focus stretches, split by
 the days of the person's zone, 16 hours a day at most, the streak) and one
 count written by `infrastructure/persistence/study-counts.ts` in the
-transaction of whatever caused it (D-224), its locks in a fixed order. From
-L3, whoever counts publishes `StudyCountedEvent` after the commit, and the
-person hears `streak.updated`.
+transaction of whatever caused it (D-224), its locks in a fixed order;
+whoever counts publishes `StudyCountedEvent` after the commit, and the
+person hears `streak.updated`. Since L3a, Room Sessions: started from inside
+a study room (`POST /channels/{id}/focus-session`, everyone in the room,
+read through voice's `VOICE_ROOMS`, taking part) and controlled
+(`POST /focus-sessions/{id}/pause|resume|skip|stop|config`, each sent with
+the version the client saw: an older one changes nothing, D-225). The state
+machine is pure (`domain/focus-session.rules.ts`); the repository locks the
+room (a start) and the session row, decides on it as it is, writes the focus
+stretches and counts everyone in the same transaction. After the commit
+`FocusSessionChangedEvent` tells the room (`focus_session.*` to
+`channel:<id>`, D-222), sets the job that ends the phase on the `study`
+queue (`focus-<sessionId>-<version>`, dropped when the version moved on), and
+says a start or an end in the room's chat through messaging's
+`PostStudySessionCommand`. A phase ends when it was due, not when its job
+runs; `study-sweep` (src/maintenance, every minute) runs the phase ends whose
+job was lost. Each voice room of `GET /servers` carries its session
+(`focus_session`, D-220), through servers' `ROOM_SESSIONS` port, answered by
+the global `RoomSessionsModule` here.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

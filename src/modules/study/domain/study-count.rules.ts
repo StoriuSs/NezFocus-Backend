@@ -29,7 +29,7 @@ export const newSeconds = ({ from, until, stretches, focusEndsAt, timeZone }: Co
 
 /**
  * The participation's countedUntil after the count: `until`, or the end the
- * running focus phase was due if that came first, and never back.
+ * running phase (focus or break) was due if that came first, and never back.
  * - Not past `focusEndsAt`: the time after it was not looked at (the stretch
  *   counts no further), so the next count looks at it again. Moved to `until`,
  *   a focus stretch the late phase job opens at its planned time would lose

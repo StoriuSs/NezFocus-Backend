@@ -123,7 +123,11 @@ function world() {
         readLink: jest.fn(async (key: string) => `signed:${key}`),
         delete: jest.fn(async (key: string) => void kept.delete(key))
     }
-    const channels: ChannelDirectoryPort = { serverIdOf: jest.fn(async () => 'ot'), channelIdsOf: async () => [] }
+    const channels: ChannelDirectoryPort = {
+        serverIdOf: jest.fn(async () => 'ot'),
+        channelIdsOf: async () => [],
+        studyRoomOf: async () => null
+    }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => ({
             server,

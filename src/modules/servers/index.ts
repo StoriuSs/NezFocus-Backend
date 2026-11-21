@@ -5,6 +5,9 @@
  * from './servers.module'.
  */
 
+// The cycles a study room may have: a study session's cycle is one of them (D-223).
+export { STUDY_CYCLE_LIMITS, studyCycleProblem, type StudyCycle } from './domain/study-room.rules'
+
 // Which servers someone is in, for the realtime module's rooms (SRS 5.2), and since when (D-170).
 export {
     MEMBERSHIP,
@@ -16,11 +19,17 @@ export {
 // Presence for the member list and invites: answered by realtime (D-160 pattern).
 export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from './application/ports/presence-reader.port'
 // Which server a channel is in, for the messaging module's permission checks; a server's channels, for realtime's rooms.
-export { CHANNEL_DIRECTORY, type ChannelDirectoryPort } from './application/ports/channel-directory.port'
+export {
+    CHANNEL_DIRECTORY,
+    type ChannelDirectoryPort,
+    type StudyRoomSettings
+} from './application/ports/channel-directory.port'
 // The roles a message mentions: whether each may be, and their names (D-171).
 export { ROLE_DIRECTORY, type DirectoryRole, type RoleDirectoryPort } from './application/ports/role-directory.port'
 // Who is in each voice room, for the rooms in GET /servers: answered by voice (D-180 pattern, D-205).
 export { ROOM_PEOPLE, type RoomPeoplePort, type RoomPerson } from './application/ports/room-people.port'
+// The study session of each voice room, for the rooms in GET /servers: answered by study (D-180 pattern, D-220).
+export { ROOM_SESSIONS, type RoomSession, type RoomSessionsPort } from './application/ports/room-sessions.port'
 // "X joined the server" in the welcome channel: answered by messaging (D-160 pattern, D-180).
 export { SYSTEM_MESSAGES, type SystemMessagesPort } from './application/ports/system-messages.port'
 

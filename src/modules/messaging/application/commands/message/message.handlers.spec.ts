@@ -201,6 +201,7 @@ function world({ limited = false } = {}) {
         latestId: jest.fn(),
         createMemberJoined: jest.fn(),
         createTaskDue: jest.fn(),
+        createStudySession: jest.fn(),
         removeRecent: jest.fn()
     }
     /** A message already in a channel, by someone (or a system message when `by` is null). */
@@ -229,7 +230,9 @@ function world({ limited = false } = {}) {
     }
     const channels: ChannelDirectoryPort = {
         serverIdOf: jest.fn(async (id) => (CHANNELS.includes(id) ? 'ot' : null)),
-        channelIdsOf: async () => []
+        channelIdsOf: async () => [],
+
+        studyRoomOf: async () => null
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => {

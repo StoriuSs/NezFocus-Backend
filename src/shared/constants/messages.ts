@@ -128,6 +128,11 @@ export const MESSAGES = {
         HISTORY_LISTED: 'Task history fetched'
     },
 
+    STUDY: {
+        SESSION_STARTED: 'Study session started',
+        SESSION_UPDATED: 'Study session updated'
+    },
+
     NOTIFICATIONS: {
         NOTIFICATIONS_LISTED: 'Notifications fetched',
         NOTIFICATIONS_READ: 'Notifications marked read'

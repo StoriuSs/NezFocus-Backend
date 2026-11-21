@@ -1,6 +1,6 @@
 import { EVERYONE_DEFAULT_PERMISSIONS } from '@/modules/permissions'
 import { MembershipSnapshot, ServerRepositoryPort, ServerSnapshot } from '../../../domain'
-import { IconStoragePort, RoomPeoplePort, RoomPerson } from '../../ports'
+import { IconStoragePort, RoomPeoplePort, RoomPerson, RoomSession, RoomSessionsPort } from '../../ports'
 import { ListMyServersQuery } from './server.queries'
 import { ListMyServersHandler } from './server.handlers'
 
@@ -37,7 +37,8 @@ describe('ListMyServersHandler', () => {
         const handler = new ListMyServersHandler(
             servers as unknown as ServerRepositoryPort,
             storage as unknown as IconStoragePort,
-            { peopleOf: jest.fn().mockResolvedValue(new Map()) } as RoomPeoplePort
+            { peopleOf: jest.fn().mockResolvedValue(new Map()) } as RoomPeoplePort,
+            { sessionsOf: jest.fn().mockResolvedValue(new Map()) } as RoomSessionsPort
         )
 
         const items = await handler.execute(new ListMyServersQuery('an', 'ot'))
@@ -77,6 +78,8 @@ describe('ListMyServersHandler', () => {
             modMuted: false
         }
         const roomPeople = { peopleOf: jest.fn().mockResolvedValue(new Map([['lounge', [binh]]])) }
+        const session = { id: 'phien', phase: 'focus' } as RoomSession
+        const roomSessions = { sessionsOf: jest.fn().mockResolvedValue(new Map([['lounge', session]])) }
         const handler = new ListMyServersHandler(
             {
                 listForMember: jest
@@ -84,7 +87,8 @@ describe('ListMyServersHandler', () => {
                     .mockResolvedValue([{ server, member: { userId: 'chi', roleIds: [], timeoutUntil: null } }])
             } as unknown as ServerRepositoryPort,
             { getReadUrl: jest.fn() } as unknown as IconStoragePort,
-            roomPeople
+            roomPeople,
+            roomSessions
         )
 
         const [item] = await handler.execute(new ListMyServersQuery('chi'))
@@ -92,9 +96,15 @@ describe('ListMyServersHandler', () => {
         // A private room they cannot see is not asked about, nor shown.
         expect(roomPeople.peopleOf).toHaveBeenCalledTimes(1)
         expect(roomPeople.peopleOf).toHaveBeenCalledWith(['lounge'])
+        expect(roomSessions.sessionsOf).toHaveBeenCalledWith(['lounge'])
         expect(item.channels.map((shown) => [shown.id, shown.voiceStates])).toEqual([
             ['chat', null],
             ['lounge', [binh]]
+        ])
+        // And its study session, or null (D-220).
+        expect(item.channels.map((shown) => [shown.id, shown.focusSession])).toEqual([
+            ['chat', null],
+            ['lounge', session]
         ])
     })
 })

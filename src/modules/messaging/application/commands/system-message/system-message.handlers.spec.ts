@@ -1,11 +1,11 @@
 import { EventBus } from '@nestjs/cqrs'
 import { RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
-import { MessageRecord, MessageRepositoryPort, TaskDueData } from '../../../domain'
+import { MessageRecord, MessageRepositoryPort, StudySessionNotice, TaskDueData } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { AttachmentStoragePort } from '../../ports'
-import { PostMemberJoinedCommand, PostTaskDueCommand } from './system-message.commands'
-import { PostMemberJoinedHandler, PostTaskDueHandler } from './system-message.handlers'
+import { PostMemberJoinedCommand, PostStudySessionCommand, PostTaskDueCommand } from './system-message.commands'
+import { PostMemberJoinedHandler, PostStudySessionHandler, PostTaskDueHandler } from './system-message.handlers'
 
 const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
 
@@ -50,14 +50,26 @@ function world(channelGone = false) {
                           avatarKey: `${id}.png`
                       }))
                   }
-        )
+        ),
+        createStudySession: jest.fn(async (channelId: string, notice: StudySessionNotice) => {
+            if (channelGone) return null
+            const { event, ...systemData } = notice
+            const starter = 'userId' in notice ? notice.userId : null
+            return {
+                ...joined(channelId, 'an'),
+                systemEvent: event,
+                systemData,
+                systemUser: starter ? { id: starter, username: starter, displayName: 'An', avatarKey: null } : null
+            }
+        })
     } as unknown as jest.Mocked<MessageRepositoryPort>
     const users = { avatarUrl: jest.fn(async () => null) } as unknown as UserDirectoryPort
     const roles = { rolesOf: jest.fn(async () => []) } as unknown as RoleDirectoryPort
     const events = { publish: jest.fn() }
     const handler = new PostMemberJoinedHandler(messages, users, roles, FILES, events as unknown as EventBus)
     const taskDue = new PostTaskDueHandler(messages, users, roles, FILES, events as unknown as EventBus)
-    return { handler, taskDue, messages, events }
+    const studySession = new PostStudySessionHandler(messages, users, roles, FILES, events as unknown as EventBus)
+    return { handler, taskDue, studySession, messages, events }
 }
 
 describe('PostMemberJoinedHandler (REQ-SRV-01, D-83, D-180)', () => {
@@ -128,5 +140,49 @@ describe('PostTaskDueHandler (REQ-TASK-04, MSG-08)', () => {
         const { taskDue, events } = world(true)
         await taskDue.execute(new PostTaskDueCommand('nd', 'viec-nhom', due))
         expect(events.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('PostStudySessionHandler (REQ-MSG-08, D-222)', () => {
+    it('posts who started a session and its cycle in the room’s chat, naming them as the person it is about', async () => {
+        const { studySession, messages, events } = world()
+        const started: StudySessionNotice = {
+            event: 'study_session_started',
+            userId: 'an',
+            sessionId: 'phien',
+            focusMinutes: 25,
+            shortBreakMinutes: 5
+        }
+
+        await studySession.execute(new PostStudySessionCommand('ot', 'phong-hoc', started))
+
+        expect(messages.createStudySession).toHaveBeenCalledWith('phong-hoc', started)
+        const [event] = events.publish.mock.calls[0] as [MessageCreatedEvent]
+        expect(event).toMatchObject({
+            message: {
+                channelId: 'phong-hoc',
+                author: null,
+                systemEvent: 'study_session_started',
+                systemData: { userId: 'an', sessionId: 'phien', focusMinutes: 25, shortBreakMinutes: 5 },
+                systemUser: { id: 'an', displayName: 'An' }
+            }
+        })
+    })
+
+    it('posts that a session ended and why, naming no one; tells no one when the room is gone', async () => {
+        const { studySession, events } = world()
+        const ended: StudySessionNotice = { event: 'study_session_ended', sessionId: 'phien', reason: 'stopped' }
+        await studySession.execute(new PostStudySessionCommand('ot', 'phong-hoc', ended))
+        expect(events.publish.mock.calls[0][0]).toMatchObject({
+            message: {
+                systemEvent: 'study_session_ended',
+                systemData: { sessionId: 'phien', reason: 'stopped' },
+                systemUser: null
+            }
+        })
+
+        const gone = world(true)
+        await gone.studySession.execute(new PostStudySessionCommand('ot', 'phong-hoc', ended))
+        expect(gone.events.publish).not.toHaveBeenCalled()
     })
 })

@@ -133,6 +133,21 @@ export interface TaskDueData {
     userIds: string[]
 }
 
+/**
+ * What a study session's message in its room keeps (REQ-MSG-08, D-222):
+ * started, by whom (`userId`, the person it is about, D-168) and its cycle
+ * when started; ended, and why.
+ */
+export type StudySessionNotice =
+    | {
+          event: 'study_session_started'
+          userId: string
+          sessionId: string
+          focusMinutes: number
+          shortBreakMinutes: number
+      }
+    | { event: 'study_session_ended'; sessionId: string; reason: string }
+
 /** How long before the due date the earliest reminder is said: none is looked for before then. */
 export const TASK_DUE_EARLIEST_MS = 24 * 3600_000
 
@@ -194,6 +209,12 @@ export interface MessageRepositoryPort {
      * (task, mark, due date) is there already: a job run again says it once.
      */
     createTaskDue(channelId: string, due: TaskDueData): Promise<MessageRecord | null>
+    /**
+     * Write "{who} đã bắt đầu phiên học 25/5" or "Phiên học đã kết thúc" in a
+     * study room's chat (REQ-MSG-08, D-222): a system message, what it says
+     * in `systemData`. Null if the channel is gone by now.
+     */
+    createStudySession(channelId: string, notice: StudySessionNotice): Promise<MessageRecord | null>
     /** Up to `limit` messages of the channel from `cursor`; `around` splits them half before, half from the id on. */
     page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage>
     /** The messages among `ids` not deleted, in no order: what inbox items show (D-184). */

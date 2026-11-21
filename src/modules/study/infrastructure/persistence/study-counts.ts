@@ -27,8 +27,8 @@ export const fromDateColumn = (column: Date): LocalDate => column.toISOString().
  * (ARCHITECTURE 5.2, D-224): the seconds since its countedUntil go to the
  * person's days in `timeZone` (room or Solo seconds, by the session's kind),
  * the 16-hour cap applied, the participation's seconds go up by as much,
- * countedUntil moves on (not past the due end of a running focus phase,
- * never back), and the streak moves for each day
+ * countedUntil moves on (not past the due end of the running phase, focus
+ * or break, never back), and the streak moves for each day
  * reaching 15 minutes. Null when there is no such participation. The caller
  * publishes StudyCountedEvent with the result once its transaction commits
  * (`streak.updated`).
@@ -79,8 +79,11 @@ export async function countParticipation(
         where: { sessionId: session.id, OR: [{ endedAt: null }, { endedAt: { gt: from } }] },
         select: { startedAt: true, endedAt: true }
     })
-    const running = session.status === 'running' && session.phase === 'focus'
-    const focusEndsAt = running ? session.phaseEndsAt : null
+    // While a phase runs, the end it is due: a focus stretch counts no further, and countedUntil goes no
+    // further either, focus or break: the late job opens the next stretch there, and what is after it is
+    // looked at again then.
+    const dueEnd = session.status === 'running' ? session.phaseEndsAt : null
+    const focusEndsAt = session.phase === 'focus' ? dueEnd : null
     const found = newSeconds({ from, until, stretches, focusEndsAt, timeZone })
 
     const today = localDateOf(at, timeZone)
@@ -125,7 +128,7 @@ export async function countParticipation(
         streak = await readStreak(tx, userId)
     }
 
-    const countedUntil = countedUntilAfter({ from, until, focusEndsAt })
+    const countedUntil = countedUntilAfter({ from, until, focusEndsAt: dueEnd })
     await tx.participation.update({
         where: { id: participationId },
         data: { countedUntil, seconds: { increment: added } }

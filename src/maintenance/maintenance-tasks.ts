@@ -5,6 +5,7 @@ import { CleanUpAttachmentsCommand } from '@/modules/messaging'
 import { CleanUpNotificationsCommand } from '@/modules/notifications'
 import { SweepPresenceCommand } from '@/modules/realtime'
 import { CleanUpServersCommand } from '@/modules/servers'
+import { SweepStudyTimersCommand } from '@/modules/study'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
 import { ReconcileVoiceRoomsCommand } from '@/modules/voice'
 
@@ -78,5 +79,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'voice-reconcile',
         everyMs: MINUTE_MS,
         command: (now) => new ReconcileVoiceRoomsCommand(now)
+    },
+    {
+        // Runs the study timers already due whose job was lost or is late:
+        // the end of a session's phase (D-225).
+        id: 'study-sweep',
+        everyMs: MINUTE_MS,
+        command: (now) => new SweepStudyTimersCommand(now)
     }
 ]

@@ -1,4 +1,4 @@
-import { TaskDueData } from '../../../domain'
+import { StudySessionNotice, TaskDueData } from '../../../domain'
 
 /**
  * Post "<who> joined the server" in its welcome channel (REQ-SRV-01, D-83):
@@ -22,5 +22,18 @@ export class PostTaskDueCommand {
         readonly serverId: string,
         readonly channelId: string,
         readonly due: TaskDueData
+    ) {}
+}
+
+/**
+ * Post that a study session started or ended in its room's chat
+ * (REQ-MSG-08, D-222): sent by the study module through the bus after the
+ * change is committed, never by a route.
+ */
+export class PostStudySessionCommand {
+    constructor(
+        readonly serverId: string,
+        readonly channelId: string,
+        readonly notice: StudySessionNotice
     ) {}
 }

@@ -115,7 +115,11 @@ function world({ noNewReactions = false } = {}) {
     const repository = {
         find: jest.fn(async (id: string) => messages.get(id) ?? null)
     } as unknown as MessageRepositoryPort
-    const channels: ChannelDirectoryPort = { serverIdOf: jest.fn(async () => 'ot'), channelIdsOf: async () => [] }
+    const channels: ChannelDirectoryPort = {
+        serverIdOf: jest.fn(async () => 'ot'),
+        channelIdsOf: async () => [],
+        studyRoomOf: async () => null
+    }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => ({
             server,

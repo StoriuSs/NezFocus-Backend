@@ -30,6 +30,13 @@ enum SystemEvent {
   /// the people reminded (or its creator), named in plain words, never as
   /// mentions (D-95).
   task_due
+  /// A study session started in the room (REQ-MSG-08, D-222). systemData:
+  /// { userId, sessionId, focusMinutes, shortBreakMinutes }: who started it,
+  /// and its cycle when started.
+  study_session_started
+  /// A study session of the room ended (REQ-MSG-08, D-222). systemData:
+  /// { sessionId, reason }.
+  study_session_ended
 }
 
 /// A message in a channel.

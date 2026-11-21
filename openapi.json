@@ -5380,6 +5380,369 @@
           "voice"
         ]
       }
+    },
+    "/api/v1/channels/{channelId}/focus-session": {
+      "post": {
+        "operationId": "FocusSessionsController_start_v1",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRoomSessionRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FocusSessionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start a Room Session, from inside the study room, as its Host: everyone\nin the room takes part from now. A room with a session already:\nFOCUS_SESSION_ACTIVE.",
+        "tags": [
+          "study"
+        ]
+      }
+    },
+    "/api/v1/focus-sessions/{sessionId}/pause": {
+      "post": {
+        "operationId": "FocusSessionsController_pause_v1",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionVersionRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FocusSessionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pause: what is left of the phase is kept (Host or MANAGE_STUDY_ROOMS).",
+        "tags": [
+          "study"
+        ]
+      }
+    },
+    "/api/v1/focus-sessions/{sessionId}/resume": {
+      "post": {
+        "operationId": "FocusSessionsController_resume_v1",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionVersionRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FocusSessionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resume for what was left; with no Host, anyone in the room may (D-119).",
+        "tags": [
+          "study"
+        ]
+      }
+    },
+    "/api/v1/focus-sessions/{sessionId}/skip": {
+      "post": {
+        "operationId": "FocusSessionsController_skip_v1",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionVersionRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FocusSessionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Skip to the next phase now; skipped while paused, it stays paused.",
+        "tags": [
+          "study"
+        ]
+      }
+    },
+    "/api/v1/focus-sessions/{sessionId}/stop": {
+      "post": {
+        "operationId": "FocusSessionsController_stop_v1",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionVersionRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FocusSessionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "End the session for the whole room; each one's seconds come in `focus_session.ended` (D-49).",
+        "tags": [
+          "study"
+        ]
+      }
+    },
+    "/api/v1/focus-sessions/{sessionId}/config": {
+      "post": {
+        "operationId": "FocusSessionsController_config_v1",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCycleRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FocusSessionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A new cycle, only while paused: the phase begins again at its new length, still paused (D-50).",
+        "tags": [
+          "study"
+        ]
+      }
     }
   },
   "info": {
@@ -6228,6 +6591,106 @@
           "mod_muted"
         ]
       },
+      "RoomSessionResponseDto": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null: nobody in the room may start a session (REQ-STUDY-03)."
+          },
+          "long_break_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Both null: no long break."
+          },
+          "long_break_every": {
+            "type": "number",
+            "nullable": true
+          },
+          "phase_ends_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "While running: when the phase ends."
+          },
+          "paused_remaining_ms": {
+            "type": "number",
+            "nullable": true,
+            "description": "While paused: what was left of the phase, in milliseconds."
+          },
+          "stretch_started_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When the focus stretch running now began: today's minutes go up from here (D-224). Null when none runs."
+          },
+          "id": {
+            "type": "string"
+          },
+          "focus_minutes": {
+            "type": "number",
+            "description": "The cycle, in minutes."
+          },
+          "short_break_minutes": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "paused"
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "focus",
+              "short_break",
+              "long_break"
+            ]
+          },
+          "phase_index": {
+            "type": "number",
+            "description": "The phase's place from 0: focus at the even places."
+          },
+          "phase_started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "number",
+            "description": "Raised by every change; sent back with each command (D-225)."
+          },
+          "server_time": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The server's clock when this was read (D-18)."
+          }
+        },
+        "required": [
+          "host_id",
+          "long_break_minutes",
+          "long_break_every",
+          "phase_ends_at",
+          "paused_remaining_ms",
+          "stretch_started_at",
+          "id",
+          "focus_minutes",
+          "short_break_minutes",
+          "status",
+          "phase",
+          "phase_index",
+          "phase_started_at",
+          "started_at",
+          "version",
+          "server_time"
+        ]
+      },
       "ServerChannelResponseDto": {
         "type": "object",
         "properties": {
@@ -6268,6 +6731,16 @@
             "items": {
               "$ref": "#/components/schemas/RoomPersonResponseDto"
             }
+          },
+          "focus_session": {
+            "nullable": true,
+            "description": "A voice room: its study session not yet ended, or null (D-220); kept up\nto date by `focus_session.*`. Null for a text channel.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RoomSessionResponseDto"
+              }
+            ]
           },
           "id": {
             "type": "string"
@@ -6322,6 +6795,7 @@
           "permissions",
           "view_role_ids",
           "voice_states",
+          "focus_session",
           "id",
           "category_id",
           "type",
@@ -7629,13 +8103,13 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`); null on a regular one."
           },
           "system_data": {
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent. Null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent; a study session: `{ user_id, session_id, focus_minutes,\nshort_break_minutes }` started, `{ session_id, reason }` ended. Null on a\nregular one."
           },
           "system_user": {
             "nullable": true,
@@ -7797,13 +8271,13 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`); null on a regular one."
           },
           "system_data": {
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent. Null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent; a study session: `{ user_id, session_id, focus_minutes,\nshort_break_minutes }` started, `{ session_id, reason }` ended. Null on a\nregular one."
           },
           "system_user": {
             "nullable": true,
@@ -8022,13 +8496,13 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`); null on a regular one."
           },
           "system_data": {
             "type": "object",
             "additionalProperties": true,
             "nullable": true,
-            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent. Null on a regular one."
+            "description": "Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,\nD-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,\nits title when sent; a study session: `{ user_id, session_id, focus_minutes,\nshort_break_minutes }` started, `{ session_id, reason }` ended. Null on a\nregular one."
           },
           "system_user": {
             "nullable": true,
@@ -9125,6 +9599,231 @@
         },
         "required": [
           "channel_id"
+        ]
+      },
+      "FocusSessionResponseDto": {
+        "type": "object",
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "A Room Session's room; null for a Solo."
+          },
+          "host_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null: no Host (nobody in the room may start a session, REQ-STUDY-03), or a Solo."
+          },
+          "long_break_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Both null: no long break."
+          },
+          "long_break_every": {
+            "type": "number",
+            "nullable": true
+          },
+          "phase_ends_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "While running: when the phase ends."
+          },
+          "paused_remaining_ms": {
+            "type": "number",
+            "nullable": true,
+            "description": "While paused: what was left of the phase, in milliseconds."
+          },
+          "waiting_until": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "While waiting (a Solo): when it ends by itself."
+          },
+          "stretch_started_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When the focus stretch running now began: today's minutes go up from here (D-224). Null when none runs."
+          },
+          "ended_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "ended_reason": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "stopped",
+              "empty",
+              "study_disabled",
+              "channel_deleted",
+              "expired",
+              "signed_out",
+              "joined_room"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "room",
+              "solo"
+            ],
+            "type": "string"
+          },
+          "focus_minutes": {
+            "type": "number",
+            "description": "The cycle, in minutes."
+          },
+          "short_break_minutes": {
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "paused",
+              "waiting",
+              "ended"
+            ],
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "focus",
+              "short_break",
+              "long_break"
+            ],
+            "type": "string"
+          },
+          "phase_index": {
+            "type": "number",
+            "description": "The phase's place from 0: focus at the even places."
+          },
+          "phase_started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "number",
+            "description": "Raised by every change; sent back with each command (D-225)."
+          },
+          "server_time": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The server's clock when this was read (D-18)."
+          }
+        },
+        "required": [
+          "channel_id",
+          "host_id",
+          "long_break_minutes",
+          "long_break_every",
+          "phase_ends_at",
+          "paused_remaining_ms",
+          "waiting_until",
+          "stretch_started_at",
+          "ended_at",
+          "ended_reason",
+          "id",
+          "kind",
+          "focus_minutes",
+          "short_break_minutes",
+          "status",
+          "phase",
+          "phase_index",
+          "phase_started_at",
+          "started_at",
+          "version",
+          "server_time"
+        ]
+      },
+      "StartRoomSessionRequestDto": {
+        "type": "object",
+        "properties": {
+          "focus_minutes": {
+            "type": "number",
+            "nullable": false,
+            "minimum": 5,
+            "maximum": 120
+          },
+          "short_break_minutes": {
+            "type": "number",
+            "nullable": false,
+            "minimum": 1,
+            "maximum": 30
+          },
+          "long_break_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null or left out, with long_break_every: no long break.",
+            "minimum": 5,
+            "maximum": 60
+          },
+          "long_break_every": {
+            "type": "number",
+            "nullable": true,
+            "description": "A long break after every this many focus phases.",
+            "minimum": 2,
+            "maximum": 8
+          }
+        }
+      },
+      "SessionVersionRequestDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "ChangeCycleRequestDto": {
+        "type": "object",
+        "properties": {
+          "focus_minutes": {
+            "type": "number",
+            "nullable": false,
+            "minimum": 5,
+            "maximum": 120
+          },
+          "short_break_minutes": {
+            "type": "number",
+            "nullable": false,
+            "minimum": 1,
+            "maximum": 30
+          },
+          "long_break_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null or left out, with long_break_every: no long break.",
+            "minimum": 5,
+            "maximum": 60
+          },
+          "long_break_every": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 2,
+            "maximum": 8
+          },
+          "version": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "focus_minutes",
+          "short_break_minutes",
+          "version"
         ]
       }
     }

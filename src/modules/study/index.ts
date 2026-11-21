@@ -3,7 +3,9 @@
  * internal: import it from inside the module only (an ESLint rule enforces
  * this). StudyModule itself is imported from './study.module'.
  *
- * Nothing yet: M5 L3 adds what others need (a voice room's session for
- * GET /servers, D-220).
+ * RoomSessionsModule (servers' ROOM_SESSIONS, D-220) is imported from
+ * './study.module' too.
  */
-export {}
+
+// Run every minute by src/maintenance: the phase ends whose job was lost or is late (D-225).
+export { SweepStudyTimersCommand } from './application/commands/session-timer/session-timer.commands'

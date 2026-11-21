@@ -64,7 +64,10 @@ export class MessageResponseDto {
     @Type(() => MentionedRoleResponseDto)
     mentionRoles: MentionedRoleResponseDto[]
 
-    /** What a system message reports (`member_joined`, `message_pinned`, `task_due`); null on a regular one. */
+    /**
+     * What a system message reports (`member_joined`, `message_pinned`, `task_due`,
+     * `study_session_started`, `study_session_ended`); null on a regular one.
+     */
     @Expose()
     @ApiProperty({ type: String, nullable: true })
     @IsOptional()
@@ -74,7 +77,9 @@ export class MessageResponseDto {
     /**
      * Whom a system message is about (`{ user_id }`, `{ user_id, message_id }`,
      * D-168); a task's reminder: `{ task_id, title, reminder, due_at, user_ids }`,
-     * its title when sent. Null on a regular one.
+     * its title when sent; a study session: `{ user_id, session_id, focus_minutes,
+     * short_break_minutes }` started, `{ session_id, reason }` ended. Null on a
+     * regular one.
      */
     @Expose()
     // As it is: an untyped object would otherwise come out empty, every key not @Expose()d.

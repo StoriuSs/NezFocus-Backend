@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Type } from 'class-transformer'
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, ValidateNested } from 'class-validator'
 import { RoomPersonResponseDto } from './room-person.response.dto'
+import { RoomSessionResponseDto } from './room-session.response.dto'
 import { BITS } from './shared/fields'
 
 export class ServerChannelResponseDto {
@@ -99,4 +100,15 @@ export class ServerChannelResponseDto {
     @ValidateNested({ each: true })
     @Type(() => RoomPersonResponseDto)
     voiceStates: RoomPersonResponseDto[] | null
+
+    /**
+     * A voice room: its study session not yet ended, or null (D-220); kept up
+     * to date by `focus_session.*`. Null for a text channel.
+     */
+    @ApiProperty({ type: RoomSessionResponseDto, nullable: true })
+    @Expose()
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => RoomSessionResponseDto)
+    focusSession: RoomSessionResponseDto | null
 }

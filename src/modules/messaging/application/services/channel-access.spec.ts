@@ -52,7 +52,9 @@ const server: AccessServer = {
 function world() {
     const channels: ChannelDirectoryPort = {
         serverIdOf: jest.fn(async (id: string) => (server.channels.some((channel) => channel.id === id) ? 'ot' : null)),
-        channelIdsOf: async () => []
+        channelIdsOf: async () => [],
+
+        studyRoomOf: async () => null
     }
     const members: Record<string, { roleIds: string[]; timeoutUntil: Date | null }> = {
         an: { roleIds: [], timeoutUntil: LATER },

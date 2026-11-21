@@ -7,10 +7,11 @@
 // (FocusStretch, D-216), added up per local day (DailyStudy). Sessions and
 // their rows stay once ended: they are the history of D-105.
 //
-// What Prisma cannot say is in the migration (20261120200000_study): the
+// What Prisma cannot say is in the migrations (20261120200000_study): the
 // partial unique indexes (one open session per room and per person, one open
 // stretch per session, one open participation per person) and the CHECKs
-// that keep each row's shape.
+// that keep each row's shape; the running sessions by when their phase is
+// due, for the sweep of D-225 (20261121100000_study_timers).
 //
 // Ids are UUIDv7 (ARCHITECTURE 2.4).
 

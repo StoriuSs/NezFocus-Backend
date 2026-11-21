@@ -6,7 +6,7 @@ import { MESSAGE_REPOSITORY, MessageRepositoryPort } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
 import { messageViews } from '../../services/message-views'
-import { PostMemberJoinedCommand, PostTaskDueCommand } from './system-message.commands'
+import { PostMemberJoinedCommand, PostStudySessionCommand, PostTaskDueCommand } from './system-message.commands'
 
 /**
  * Someone joined a server by a link (D-180): "<who> joined the server" is
@@ -63,4 +63,31 @@ export class PostTaskDueHandler implements ICommandHandler<PostTaskDueCommand> {
     }
 }
 
-export const SYSTEM_MESSAGE_COMMAND_HANDLERS = [PostMemberJoinedHandler, PostTaskDueHandler]
+/**
+ * A study session started or ended (REQ-MSG-08, D-222): "{who} đã bắt đầu
+ * phiên học 25/5" or "Phiên học đã kết thúc" written in the room's chat with
+ * no author, what it says in `systemData` (D-168), and the room hears it.
+ * Who started it reads it as their own (D-173), as `userId` names them; the
+ * end names no one. A room deleted since gets nothing.
+ */
+@CommandHandler(PostStudySessionCommand)
+export class PostStudySessionHandler implements ICommandHandler<PostStudySessionCommand> {
+    constructor(
+        @Inject(MESSAGE_REPOSITORY) private readonly messages: MessageRepositoryPort,
+        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
+        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
+        private readonly events: EventBus
+    ) {}
+
+    async execute({ serverId, channelId, notice }: PostStudySessionCommand): Promise<void> {
+        const message = await this.messages.createStudySession(channelId, notice)
+        if (!message) return
+        const [view] = await messageViews({ users: this.users, roles: this.roles, files: this.files }, serverId, [
+            message
+        ])
+        this.events.publish(new MessageCreatedEvent(view, null))
+    }
+}
+
+export const SYSTEM_MESSAGE_COMMAND_HANDLERS = [PostMemberJoinedHandler, PostTaskDueHandler, PostStudySessionHandler]

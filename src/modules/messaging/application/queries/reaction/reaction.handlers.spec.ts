@@ -71,7 +71,11 @@ function world() {
             count: 8
         }))
     }
-    const channels: ChannelDirectoryPort = { serverIdOf: jest.fn(async () => 'ot'), channelIdsOf: async () => [] }
+    const channels: ChannelDirectoryPort = {
+        serverIdOf: jest.fn(async () => 'ot'),
+        channelIdsOf: async () => [],
+        studyRoomOf: async () => null
+    }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => ({
             server,

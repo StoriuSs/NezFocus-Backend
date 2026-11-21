@@ -1,14 +1,26 @@
 import { randomUUID } from 'crypto'
+import { AddressInfo } from 'net'
+import { getQueueToken } from '@nestjs/bullmq'
+import { CommandBus } from '@nestjs/cqrs'
 import { NestExpressApplication } from '@nestjs/platform-express'
+import { Queue } from 'bullmq'
+import request from 'supertest'
+import { io, Socket } from 'socket.io-client'
+import { Prisma } from '@/generated/prisma/client'
+import { Permission } from '@/modules/permissions'
+import { EndFocusPhaseCommand, SweepStudyTimersCommand } from '@/modules/study/application'
 import { localDateOf, shownStreak, STUDY_TIME_REPOSITORY, StudyTimeRepositoryPort } from '@/modules/study/domain'
+import { QUEUES } from '@/shared/infrastructure/queue/queues'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { bootApp, closeApp } from './helpers'
+import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
+import { testClientIp } from './targets'
 
 /**
  * Study sessions through the whole app (SRS 4.6, ARCHITECTURE 5, D-215 to
- * D-224). So far the tables of M5 L1 and what the database itself refuses,
- * and the counting of the seconds studied (L2); the sessions come with L3
- * and L4.
+ * D-225). The tables of M5 L1 and what the database itself refuses, the
+ * counting of the seconds studied (L2), and Room Sessions started,
+ * controlled and moved by their phase jobs (L3a); who joins and leaves
+ * comes with L3b, Solo with L4.
  *
  * Requires Postgres, Redis, Mailpit and LiveKit: `pnpm test:services:up`,
  * then `pnpm test:integration`.
@@ -506,6 +518,42 @@ describe('Study sessions (integration)', () => {
             expect(count!.countedUntil).toEqual(due)
         })
 
+        it('stops countedUntil at the due end of a running break too, its job late, so the next stretch counts whole', async () => {
+            // Focus 35 to 10 minutes ago, then a break due to end 5 minutes ago; its job has not run.
+            const began = new Date(Math.floor(Date.now() / 1000) * 1000 - 35 * 60_000)
+            const breakAt = new Date(began.getTime() + 25 * 60_000)
+            const due = new Date(breakAt.getTime() + 5 * 60_000)
+            const sessionId = await session('room', [[began, breakAt]], {
+                status: 'running',
+                phase: 'short_break',
+                phaseIndex: 1,
+                phaseStartedAt: breakAt,
+                endedAt: null,
+                endedReason: null,
+                phaseEndsAt: due
+            })
+            const an = await stay('an', sessionId, began)
+            const count = await repository.count(an, HANOI)
+            expect(count).toMatchObject({ added: 1500, countedUntil: due })
+
+            // The late job opens the next focus stretch where it was due: counted from there, none lost.
+            await prisma.focusStretch.create({
+                data: { sessionId, startedAt: due, endedAt: new Date(due.getTime() + 120_000) }
+            })
+            await prisma.focusSession.update({
+                where: { id: sessionId },
+                data: {
+                    status: 'ended',
+                    phase: 'focus',
+                    phaseIndex: 2,
+                    phaseEndsAt: null,
+                    endedAt: new Date(),
+                    endedReason: 'stopped'
+                }
+            })
+            expect(await repository.count(an, HANOI)).toMatchObject({ added: 120, seconds: 1620 })
+        })
+
         it('counts a running focus phase up to now, on a whole second', async () => {
             // Focus began 10 minutes ago, due in 15.
             const began = new Date(Math.floor(Date.now() / 1000) * 1000 - 10 * 60_000)
@@ -525,6 +573,529 @@ describe('Study sessions (integration)', () => {
 
         it('finds no participation that is not there', async () => {
             expect(await repository.count(randomUUID(), HANOI)).toBeNull()
+        })
+    })
+
+    describe('Room Sessions: start, control, phase ends (REQ-STUDY-02, STUDY-03, D-222, D-225)', () => {
+        const CLIENT_IP = testClientIp()
+        const PASSWORD = 'Harbour-Lantern-42'
+        type Person = 'an' | 'binh' | 'chi' | 'dung' | 'phong'
+        const people = {} as Record<Person, { token: string; id: string }>
+        const opened: Socket[] = []
+        let socketUrl: string
+        let serverId: string
+        let room: string
+        let managersRoom: string
+        let plainRoom: string
+        let textChannel: string
+
+        const api = () => request(app.getHttpServer())
+        const anyone = (req: request.Test) => req.set('X-Forwarded-For', CLIENT_IP).set('Origin', FRONTEND)
+        const as = (who: Person, req: request.Test) => anyone(req).set('Authorization', `Bearer ${people[who].token}`)
+        const post = (path: string, body: object = {}, token?: string) => {
+            const req = anyone(api().post(`/api/v1/${path}`))
+            return (token ? req.set('Authorization', `Bearer ${token}`) : req).send(body)
+        }
+        const outcome = (res: request.Response) => [res.status, res.body.meta?.type, res.body.data?.reason]
+        const start = (who: Person, channelId: string, body: object = {}) =>
+            as(who, api().post(`/api/v1/channels/${channelId}/focus-session`))
+                .set('Idempotency-Key', randomUUID())
+                .send(body)
+        const command = (who: Person, sessionId: string, action: string, body: object) =>
+            as(who, api().post(`/api/v1/focus-sessions/${sessionId}/${action}`)).send(body)
+        const bus = () => app.get(CommandBus)
+        const studyQueue = () => app.get<Queue>(getQueueToken(QUEUES.STUDY))
+
+        /** Puts people in a voice room, as LiveKit's webhook would (VoiceState is voice's; only the rows matter here). */
+        const enter = (channelId: string, ...who: Person[]) =>
+            prisma.voiceState.createMany({
+                data: who.map((person, i) => ({
+                    userId: people[person].id,
+                    channelId,
+                    participantSid: `PA_${person}`,
+                    joinedAt: new Date(Date.now() - (who.length - i) * 1000)
+                }))
+            })
+
+        /** Moves a session's whole story `seconds` back, as if that much time had passed since. */
+        async function rewind(sessionId: string, seconds: number) {
+            const back = Prisma.sql`(${seconds} * interval '1 second')`
+            await prisma.$executeRaw`
+                UPDATE "FocusSession" SET "phaseStartedAt" = "phaseStartedAt" - ${back},
+                    "phaseEndsAt" = "phaseEndsAt" - ${back}, "startedAt" = "startedAt" - ${back}
+                WHERE "id" = ${sessionId}`
+            await prisma.$executeRaw`
+                UPDATE "FocusStretch" SET "startedAt" = "startedAt" - ${back}, "endedAt" = "endedAt" - ${back}
+                WHERE "sessionId" = ${sessionId}`
+            await prisma.$executeRaw`
+                UPDATE "Participation" SET "joinedAt" = "joinedAt" - ${back}, "countedUntil" = "countedUntil" - ${back},
+                    "leftAt" = "leftAt" - ${back}
+                WHERE "sessionId" = ${sessionId}`
+        }
+
+        const participations = (sessionId: string) =>
+            prisma.participation.findMany({
+                where: { sessionId },
+                select: { userId: true, seconds: true, leftAt: true },
+                orderBy: { userId: 'asc' }
+            })
+
+        async function signUp(who: Person) {
+            const email = `${PREFIX}-l3-${who}@example.test`
+            const { accessToken } = await signInWithCode(post, email)
+            await completeAccount(post, accessToken, PASSWORD)
+            const me = await anyone(api().get('/api/v1/users/me')).set('Authorization', `Bearer ${accessToken}`)
+            people[who] = { token: accessToken, id: me.body.data.id }
+        }
+
+        async function connectAs(who: Person): Promise<Socket> {
+            const res = await as(who, api().post('/api/v1/realtime/ticket'))
+            const socket = io(socketUrl, {
+                auth: { ticket: res.body.data.ticket },
+                transports: ['websocket'],
+                reconnection: false,
+                forceNew: true,
+                extraHeaders: { Origin: FRONTEND }
+            })
+            opened.push(socket)
+            await new Promise((resolve) => socket.once('ready', resolve))
+            return socket
+        }
+
+        function collect(socket: Socket, event: string): () => Promise<Record<string, unknown>[]> {
+            const heard: Record<string, unknown>[] = []
+            socket.on(event, (data: Record<string, unknown>) => heard.push(data))
+            return () => new Promise((resolve) => setTimeout(() => resolve(heard), 400))
+        }
+
+        beforeAll(async () => {
+            await app.listen(0)
+            socketUrl = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`
+            for (const who of ['an', 'binh', 'chi', 'dung', 'phong'] as Person[]) await signUp(who)
+
+            const created = await as('an', api().post('/api/v1/servers'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Nhóm ôn thi', template: 'standard' })
+            serverId = created.body.data.id
+            const invite = await as('an', api().post(`/api/v1/servers/${serverId}/invites`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ max_age_seconds: null, max_uses: null })
+            for (const who of ['binh', 'chi', 'dung', 'phong'] as Person[]) {
+                await as(who, api().post(`/api/v1/invites/${invite.body.data.code}/accept`))
+            }
+            const channel = async (type: 'text' | 'voice', name: string, isStudyRoom = false) => {
+                const res = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({ type, name, is_study_room: isStudyRoom, is_private: false, view_role_ids: [] })
+                return res.body.data.id as string
+            }
+            room = await channel('voice', 'Phòng học im lặng', true)
+            managersRoom = await channel('voice', 'Phòng thi thử', true)
+            plainRoom = await channel('voice', 'Phòng tán gẫu')
+            textChannel = await channel('text', 'hoi-dap')
+            await as('an', api().patch(`/api/v1/servers/${serverId}/channels/${managersRoom}`)).send({
+                study_starter: 'managers'
+            })
+
+            // Chi coordinates the study rooms (MANAGE_STUDY_ROOMS); Dũng is timed out.
+            const role = await as('an', api().post(`/api/v1/servers/${serverId}/roles`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Điều phối phòng học' })
+            const roleId: string = role.body.data.role_id
+            await as('an', api().patch(`/api/v1/servers/${serverId}/roles/${roleId}`)).send({
+                permissions: Permission.MANAGE_STUDY_ROOMS.toString()
+            })
+            await as('an', api().put(`/api/v1/servers/${serverId}/roles/${roleId}/members`)).send({
+                user_ids: [people.chi.id]
+            })
+            await as('an', api().patch(`/api/v1/servers/${serverId}/members/${people.dung.id}`)).send({
+                timeout_seconds: 86_400,
+                reason: 'Thử'
+            })
+        })
+
+        afterEach(async () => {
+            for (const socket of opened.splice(0)) socket.disconnect()
+            await prisma.voiceState.deleteMany({ where: { userId: { in: Object.values(people).map((p) => p.id) } } })
+            await prisma.focusSession.deleteMany({ where: { serverId } })
+        })
+
+        afterAll(async () => {
+            const all = Object.values(people).map((person) => person.id)
+            await prisma.focusSession.deleteMany({ where: { serverId } }).catch(() => undefined)
+            await prisma.server.deleteMany({ where: { ownerId: { in: all } } }).catch(() => undefined)
+            await prisma.user.deleteMany({ where: { id: { in: all } } }).catch(() => undefined)
+        })
+
+        describe('starting one (POST /channels/{id}/focus-session)', () => {
+            it('makes the one who pressed Host and everyone in the room a participant, from now', async () => {
+                await enter(room, 'an', 'binh')
+                const res = await start('an', room)
+                expect(res.status).toBe(201)
+                const session = res.body.data
+                expect(session).toMatchObject({
+                    kind: 'room',
+                    channel_id: room,
+                    host_id: people.an.id,
+                    focus_minutes: 25,
+                    short_break_minutes: 5,
+                    long_break_minutes: null,
+                    status: 'running',
+                    phase: 'focus',
+                    phase_index: 0,
+                    paused_remaining_ms: null,
+                    version: 0
+                })
+                const startedAt = Date.parse(session.started_at)
+                expect(startedAt % 1000).toBe(0)
+                expect(Date.parse(session.phase_ends_at) - startedAt).toBe(25 * 60_000)
+                expect(session.stretch_started_at).toBe(session.started_at)
+                expect(Math.abs(Date.parse(session.server_time) - Date.now())).toBeLessThan(5000)
+                expect((await participations(session.id)).map((p) => p.userId)).toEqual(
+                    [people.an.id, people.binh.id].sort()
+                )
+
+                // The room lists it, the chat says it, and its phase end waits in the queue.
+                const listed = await as('binh', api().get(`/api/v1/servers/${serverId}`))
+                const channels = listed.body.data.channels as { id: string; focus_session: unknown }[]
+                expect(channels.find((c) => c.id === room)?.focus_session).toMatchObject({ id: session.id, version: 0 })
+                expect(channels.find((c) => c.id === plainRoom)?.focus_session).toBeNull()
+                expect(channels.find((c) => c.id === textChannel)?.focus_session).toBeNull()
+                const said = await prisma.message.findFirst({
+                    where: { channelId: room, systemEvent: 'study_session_started' }
+                })
+                expect(said?.systemData).toMatchObject({
+                    userId: people.an.id,
+                    sessionId: session.id,
+                    focusMinutes: 25
+                })
+                const job = await studyQueue().getJob(`focus-${session.id}-0`)
+                expect(job?.data).toEqual({ sessionId: session.id, version: 0 })
+                expect(job!.opts.delay).toBeGreaterThan(24 * 60_000)
+            })
+
+            it('takes the cycle sent, and refuses one a study room could not have', async () => {
+                await enter(room, 'an')
+                const half = await start('an', room, {
+                    focus_minutes: 50,
+                    short_break_minutes: 10,
+                    long_break_minutes: 20
+                })
+                expect(outcome(half)).toEqual([422, 'VALIDATION_ERROR', undefined])
+                expect(half.body.data).toMatchObject({ rule: 'study_cycle', problem: 'long_break_pair' })
+                expect(outcome(await start('an', room, { focus_minutes: 50 }))).toEqual([
+                    422,
+                    'VALIDATION_ERROR',
+                    undefined
+                ])
+                expect(outcome(await start('an', room, { focus_minutes: 3, short_break_minutes: 5 }))[0]).toBe(422)
+
+                const res = await start('an', room, { focus_minutes: 50, short_break_minutes: 10 })
+                expect(res.status).toBe(201)
+                expect(Date.parse(res.body.data.phase_ends_at) - Date.parse(res.body.data.started_at)).toBe(50 * 60_000)
+            })
+
+            it('is FOCUS_SESSION_ACTIVE in a room that has one, also for two starts at once', async () => {
+                await enter(room, 'an', 'binh')
+                const both = await Promise.all([start('an', room), start('binh', room)])
+                expect(both.map((res) => res.status).sort()).toEqual([201, 409])
+                expect(both.find((res) => res.status === 409)?.body.meta.type).toBe('FOCUS_SESSION_ACTIVE')
+                expect(await prisma.focusSession.count({ where: { channelId: room, status: { not: 'ended' } } })).toBe(
+                    1
+                )
+            })
+
+            it('says why not: no study room, not in it, only managers start here, timed out, not seen', async () => {
+                await enter(plainRoom, 'an')
+                expect(outcome(await start('an', plainRoom))).toEqual([403, 'FORBIDDEN_ERROR', 'not_study_room'])
+                expect(outcome(await start('binh', room))).toEqual([403, 'FORBIDDEN_ERROR', 'not_in_room'])
+                await prisma.voiceState.deleteMany({ where: { userId: people.an.id } })
+                await enter(managersRoom, 'binh', 'chi')
+                expect(outcome(await start('binh', managersRoom))).toEqual([403, 'FORBIDDEN_ERROR', 'cannot_start'])
+                expect((await start('chi', managersRoom)).status).toBe(201)
+                expect(outcome(await start('dung', room))).toEqual([403, 'MEMBER_TIMED_OUT', undefined])
+                expect(outcome(await start('an', textChannel))[0]).toBe(404)
+                expect(outcome(await start('an', randomUUID()))[0]).toBe(404)
+            })
+
+            it('starts nothing for one still taking part in another session (D-222): no Host without their seconds', async () => {
+                await enter(managersRoom, 'chi')
+                expect((await start('chi', managersRoom)).status).toBe(201)
+                // Chi moves to the other room; leaving is M5 L3b, so her time in the first is still open.
+                await prisma.voiceState.update({ where: { userId: people.chi.id }, data: { channelId: room } })
+                await enter(room, 'an')
+                const res = await start('chi', room)
+                expect(outcome(res)).toEqual([409, 'FOCUS_SESSION_ACTIVE', undefined])
+                expect(await prisma.focusSession.count({ where: { channelId: room } })).toBe(0)
+            })
+        })
+
+        describe('controlling one (POST /focus-sessions/{id}/…)', () => {
+            async function running(...who: Person[]) {
+                await enter(room, ...(who.length ? who : (['an', 'binh'] as Person[])))
+                const res = await start(who[0] ?? 'an', room)
+                expect(res.status).toBe(201)
+                return res.body.data.id as string
+            }
+
+            it('pauses the phase the room is really in when the phase end before it was lost, losing no second (D-225)', async () => {
+                const id = await running()
+                await studyQueue().remove(`focus-${id}-0`)
+                // Focus, then its break, due 30 seconds ago; neither phase end has run.
+                await rewind(id, 30 * 60 + 30)
+                const paused = await command('an', id, 'pause', { version: 0 })
+                expect(paused.body.data).toMatchObject({ status: 'paused', phase: 'focus', phase_index: 2, version: 1 })
+                // 25 minutes of the first focus phase, and the 30 seconds of the second.
+                for (const { seconds } of await participations(id)) {
+                    expect(seconds).toBeGreaterThanOrEqual(1530)
+                    expect(seconds).toBeLessThanOrEqual(1535)
+                }
+                expect(await prisma.focusStretch.count({ where: { sessionId: id } })).toBe(2)
+            })
+
+            it('shows 10:00 again on resume after a pause at 10:00, and counts the 15 minutes before', async () => {
+                const id = await running()
+                await rewind(id, 15 * 60)
+                const paused = await command('an', id, 'pause', { version: 0 })
+                expect(paused.status).toBe(200)
+                expect(paused.body.data).toMatchObject({
+                    status: 'paused',
+                    phase_ends_at: null,
+                    version: 1,
+                    stretch_started_at: null
+                })
+                const left = paused.body.data.paused_remaining_ms
+                expect(left).toBeGreaterThanOrEqual(595_000)
+                expect(left).toBeLessThanOrEqual(600_000)
+                for (const { seconds } of await participations(id)) {
+                    expect(seconds).toBeGreaterThanOrEqual(900)
+                    expect(seconds).toBeLessThanOrEqual(905)
+                }
+                expect(await studyQueue().getJob(`focus-${id}-0`)).toBeUndefined()
+
+                const resumed = await command('an', id, 'resume', { version: 1 })
+                expect(resumed.body.data).toMatchObject({ status: 'running', version: 2 })
+                const { phase_ends_at, server_time, stretch_started_at } = resumed.body.data
+                expect(Math.abs(Date.parse(phase_ends_at) - Date.parse(server_time) - left)).toBeLessThan(1500)
+                expect(stretch_started_at).not.toBeNull()
+                expect(await studyQueue().getJob(`focus-${id}-2`)).toBeDefined()
+            })
+
+            it('changes nothing for a command sent with an old version, or one already done (D-225)', async () => {
+                const id = await running()
+                expect((await command('an', id, 'pause', { version: 0 })).body.data.version).toBe(1)
+                const again = await command('an', id, 'pause', { version: 1 })
+                expect(again.status).toBe(200)
+                expect(again.body.data).toMatchObject({ status: 'paused', version: 1 })
+                const stale = await command('an', id, 'resume', { version: 0 })
+                expect(stale.body.data).toMatchObject({ status: 'paused', version: 1 })
+                expect(outcome(await command('an', id, 'pause', {}))[0]).toBe(422)
+            })
+
+            it('skips one phase only when the Host and a manager press Skip at once', async () => {
+                const id = await running()
+                const both = await Promise.all([
+                    command('an', id, 'skip', { version: 0 }),
+                    command('chi', id, 'skip', { version: 0 })
+                ])
+                expect(both.map((res) => res.status)).toEqual([200, 200])
+                const now = await prisma.focusSession.findUniqueOrThrow({ where: { id } })
+                expect(now).toMatchObject({ phase: 'short_break', phaseIndex: 1, version: 1 })
+                expect(await prisma.focusStretch.count({ where: { sessionId: id, endedAt: null } })).toBe(0)
+            })
+
+            it('decides on the session once it holds its row: a change committed meanwhile is seen (the row lock)', async () => {
+                const id = await running()
+                let release!: () => void
+                const released = new Promise<void>((resolve) => (release = resolve))
+                // Another change holds the row and moves its version; the pause sent for version 0 waits.
+                const holder = prisma.$transaction(
+                    async (tx) => {
+                        await tx.$queryRaw`SELECT "id" FROM "FocusSession" WHERE "id" = ${id} FOR UPDATE`
+                        await tx.focusSession.update({ where: { id }, data: { version: 5 } })
+                        await released
+                    },
+                    { timeout: 20_000 }
+                )
+                await new Promise((resolve) => setTimeout(resolve, 200))
+                const pausing = command('an', id, 'pause', { version: 0 }).then((res) => res)
+                await new Promise((resolve) => setTimeout(resolve, 500))
+                release()
+                await holder
+                // Read before the lock, it would have paused version 0 and written version 1.
+                expect((await pausing).body.data).toMatchObject({ status: 'running', version: 5 })
+            })
+
+            it('keeps the next phase paused when skipped while paused; a new cycle only while paused (D-50)', async () => {
+                const id = await running()
+                const tooSoon = await command('an', id, 'config', {
+                    version: 0,
+                    focus_minutes: 50,
+                    short_break_minutes: 10
+                })
+                expect(outcome(tooSoon)).toEqual([422, 'VALIDATION_ERROR', undefined])
+                expect(tooSoon.body.data).toMatchObject({ rule: 'not_paused' })
+
+                await command('an', id, 'pause', { version: 0 })
+                const skipped = await command('an', id, 'skip', { version: 1 })
+                expect(skipped.body.data).toMatchObject({
+                    status: 'paused',
+                    phase: 'short_break',
+                    paused_remaining_ms: 5 * 60_000,
+                    version: 2
+                })
+                const changed = await command('an', id, 'config', {
+                    version: 2,
+                    focus_minutes: 50,
+                    short_break_minutes: 10
+                })
+                expect(changed.body.data).toMatchObject({
+                    status: 'paused',
+                    phase: 'short_break',
+                    focus_minutes: 50,
+                    short_break_minutes: 10,
+                    paused_remaining_ms: 10 * 60_000,
+                    version: 3
+                })
+            })
+
+            it('lets only the Host and those with MANAGE_STUDY_ROOMS control, in the room or not', async () => {
+                const id = await running('an', 'binh')
+                expect(outcome(await command('binh', id, 'pause', { version: 0 }))).toEqual([
+                    403,
+                    'FORBIDDEN_ERROR',
+                    'not_host'
+                ])
+                expect(outcome(await command('dung', id, 'pause', { version: 0 }))).toEqual([
+                    403,
+                    'MEMBER_TIMED_OUT',
+                    undefined
+                ])
+                expect(outcome(await command('an', randomUUID(), 'pause', { version: 0 }))[0]).toBe(404)
+                expect((await command('chi', id, 'pause', { version: 0 })).body.data.status).toBe('paused')
+            })
+
+            it('lets anyone in the room resume a paused session with no Host, and nothing else (D-119)', async () => {
+                const id = await running('an', 'phong')
+                await command('an', id, 'pause', { version: 0 })
+                await prisma.focusSession.update({ where: { id }, data: { hostId: null } })
+                expect(outcome(await command('phong', id, 'skip', { version: 1 }))).toEqual([
+                    403,
+                    'FORBIDDEN_ERROR',
+                    'not_host'
+                ])
+                expect(outcome(await command('binh', id, 'resume', { version: 1 }))).toEqual([
+                    403,
+                    'FORBIDDEN_ERROR',
+                    'not_host'
+                ])
+                expect((await command('phong', id, 'resume', { version: 1 })).body.data.status).toBe('running')
+            })
+
+            it('stops for the whole room: everyone counted and out, the room told each one their own seconds (D-49)', async () => {
+                const id = await running('an', 'binh')
+                const an = await connectAs('an')
+                const ended = collect(an, 'focus_session.ended')
+                const streak = collect(an, 'streak.updated')
+                await rewind(id, 31 * 60)
+
+                const stopped = await command('chi', id, 'stop', { version: 0 })
+                expect(stopped.body.data).toMatchObject({ status: 'ended', ended_reason: 'stopped', version: 1 })
+                const rows = await participations(id)
+                expect(rows.every((row) => row.leftAt !== null)).toBe(true)
+                // 25 minutes of focus, the break, then the first minute of the next focus phase, which its jobs (late
+                // here) never began: the stop makes those phase ends first (D-225), 1560 seconds each.
+                expect(rows.map((row) => row.seconds)).toEqual([1560, 1560])
+
+                const [event] = await ended()
+                expect(event).toMatchObject({ id, action: 'stop', actor_id: people.chi.id, ended_reason: 'stopped' })
+                expect(event.summaries).toEqual(
+                    [people.an.id, people.binh.id].sort().map((userId) => ({ user_id: userId, seconds: 1560 }))
+                )
+                expect((await streak())[0]).toMatchObject({ current: 1, today_seconds: expect.any(Number) })
+                const said = await prisma.message.findFirst({
+                    where: { channelId: room, systemEvent: 'study_session_ended' }
+                })
+                expect(said?.systemData).toEqual({ sessionId: id, reason: 'stopped' })
+                const listed = await as('an', api().get(`/api/v1/servers/${serverId}`))
+                expect(listed.body.data.channels.find((c: { id: string }) => c.id === room).focus_session).toBeNull()
+            })
+
+            it('closes a stay counted a little ahead of this clock (another instance) where it was counted, not before', async () => {
+                const id = await running('an')
+                await command('an', id, 'pause', { version: 0 })
+                // Another instance, its clock 5 seconds ahead, counted this stay up to its own now.
+                const ahead = new Date(Math.floor(Date.now() / 1000) * 1000 + 5000)
+                await prisma.participation.updateMany({ where: { sessionId: id }, data: { countedUntil: ahead } })
+                const stopped = await command('an', id, 'stop', { version: 1 })
+                expect(stopped.status).toBe(200)
+                const [row] = await participations(id)
+                expect(row.leftAt).toEqual(ahead)
+            })
+
+            it('tells the room each change with the server clock, what was done and by whom', async () => {
+                const binh = await connectAs('binh')
+                const started = collect(binh, 'focus_session.started')
+                const updated = collect(binh, 'focus_session.updated')
+                const id = await running('an', 'binh')
+                await command('an', id, 'pause', { version: 0 })
+                const [first] = await started()
+                expect(first).toMatchObject({ id, action: 'start', actor_id: people.an.id, version: 0 })
+                expect(first.server_time).toEqual(expect.any(String))
+                expect((await updated()).map((e) => [e.action, e.version, e.status])).toEqual([['pause', 1, 'paused']])
+            })
+        })
+
+        describe('the end of a phase, by its job or the sweep (ARCHITECTURE 5.1, D-225)', () => {
+            it('begins the next phase when the last was due, counting the focus phase, and sets the next job', async () => {
+                await enter(room, 'an', 'binh')
+                const id = (await start('an', room)).body.data.id as string
+                await rewind(id, 25 * 60 + 4)
+                const due = (await prisma.focusSession.findUniqueOrThrow({ where: { id } })).phaseEndsAt!
+
+                await bus().execute(new EndFocusPhaseCommand(id, 0))
+                const now = await prisma.focusSession.findUniqueOrThrow({ where: { id } })
+                expect(now).toMatchObject({ phase: 'short_break', phaseIndex: 1, version: 1, phaseStartedAt: due })
+                expect(now.phaseEndsAt!.getTime() - due.getTime()).toBe(5 * 60_000)
+                expect((await prisma.focusStretch.findFirstOrThrow({ where: { sessionId: id } })).endedAt).toEqual(due)
+                expect((await participations(id)).map((p) => p.seconds)).toEqual([1500, 1500])
+                expect(await studyQueue().getJob(`focus-${id}-1`)).toBeDefined()
+
+                // The same job again, or a late one of an older version, changes nothing.
+                await bus().execute(new EndFocusPhaseCommand(id, 0))
+                expect((await prisma.focusSession.findUniqueOrThrow({ where: { id } })).version).toBe(1)
+            })
+
+            it('runs the phase ends whose job was lost, each opening the focus stretch at its planned start', async () => {
+                await enter(room, 'an')
+                const id = (await start('an', room)).body.data.id as string
+                await studyQueue().remove(`focus-${id}-0`)
+                await rewind(id, 25 * 60)
+                expect(await bus().execute(new SweepStudyTimersCommand(new Date()))).toBeGreaterThanOrEqual(1)
+                expect(await prisma.focusSession.findUniqueOrThrow({ where: { id } })).toMatchObject({
+                    phase: 'short_break'
+                })
+
+                await rewind(id, 5 * 60)
+                const breakEnd = (await prisma.focusSession.findUniqueOrThrow({ where: { id } })).phaseEndsAt!
+                expect(await bus().execute(new SweepStudyTimersCommand(new Date()))).toBeGreaterThanOrEqual(1)
+                const focus = await prisma.focusSession.findUniqueOrThrow({ where: { id } })
+                expect(focus).toMatchObject({ phase: 'focus', phaseIndex: 2, version: 2, phaseStartedAt: breakEnd })
+                expect(await prisma.focusStretch.findFirst({ where: { sessionId: id, endedAt: null } })).toMatchObject({
+                    startedAt: breakEnd
+                })
+            })
+
+            it('leaves a session paused meanwhile alone', async () => {
+                await enter(room, 'an')
+                const id = (await start('an', room)).body.data.id as string
+                await command('an', id, 'pause', { version: 0 })
+                await bus().execute(new EndFocusPhaseCommand(id, 0))
+                expect(await prisma.focusSession.findUniqueOrThrow({ where: { id } })).toMatchObject({
+                    status: 'paused',
+                    version: 1
+                })
+            })
         })
     })
 })

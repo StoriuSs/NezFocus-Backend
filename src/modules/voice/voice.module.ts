@@ -22,11 +22,13 @@ import {
     RECONCILE_COMMAND_HANDLERS,
     ReconcileVoiceRoomsCommand,
     RecordSelfStateHandler,
-    ROOM_QUERY_HANDLERS
+    ROOM_QUERY_HANDLERS,
+    VOICE_ROOMS
 } from './application'
 import {
     LiveKitMediaEvents,
     LiveKitMediaRooms,
+    PrismaVoiceRooms,
     PrismaVoiceStateRepository,
     QueryBusRoomPeople,
     RedisEventReceipts
@@ -45,7 +47,8 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
  * Asks servers where a channel is (CHANNEL_DIRECTORY), permissions what
  * someone may do there (PERMISSION_CHECKER), users the names and pictures
  * (USER_DIRECTORY). Answers servers' ROOM_PEOPLE through RoomPeopleModule
- * below. ConfigService comes from the global ConfigModule (livekit.config.ts),
+ * below, and tells study who is in a room (VOICE_ROOMS, D-225).
+ * ConfigService comes from the global ConfigModule (livekit.config.ts),
  * REDIS_CLIENT from the global CacheModule.
  */
 @Module({
@@ -56,6 +59,7 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
         { provide: MEDIA_EVENTS, useClass: LiveKitMediaEvents },
         { provide: EVENT_RECEIPTS, useClass: RedisEventReceipts },
         { provide: VOICE_STATE_REPOSITORY, useClass: PrismaVoiceStateRepository },
+        { provide: VOICE_ROOMS, useClass: PrismaVoiceRooms },
         ...CONNECTION_COMMAND_HANDLERS,
         ...MEDIA_EVENT_COMMAND_HANDLERS,
         ...MODERATION_COMMAND_HANDLERS,
@@ -67,7 +71,8 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
         RecheckServerRoomsHandler,
         LeaveDeletedAccountRoomHandler,
         LeaveEndedSessionRoomsHandler
-    ]
+    ],
+    exports: [VOICE_ROOMS]
 })
 export class VoiceModule implements OnApplicationBootstrap {
     private readonly logger = new Logger(VoiceModule.name)

@@ -12,6 +12,7 @@ import {
     MessageRepositoryPort,
     NewMessage,
     StoredMessage,
+    StudySessionNotice,
     TASK_DUE_EARLIEST_MS,
     TaskDueData
 } from '../../domain'
@@ -225,6 +226,21 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         try {
             const row = await this.prisma.message.create({
                 data: { channelId, type: 'system', systemEvent: 'task_due', systemData: { ...due }, content: '' },
+                select: MESSAGE
+            })
+            return await toRecordOf(this.prisma, row)
+        } catch (error) {
+            // The channel deleted meanwhile (its foreign key): nothing to write in.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
+    async createStudySession(channelId: string, notice: StudySessionNotice): Promise<MessageRecord | null> {
+        const { event, ...systemData } = notice
+        try {
+            const row = await this.prisma.message.create({
+                data: { channelId, type: 'system', systemEvent: event, systemData, content: '' },
                 select: MESSAGE
             })
             return await toRecordOf(this.prisma, row)
