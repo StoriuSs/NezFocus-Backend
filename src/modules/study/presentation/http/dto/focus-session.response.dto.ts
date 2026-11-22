@@ -117,6 +117,16 @@ export class FocusSessionResponseDto {
     @IsString()
     endedReason: string | null
 
+    /**
+     * A Solo's seconds counted so far; the client adds the focus stretch
+     * running since stretch_started_at (D-234). Null for a Room Session.
+     */
+    @ApiProperty({ type: Number, nullable: true })
+    @Expose()
+    @IsOptional()
+    @IsInt()
+    countedSeconds: number | null
+
     /** Raised by every change; sent back with each command (D-225). */
     @Expose()
     @IsInt()

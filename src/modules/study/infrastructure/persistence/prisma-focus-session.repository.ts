@@ -513,9 +513,12 @@ async function changeOnce(
         if (count) counts.push(count)
     }
     if (ended) await leaveAll(tx, sessionId, move.at)
+    const after = toSession(row)
+    // Read before this change's count: a Solo's seconds are its one count's (D-234).
+    const own = after.kind === 'solo' && counts.find(({ userId }) => userId === after.userId)
     return {
         before,
-        after: toSession(row),
+        after: own ? { ...after, countedSeconds: own.seconds } : after,
         changed: true,
         counts,
         summaries: ended ? await summariesOf(tx, sessionId) : null

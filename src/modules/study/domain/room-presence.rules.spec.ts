@@ -29,6 +29,7 @@ function session(emptySince: Date | null = null): FocusSession {
         startedAt: at('20:00:00'),
         stretchStartedAt: at('20:00:00'),
         emptySince,
+        countedSeconds: null,
         ...firstClock(PLAIN, at('20:00:00'), MINUTE)
     }
 }

@@ -29,12 +29,19 @@ describe('PublishFocusSessionHandler', () => {
             serverTime: expect.any(Date)
         })
         expect(publisher.toChannel.mock.calls[0][2]).not.toHaveProperty('summaries')
+        expect(publisher.toChannel.mock.calls[0][2].countedSeconds).toBeNull()
         expect(publisher.toChannel.mock.calls[2][2].summaries).toEqual([{ userId: 'an', seconds: 900 }])
     })
 
     it('tells a Solo to its person alone, solo_session.updated from start to end, and no room (D-222)', () => {
         const { publisher, handler } = setup()
-        const done = { ...solo, status: 'ended' as const, endedAt: solo.startedAt, endedReason: 'joined_room' as const }
+        const done = {
+            ...solo,
+            status: 'ended' as const,
+            endedAt: solo.startedAt,
+            endedReason: 'joined_room' as const,
+            countedSeconds: 1080
+        }
         handler.handle(new FocusSessionChangedEvent(null, solo, 'start', 'an', null))
         handler.handle(new FocusSessionChangedEvent(solo, done, 'end', null, [{ userId: 'an', seconds: 1080 }]))
         expect(publisher.toChannel).not.toHaveBeenCalled()
@@ -47,6 +54,7 @@ describe('PublishFocusSessionHandler', () => {
         expect(publisher.toUser.mock.calls[1][2]).toMatchObject({
             kind: 'solo',
             endedReason: 'joined_room',
+            countedSeconds: 1080,
             summaries: [{ userId: 'an', seconds: 1080 }]
         })
     })

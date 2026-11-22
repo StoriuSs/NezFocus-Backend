@@ -10006,6 +10006,11 @@
               "joined_room"
             ]
           },
+          "counted_seconds": {
+            "type": "number",
+            "nullable": true,
+            "description": "A Solo's seconds counted so far; the client adds the focus stretch\nrunning since stretch_started_at (D-234). Null for a Room Session."
+          },
           "id": {
             "type": "string"
           },
@@ -10073,6 +10078,7 @@
           "stretch_started_at",
           "ended_at",
           "ended_reason",
+          "counted_seconds",
           "id",
           "kind",
           "focus_minutes",

@@ -14,6 +14,8 @@ export interface FocusSessionView extends RoomSession {
     waitingUntil: Date | null
     endedAt: Date | null
     endedReason: FocusSession['endedReason']
+    /** A Solo's seconds counted so far (D-234); null for a Room Session. */
+    countedSeconds: number | null
 }
 
 export function sessionView(session: FocusSession, now: Date): FocusSessionView {
@@ -38,6 +40,7 @@ export function sessionView(session: FocusSession, now: Date): FocusSessionView 
         startedAt: session.startedAt,
         endedAt: session.endedAt,
         endedReason: session.endedReason,
+        countedSeconds: session.countedSeconds,
         version: session.version,
         serverTime: now
     }

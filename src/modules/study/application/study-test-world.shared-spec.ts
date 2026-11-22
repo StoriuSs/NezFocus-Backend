@@ -106,6 +106,7 @@ export function roomSession(shape: Partial<FocusSession> = {}): FocusSession {
         startedAt: NOW,
         stretchStartedAt: NOW,
         emptySince: null,
+        countedSeconds: null,
         ...firstClock(cycle, NOW, MINUTE),
         ...shape
     }
@@ -120,6 +121,7 @@ export function soloSession(shape: Partial<FocusSession> = {}): FocusSession {
         serverId: null,
         hostId: null,
         userId: 'an',
+        countedSeconds: 0,
         ...shape
     })
 }

@@ -59,6 +59,12 @@ export interface FocusSession extends SessionClock {
     stretchStartedAt: Date | null
     /** A Room Session's: since when nobody has been present in its room (D-227); null while someone is. */
     emptySince: Date | null
+    /**
+     * A Solo's seconds counted so far, its one participation's (D-223): the
+     * client adds the focus stretch running now ("18 phút bạn đã học", D-234).
+     * Null for a Room Session, whose people are many.
+     */
+    countedSeconds: number | null
 }
 
 /** A change to a session, made at `at`. */

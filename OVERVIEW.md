@@ -661,7 +661,10 @@ when its wait is not taken up, by the same phase job; its person hears
 `solo_session.updated`. Becoming a participant of a Room Session ends it in
 the same transaction (`joined_room`, D-103), and auth's `SignedOutEvent`
 (the Đăng xuất button only) or `AccountDeletionRequestedEvent` ends it too
-(`signed_out`, D-229). Since L4b, the Stats page (`queries/study-stats`,
+(`signed_out`, D-229). Since L7a, a Solo carries its seconds counted so far
+(`countedSeconds`, its one participation's, read again after the change's
+count), so the questions before it yields to a Room Session name its minutes
+(D-234). Since L4b, the Stats page (`queries/study-stats`,
 `STUDY_STATS_REPOSITORY`): `GET /me/study-stats` gives every number of a week
 or month from DailyStudy (the days, the period before, the 4-week grid, the
 best other week, the streak), and `GET /me/study-sessions` one's sessions of

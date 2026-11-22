@@ -26,17 +26,22 @@ export const SESSION = {
     endedReason: true,
     emptySince: true,
     // One open at most (FocusStretch_one_open_per_session).
-    stretches: { where: { endedAt: null }, select: { startedAt: true }, take: 1 }
+    stretches: { where: { endedAt: null }, select: { startedAt: true }, take: 1 },
+    // A Solo's one participation (D-223), for its seconds (D-234): one row on Participation(sessionId);
+    // a room's first is read too and left unused (toSession), cheaper than joining back to its kind.
+    participations: { select: { seconds: true }, take: 1 }
 } satisfies Prisma.FocusSessionSelect
 
 export type SessionRow = Prisma.FocusSessionGetPayload<{ select: typeof SESSION }>
 
 export function toSession(row: SessionRow): FocusSession {
-    const { focusMinutes, shortBreakMinutes, longBreakMinutes, longBreakEvery, stretches, ...rest } = row
+    const { focusMinutes, shortBreakMinutes, longBreakMinutes, longBreakEvery, stretches, participations, ...rest } =
+        row
     return {
         ...rest,
         cycle: { focusMinutes, shortBreakMinutes, longBreakMinutes, longBreakEvery },
-        stretchStartedAt: stretches[0]?.startedAt ?? null
+        stretchStartedAt: stretches[0]?.startedAt ?? null,
+        countedSeconds: rest.kind === 'solo' ? (participations[0]?.seconds ?? 0) : null
     }
 }
 

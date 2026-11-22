@@ -1590,10 +1590,16 @@ describe('Study sessions (integration)', () => {
                     focus_minutes: 50,
                     status: 'running',
                     phase: 'focus',
-                    version: 0
+                    version: 0,
+                    counted_seconds: 0
                 })
                 expect((await soloOf('an')).body.data).toMatchObject({
-                    session: { id, status: 'running', stretch_started_at: res.body.data.started_at },
+                    session: {
+                        id,
+                        status: 'running',
+                        stretch_started_at: res.body.data.started_at,
+                        counted_seconds: 0
+                    },
                     start_cycle: {
                         focus_minutes: 50,
                         short_break_minutes: 10,
@@ -1644,11 +1650,22 @@ describe('Study sessions (integration)', () => {
                 expect(waiting).toMatchObject({ status: 'waiting', version: 2, phaseEndsAt: null })
                 expect(waiting.waitingUntil!.getTime() - breakEnd.getTime()).toBe(10 * 60_000)
                 expect(await studyQueue().getJob(`focus-${id}-2`)).toBeDefined()
+                // Its focus phase counted: what "18 phút bạn đã học" reads (D-234).
+                expect((await soloOf('an')).body.data.session).toMatchObject({
+                    status: 'waiting',
+                    counted_seconds: 300
+                })
 
                 await rewind(id, 4 * 60)
                 const pressed = Date.now()
                 const res = await command('an', id, 'continue', { version: 2 })
-                expect(res.body.data).toMatchObject({ status: 'running', phase: 'focus', phase_index: 2, version: 3 })
+                expect(res.body.data).toMatchObject({
+                    status: 'running',
+                    phase: 'focus',
+                    phase_index: 2,
+                    version: 3,
+                    counted_seconds: 300
+                })
                 expect(Date.parse(res.body.data.phase_started_at)).toBeGreaterThan(pressed - 2000)
                 expect(res.body.data.stretch_started_at).toBe(res.body.data.phase_started_at)
                 expect((await placeIn(id)).seconds).toBe(300)
@@ -1670,7 +1687,10 @@ describe('Study sessions (integration)', () => {
                 await rewind(soloId, 18 * 60)
                 const socket = await connectAs('an')
                 const heard = collect(socket, 'solo_session.updated')
-                const id = (await start('binh', room)).body.data.id as string
+                const started = (await start('binh', room)).body.data
+                const id = started.id as string
+                // A Room Session's people are many: no seconds of one of them (D-234).
+                expect(started.counted_seconds).toBeNull()
 
                 const solo = await row(soloId)
                 expect(solo).toMatchObject({ status: 'ended', endedReason: 'joined_room' })
@@ -1687,6 +1707,7 @@ describe('Study sessions (integration)', () => {
                         ended_reason: 'joined_room',
                         action: 'end',
                         actor_id: null,
+                        counted_seconds: soloPlace.seconds,
                         summaries: [{ user_id: people.an.id, seconds: soloPlace.seconds }]
                     })
                 ])
