@@ -64,7 +64,8 @@ function statsOf(
         daysOf: jest.fn(async (_userId: string, from: string, to: string) => within(from, to)),
         todayOf: jest.fn(async (_userId: string, today: string) => ({
             seconds: within(today, today)[0]?.focusedSeconds ?? 0,
-            countedUntil
+            countedUntil,
+            readAt: READ
         })),
         secondsBetween: jest.fn(async (_userId: string, from: string, to: string) =>
             within(from, to).reduce((total, one) => total + one.focusedSeconds, 0)
@@ -108,6 +109,9 @@ function statsOf(
     return port as StudyStatsRepositoryPort & { [K in keyof StudyStatsRepositoryPort]: jest.Mock }
 }
 
+/** When the database read today's numbers. */
+const READ = new Date('2026-10-18T14:47:00.123Z')
+
 describe('GetStudyStatsHandler', () => {
     beforeEach(() => jest.useFakeTimers({ now: TODAY_2147 }))
     afterEach(() => jest.useRealTimers())
@@ -144,6 +148,8 @@ describe('GetStudyStatsHandler', () => {
         expect(stats.todayOf).toHaveBeenCalledWith('an', '2026-10-18')
         expect(shown.todaySeconds / 60).toBe(45)
         expect(shown.countedUntil).toEqual(countedUntil)
+        // When the two were read, for the client to keep the later read (D-232).
+        expect(shown.readAt).toEqual(READ)
     })
 
     it('reads the day in the zone of one’s settings: An’s Sunday is still Saturday in UTC', async () => {

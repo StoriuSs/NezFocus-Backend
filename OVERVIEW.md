@@ -615,8 +615,11 @@ rules in `domain/` (the overlap of a stay with the focus stretches, split by
 the days of the person's zone, 16 hours a day at most, the streak) and one
 count written by `infrastructure/persistence/study-counts.ts` in the
 transaction of whatever caused it (D-224), its locks in a fixed order;
-whoever counts publishes `StudyCountedEvent` after the commit, and the
-person hears `streak.updated`. Since L3a, Room Sessions: started from inside
+whoever counts publishes `StudyCountedEvent` after the commit, as does
+whoever opens a participation `ParticipationOpenedEvent` (a start with people
+present, a join, a Solo; D-232), and the person hears `streak.updated`, its
+numbers read again after the commit (`todayOf`, `counted_until` null once in
+no session). Since L3a, Room Sessions: started from inside
 a study room (`POST /channels/{id}/focus-session`, everyone in the room,
 read through voice's `VOICE_ROOMS`, taking part) and controlled
 (`POST /focus-sessions/{id}/pause|resume|skip|stop|config`, each sent with

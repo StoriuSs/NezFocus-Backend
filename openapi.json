@@ -10298,6 +10298,11 @@
             "nullable": true,
             "description": "Where the count of the session one is in stands (room or Solo), null\nwhen in none: the client adds the focus running after it to\ntoday_seconds (D-224, D-231)."
           },
+          "read_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When today_seconds and counted_until were read: of this and the\n`streak.updated` heard, the client keeps the later (D-232)."
+          },
           "grid": {
             "nullable": true,
             "description": "A week's 4-week grid, the 28 days up to its Sunday; null for a month.",
@@ -10360,6 +10365,7 @@
           "previous_period_seconds",
           "first_date",
           "counted_until",
+          "read_at",
           "grid",
           "best_other_week_seconds",
           "view",

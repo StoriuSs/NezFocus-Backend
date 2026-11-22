@@ -1,4 +1,5 @@
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { RoomPresenceChangedEvent } from '../../events/room-presence-changed.event'
 import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import {
@@ -262,7 +263,8 @@ describe('SweepStudyTimersHandler, presence', () => {
         expect(world.participants.get('phien')).toEqual(['an', 'binh', 'phong'])
         expect([...world.away.keys()]).toEqual(['phien:an'])
         expect(world.published()).toEqual([
-            new RoomPresenceChangedEvent('phien', { participationId: 'phien:an', since: NOW }, null)
+            new RoomPresenceChangedEvent('phien', { participationId: 'phien:an', since: NOW }, null),
+            new ParticipationOpenedEvent(['phong'])
         ])
     })
 

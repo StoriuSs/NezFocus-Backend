@@ -1031,9 +1031,13 @@ describe('Study sessions (integration)', () => {
                 // (a run just after midnight in the person's zone).
                 const stored = await prisma.streak.findUniqueOrThrow({ where: { userId: people.an.id } })
                 expect(stored.current).toBeGreaterThanOrEqual(1)
-                expect((await streak())[0]).toMatchObject({
+                // As the session started, where An's participation counts from; once stopped, in no session (D-232).
+                const told = await streak()
+                expect(told[0]).toMatchObject({ counted_until: expect.any(String) })
+                expect(told.at(-1)).toMatchObject({
                     current: stored.current,
-                    today_seconds: expect.any(Number)
+                    today_seconds: expect.any(Number),
+                    counted_until: null
                 })
                 const said = await prisma.message.findFirst({
                     where: { channelId: room, systemEvent: 'study_session_ended' }
@@ -1141,6 +1145,32 @@ describe('Study sessions (integration)', () => {
                 }
                 throw new Error('waited 5 s for nothing')
             }
+
+            it('tells one who joins mid-session where they count from, and once they leave that they are in none (D-232)', async () => {
+                await enter(room, 'an')
+                const id = (await start('an', room)).body.data.id as string
+                const binh = await connectAs('binh')
+                const heard: Record<string, unknown>[] = []
+                binh.on('streak.updated', (data: Record<string, unknown>) => heard.push(data))
+
+                await enter(room, 'binh')
+                await join('binh')
+                const place = await placeOf(id, 'binh')
+                // Told of the join before leaving: the two reads after their commits stay in that order.
+                await until(async () => heard.length >= 1)
+                await prisma.voiceState.deleteMany({ where: { userId: people.binh.id } })
+                await leave('binh')
+                await until(async () => heard.length >= 2)
+
+                expect(heard[0]).toMatchObject({
+                    counted_until: place.countedUntil.toISOString(),
+                    today_seconds: expect.any(Number)
+                })
+                expect(heard.at(-1)).toMatchObject({ counted_until: null })
+                // Each says when it was read, the later read later (D-232).
+                const [first, last] = [heard[0], heard.at(-1)].map((one) => Date.parse(String(one?.read_at)))
+                expect(first).toBeLessThan(last)
+            })
 
             it('the flow of "Xong khi": Bình comes 12 minutes in, An leaves and Bình is Host, the room empty 5 minutes ends it', async () => {
                 await enter(room, 'an')
@@ -1854,10 +1884,12 @@ describe('Study sessions (integration)', () => {
                 await days([[today, 0, 12]])
                 await pastSession('solo', [['2026-10-18T13:00:00.000Z', '2026-10-18T13:20:00.000Z', 1200]])
                 const open = await pastSession('solo', [['2026-10-20T13:00:00.000Z', null, 0]])
-                expect((await read('study-stats')).body.data).toMatchObject({
-                    today_seconds: 12 * 60,
-                    counted_until: '2026-10-20T13:00:00.000Z'
-                })
+                const before = Date.now() - 1000
+                const told = (await read('study-stats')).body.data
+                expect(told).toMatchObject({ today_seconds: 12 * 60, counted_until: '2026-10-20T13:00:00.000Z' })
+                // When the two were read, by the database's clock (D-232).
+                expect(Date.parse(told.read_at)).toBeGreaterThan(before)
+                expect(Date.parse(told.read_at)).toBeLessThan(Date.now() + 1000)
                 await prisma.participation.updateMany({
                     where: { sessionId: open },
                     data: { leftAt: new Date('2026-10-20T13:30:00.000Z') }

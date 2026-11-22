@@ -1,5 +1,6 @@
 import { Cycle, FIRST_SOLO_CYCLE } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { StudyCountedEvent } from '../../events/study-counted.event'
 import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { EndSignedOutSoloCommand, StartSoloSessionCommand } from './solo-session.commands'
@@ -43,8 +44,10 @@ describe('StartSoloSessionHandler', () => {
             stretchStartedAt: NOW,
             serverTime: expect.any(Date)
         })
-        const [told] = world.published() as FocusSessionChangedEvent[]
+        const [told, opened] = world.published() as [FocusSessionChangedEvent, ParticipationOpenedEvent]
         expect(told).toMatchObject({ before: null, action: 'start', actorId: 'binh', after: { userId: 'binh' } })
+        // Where the Solo counts from, for their minutes today (D-232).
+        expect(opened).toEqual(new ParticipationOpenedEvent(['binh']))
     })
 
     it('starts with the cycle of their last Solo when sent none, 25/5 the first time (D-103)', async () => {
@@ -66,7 +69,7 @@ describe('StartSoloSessionHandler', () => {
         expect(await refusal(start('an'))).toBe('FOCUS_SESSION_ACTIVE')
         await start('binh')
         expect(await refusal(start('binh'))).toBe('FOCUS_SESSION_ACTIVE')
-        expect(world.published()).toHaveLength(1)
+        expect(world.published()).toHaveLength(2)
     })
 })
 

@@ -99,6 +99,15 @@ export class StudyStatsResponseDto {
     @IsDate()
     countedUntil: Date | null
 
+    /**
+     * When today_seconds and counted_until were read: of this and the
+     * `streak.updated` heard, the client keeps the later (D-232).
+     */
+    @ApiProperty({ type: Date })
+    @Expose()
+    @IsDate()
+    readAt: Date
+
     /** A week's 4-week grid, the 28 days up to its Sunday; null for a month. */
     @ApiProperty({ type: [StudyGridDayResponseDto], nullable: true })
     @Expose()

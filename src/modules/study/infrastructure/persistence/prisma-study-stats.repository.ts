@@ -48,7 +48,8 @@ export class PrismaStudyStatsRepository implements StudyStatsRepositoryPort {
     async todayOf(userId: string, today: LocalDate): Promise<StudyToday> {
         // One statement reads one snapshot, and a count writes DailyStudy and
         // countedUntil in one transaction: the two numbers belong to the same count.
-        const [row] = await this.prisma.$queryRaw<{ seconds: number; countedUntil: Date | null }[]>`
+        // statement_timestamp(): when this statement, so its snapshot, began (D-232).
+        const [row] = await this.prisma.$queryRaw<{ seconds: number; countedUntil: Date | null; readAt: Date }[]>`
             SELECT coalesce((
                        SELECT "focusedSeconds" FROM "DailyStudy"
                        WHERE "userId" = ${userId} AND "localDate" = ${today}::date
@@ -56,7 +57,8 @@ export class PrismaStudyStatsRepository implements StudyStatsRepositoryPort {
                    (
                        SELECT "countedUntil" FROM "Participation"
                        WHERE "userId" = ${userId} AND "leftAt" IS NULL
-                   ) AS "countedUntil"
+                   ) AS "countedUntil",
+                   statement_timestamp() AS "readAt"
         `
         return row
     }

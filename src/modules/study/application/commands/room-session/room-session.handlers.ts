@@ -12,6 +12,7 @@ import {
     StudyForbiddenError
 } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { askedCycle } from '../../services/asked-cycle'
 import { tellChange, zoneOf } from '../../services/change-session'
 import { endIfRoomGone } from '../../services/end-gone-rooms'
@@ -64,7 +65,7 @@ export class StartRoomSessionHandler implements ICommandHandler<StartRoomSession
                 (await this.voiceRooms.peopleIn(channelId)).map(async ({ userId: id }) => [id, await zone(id)] as const)
             )
         )
-        const { session, yielded } = await this.sessions.startInRoom(
+        const { session, participantIds, yielded } = await this.sessions.startInRoom(
             {
                 serverId: room.serverId,
                 channelId,
@@ -82,6 +83,8 @@ export class StartRoomSessionHandler implements ICommandHandler<StartRoomSession
         )
         for (const solo of yielded) tellChange(this.events, solo, 'end', null)
         this.events.publish(new FocusSessionChangedEvent(null, session, 'start', userId, null))
+        // Where each one present is counted from: their minutes today grow from now (D-232).
+        this.events.publish(new ParticipationOpenedEvent(participantIds))
         return sessionView(session, new Date())
     }
 }

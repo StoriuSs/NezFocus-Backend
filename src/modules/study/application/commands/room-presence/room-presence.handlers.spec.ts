@@ -1,4 +1,5 @@
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { RoomPresenceChangedEvent } from '../../events/room-presence-changed.event'
 import { NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { JoinStudyRoomCommand, LeaveStudyRoomCommand } from './room-presence.commands'
@@ -21,12 +22,12 @@ function setup() {
 const told = (world: ReturnType<typeof studyWorld>) => world.published().map((event) => event.constructor.name)
 
 describe('JoinStudyRoomHandler', () => {
-    it('makes one who comes into a room with a session take part, telling the room nothing', async () => {
+    it('makes one who comes into a room with a session take part, telling the room nothing, them where they count from (D-232)', async () => {
         const { world, join } = setup()
         world.put(roomSession(), ['an'])
         await join('binh')
         expect(world.participants.get('phien')).toEqual(['an', 'binh'])
-        expect(world.published()).toEqual([])
+        expect(world.published()).toEqual([new ParticipationOpenedEvent(['binh'])])
     })
 
     it('ends the Solo of one who comes into a room with a session, telling them, and they take part (D-103)', async () => {
@@ -36,7 +37,7 @@ describe('JoinStudyRoomHandler', () => {
         await join('binh')
         expect(world.sessions.get('solo')).toMatchObject({ status: 'ended', endedReason: 'joined_room' })
         expect(world.participants.get('phien')).toEqual(['an', 'binh'])
-        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent'])
+        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent', 'ParticipationOpenedEvent'])
         expect(world.published()[1]).toMatchObject({ action: 'end', after: { kind: 'solo' } })
         // Their zone read outside the transaction, only once a Solo is there to end.
         expect((world.repository.joinRoom as jest.Mock).mock.calls.map((call) => call[3])).toEqual([null, 'UTC'])
@@ -76,8 +77,12 @@ describe('JoinStudyRoomHandler', () => {
         expect(world.sessions.get('phien')).toMatchObject({ hostId: null, version: 0 })
         await join('chi', 'phong-thi')
         expect(world.sessions.get('phien')).toMatchObject({ hostId: 'chi', version: 1 })
-        expect(told(world)).toEqual(['FocusSessionChangedEvent'])
-        expect(world.published()[0]).toMatchObject({ action: 'host', actorId: null })
+        expect(told(world)).toEqual([
+            'ParticipationOpenedEvent',
+            'FocusSessionChangedEvent',
+            'ParticipationOpenedEvent'
+        ])
+        expect(world.published()[1]).toMatchObject({ action: 'host', actorId: null })
         expect(world.repository.joinRoom).toHaveBeenNthCalledWith(1, 'phong-thi', 'binh', null, null)
         expect(world.repository.joinRoom).toHaveBeenNthCalledWith(2, 'phong-thi', 'binh', false, null)
     })
@@ -100,7 +105,7 @@ describe('JoinStudyRoomHandler', () => {
         expect(world.participants.get('cu')).toEqual(['chi'])
         expect(world.sessions.get('cu')).toMatchObject({ hostId: 'chi', version: 1 })
         expect(world.participants.get('moi')).toEqual(['an', 'binh'])
-        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent'])
+        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent', 'ParticipationOpenedEvent'])
     })
 })
 

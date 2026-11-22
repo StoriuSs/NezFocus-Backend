@@ -1,5 +1,6 @@
 import { Cycle } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { EndGoneRoomSessionsCommand, StartRoomSessionCommand } from './room-session.commands'
 import { EndGoneRoomSessionsHandler, StartRoomSessionHandler } from './room-session.handlers'
@@ -46,9 +47,11 @@ describe('StartRoomSessionHandler', () => {
         })
         expect(view.serverTime).toBeInstanceOf(Date)
         expect(world.participants.get(view.id)).toEqual(['an', 'binh', 'phong'])
-        const [event] = world.published() as FocusSessionChangedEvent[]
+        const [event, opened] = world.published() as [FocusSessionChangedEvent, ParticipationOpenedEvent]
         expect(event).toBeInstanceOf(FocusSessionChangedEvent)
         expect(event).toMatchObject({ before: null, action: 'start', actorId: 'an' })
+        // Everyone present hears where they count from (D-232).
+        expect(opened).toEqual(new ParticipationOpenedEvent(['an', 'binh', 'phong']))
     })
 
     it('ends the Solo of one in the room as the session starts, telling them first, counted in their zone (D-103)', async () => {
@@ -61,7 +64,8 @@ describe('StartRoomSessionHandler', () => {
         expect(published.map((event) => event.constructor.name)).toEqual([
             'StudyCountedEvent',
             'FocusSessionChangedEvent',
-            'FocusSessionChangedEvent'
+            'FocusSessionChangedEvent',
+            'ParticipationOpenedEvent'
         ])
         expect(published[1]).toMatchObject({ action: 'end', actorId: null, after: { kind: 'solo', userId: 'binh' } })
         expect(published[2]).toMatchObject({ action: 'start', actorId: 'an' })

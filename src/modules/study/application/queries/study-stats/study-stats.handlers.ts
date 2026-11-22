@@ -69,6 +69,8 @@ export interface StudyStatsView {
      * the client adds the focus running after it to todaySeconds (D-224, D-231).
      */
     countedUntil: Date | null
+    /** When today's seconds and countedUntil were read: the client keeps the later read (D-232). */
+    readAt: Date
     /** A week's 4-week grid, the 28 days up to its Sunday (D-104); null for a month. */
     grid: { date: LocalDate; focusedSeconds: number }[] | null
     /**
@@ -142,6 +144,7 @@ export class GetStudyStatsHandler implements IQueryHandler<GetStudyStatsQuery> {
             streak: { current: shownStreak(streak, today), longest: streak.longest },
             todaySeconds: todayStudy.seconds,
             countedUntil: todayStudy.countedUntil,
+            readAt: todayStudy.readAt,
             grid:
                 grid &&
                 datesFrom(grid.start, grid.end).map((day) => ({

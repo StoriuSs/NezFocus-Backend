@@ -2,6 +2,7 @@ import { EventBus } from '@nestjs/cqrs'
 import { UserDirectoryPort } from '@/modules/users'
 import { awayCloseDue, FocusSessionRepositoryPort, MayHost, PresenceChange } from '../../domain'
 import { FocusSessionChangedEvent } from '../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../events/participation-opened.event'
 import { RoomPresenceChangedEvent } from '../events/room-presence-changed.event'
 import { StudyCountedEvent } from '../events/study-counted.event'
 import { tellChange, zoneOf } from './change-session'
@@ -63,6 +64,8 @@ export async function joinStudyRoom(sources: PresenceSources, channelId: string,
             case 'joined':
                 if (outcome.yielded) tellChange(events, outcome.yielded, 'end', null)
                 tellPresence(events, outcome.change)
+                // Where their participation is counted from, as they take part (D-232).
+                events.publish(new ParticipationOpenedEvent([userId]))
                 return true
             case 'ask':
                 may = await mayHost(channelId, userId)

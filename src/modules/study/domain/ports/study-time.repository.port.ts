@@ -1,6 +1,11 @@
 import type { StreakState } from '../streak.rules'
 
-/** What one count (chốt) of a participation did, for the summary and `streak.updated` (D-224). */
+/**
+ * What one count (chốt) of a participation did (D-224): the seconds for the
+ * summary (D-49), and the day and streak as the count wrote them. Its
+ * `streak.updated` does not take them: it reads them again after the commit
+ * (D-232), so that a count that closed the participation says so.
+ */
 export interface StudyCount {
     userId: string
     sessionId: string

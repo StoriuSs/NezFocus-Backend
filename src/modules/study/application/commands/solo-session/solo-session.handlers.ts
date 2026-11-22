@@ -11,6 +11,7 @@ import {
     stopMove
 } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { askedCycle } from '../../services/asked-cycle'
 import { changeSession } from '../../services/change-session'
 import { FocusSessionView, sessionView } from '../../services/session-views'
@@ -43,6 +44,8 @@ export class StartSoloSessionHandler implements ICommandHandler<StartSoloSession
             minuteMs: this.settings.minuteMs
         })
         this.events.publish(new FocusSessionChangedEvent(null, session, 'start', userId, null))
+        // Where the Solo is counted from: their minutes today grow from now (D-232).
+        this.events.publish(new ParticipationOpenedEvent([userId]))
         return sessionView(session, new Date())
     }
 }

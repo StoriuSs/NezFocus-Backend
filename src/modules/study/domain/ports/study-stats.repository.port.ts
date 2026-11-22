@@ -19,6 +19,8 @@ export interface StudyToday {
     seconds: number
     /** Where the count of the session they are in stands (room or Solo); null when in none. */
     countedUntil: Date | null
+    /** When the two were read, by the database's clock: of two reads, the client keeps the later (D-232). */
+    readAt: Date
 }
 
 /** Everything a person has studied. */
