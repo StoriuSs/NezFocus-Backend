@@ -10,6 +10,17 @@ export interface DayStudy {
     soloSeconds: number
 }
 
+/**
+ * Today as counted (D-224, D-231): the client adds the focus running after
+ * `countedUntil` to `seconds`, so both belong to the same count.
+ */
+export interface StudyToday {
+    /** Their focused seconds today. */
+    seconds: number
+    /** Where the count of the session they are in stands (room or Solo); null when in none. */
+    countedUntil: Date | null
+}
+
 /** Everything a person has studied. */
 export interface StudyLifetime {
     totalSeconds: number
@@ -55,6 +66,9 @@ export interface HistoryCursor {
 export interface StudyStatsRepositoryPort {
     /** The person's days from `from` to `to`, both in, that have a row, in order. */
     daysOf(userId: string, from: LocalDate, to: LocalDate): Promise<DayStudy[]>
+
+    /** Their seconds of `today` and the count of their open participation, in one read. */
+    todayOf(userId: string, today: LocalDate): Promise<StudyToday>
 
     /** Their focused seconds from `from` to `to`, both in. */
     secondsBetween(userId: string, from: LocalDate, to: LocalDate): Promise<number>

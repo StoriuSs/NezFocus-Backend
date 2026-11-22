@@ -1843,9 +1843,26 @@ describe('Study sessions (integration)', () => {
                     view: 'week',
                     total_seconds: 0,
                     first_date: null,
-                    previous_seconds: null
+                    previous_seconds: null,
+                    counted_until: null
                 })
                 expect(stats.streak).toEqual({ current: 0, longest: 0 })
+            })
+
+            it('gives where the count of the session Phong is in stands, and none once he left it (D-231)', async () => {
+                const today = localDateOf(new Date(), 'Asia/Ho_Chi_Minh')
+                await days([[today, 0, 12]])
+                await pastSession('solo', [['2026-10-18T13:00:00.000Z', '2026-10-18T13:20:00.000Z', 1200]])
+                const open = await pastSession('solo', [['2026-10-20T13:00:00.000Z', null, 0]])
+                expect((await read('study-stats')).body.data).toMatchObject({
+                    today_seconds: 12 * 60,
+                    counted_until: '2026-10-20T13:00:00.000Z'
+                })
+                await prisma.participation.updateMany({
+                    where: { sessionId: open },
+                    data: { leftAt: new Date('2026-10-20T13:30:00.000Z') }
+                })
+                expect((await read('study-stats')).body.data.counted_until).toBeNull()
             })
 
             it('refuses a view or a day that is none', async () => {

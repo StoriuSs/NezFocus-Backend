@@ -10292,6 +10292,12 @@
             "nullable": true,
             "description": "The first day with a second counted (\"‹\" stops at its period); null: never studied (the empty page)."
           },
+          "counted_until": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Where the count of the session one is in stands (room or Solo), null\nwhen in none: the client adds the focus running after it to\ntoday_seconds (D-224, D-231)."
+          },
           "grid": {
             "nullable": true,
             "description": "A week's 4-week grid, the 28 days up to its Sunday; null for a month.",
@@ -10353,6 +10359,7 @@
           "previous_seconds",
           "previous_period_seconds",
           "first_date",
+          "counted_until",
           "grid",
           "best_other_week_seconds",
           "view",

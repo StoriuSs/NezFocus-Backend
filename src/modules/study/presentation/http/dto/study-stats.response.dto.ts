@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { Expose, Type } from 'class-transformer'
-import { IsArray, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { IsArray, IsDate, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { StudyDayResponseDto } from './study-day.response.dto'
 import { StudyGridDayResponseDto } from './study-grid-day.response.dto'
 import { StudyPeriodResponseDto } from './study-period.response.dto'
@@ -87,6 +87,17 @@ export class StudyStatsResponseDto {
     @Expose()
     @IsInt()
     todaySeconds: number
+
+    /**
+     * Where the count of the session one is in stands (room or Solo), null
+     * when in none: the client adds the focus running after it to
+     * today_seconds (D-224, D-231).
+     */
+    @ApiProperty({ type: Date, nullable: true })
+    @Expose()
+    @IsOptional()
+    @IsDate()
+    countedUntil: Date | null
 
     /** A week's 4-week grid, the 28 days up to its Sunday; null for a month. */
     @ApiProperty({ type: [StudyGridDayResponseDto], nullable: true })

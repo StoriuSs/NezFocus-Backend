@@ -10,7 +10,8 @@ import {
     SessionKind,
     StreakState,
     StudyLifetime,
-    StudyStatsRepositoryPort
+    StudyStatsRepositoryPort,
+    StudyToday
 } from '../../domain'
 import { fromDateColumn, readStreak, toDateColumn } from './study-counts'
 
@@ -42,6 +43,22 @@ export class PrismaStudyStatsRepository implements StudyStatsRepositoryPort {
             orderBy: { localDate: 'asc' }
         })
         return rows.map(({ localDate, ...seconds }) => ({ date: fromDateColumn(localDate), ...seconds }))
+    }
+
+    async todayOf(userId: string, today: LocalDate): Promise<StudyToday> {
+        // One statement reads one snapshot, and a count writes DailyStudy and
+        // countedUntil in one transaction: the two numbers belong to the same count.
+        const [row] = await this.prisma.$queryRaw<{ seconds: number; countedUntil: Date | null }[]>`
+            SELECT coalesce((
+                       SELECT "focusedSeconds" FROM "DailyStudy"
+                       WHERE "userId" = ${userId} AND "localDate" = ${today}::date
+                   ), 0)::int AS "seconds",
+                   (
+                       SELECT "countedUntil" FROM "Participation"
+                       WHERE "userId" = ${userId} AND "leftAt" IS NULL
+                   ) AS "countedUntil"
+        `
+        return row
     }
 
     async secondsBetween(userId: string, from: LocalDate, to: LocalDate): Promise<number> {

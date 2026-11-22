@@ -64,6 +64,11 @@ export interface StudyStatsView {
     /** The streak to show today (REQ-STUDY-07) and the longest. */
     streak: { current: number; longest: number }
     todaySeconds: number
+    /**
+     * Where the count of the session one is in stands, null when in none:
+     * the client adds the focus running after it to todaySeconds (D-224, D-231).
+     */
+    countedUntil: Date | null
     /** A week's 4-week grid, the 28 days up to its Sunday (D-104); null for a month. */
     grid: { date: LocalDate; focusedSeconds: number }[] | null
     /**
@@ -102,9 +107,9 @@ export class GetStudyStatsHandler implements IQueryHandler<GetStudyStatsQuery> {
         const grid = view === 'week' ? gridOf(period) : null
         const compared = comparedDays(period, today)
         const before = previousPeriod(period)
-        const [rows, todayRows, lifetime, streak, previous, previousWhole, bestOther] = await Promise.all([
+        const [rows, todayStudy, lifetime, streak, previous, previousWhole, bestOther] = await Promise.all([
             this.stats.daysOf(userId, grid?.start ?? period.start, period.end),
-            this.stats.daysOf(userId, today, today),
+            this.stats.todayOf(userId, today),
             this.stats.lifetimeOf(userId),
             this.stats.streakOf(userId),
             compared ? this.stats.secondsBetween(userId, compared.start, compared.end) : null,
@@ -135,7 +140,8 @@ export class GetStudyStatsHandler implements IQueryHandler<GetStudyStatsQuery> {
             allTimeSeconds: lifetime.totalSeconds,
             firstDate,
             streak: { current: shownStreak(streak, today), longest: streak.longest },
-            todaySeconds: todayRows[0]?.focusedSeconds ?? 0,
+            todaySeconds: todayStudy.seconds,
+            countedUntil: todayStudy.countedUntil,
             grid:
                 grid &&
                 datesFrom(grid.start, grid.end).map((day) => ({

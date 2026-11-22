@@ -46,7 +46,12 @@ const WORLD_A: DayStudy[] = [
 ]
 
 /** DailyStudy and the history as the repository would read them, in memory. */
-function statsOf(days: DayStudy[], lines: HistoryRow[] = [], streak: StreakState = NO_STREAK) {
+function statsOf(
+    days: DayStudy[],
+    lines: HistoryRow[] = [],
+    streak: StreakState = NO_STREAK,
+    countedUntil: Date | null = null
+) {
     const within = (from: string, to: string) => days.filter((one) => one.date >= from && one.date <= to)
     const inWindow = (line: HistoryRow, window: HistoryWindow) =>
         line.firstJoinedAt >= window.from && line.firstJoinedAt < window.to
@@ -57,6 +62,10 @@ function statsOf(days: DayStudy[], lines: HistoryRow[] = [], streak: StreakState
     }
     const port: StudyStatsRepositoryPort = {
         daysOf: jest.fn(async (_userId: string, from: string, to: string) => within(from, to)),
+        todayOf: jest.fn(async (_userId: string, today: string) => ({
+            seconds: within(today, today)[0]?.focusedSeconds ?? 0,
+            countedUntil
+        })),
         secondsBetween: jest.fn(async (_userId: string, from: string, to: string) =>
             within(from, to).reduce((total, one) => total + one.focusedSeconds, 0)
         ),
@@ -124,7 +133,17 @@ describe('GetStudyStatsHandler', () => {
         expect(Math.floor(stats.averageSeconds / 60)).toBe(39)
         expect(stats.streak).toEqual({ current: 6, longest: 14 })
         expect(stats.todaySeconds / 60).toBe(45)
+        expect(stats.countedUntil).toBeNull()
         expect(stats.firstDate).toBe('2026-09-14')
+    })
+
+    it('gives where the count of the session one is in stands, read with today’s seconds, for the client to add what runs after it (D-231)', async () => {
+        const countedUntil = new Date('2026-10-18T14:40:00.000Z')
+        const stats = statsOf(WORLD_A, [], NO_STREAK, countedUntil)
+        const shown = await run(stats, 'month', '2026-09-03')
+        expect(stats.todayOf).toHaveBeenCalledWith('an', '2026-10-18')
+        expect(shown.todaySeconds / 60).toBe(45)
+        expect(shown.countedUntil).toEqual(countedUntil)
     })
 
     it('reads the day in the zone of one’s settings: An’s Sunday is still Saturday in UTC', async () => {
