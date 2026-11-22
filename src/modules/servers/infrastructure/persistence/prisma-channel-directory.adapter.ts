@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { ChannelDirectoryPort, StudyRoomSettings } from '../../application/ports'
+import { ChannelDirectoryPort, PlaceNames, StudyRoomSettings } from '../../application/ports'
 
 /** ChannelDirectoryPort, answered from the Channel table (its primary key). */
 @Injectable()
@@ -44,5 +44,26 @@ export class PrismaChannelDirectory implements ChannelDirectoryPort {
                 longBreakEvery: row.studyLongBreakEvery
             }
         )
+    }
+
+    async namesOf(serverIds: string[], channelIds: string[]): Promise<PlaceNames> {
+        const [servers, channels] = await Promise.all([
+            serverIds.length === 0
+                ? []
+                : this.prisma.server.findMany({
+                      where: { id: { in: serverIds }, deletedAt: null },
+                      select: { id: true, name: true }
+                  }),
+            channelIds.length === 0
+                ? []
+                : this.prisma.channel.findMany({
+                      where: { id: { in: channelIds }, server: { deletedAt: null } },
+                      select: { id: true, name: true }
+                  })
+        ])
+        return {
+            servers: new Map(servers.map((row) => [row.id, row.name])),
+            channels: new Map(channels.map((row) => [row.id, row.name]))
+        }
     }
 }

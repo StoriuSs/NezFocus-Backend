@@ -84,7 +84,8 @@ function world(roles: RoleDirectoryPort = { rolesOf: jest.fn(async () => []) }) 
         serverIdOf: jest.fn().mockResolvedValue('ot'),
         channelIdsOf: async () => [],
 
-        studyRoomOf: async () => null
+        studyRoomOf: async () => null,
+        namesOf: async () => ({ servers: new Map(), channels: new Map() })
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => ({

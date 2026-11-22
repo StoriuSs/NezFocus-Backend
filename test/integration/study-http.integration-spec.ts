@@ -29,8 +29,8 @@ import { testClientIp } from './targets'
  * D-225). The tables of M5 L1 and what the database itself refuses, the
  * counting of the seconds studied (L2), Room Sessions started, controlled
  * and moved by their phase jobs (L3a), who joins and leaves them, their
- * Host, an empty room and a room gone (L3b), and the Solo, which yields to a
- * Room Session (L4a).
+ * Host, an empty room and a room gone (L3b), the Solo, which yields to a
+ * Room Session (L4a), and the Stats page's reads (L4b).
  *
  * Requires Postgres, Redis, Mailpit and LiveKit: `pnpm test:services:up`,
  * then `pnpm test:integration`.
@@ -1687,6 +1687,335 @@ describe('Study sessions (integration)', () => {
                 expect((await post('auth/account/delete', { password: PASSWORD }, accessToken)).status).toBe(200)
                 await until(async () => (await row(soloId)).status === 'ended')
                 expect(await row(soloId)).toMatchObject({ endedReason: 'signed_out' })
+            })
+        })
+
+        describe('the Stats page (GET /me/study-stats, GET /me/study-sessions, D-105, D-229, D-230)', () => {
+            // Phong, in Asia/Ho_Chi_Minh (completeAccount). Days and sessions of October 2026, all gone by.
+            const me = () => people.phong.id
+            const read = (path: string) => as('phong', api().get(`/api/v1/me/${path}`))
+            const seeded: string[] = []
+
+            const days = (rows: [date: string, roomMinutes: number, soloMinutes: number][]) =>
+                prisma.dailyStudy.createMany({
+                    data: rows.map(([date, room, solo]) => ({
+                        userId: me(),
+                        localDate: new Date(`${date}T00:00:00.000Z`),
+                        roomSeconds: room * 60,
+                        soloSeconds: solo * 60,
+                        focusedSeconds: (room + solo) * 60
+                    }))
+                })
+
+            /** A session gone by with Phong's joins in it: [joined, left, seconds counted]. */
+            async function pastSession(
+                place: { serverId: string; channelId: string } | 'solo',
+                joins: [joinedAt: string, leftAt: string | null, seconds: number][]
+            ): Promise<string> {
+                const first = new Date(joins[0][0])
+                const session = await prisma.focusSession.create({
+                    data: {
+                        kind: place === 'solo' ? 'solo' : 'room',
+                        serverId: place === 'solo' ? null : place.serverId,
+                        channelId: place === 'solo' ? null : place.channelId,
+                        userId: place === 'solo' ? me() : null,
+                        focusMinutes: 25,
+                        shortBreakMinutes: 5,
+                        status: 'ended',
+                        phase: 'focus',
+                        phaseIndex: 0,
+                        phaseStartedAt: first,
+                        startedAt: first,
+                        endedAt: new Date(joins.at(-1)![1] ?? joins.at(-1)![0]),
+                        endedReason: 'stopped'
+                    }
+                })
+                seeded.push(session.id)
+                await prisma.participation.createMany({
+                    data: joins.map(([joinedAt, leftAt, seconds]) => ({
+                        sessionId: session.id,
+                        userId: me(),
+                        joinedAt: new Date(joinedAt),
+                        leftAt: leftAt === null ? null : new Date(leftAt),
+                        countedUntil: new Date(leftAt ?? joinedAt),
+                        seconds
+                    }))
+                })
+                return session.id
+            }
+
+            async function clear() {
+                await prisma.focusSession.deleteMany({ where: { id: { in: seeded.splice(0) } } })
+                await prisma.dailyStudy.deleteMany({ where: { userId: me() } })
+                await prisma.streak.deleteMany({ where: { userId: me() } })
+            }
+            beforeEach(clear)
+            afterEach(clear)
+
+            it('gives a week gone by from DailyStudy: every day, the split, the week before, the grid, the best other week', async () => {
+                const today = localDateOf(new Date(), 'Asia/Ho_Chi_Minh')
+                await days([
+                    ['2026-09-07', 0, 0], // a row with nothing counted: not a day with seconds
+                    ['2026-09-14', 10, 0], // the first day with seconds
+                    ['2026-10-05', 20, 0],
+                    ['2026-10-11', 0, 40], // a Sunday: the week of Monday 05/10
+                    ['2026-10-13', 50, 0],
+                    ['2026-10-14', 0, 40],
+                    ['2026-10-18', 31, 14],
+                    [today, 0, 7]
+                ])
+                await prisma.streak.create({
+                    data: {
+                        userId: me(),
+                        current: 2,
+                        longest: 5,
+                        lastQualifiedDate: new Date(`${today}T00:00:00.000Z`)
+                    }
+                })
+
+                const res = await read('study-stats?view=week&date=2026-10-14')
+                expect(res.status).toBe(200)
+                const stats = res.body.data
+                expect(stats).toMatchObject({
+                    view: 'week',
+                    today,
+                    period: { start: '2026-10-12', end: '2026-10-18' },
+                    total_seconds: 135 * 60,
+                    room_seconds: 81 * 60,
+                    solo_seconds: 54 * 60,
+                    previous_seconds: 60 * 60,
+                    previous_period_seconds: 60 * 60,
+                    average_seconds: Math.floor((135 * 60) / 7),
+                    all_time_seconds: 212 * 60,
+                    first_date: '2026-09-14',
+                    streak: { current: 2, longest: 5 },
+                    today_seconds: 7 * 60,
+                    best_other_week_seconds: 60 * 60
+                })
+                expect(stats.days).toHaveLength(7)
+                expect(stats.days[0]).toEqual({
+                    date: '2026-10-12',
+                    focused_seconds: 0,
+                    room_seconds: 0,
+                    solo_seconds: 0
+                })
+                expect(stats.days[6]).toEqual({
+                    date: '2026-10-18',
+                    focused_seconds: 45 * 60,
+                    room_seconds: 31 * 60,
+                    solo_seconds: 14 * 60
+                })
+                expect(stats.grid).toHaveLength(28)
+                expect(stats.grid[0]).toEqual({ date: '2026-09-21', focused_seconds: 0 })
+                expect(stats.grid.find((one: { date: string }) => one.date === '2026-10-11').focused_seconds).toBe(
+                    40 * 60
+                )
+            })
+
+            it('gives a month, with no grid and no best week; the first period with seconds compares with nothing', async () => {
+                await days([
+                    ['2026-09-14', 10, 0],
+                    ['2026-10-05', 20, 0],
+                    ['2026-10-13', 50, 0]
+                ])
+                const month = (await read('study-stats?view=month&date=2026-10-20')).body.data
+                expect(month).toMatchObject({
+                    period: { start: '2026-10-01', end: '2026-10-31' },
+                    total_seconds: 70 * 60,
+                    previous_seconds: 10 * 60,
+                    previous_period_seconds: 10 * 60,
+                    grid: null,
+                    best_other_week_seconds: null
+                })
+                expect(month.days).toHaveLength(31)
+                const first = (await read('study-stats?view=week&date=2026-09-16')).body.data
+                expect([first.previous_seconds, first.previous_period_seconds, first.best_other_week_seconds]).toEqual([
+                    null,
+                    null,
+                    null
+                ])
+            })
+
+            it('starts from this week in one’s zone, and gives a new account nothing', async () => {
+                const stats = (await read('study-stats')).body.data
+                expect(stats.period.start <= stats.today && stats.today <= stats.period.end).toBe(true)
+                expect(stats).toMatchObject({
+                    view: 'week',
+                    total_seconds: 0,
+                    first_date: null,
+                    previous_seconds: null
+                })
+                expect(stats.streak).toEqual({ current: 0, longest: 0 })
+            })
+
+            it('refuses a view or a day that is none', async () => {
+                for (const query of [
+                    'view=year',
+                    'date=2026-02-30',
+                    'date=18/10/2026',
+                    'date=9999-12-31',
+                    'cursor=abc'
+                ]) {
+                    const res = await read(`study-sessions?${query}`)
+                    expect([query, res.status, res.body.meta?.type]).toEqual([query, 422, 'VALIDATION_ERROR'])
+                }
+            })
+
+            it('gives each session of the week once, the latest first join first, its room named as Phong may know it (D-230)', async () => {
+                const inRoom = { serverId, channelId: room }
+                const doomed = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({
+                        type: 'voice',
+                        name: 'Phòng sắp xóa',
+                        is_study_room: true,
+                        is_private: false,
+                        view_role_ids: []
+                    })
+                const hidden = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({
+                        type: 'voice',
+                        name: 'Phòng riêng',
+                        is_study_room: true,
+                        is_private: true,
+                        view_role_ids: []
+                    })
+
+                const twice = await pastSession(inRoom, [
+                    ['2026-10-13T20:00:00+07:00', '2026-10-13T20:30:00+07:00', 1500],
+                    ['2026-10-13T20:40:00+07:00', '2026-10-13T21:00:00+07:00', 1200]
+                ])
+                const alone = await pastSession('solo', [
+                    ['2026-10-14T19:00:00+07:00', '2026-10-14T19:40:00+07:00', 2400]
+                ])
+                await pastSession(inRoom, [['2026-10-15T20:00:00+07:00', '2026-10-15T20:03:00+07:00', 0]]) // nothing counted
+                const deleted = await pastSession({ serverId, channelId: doomed.body.data.id }, [
+                    ['2026-10-16T20:00:00+07:00', '2026-10-16T20:30:00+07:00', 1500]
+                ])
+                const unseen = await pastSession({ serverId, channelId: hidden.body.data.id }, [
+                    ['2026-10-17T20:00:00+07:00', '2026-10-17T20:30:00+07:00', 1500]
+                ])
+                const gone = await pastSession({ serverId: randomUUID(), channelId: randomUUID() }, [
+                    ['2026-10-18T20:00:00+07:00', '2026-10-18T20:30:00+07:00', 1500]
+                ])
+                // Sunday 23:30 of the week before, back on Monday: a line of that week only.
+                const acrossMidnight = await pastSession(inRoom, [
+                    ['2026-10-11T23:30:00+07:00', '2026-10-11T23:50:00+07:00', 1200],
+                    ['2026-10-12T00:30:00+07:00', '2026-10-12T00:40:00+07:00', 600]
+                ])
+                await as('an', api().delete(`/api/v1/servers/${serverId}/channels/${doomed.body.data.id}`))
+
+                const res = await read('study-sessions?view=week&date=2026-10-14')
+                expect(res.status).toBe(200)
+                const lines = res.body.data.items
+                expect(lines.map((line: { session_id: string }) => line.session_id)).toEqual([
+                    gone,
+                    unseen,
+                    deleted,
+                    alone,
+                    twice
+                ])
+                expect(
+                    lines.map((line: Record<string, unknown>) => [line.room_name, line.room_deleted, line.server_name])
+                ).toEqual([
+                    [null, false, null],
+                    [null, false, 'Nhóm ôn thi'],
+                    [null, true, 'Nhóm ôn thi'],
+                    [null, false, null],
+                    ['Phòng học im lặng', false, 'Nhóm ôn thi']
+                ])
+                expect(lines[4]).toMatchObject({
+                    kind: 'room',
+                    first_joined_at: '2026-10-13T13:00:00.000Z',
+                    last_left_at: '2026-10-13T14:00:00.000Z',
+                    seconds: 2700,
+                    join_count: 2
+                })
+                expect(lines[3]).toMatchObject({ kind: 'solo', seconds: 2400, join_count: 1 })
+                expect(res.body.data.has_more).toBe(false)
+
+                const before = (await read('study-sessions?view=week&date=2026-10-08')).body.data.items
+                expect(before.map((line: { session_id: string }) => line.session_id)).toEqual([acrossMidnight])
+                expect(before[0]).toMatchObject({ seconds: 1800, join_count: 2 })
+            })
+
+            it('pages 20 lines at a time after the last line’s session, two with the same first join kept apart by id', async () => {
+                const made: string[] = []
+                for (let i = 0; i < 22; i++) {
+                    // Lines 20 and 21 (the 2 oldest) start at the same second.
+                    const at = new Date(Date.parse('2026-10-20T01:00:00.000Z') + Math.max(i, 1) * 600_000)
+                    const left = new Date(at.getTime() + 300_000)
+                    made.push(await pastSession('solo', [[at.toISOString(), left.toISOString(), 300]]))
+                }
+                const newestFirst = [...made].reverse()
+                // The two oldest share their first join: the greater id comes first.
+                newestFirst.splice(20, 2, ...[made[0], made[1]].sort().reverse())
+
+                const first = (await read('study-sessions?date=2026-10-21')).body.data
+                expect(first.items.map((line: { session_id: string }) => line.session_id)).toEqual(
+                    newestFirst.slice(0, 20)
+                )
+                expect(first.has_more).toBe(true)
+                const second = (await read(`study-sessions?date=2026-10-21&cursor=${first.items[19].session_id}`)).body
+                    .data
+                expect(second.items.map((line: { session_id: string }) => line.session_id)).toEqual(
+                    newestFirst.slice(20)
+                )
+                expect(second.has_more).toBe(false)
+                const middle = (await read(`study-sessions?date=2026-10-21&cursor=${newestFirst[20]}`)).body.data
+                expect(middle.items.map((line: { session_id: string }) => line.session_id)).toEqual([newestFirst[21]])
+
+                const stale = await read(`study-sessions?date=2026-10-21&cursor=${randomUUID()}`)
+                expect([stale.status, stale.body.meta?.type]).toEqual([409, 'CONFLICT_ERROR'])
+            })
+
+            it('gives the session one is in once, first, its joins added, even with seconds counted', async () => {
+                const other = await pastSession('solo', [
+                    ['2026-10-14T19:00:00+07:00', '2026-10-14T19:40:00+07:00', 2400]
+                ])
+                const inIt = await pastSession({ serverId, channelId: room }, [
+                    ['2026-10-14T18:00:00+07:00', '2026-10-14T18:30:00+07:00', 1500],
+                    ['2026-10-14T20:00:00+07:00', null, 600]
+                ])
+                const lines = (await read('study-sessions?date=2026-10-14')).body.data.items
+                expect(lines.map((line: { session_id: string }) => line.session_id)).toEqual([inIt, other])
+                expect(lines[0]).toMatchObject({ last_left_at: null, seconds: 2100, join_count: 2 })
+            })
+
+            it('gives the session one is in only in the week of one’s first join: Sunday 23:50 is the week before', async () => {
+                const inIt = await pastSession({ serverId, channelId: room }, [
+                    ['2026-10-11T23:50:00+07:00', null, 600]
+                ])
+                const ids = async (date: string) =>
+                    (await read(`study-sessions?date=${date}`)).body.data.items.map(
+                        (line: { session_id: string }) => line.session_id
+                    )
+                expect(await ids('2026-10-14')).toEqual([])
+                expect(await ids('2026-10-08')).toEqual([inIt])
+            })
+
+            it('puts the session one is in first, with no second yet, only on the first page', async () => {
+                const past = await pastSession('solo', [
+                    ['2026-10-14T19:00:00+07:00', '2026-10-14T19:40:00+07:00', 2400]
+                ])
+                const started = await as('phong', api().post('/api/v1/me/solo-session'))
+                    .set('Idempotency-Key', randomUUID())
+                    .send({})
+                expect(started.status).toBe(201)
+                const lines = (await read('study-sessions')).body.data.items
+                expect(lines[0]).toMatchObject({
+                    session_id: started.body.data.id,
+                    kind: 'solo',
+                    last_left_at: null,
+                    seconds: 0,
+                    join_count: 1
+                })
+                const later = (await read(`study-sessions?cursor=${past}`)).body.data.items
+                expect(later.map((line: { session_id: string }) => line.session_id)).not.toContain(started.body.data.id)
+                // Not in a week other than the one of its first join.
+                const october = (await read('study-sessions?date=2026-10-14')).body.data.items
+                expect(october.map((line: { session_id: string }) => line.session_id)).toEqual([past])
             })
         })
 

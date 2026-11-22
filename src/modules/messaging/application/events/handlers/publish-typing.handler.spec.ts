@@ -34,7 +34,8 @@ function world(options: { limited?: boolean; counterDown?: boolean } = {}) {
     const channels: ChannelDirectoryPort = {
         serverIdOf: async () => 'ot',
         channelIdsOf: async () => [],
-        studyRoomOf: async () => null
+        studyRoomOf: async () => null,
+        namesOf: async () => ({ servers: new Map(), channels: new Map() })
     }
     const checker: PermissionCheckerPort = {
         access: async (_serverId, userId) => {

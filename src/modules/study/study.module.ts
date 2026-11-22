@@ -26,12 +26,14 @@ import {
     SOLO_SESSION_COMMAND_HANDLERS,
     SOLO_SESSION_QUERY_HANDLERS,
     STUDY_SETTINGS,
+    STUDY_STATS_QUERY_HANDLERS,
     StudySettings
 } from './application'
-import { FOCUS_SESSION_REPOSITORY, STUDY_TIME_REPOSITORY } from './domain'
+import { FOCUS_SESSION_REPOSITORY, STUDY_STATS_REPOSITORY, STUDY_TIME_REPOSITORY } from './domain'
 import {
     BullMqSessionJobs,
     PrismaFocusSessionRepository,
+    PrismaStudyStatsRepository,
     PrismaStudyTimeRepository,
     QueryBusRoomSessions
 } from './infrastructure'
@@ -73,6 +75,7 @@ import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from '.
     providers: [
         { provide: STUDY_TIME_REPOSITORY, useClass: PrismaStudyTimeRepository },
         { provide: FOCUS_SESSION_REPOSITORY, useClass: PrismaFocusSessionRepository },
+        { provide: STUDY_STATS_REPOSITORY, useClass: PrismaStudyStatsRepository },
         { provide: SESSION_JOBS, useClass: BullMqSessionJobs },
         ...ROOM_SESSION_COMMAND_HANDLERS,
         ...ROOM_PRESENCE_COMMAND_HANDLERS,
@@ -81,6 +84,7 @@ import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from '.
         ...SOLO_SESSION_COMMAND_HANDLERS,
         ...ROOM_SESSION_QUERY_HANDLERS,
         ...SOLO_SESSION_QUERY_HANDLERS,
+        ...STUDY_STATS_QUERY_HANDLERS,
         PublishStreakUpdatedHandler,
         PublishFocusSessionHandler,
         SchedulePhaseEndHandler,

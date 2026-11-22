@@ -653,7 +653,12 @@ when its wait is not taken up, by the same phase job; its person hears
 `solo_session.updated`. Becoming a participant of a Room Session ends it in
 the same transaction (`joined_room`, D-103), and auth's `SignedOutEvent`
 (the Đăng xuất button only) or `AccountDeletionRequestedEvent` ends it too
-(`signed_out`, D-229).
+(`signed_out`, D-229). Since L4b, the Stats page (`queries/study-stats`,
+`STUDY_STATS_REPOSITORY`): `GET /me/study-stats` gives every number of a week
+or month from DailyStudy (the days, the period before, the 4-week grid, the
+best other week, the streak), and `GET /me/study-sessions` one's sessions of
+it, 20 a page after the last line's session, each room named as one may know
+it now through servers' `CHANNEL_DIRECTORY` (D-230).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

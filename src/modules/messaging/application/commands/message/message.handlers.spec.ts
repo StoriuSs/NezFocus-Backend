@@ -232,7 +232,8 @@ function world({ limited = false } = {}) {
         serverIdOf: jest.fn(async (id) => (CHANNELS.includes(id) ? 'ot' : null)),
         channelIdsOf: async () => [],
 
-        studyRoomOf: async () => null
+        studyRoomOf: async () => null,
+        namesOf: async () => ({ servers: new Map(), channels: new Map() })
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (_serverId: string, userId: string) => {

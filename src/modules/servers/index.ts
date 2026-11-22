@@ -18,10 +18,12 @@ export {
 } from './application/ports/membership.port'
 // Presence for the member list and invites: answered by realtime (D-160 pattern).
 export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from './application/ports/presence-reader.port'
-// Which server a channel is in, for the messaging module's permission checks; a server's channels, for realtime's rooms.
+// Which server a channel is in, for the messaging module's permission checks; a server's channels, for realtime's rooms;
+// the names of rooms and servers, for study's history (D-230).
 export {
     CHANNEL_DIRECTORY,
     type ChannelDirectoryPort,
+    type PlaceNames,
     type StudyRoomSettings
 } from './application/ports/channel-directory.port'
 // The roles a message mentions: whether each may be, and their names (D-171).

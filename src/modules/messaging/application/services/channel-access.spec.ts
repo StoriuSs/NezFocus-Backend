@@ -54,7 +54,8 @@ function world() {
         serverIdOf: jest.fn(async (id: string) => (server.channels.some((channel) => channel.id === id) ? 'ot' : null)),
         channelIdsOf: async () => [],
 
-        studyRoomOf: async () => null
+        studyRoomOf: async () => null,
+        namesOf: async () => ({ servers: new Map(), channels: new Map() })
     }
     const members: Record<string, { roleIds: string[]; timeoutUntil: Date | null }> = {
         an: { roleIds: [], timeoutUntil: LATER },

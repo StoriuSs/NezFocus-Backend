@@ -20,6 +20,8 @@ export * from './queries/room-session/room-session.queries'
 export * from './queries/room-session/room-session.handlers'
 export * from './queries/solo-session/solo-session.queries'
 export * from './queries/solo-session/solo-session.handlers'
+export * from './queries/study-stats/study-stats.queries'
+export * from './queries/study-stats/study-stats.handlers'
 
 // Services
 export * from './services/session-views'

@@ -11,6 +11,14 @@ export interface StudyRoomSettings {
     longBreakEvery: number | null
 }
 
+/** Names of servers and channels, for a line that names where something was (D-230). */
+export interface PlaceNames {
+    /** Each server asked for that is not deleted, by id. */
+    servers: Map<string, string>
+    /** Each channel asked for that is still there, in a server not deleted, by id. */
+    channels: Map<string, string>
+}
+
 /**
  * Channel Directory Port — what the servers module tells other modules about
  * where a channel is. The messaging module asks it on every message route,
@@ -40,6 +48,13 @@ export interface ChannelDirectoryPort {
      * PERMISSION_CHECKER's to answer.
      */
     studyRoomOf(channelId: string): Promise<StudyRoomSettings | null>
+
+    /**
+     * The names of these servers and channels: study's history of sessions
+     * names the room and server of each line (D-230). Whether the person may
+     * see them is PERMISSION_CHECKER's to answer; one deleted is left out.
+     */
+    namesOf(serverIds: string[], channelIds: string[]): Promise<PlaceNames>
 }
 
 export const CHANNEL_DIRECTORY = Symbol('ChannelDirectoryPort')

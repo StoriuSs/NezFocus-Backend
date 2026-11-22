@@ -165,7 +165,8 @@ async function lockedStreak(tx: Tx, userId: string): Promise<StreakState> {
     return toStreak(row)
 }
 
-const readStreak = async (tx: Tx, userId: string): Promise<StreakState> =>
+/** The streak as stored, read without a lock: in a count, or for the Stats page. */
+export const readStreak = async (tx: Tx | PrismaService, userId: string): Promise<StreakState> =>
     toStreak(
         await tx.streak.findUnique({
             where: { userId },

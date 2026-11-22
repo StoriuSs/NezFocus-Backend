@@ -78,6 +78,17 @@ const ROOMS: Record<string, StudyRoomSettings> = {
     'bi-mat': study('anyone')
 }
 
+/** The names CHANNEL_DIRECTORY knows: a room deleted, or a server deleted, is not here (D-230). */
+const SERVER_NAMES: Record<string, string> = { ot: 'Ôn thi Giải tích 2' }
+const ROOM_NAMES: Record<string, string> = {
+    'phong-hoc': 'Phòng học im lặng',
+    'phong-thi': 'Phòng thi thử',
+    'tan-gau': 'Tán gẫu',
+    'bi-mat': 'Phòng bí mật'
+}
+const named = (ids: string[], names: Record<string, string>) =>
+    new Map(ids.filter((id) => names[id] !== undefined).map((id) => [id, names[id]]))
+
 /** A Room Session of `channelId` started at NOW by An, 25/5, running its first focus phase. */
 export function roomSession(shape: Partial<FocusSession> = {}): FocusSession {
     const cycle = { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: null, longBreakEvery: null }
@@ -424,11 +435,15 @@ export function studyWorld() {
     const channels: ChannelDirectoryPort = {
         serverIdOf: async (channelId) => (ROOMS[channelId] || channelId === 'hoi-dap' ? 'ot' : null),
         channelIdsOf: async () => [],
-        studyRoomOf: async (channelId) => ROOMS[channelId] ?? null
+        studyRoomOf: async (channelId) => ROOMS[channelId] ?? null,
+        namesOf: jest.fn(async (serverIds: string[], channelIds: string[]) => ({
+            servers: named(serverIds, SERVER_NAMES),
+            channels: named(channelIds, ROOM_NAMES)
+        }))
     }
     const checker: PermissionCheckerPort = {
-        access: async (_serverId, userId) =>
-            MEMBERS.includes(userId)
+        access: async (serverId, userId) =>
+            serverId === 'ot' && MEMBERS.includes(userId)
                 ? {
                       server,
                       member: {
