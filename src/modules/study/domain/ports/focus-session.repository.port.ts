@@ -1,4 +1,5 @@
 import type { Cycle, FocusSession, SessionMove } from '../focus-session.rules'
+import type { Present } from '../room-presence.rules'
 import type { StudyCount } from './study-time.repository.port'
 
 /** One person's seconds in a session that ended: their own summary (D-49). */
@@ -61,6 +62,8 @@ export interface PresenceChange extends SessionChange {
     away: { participationId: string; since: Date } | null
     /** Set when it left nobody present (D-227): the session ends EMPTY_MINUTES after it, unless someone comes. */
     emptySince: Date | null
+    /** Set when it closed the person's place: their seconds in the session, every stay added (D-233). */
+    left: SessionSummary | null
 }
 
 /**
@@ -94,6 +97,9 @@ export type LeaveFrom = { channelId: string } | { sessionId: string } | { anyRoo
 export interface FocusSessionRepositoryPort {
     /** The session, ended or not; null when there is none by that id. */
     find(sessionId: string): Promise<FocusSession | null>
+
+    /** Who is present in the session now: open participations, not away (D-215), as choosing its Host reads them. */
+    presentIn(sessionId: string): Promise<Present[]>
 
     /** The session not yet ended of each room asked for that has one (D-220). */
     openInRooms(channelIds: string[]): Promise<Map<string, FocusSession>>

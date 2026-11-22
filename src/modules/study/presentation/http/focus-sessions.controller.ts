@@ -1,5 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Param, Post } from '@nestjs/common'
-import { CommandBus } from '@nestjs/cqrs'
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common'
+import { CommandBus, QueryBus } from '@nestjs/cqrs'
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
 import { ApiEnvelopeResponse, CurrentUser, Idempotent } from '@/shared/presentation/decorators'
 import { AuthenticatedUser, ServiceResponse, createResponse } from '@/shared/types'
@@ -9,6 +9,8 @@ import {
     ChangeFocusCycleCommand,
     ControlFocusSessionCommand,
     FocusSessionView,
+    GetNextHostQuery,
+    NextHostView,
     StartRoomSessionCommand
 } from '../../application'
 import { ControlAction } from '../../domain'
@@ -17,6 +19,7 @@ import {
     ChannelIdParamsDto,
     FocusSessionIdParamsDto,
     FocusSessionResponseDto,
+    NextHostResponseDto,
     SessionVersionRequestDto,
     StartRoomSessionRequestDto
 } from './dto'
@@ -35,7 +38,10 @@ import {
 @ApiBearerAuth('bearer')
 @Controller({ version: '1' })
 export class FocusSessionsController {
-    constructor(private readonly commandBus: CommandBus) {}
+    constructor(
+        private readonly commandBus: CommandBus,
+        private readonly queryBus: QueryBus
+    ) {}
 
     /**
      * Start a Room Session, from inside the study room, as its Host: everyone
@@ -141,6 +147,25 @@ export class FocusSessionsController {
             new ChangeFocusCycleCommand(user.id, sessionId, cycle, dto.version)
         )
         return createResponse(MESSAGES.STUDY.SESSION_UPDATED, validateAndTransform(FocusSessionResponseDto, session))
+    }
+
+    /**
+     * Who would control the session if its Host left now, for the question
+     * "Rời phòng?" (D-233): null when nobody present may start. Only its
+     * Host asks; anyone else who sees the room is FORBIDDEN `not_host`.
+     */
+    @Get('focus-sessions/:sessionId/next-host')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(NextHostResponseDto)
+    async nextHost(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { sessionId }: FocusSessionIdParamsDto
+    ): Promise<ServiceResponse<NextHostResponseDto>> {
+        const next: NextHostView | null = await this.queryBus.execute(new GetNextHostQuery(user.id, sessionId))
+        return createResponse(
+            MESSAGES.STUDY.NEXT_HOST_FETCHED,
+            validateAndTransform(NextHostResponseDto, { nextHost: next })
+        )
     }
 
     private async control(

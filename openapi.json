@@ -5803,6 +5803,55 @@
         ]
       }
     },
+    "/api/v1/focus-sessions/{sessionId}/next-host": {
+      "get": {
+        "operationId": "FocusSessionsController_nextHost_v1",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/NextHostResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Who would control the session if its Host left now, for the question\n\"Rời phòng?\" (D-233): null when nobody present may start. Only its\nHost asks; anyone else who sees the room is FORBIDDEN `not_host`.",
+        "tags": [
+          "study"
+        ]
+      }
+    },
     "/api/v1/me/solo-session": {
       "post": {
         "operationId": "MyStudyController_startSolo_v1",
@@ -10117,6 +10166,41 @@
           "focus_minutes",
           "short_break_minutes",
           "version"
+        ]
+      },
+      "NextHostPersonResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null for an account shown as deleted (D-182): the client says it without a name."
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ]
+      },
+      "NextHostResponseDto": {
+        "type": "object",
+        "properties": {
+          "next_host": {
+            "nullable": true,
+            "description": "Who would control the session if its Host left now, by the rule a\nleaving uses; null when nobody present may start, so the session would\nrun with no Host.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NextHostPersonResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "next_host"
         ]
       },
       "StartSoloSessionRequestDto": {

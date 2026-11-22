@@ -103,6 +103,13 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
         return row && toSession(row)
     }
 
+    async presentIn(sessionId: string): Promise<Present[]> {
+        return this.prisma.participation.findMany({
+            where: { sessionId, leftAt: null, awaySince: null },
+            select: { userId: true, joinedAt: true }
+        })
+    }
+
     async openInRooms(channelIds: string[]): Promise<Map<string, FocusSession>> {
         if (channelIds.length === 0) return new Map()
         // `<> 'ended'`, as FocusSession_one_open_per_room is written: so that index is used.
@@ -613,7 +620,8 @@ async function joinOnce(
             counts: [],
             summaries: null,
             away: null,
-            emptySince: null
+            emptySince: null,
+            left: null
         },
         yielded: yielded || null
     }
@@ -663,6 +671,7 @@ async function presenceOnce(
     if (!move) return { ask: present.map(({ userId }) => userId).filter((id) => !asked.has(id)) }
 
     const counts: StudyCount[] = []
+    let left: SessionSummary | null = null
     if ('awaySince' in move.place) {
         await tx.participation.update({ where: { id: participationId }, data: { awaySince: move.place.awaySince } })
     } else {
@@ -673,6 +682,7 @@ async function presenceOnce(
             where: { id: participationId },
             data: { leftAt: move.place.leftAt, awaySince: null }
         })
+        left = await secondsIn(tx, before.id, place.userId)
     }
     const hostChanged = move.hostId !== before.hostId
     const data = {
@@ -691,7 +701,8 @@ async function presenceOnce(
             counts,
             summaries: null,
             away: 'awaySince' in move.place ? { participationId, since: move.place.awaySince } : null,
-            emptySince: move.emptySince
+            emptySince: move.emptySince,
+            left
         }
     }
 }
@@ -732,6 +743,12 @@ async function leaveAll(tx: Tx, sessionId: string, at: Date): Promise<void> {
         SET "leftAt" = GREATEST(COALESCE("awaySince", ${at}), "countedUntil"), "awaySince" = NULL
         WHERE "sessionId" = ${sessionId} AND "leftAt" IS NULL
     `
+}
+
+/** One person's seconds in the session, all their stays added up (D-233). */
+async function secondsIn(tx: Tx, sessionId: string, userId: string): Promise<SessionSummary> {
+    const sum = await tx.participation.aggregate({ where: { sessionId, userId }, _sum: { seconds: true } })
+    return { userId, seconds: sum._sum.seconds ?? 0 }
 }
 
 /** Every participant's seconds in the session, all their stays added up (D-49). */

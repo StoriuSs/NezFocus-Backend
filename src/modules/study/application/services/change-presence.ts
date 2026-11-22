@@ -2,6 +2,7 @@ import { EventBus } from '@nestjs/cqrs'
 import { UserDirectoryPort } from '@/modules/users'
 import { awayCloseDue, FocusSessionRepositoryPort, MayHost, PresenceChange } from '../../domain'
 import { FocusSessionChangedEvent } from '../events/focus-session-changed.event'
+import { ParticipationClosedEvent } from '../events/participation-closed.event'
 import { ParticipationOpenedEvent } from '../events/participation-opened.event'
 import { RoomPresenceChangedEvent } from '../events/room-presence-changed.event'
 import { StudyCountedEvent } from '../events/study-counted.event'
@@ -18,8 +19,9 @@ export interface PresenceSources {
 /**
  * What a committed change of who is present tells (ARCHITECTURE 5.2, 5.3):
  * each count (`streak.updated`); a new Host to the room (`focus_session.updated`,
- * action `host`, and the phase end set again for the new version); the
- * timers it starts (RoomPresenceChangedEvent). Someone joining or leaving
+ * action `host`, and the phase end set again for the new version); a place
+ * closed in a Room Session, to its person with their seconds in it
+ * (`focus_session.left`, D-233); the timers it starts (RoomPresenceChangedEvent). Someone joining or leaving
  * alone tells the room nothing here: voice tells it the people
  * (`voice_state.updated`). Nothing when there was nothing to change.
  */
@@ -27,6 +29,10 @@ export function tellPresence(events: EventBus, change: PresenceChange | null): v
     if (!change) return
     for (const count of change.counts) events.publish(new StudyCountedEvent(count))
     if (change.changed) events.publish(new FocusSessionChangedEvent(change.before, change.after, 'host', null, null))
+    const { after, left } = change
+    if (left && after.kind === 'room' && after.channelId) {
+        events.publish(new ParticipationClosedEvent(after.id, after.channelId, [left]))
+    }
     if (change.away || change.emptySince) {
         events.publish(new RoomPresenceChangedEvent(change.after.id, change.away, change.emptySince))
     }

@@ -86,6 +86,8 @@ const ROOM_NAMES: Record<string, string> = {
     'tan-gau': 'Tán gẫu',
     'bi-mat': 'Phòng bí mật'
 }
+/** The names USER_DIRECTORY knows. */
+const NAMES: Record<string, string> = { an: 'An', binh: 'Bình', phong: 'Phong', chi: 'Chi', dung: 'Dũng' }
 const named = (ids: string[], names: Record<string, string>) =>
     new Map(ids.filter((id) => names[id] !== undefined).map((id) => [id, names[id]]))
 
@@ -236,7 +238,9 @@ export function studyWorld() {
             counts,
             summaries: null,
             away: 'awaySince' in move.place ? { participationId: place, since: move.place.awaySince } : null,
-            emptySince: move.emptySince
+            emptySince: move.emptySince,
+            // Set whenever the place closed, as the repository does; one stay each here.
+            left: 'awaySince' in move.place ? null : { userId, seconds: counts[0]!.seconds }
         }
     }
     const openIn = (channelId: string) =>
@@ -265,6 +269,11 @@ export function studyWorld() {
 
     const repository: FocusSessionRepositoryPort = {
         find: jest.fn(async (id: string) => sessions.get(id) ?? null),
+        // In the order `participants` lists them, a millisecond apart, as changePresence reads them.
+        presentIn: jest.fn(async (id: string) => {
+            const people = participants.get(id) ?? []
+            return present(id).map((userId) => ({ userId, joinedAt: new Date(NOW.getTime() + people.indexOf(userId)) }))
+        }),
         openInRooms: jest.fn(
             async (channelIds: string[]) =>
                 new Map(
@@ -388,7 +397,8 @@ export function studyWorld() {
                     counts: [],
                     summaries: null,
                     away: null,
-                    emptySince: null
+                    emptySince: null,
+                    left: null
                 },
                 yielded
             }
@@ -466,8 +476,11 @@ export function studyWorld() {
         }
     }
     const users = {
-        timeZoneOf: jest.fn(async (userId: string) => (userId === 'an' ? 'Asia/Ho_Chi_Minh' : null))
-    } as unknown as UserDirectoryPort
+        timeZoneOf: jest.fn(async (userId: string) => (userId === 'an' ? 'Asia/Ho_Chi_Minh' : null)),
+        findById: jest.fn(async (id: string) =>
+            NAMES[id] ? { id, username: id, displayName: NAMES[id], deletedAt: null, deletionRequestedAt: null } : null
+        )
+    } as unknown as UserDirectoryPort & { findById: jest.Mock }
     const events = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
     const jobs: SessionJobsPort & {
         endPhaseAt: jest.Mock

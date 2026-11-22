@@ -1,5 +1,6 @@
 import { ControlAction, Cycle, FocusSession } from '../../../domain'
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationClosedEvent } from '../../events/participation-closed.event'
 import { StudyCountedEvent } from '../../events/study-counted.event'
 import { MINUTE, NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
 import { ChangeFocusCycleCommand, ControlFocusSessionCommand } from './session-control.commands'
@@ -71,11 +72,18 @@ describe('ControlFocusSessionHandler', () => {
         expect(await run('an', 'skip', 2)).toMatchObject({ phase: 'short_break', phaseEndsAt: later(23) })
         const stopped = await run('an', 'stop', 3)
         expect(stopped).toMatchObject({ status: 'ended', endedReason: 'stopped' })
-        const ended = world.published().at(-1) as FocusSessionChangedEvent
+        const [ended, closed] = world.published().slice(-2) as [FocusSessionChangedEvent, ParticipationClosedEvent]
         expect(ended.summaries).toEqual([
             { userId: 'an', seconds: 60 },
             { userId: 'binh', seconds: 60 }
         ])
+        // Everyone still there hears their seconds as their place closes with it (D-233).
+        expect(closed).toEqual(
+            new ParticipationClosedEvent('phien', 'phong-hoc', [
+                { userId: 'an', seconds: 60 },
+                { userId: 'binh', seconds: 60 }
+            ])
+        )
     })
 
     it('changes nothing and tells nothing for an old version, or a state the session is in already (D-225)', async () => {

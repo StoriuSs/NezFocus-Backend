@@ -1,4 +1,5 @@
 import { FocusSessionChangedEvent } from '../../events/focus-session-changed.event'
+import { ParticipationClosedEvent } from '../../events/participation-closed.event'
 import { ParticipationOpenedEvent } from '../../events/participation-opened.event'
 import { RoomPresenceChangedEvent } from '../../events/room-presence-changed.event'
 import { NOW, roomSession, soloSession, studyWorld } from '../../study-test-world.shared-spec'
@@ -105,7 +106,16 @@ describe('JoinStudyRoomHandler', () => {
         expect(world.participants.get('cu')).toEqual(['chi'])
         expect(world.sessions.get('cu')).toMatchObject({ hostId: 'chi', version: 1 })
         expect(world.participants.get('moi')).toEqual(['an', 'binh'])
-        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent', 'ParticipationOpenedEvent'])
+        expect(told(world)).toEqual([
+            'StudyCountedEvent',
+            'FocusSessionChangedEvent',
+            'ParticipationClosedEvent',
+            'ParticipationOpenedEvent'
+        ])
+        // Their minutes in the room they went from (D-233).
+        expect(world.published()[2]).toEqual(
+            new ParticipationClosedEvent('cu', 'phong-thi', [{ userId: 'binh', seconds: 60 }])
+        )
     })
 })
 
@@ -116,10 +126,12 @@ describe('LeaveStudyRoomHandler', () => {
         await leave('an')
         expect(world.participants.get('phien')).toEqual(['phong', 'binh'])
         expect(world.sessions.get('phien')).toMatchObject({ hostId: 'phong', version: 1 })
-        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent'])
-        const [, changed] = world.published() as FocusSessionChangedEvent[]
+        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent', 'ParticipationClosedEvent'])
+        const [, changed, closed] = world.published() as [unknown, FocusSessionChangedEvent, ParticipationClosedEvent]
         expect(changed).toMatchObject({ action: 'host', actorId: null })
         expect(changed.after.hostId).toBe('phong')
+        // Their seconds in the session, every stay added, for the toast of leaving (D-233).
+        expect(closed).toEqual(new ParticipationClosedEvent('phien', 'phong-hoc', [{ userId: 'an', seconds: 60 }]))
     })
 
     it('keeps the place and the Host of one whose connection was lost, and starts the 3 minutes (D-215)', async () => {

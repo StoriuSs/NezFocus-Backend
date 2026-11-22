@@ -17,6 +17,8 @@ export { StudySessionsQueryDto } from './study-sessions.query.dto'
 
 // Responses
 export { FocusSessionResponseDto } from './focus-session.response.dto'
+export { NextHostPersonResponseDto } from './next-host-person.response.dto'
+export { NextHostResponseDto } from './next-host.response.dto'
 export { SoloSessionResponseDto } from './solo-session.response.dto'
 export { StudyCycleResponseDto } from './study-cycle.response.dto'
 export { StudyDayResponseDto } from './study-day.response.dto'

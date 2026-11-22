@@ -1172,6 +1172,62 @@ describe('Study sessions (integration)', () => {
                 expect(first).toBeLessThan(last)
             })
 
+            it('tells one who leaves, and no one else, their seconds in the session, every stay added (D-233)', async () => {
+                await enter(room, 'an', 'binh')
+                const id = (await start('an', room)).body.data.id as string
+                const binh = collect(await connectAs('binh'), 'focus_session.left')
+                const an = collect(await connectAs('an'), 'focus_session.left')
+
+                await rewind(id, 60)
+                await leave('binh')
+                await join('binh')
+                await rewind(id, 60)
+                await leave('binh')
+
+                const heard = await binh()
+                expect(heard).toHaveLength(2)
+                const stays = await prisma.participation.findMany({
+                    where: { sessionId: id, userId: people.binh.id },
+                    orderBy: { joinedAt: 'asc' }
+                })
+                expect(stays).toHaveLength(2)
+                expect(heard[0]).toEqual({ session_id: id, channel_id: room, seconds: stays[0].seconds })
+                expect(heard[1]).toEqual({
+                    session_id: id,
+                    channel_id: room,
+                    seconds: stays[0].seconds + stays[1].seconds
+                })
+                expect(heard[1].seconds).toBeGreaterThanOrEqual(120)
+                expect(await an()).toEqual([])
+            })
+
+            it('tells each one still there their seconds as the session ends with them (D-233)', async () => {
+                await enter(room, 'an', 'binh')
+                const id = (await start('an', room)).body.data.id as string
+                const binh = collect(await connectAs('binh'), 'focus_session.left')
+                await rewind(id, 60)
+                await command('an', id, 'stop', { version: 0 })
+                expect(await binh()).toEqual([
+                    { session_id: id, channel_id: room, seconds: (await placeOf(id, 'binh')).seconds }
+                ])
+            })
+
+            it('names the next Host for the Host only, as a leaving would choose, the Host left out (D-233)', async () => {
+                await enter(room, 'an', 'binh', 'phong')
+                const id = (await start('an', room)).body.data.id as string
+                // Bình's connection lost: away, so not the next Host; Phong is.
+                await leave('binh', true)
+
+                const next = await as('an', api().get(`/api/v1/focus-sessions/${id}/next-host`)).expect(200)
+                expect(next.body.data).toEqual({ next_host: { id: people.phong.id, display_name: expect.any(String) } })
+                const refused = await as('phong', api().get(`/api/v1/focus-sessions/${id}/next-host`))
+                expect(outcome(refused)).toEqual([403, 'FORBIDDEN_ERROR', 'not_host'])
+
+                await leave('phong')
+                const none = await as('an', api().get(`/api/v1/focus-sessions/${id}/next-host`)).expect(200)
+                expect(none.body.data).toEqual({ next_host: null })
+            })
+
             it('the flow of "Xong khi": Bình comes 12 minutes in, An leaves and Bình is Host, the room empty 5 minutes ends it', async () => {
                 await enter(room, 'an')
                 const id = (await start('an', room)).body.data.id as string

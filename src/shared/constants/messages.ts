@@ -132,6 +132,7 @@ export const MESSAGES = {
         SESSION_STARTED: 'Study session started',
         SESSION_UPDATED: 'Study session updated',
         SOLO_FETCHED: 'Solo session fetched',
+        NEXT_HOST_FETCHED: 'Next host fetched',
         STATS_FETCHED: 'Study stats fetched',
         HISTORY_FETCHED: 'Study sessions fetched'
     },

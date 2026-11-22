@@ -642,7 +642,12 @@ as a start takes it; one who leaves is counted and closed at once, one whose
 connection was lost is away and keeps their place and their Host 3 minutes
 (`away-<participationId>-<sinceMs>`, D-215). A Host gone hands over to
 whoever came first of those present who may start (`nextHost`); with none,
-the first who may and comes in. Nobody present marks the room empty
+the first who may and comes in. Since L6a, a place closed in a Room Session
+(a leaving, or the end with them present) publishes `ParticipationClosedEvent`
+after the commit, and its person hears `focus_session.left` with their seconds
+in the session, every stay added, for the toast of leaving; the Host asks who
+would control next (`GET /focus-sessions/{id}/next-host`, the same `nextHost`,
+the Host left out) before leaving (D-233). Nobody present marks the room empty
 (`FocusSession.emptySince`), and 5 minutes on it ends
 (`empty-<sessionId>-<sinceMs>`, D-227). Servers' `ServerChangedEvent`
 reads a server's rooms again: one turned off or deleted ends its session.

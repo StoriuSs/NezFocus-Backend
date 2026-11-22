@@ -193,8 +193,10 @@ describe('CloseAwayHandler', () => {
         await closeAway.execute(new CloseAwayCommand('phien:an', later(10)))
         expect(world.participants.get('phien')).toEqual(['binh'])
         expect(world.sessions.get('phien')).toMatchObject({ hostId: 'binh', version: 1 })
-        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent'])
+        expect(told(world)).toEqual(['StudyCountedEvent', 'FocusSessionChangedEvent', 'ParticipationClosedEvent'])
         expect(world.published()[1]).toMatchObject({ action: 'host', actorId: null })
+        // Their seconds, for the toast of the tab that comes back (D-233).
+        expect(world.published()[2]).toMatchObject({ sessionId: 'phien', people: [{ userId: 'an', seconds: 60 }] })
     })
 
     it('leaves alone one back, or away again since', async () => {

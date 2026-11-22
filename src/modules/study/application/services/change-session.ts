@@ -10,6 +10,7 @@ import {
     ZoneOf
 } from '../../domain'
 import { FocusSessionChangedEvent } from '../events/focus-session-changed.event'
+import { ParticipationClosedEvent } from '../events/participation-closed.event'
 import { StudyCountedEvent } from '../events/study-counted.event'
 
 /** What changing a session needs. */
@@ -28,7 +29,8 @@ export const zoneOf =
 /**
  * What a committed change of a session tells, when something was written:
  * each count (`streak.updated`) and the change (`focus_session.*` or
- * `solo_session.updated`, the next job, the chat).
+ * `solo_session.updated`, the next job, the chat); a Room Session's end, to
+ * each person whose place it closed, their seconds in it (`focus_session.left`, D-233).
  */
 export function tellChange(
     events: EventBus,
@@ -39,6 +41,15 @@ export function tellChange(
     if (!change.changed) return
     for (const count of change.counts) events.publish(new StudyCountedEvent(count))
     events.publish(new FocusSessionChangedEvent(change.before, change.after, action, actorId, change.summaries))
+    const { after, summaries } = change
+    if (after.status === 'ended' && after.kind === 'room' && after.channelId && summaries) {
+        // Those the end counted (D-233): everyone still in, and one who left while a phase was overdue
+        // (counted on to its due end), told again with their total so far: the client only adds it to
+        // a toast of leaving still open, where it is right.
+        const closed = new Set(change.counts.map(({ userId }) => userId))
+        const people = summaries.filter(({ userId }) => closed.has(userId))
+        if (people.length > 0) events.publish(new ParticipationClosedEvent(after.id, after.channelId, people))
+    }
 }
 
 /**
