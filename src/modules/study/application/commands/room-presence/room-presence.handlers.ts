@@ -51,9 +51,10 @@ export class LeaveStudyRoomHandler implements ICommandHandler<LeaveStudyRoomComm
         private readonly events: EventBus
     ) {}
 
-    async execute({ channelId, userId, lost }: LeaveStudyRoomCommand): Promise<void> {
+    async execute({ channelId, userId, lost, requestedAt }: LeaveStudyRoomCommand): Promise<void> {
         const mayHost = mayHostWith({ channels: this.channels, checker: this.checker })
-        const from = channelId === null ? { anyRoom: true as const } : { channelId }
+        const from =
+            channelId === null ? { anyRoom: true as const, requestedAt: requestedAt ?? new Date() } : { channelId }
         tellPresence(this.events, await this.sessions.leave(from, userId, lost, mayHost, zoneOf(this.users)))
     }
 }

@@ -228,6 +228,20 @@ describe('Leaving a voice room (REQ-VC-02)', () => {
         await leave.execute(new LeaveVoiceCommand('an'))
 
         expect(media.removeParticipant).not.toHaveBeenCalled()
-        expect(events.publish.mock.calls).toEqual([[new VoiceLeaveRequestedEvent('an')]])
+        expect(events.publish.mock.calls).toEqual([[expect.any(VoiceLeaveRequestedEvent)]])
+    })
+
+    it('tells when the leaving was asked, so a room joined since is not left (D-228, M5 L9)', async () => {
+        const { leave, events } = setup({ current: row() })
+        const before = Date.now()
+
+        await leave.execute(new LeaveVoiceCommand('an'))
+
+        const asked = events.publish.mock.calls
+            .map(([event]) => event)
+            .find((e) => e instanceof VoiceLeaveRequestedEvent)
+        expect(asked).toMatchObject({ userId: 'an' })
+        expect(asked!.requestedAt.getTime()).toBeGreaterThanOrEqual(before)
+        expect(asked!.requestedAt.getTime()).toBeLessThanOrEqual(Date.now())
     })
 })

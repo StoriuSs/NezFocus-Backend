@@ -30,12 +30,11 @@ import {
     STUDY_STATS_QUERY_HANDLERS,
     StudySettings
 } from './application'
-import { FOCUS_SESSION_REPOSITORY, STUDY_STATS_REPOSITORY, STUDY_TIME_REPOSITORY } from './domain'
+import { FOCUS_SESSION_REPOSITORY, STUDY_STATS_REPOSITORY } from './domain'
 import {
     BullMqSessionJobs,
     PrismaFocusSessionRepository,
     PrismaStudyStatsRepository,
-    PrismaStudyTimeRepository,
     QueryBusRoomSessions
 } from './infrastructure'
 import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from './presentation'
@@ -74,7 +73,6 @@ import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from '.
     ],
     controllers: [FocusSessionsController, MyStudyController],
     providers: [
-        { provide: STUDY_TIME_REPOSITORY, useClass: PrismaStudyTimeRepository },
         { provide: FOCUS_SESSION_REPOSITORY, useClass: PrismaFocusSessionRepository },
         { provide: STUDY_STATS_REPOSITORY, useClass: PrismaStudyStatsRepository },
         { provide: SESSION_JOBS, useClass: BullMqSessionJobs },

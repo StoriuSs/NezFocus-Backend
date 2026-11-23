@@ -100,7 +100,8 @@ export class RealtimeGateway
         const status = await this.commandBus.execute<ConnectPresenceCommand, Presence>(
             new ConnectPresenceCommand(connection.userId, socket.id)
         )
-        // The study session comes with M4 (ARCHITECTURE 3.1 step 3).
+        // Only the server time, for the study clock's offset: the sessions come by REST
+        // (focus_session in GET /servers, GET /me/solo-session, D-220).
         socket.emit('ready', { server_time: new Date().toISOString(), status })
     }
 

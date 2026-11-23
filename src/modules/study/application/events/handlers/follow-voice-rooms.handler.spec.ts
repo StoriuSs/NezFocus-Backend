@@ -25,8 +25,10 @@ describe('FollowVoiceRoomsHandler', () => {
 
     it('takes one who asked to leave their room as leaving it meaning to, whichever room (D-228)', async () => {
         const { commandBus, handler } = setup()
-        await handler.handle(new VoiceLeaveRequestedEvent('an'))
-        expect(commandBus.execute).toHaveBeenCalledWith(new LeaveStudyRoomCommand(null, 'an', false))
+        const asked = new Date('2026-11-23T20:40:00.700Z')
+        await handler.handle(new VoiceLeaveRequestedEvent('an', asked))
+        // When it was asked goes along: a room joined since is not left (M5 L9).
+        expect(commandBus.execute).toHaveBeenCalledWith(new LeaveStudyRoomCommand(null, 'an', false, asked))
     })
 
     it('logs a failure and goes on: the sweep sets the room right (D-225)', async () => {

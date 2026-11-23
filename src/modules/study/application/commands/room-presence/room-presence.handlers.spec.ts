@@ -14,8 +14,8 @@ function setup() {
     return {
         world,
         join: (userId: string, channelId = 'phong-hoc') => join.execute(new JoinStudyRoomCommand(channelId, userId)),
-        leave: (userId: string, lost = false, channelId: string | null = 'phong-hoc') =>
-            leave.execute(new LeaveStudyRoomCommand(channelId, userId, lost))
+        leave: (userId: string, lost = false, channelId: string | null = 'phong-hoc', requestedAt?: Date) =>
+            leave.execute(new LeaveStudyRoomCommand(channelId, userId, lost, requestedAt))
     }
 }
 
@@ -152,11 +152,12 @@ describe('LeaveStudyRoomHandler', () => {
         const { world, leave } = setup()
         world.put(roomSession({ channelId: 'phong-thi', hostId: 'chi' }), ['chi', 'binh'])
         world.away.set('phien:chi', NOW)
-        await leave('chi', false, null)
+        await leave('chi', false, null, NOW)
         expect(world.participants.get('phien')).toEqual(['binh'])
         expect(world.away.size).toBe(0)
+        // Only a place opened before the leaving was asked (M5 L9): not one of a room joined since.
         expect(world.repository.leave).toHaveBeenCalledWith(
-            { anyRoom: true },
+            { anyRoom: true, requestedAt: NOW },
             'chi',
             false,
             expect.any(Function),

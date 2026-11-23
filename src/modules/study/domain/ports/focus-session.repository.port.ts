@@ -1,6 +1,32 @@
 import type { Cycle, FocusSession, SessionMove } from '../focus-session.rules'
 import type { Present } from '../room-presence.rules'
-import type { StudyCount } from './study-time.repository.port'
+import type { StreakState } from '../streak.rules'
+
+/**
+ * What one count (chốt) of a participation did (D-224): the seconds for the
+ * summary (D-49), and the day and streak as the count wrote them. Its
+ * `streak.updated` does not take them: it reads them again after the commit
+ * (D-232), so that a count that closed the participation says so. Written
+ * in the transaction of the change that makes it, by the session's
+ * repository (study-counts.ts); a place away past 3 minutes is counted in
+ * closeAway's (D-215).
+ */
+export interface StudyCount {
+    userId: string
+    sessionId: string
+    /** The seconds this count added, the 16-hour cap applied (0 when nothing was new). */
+    added: number
+    /** The participation's seconds after the count: the person's own summary of the session (D-49). */
+    seconds: number
+    /** Where the participation is counted up to now: the client adds the focus time running after it. */
+    countedUntil: Date
+    /** The person's seconds of today in their zone, after the count. */
+    todaySeconds: number
+    /** The streak after the count, as stored. */
+    streak: StreakState
+    /** The streak to show today (shownStreak). */
+    shownStreak: number
+}
 
 /** One person's seconds in a session that ended: their own summary (D-49). */
 export interface SessionSummary {
@@ -82,11 +108,16 @@ export type JoinOutcome =
     | { kind: 'joined'; change: PresenceChange; yielded: SessionChange | null }
 
 /**
- * Which participation a leave closes: the person's in the room's session, in
- * a session named, or in whichever Room Session they have one (they asked to
- * leave their room, D-228).
+ * Which participation a leave closes: the person's in the room's session
+ * (only one opened before `openedBefore`, when given), in a session named,
+ * or in whichever Room Session they have one opened before `requestedAt`
+ * (they asked to leave their room then, D-228; a room joined since is not
+ * the one they asked to leave, M5 L9).
  */
-export type LeaveFrom = { channelId: string } | { sessionId: string } | { anyRoom: true }
+export type LeaveFrom =
+    | { channelId: string; openedBefore?: Date }
+    | { sessionId: string }
+    | { anyRoom: true; requestedAt: Date }
 
 /**
  * Study sessions (ARCHITECTURE 5.1, D-222): the only writer of FocusSession,

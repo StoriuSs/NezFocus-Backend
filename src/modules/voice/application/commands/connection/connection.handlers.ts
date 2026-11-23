@@ -73,9 +73,10 @@ export class LeaveVoiceHandler implements ICommandHandler<LeaveVoiceCommand> {
     ) {}
 
     async execute({ userId }: LeaveVoiceCommand): Promise<void> {
+        const requestedAt = new Date()
         const current = await this.states.find(userId)
         if (current) await leaveRoom({ media: this.media, states: this.states, events: this.events }, current)
-        this.events.publish(new VoiceLeaveRequestedEvent(userId))
+        this.events.publish(new VoiceLeaveRequestedEvent(userId, requestedAt))
     }
 }
 

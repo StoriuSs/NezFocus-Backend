@@ -24,7 +24,7 @@ export class FollowVoiceRoomsHandler implements IEventHandler<VoiceStateChangedE
     async handle(event: VoiceStateChangedEvent | VoiceLeaveRequestedEvent): Promise<void> {
         const command =
             event instanceof VoiceLeaveRequestedEvent
-                ? new LeaveStudyRoomCommand(null, event.userId, false)
+                ? new LeaveStudyRoomCommand(null, event.userId, false, event.requestedAt)
                 : event.change === 'joined'
                   ? new JoinStudyRoomCommand(event.channelId, event.userId)
                   : event.change === 'left'

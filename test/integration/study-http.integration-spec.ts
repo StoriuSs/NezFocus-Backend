@@ -17,7 +17,8 @@ import {
     SessionJobsPort,
     SweepStudyTimersCommand
 } from '@/modules/study/application'
-import { localDateOf, shownStreak, STUDY_TIME_REPOSITORY, StudyTimeRepositoryPort } from '@/modules/study/domain'
+import { localDateOf, shownStreak, StudyCount } from '@/modules/study/domain'
+import { countParticipation } from '@/modules/study/infrastructure/persistence/study-counts'
 import { VoiceStateChangedEvent } from '@/modules/voice'
 import { QUEUES } from '@/shared/infrastructure/queue/queues'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
@@ -329,11 +330,11 @@ describe('Study sessions (integration)', () => {
         const server = randomUUID()
         /** A time of Thursday 19/11/2026 in Hà Nội, or of another day. */
         const at = (time: string, date = '2026-11-19') => new Date(`${date}T${time}+07:00`)
-        let repository: StudyTimeRepositoryPort
-
-        beforeAll(() => {
-            repository = app.get<StudyTimeRepositoryPort>(STUDY_TIME_REPOSITORY)
-        })
+        /** One count on its own, in a transaction of its own, as the session's repository makes it in its changes (D-224). */
+        const repository = {
+            count: (participationId: string, timeZone: string): Promise<StudyCount | null> =>
+                prisma.$transaction((tx) => countParticipation(tx, participationId, timeZone, () => new Date()))
+        }
 
         afterEach(async () => {
             await prisma.focusSession.deleteMany({
@@ -1312,6 +1313,8 @@ describe('Study sessions (integration)', () => {
             it('takes Rời as meant when LiveKit’s leave came first: closed at once, the Host handed over (D-228)', async () => {
                 await enter(room, 'an', 'binh')
                 const id = (await start('an', room)).body.data.id as string
+                // In for a while: a place opened in the very second of the leaving asked is not closed by it (M5 L9).
+                await rewind(id, 2)
                 // The page left LiveKit first: its webhook took An's row as a lost connection.
                 await prisma.voiceState.delete({ where: { userId: people.an.id } })
                 await leave('an', true)
@@ -1322,6 +1325,23 @@ describe('Study sessions (integration)', () => {
                 await until(async () => (await placeOf(id, 'an')).leftAt)
                 expect(await placeOf(id, 'an')).toMatchObject({ leftAt: away.awaySince, awaySince: null })
                 expect(await sessionRow(id)).toMatchObject({ hostId: people.binh.id, version: 1 })
+            })
+
+            it('never closes a place opened after the leaving was asked: a late Rời from the room before (D-228, M5 L9)', async () => {
+                await enter(room, 'an', 'binh')
+                const id = (await start('an', room)).body.data.id as string
+                await rewind(id, 60)
+                const place = await placeOf(id, 'an')
+                // An left another room, then joined this one before study heard that leaving.
+                const asked = new Date(place.joinedAt.getTime() - 1500)
+
+                await bus().execute(new LeaveStudyRoomCommand(null, people.an.id, false, asked))
+                expect(await placeOf(id, 'an')).toMatchObject({ leftAt: null, awaySince: null })
+                expect(await sessionRow(id)).toMatchObject({ hostId: people.an.id, version: 0 })
+
+                // Asked after joining: closed.
+                await bus().execute(new LeaveStudyRoomCommand(null, people.an.id, false, new Date()))
+                expect((await placeOf(id, 'an')).leftAt).not.toBeNull()
             })
 
             it('counts one away as not present: never the next Host, and the room empty once the rest are away too', async () => {

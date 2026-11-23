@@ -319,13 +319,21 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
         zoneOf: ZoneOf
     ): Promise<PresenceChange | null> {
         if ('anyRoom' in from) {
+            // A place opened since the leaving was asked is in the room they went on to: not this one (M5 L9).
+            // joinedAt is never before the whole second of its join, so before the asked second means before the ask.
+            const openedBefore = wholeSecond(from.requestedAt)
             // The room of the place they have now, if any; looked up again under its lock.
             const open = await this.prisma.participation.findFirst({
-                where: { userId, leftAt: null, session: { kind: 'room', status: { not: 'ended' } } },
+                where: {
+                    userId,
+                    leftAt: null,
+                    joinedAt: { lt: openedBefore },
+                    session: { kind: 'room', status: { not: 'ended' } }
+                },
                 select: { session: { select: { channelId: true } } }
             })
             if (!open) return null
-            return this.leave({ channelId: open.session.channelId! }, userId, lost, mayHost, zoneOf)
+            return this.leave({ channelId: open.session.channelId!, openedBefore }, userId, lost, mayHost, zoneOf)
         }
         // The room whose lock to take: a session's room never changes. A Solo has none.
         const channelId =
@@ -339,11 +347,15 @@ export class PrismaFocusSessionRepository implements FocusSessionRepositoryPort 
                   )?.channelId ?? null)
         const where =
             'channelId' in from ? Prisma.sql`s."channelId" = ${from.channelId}` : Prisma.sql`s."id" = ${from.sessionId}`
+        const opened =
+            'openedBefore' in from && from.openedBefore
+                ? Prisma.sql`AND p."joinedAt" < ${from.openedBefore}`
+                : Prisma.empty
         // Looked up under the room's lock: one a start or a join is writing now is found once it commits.
         const locate: Locate = async (tx) => {
             const [found] = await tx.$queryRaw<{ id: string }[]>`
                 SELECT p."id" FROM "Participation" p JOIN "FocusSession" s ON s."id" = p."sessionId"
-                WHERE p."userId" = ${userId} AND p."leftAt" IS NULL AND s."status" <> 'ended' AND ${where}
+                WHERE p."userId" = ${userId} AND p."leftAt" IS NULL AND s."status" <> 'ended' AND ${where} ${opened}
             `
             return found?.id ?? null
         }
