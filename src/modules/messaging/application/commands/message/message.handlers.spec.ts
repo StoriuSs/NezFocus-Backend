@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort, MembershipPort, RoleDirectoryPort } from '@/modules/servers'
@@ -6,6 +7,7 @@ import { UserDirectoryPort } from '@/modules/users'
 import { RateLimitState } from '@/shared/types/rate-limit.type'
 import {
     CannotDeleteMessageError,
+    CannotMessageUserError,
     CannotSendError,
     ChannelNotFoundError,
     MessageNotFoundError,
@@ -37,6 +39,21 @@ import {
 } from './message.handlers'
 import { AttachmentStoragePort } from '../../ports'
 import { AttachmentNotFoundError, type AttachmentRepositoryPort } from '../../../domain'
+
+/** A DM of Dũng and Giang (their ids below); Chi may no longer write in hers with An (D-238). */
+const DM_WORLD = {
+    conversations: [
+        {
+            channelId: 'dm-dung-giang',
+            userIds: ['0190a0b0-0000-7000-8000-0000000000d1', '0190a0b0-0000-7000-8000-0000000000d2'] as [
+                string,
+                string
+            ]
+        },
+        { channelId: 'dm-an-chi', userIds: ['an', 'chi'] as [string, string] }
+    ],
+    silenced: ['chi']
+}
 
 /** Links signed by name only: no storage in these tests. */
 const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
@@ -284,6 +301,7 @@ function world({ limited = false } = {}) {
                 }))
         )
     } as unknown as AttachmentRepositoryPort
+    const dmAccess = dms(DM_WORLD)
     const sender = new SendMessageHandler(
         repository,
         attachments,
@@ -295,7 +313,8 @@ function world({ limited = false } = {}) {
         FILES,
         presence,
         membership,
-        bus
+        bus,
+        dmAccess
     )
     const editor = new EditMessageHandler(
         repository,
@@ -306,9 +325,10 @@ function world({ limited = false } = {}) {
         FILES,
         presence,
         membership,
-        bus
+        bus,
+        dmAccess
     )
-    const deleter = new DeleteMessageHandler(repository, channels, checker, bus)
+    const deleter = new DeleteMessageHandler(repository, channels, checker, bus, dmAccess)
     const send = (
         userId: string,
         content: string,
@@ -320,7 +340,7 @@ function world({ limited = false } = {}) {
     const edit = (userId: string, messageId: string, content: string) =>
         editor.execute(new EditMessageCommand(userId, messageId, content))
     const remove = (userId: string, messageId: string) => deleter.execute(new DeleteMessageCommand(userId, messageId))
-    return { send, edit, remove, seed, saved, repository, limit, events, users, checker, membership }
+    return { send, edit, remove, seed, saved, repository, limit, events, users, checker, membership, roles }
 }
 
 describe('SendMessageHandler (REQ-MSG-01, REQ-MSG-10)', () => {
@@ -918,5 +938,65 @@ describe('DeleteRecentMessagesHandler (D-181)', () => {
             'connection lost'
         )
         expect(events.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('In a DM (D-238)', () => {
+    const savedMentions = (repository: MessageRepositoryPort) =>
+        (repository.create as jest.Mock).mock.calls.at(-1)![0] as NewMessage
+
+    it('sends between its two, reaching only the other one: no roles, no one else, no @everyone', async () => {
+        const { send, repository, checker, roles, events } = world()
+
+        const message = await send(
+            DUNG,
+            `<@${GIANG}> <@${HUNG}> <@&${TRO_GIANG}> @everyone @here`,
+            'n1',
+            'dm-dung-giang'
+        )
+
+        expect(savedMentions(repository).mentions).toMatchObject({
+            everyone: false,
+            here: false,
+            roleIds: [],
+            userIds: [GIANG],
+            hereUserIds: []
+        })
+        expect(message.channelId).toBe('dm-dung-giang')
+        expect(events.publish).toHaveBeenCalledWith(new MessageCreatedEvent(message, 'n1'))
+        expect(checker.access).not.toHaveBeenCalled()
+        expect(roles.rolesOf).not.toHaveBeenCalled()
+    })
+
+    it('refuses someone who may no longer message the other one, counting nothing', async () => {
+        const { send, repository, limit } = world()
+
+        await expect(send('chi', 'Còn đó không?', 'n1', 'dm-an-chi')).rejects.toBeInstanceOf(CannotMessageUserError)
+        expect(repository.create).not.toHaveBeenCalled()
+        expect(limit.hit).not.toHaveBeenCalled()
+    })
+
+    it('answers not found to anyone not one of its two', async () => {
+        const { send } = world()
+        await expect(send('binh', 'Chào', 'n1', 'dm-dung-giang')).rejects.toBeInstanceOf(ChannelNotFoundError)
+    })
+
+    it('lets them edit their own message only while they may still message the other one', async () => {
+        const { edit, seed } = world()
+        const mine = seed('dm-dung-giang', DUNG)
+        const silenced = seed('dm-an-chi', 'chi')
+
+        await expect(edit(DUNG, mine.id, 'Sửa lại')).resolves.toMatchObject({ content: 'Sửa lại' })
+        await expect(edit('chi', silenced.id, 'Sửa lại')).rejects.toBeInstanceOf(CannotMessageUserError)
+    })
+
+    it('lets each delete only their own, even once they may no longer write: no one manages a DM', async () => {
+        const { remove, seed, saved } = world()
+        const ans = seed('dm-an-chi', 'an')
+        const chis = seed('dm-an-chi', 'chi')
+
+        await expect(remove('chi', ans.id)).rejects.toBeInstanceOf(CannotDeleteMessageError)
+        await remove('chi', chis.id)
+        expect(saved.find((row) => row.id === chis.id)?.deleted).toBe(true)
     })
 })

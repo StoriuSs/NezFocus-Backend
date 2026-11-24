@@ -8,13 +8,13 @@ import {
     AttachmentRepositoryPort,
     ChannelNotFoundError
 } from '../../../domain'
-import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort, DM_ACCESS, DmAccessPort } from '../../ports'
 import { attachmentView, AttachmentView } from '../../services/attachment-views'
 import { openChannel } from '../../services/channel-access'
 import { GetAttachmentLinksQuery } from './attachment.queries'
 
 /**
- * A file of a message in a channel the person may view, or a checked one of
+ * A file of a message in a channel the person may view (a DM of theirs too), or a checked one of
  * their own not sent yet (the tray). Anything else, a deleted message's file
  * included, is not found, naming nothing (NFR-SEC-05).
  */
@@ -24,7 +24,8 @@ export class GetAttachmentLinksHandler implements IQueryHandler<GetAttachmentLin
         @Inject(ATTACHMENT_REPOSITORY) private readonly attachments: AttachmentRepositoryPort,
         @Inject(ATTACHMENT_STORAGE) private readonly storage: AttachmentStoragePort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
-        @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort
+        @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
 
     async execute({ userId, attachmentId }: GetAttachmentLinksQuery): Promise<AttachmentView> {
@@ -33,7 +34,12 @@ export class GetAttachmentLinksHandler implements IQueryHandler<GetAttachmentLin
         if (!file?.completedAt || !file.contentType) throw notFound
         if (file.channelId) {
             try {
-                await openChannel(this.channels, this.permissions, file.channelId, userId, new Date())
+                await openChannel(
+                    { channels: this.channels, checker: this.permissions, dms: this.dms },
+                    file.channelId,
+                    userId,
+                    new Date()
+                )
             } catch (error) {
                 throw error instanceof ChannelNotFoundError ? notFound : error
             }

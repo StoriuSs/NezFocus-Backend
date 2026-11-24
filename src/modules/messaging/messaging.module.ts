@@ -22,6 +22,7 @@ import {
     ATTACHMENT_STORAGE,
     DeleteBannedMessagesLaterHandler,
     FILE_CLEANUP,
+    LAST_MESSAGES,
     MarkSentMessageReadHandler,
     MESSAGE_PURGE,
     MESSAGE_COMMAND_HANDLERS,
@@ -53,6 +54,7 @@ import {
     BullMqMessagePurge,
     CommandBusSystemMessages,
     PrismaAttachmentRepository,
+    PrismaLastMessages,
     PrismaMessageRepository,
     PrismaPinRepository,
     PrismaReactionRepository,
@@ -69,8 +71,8 @@ import {
 } from './presentation'
 
 /**
- * Messages in text channels and the chat of voice rooms (SRS 4.4,
- * S-ROOM-08): the only module that writes the messaging tables. Asks
+ * Messages in text channels, the chat of voice rooms (SRS 4.4, S-ROOM-08)
+ * and direct messages (D-238): the only module that writes the messaging tables. Asks
  * servers which server a channel is in (CHANNEL_DIRECTORY), permissions what someone may do there
  * (PERMISSION_CHECKER), when someone joined a server (MEMBERSHIP, for where
  * their unread starts, which of the people online are in a server, for
@@ -83,7 +85,10 @@ import {
  * Deletes a banned member's recent messages when servers says so
  * (MemberChangedEvent), through its own messaging queue (D-181).
  * Writes "X joined the server" when servers asks, through the global
- * SystemMessagesModule below (D-180).
+ * SystemMessagesModule below (D-180). A DM asks social (DM_ACCESS, given by
+ * its global DmAccessModule) who its two people are and whether one may
+ * still message the other; gives social the last message of each
+ * conversation (LAST_MESSAGES, D-244).
  */
 @Module({
     imports: [
@@ -105,6 +110,7 @@ import {
         { provide: REACTION_REPOSITORY, useClass: PrismaReactionRepository },
         { provide: PIN_REPOSITORY, useClass: PrismaPinRepository },
         { provide: READ_STATE_REPOSITORY, useClass: PrismaReadStateRepository },
+        { provide: LAST_MESSAGES, useClass: PrismaLastMessages },
         // RateLimiter comes from the global CacheModule.
         { provide: SEND_LIMIT, useExisting: RateLimiter },
         ...ATTACHMENT_COMMAND_HANDLERS,
@@ -133,7 +139,8 @@ import {
         NotifyDeletedMessagesHandler,
         NotifyChannelReadHandler,
         MessagingJobsConsumer
-    ]
+    ],
+    exports: [LAST_MESSAGES]
 })
 export class MessagingModule {}
 

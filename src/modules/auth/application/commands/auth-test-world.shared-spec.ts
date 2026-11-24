@@ -149,6 +149,9 @@ class FakeDirectory implements UserDirectoryPort {
     async presenceOf() {
         return 'online' as const
     }
+    async allowingServerMemberMessages(ids: string[]) {
+        return ids
+    }
     // Conditional, like the repository's statements.
     async requestDeletion(id: string, at: Date) {
         const user = this.users.get(id)

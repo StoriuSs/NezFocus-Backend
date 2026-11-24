@@ -23,7 +23,12 @@ const prismaCode = (error: unknown) => (error as { code?: string })?.code
 /** What history pages show: a deleted message keeps its row (for answers to it), not its place in the list. */
 const LIVE = { deletedAt: null } as const
 
-/** How far apart the app's clock (which makes ids) and the database's (createdAt) may be. */
+/**
+ * How far apart a message's id and its createdAt may be in time. Both come
+ * from the app (Prisma 7 fills uuid(7) and now() there, not Postgres), but
+ * each at its own moment, and on another instance's clock for a message sent
+ * there.
+ */
 const CLOCK_MARGIN_MS = 60_000
 
 /** A message deleted: its row kept for the replies to it, emptied of everything else. */
@@ -170,8 +175,8 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
         limit: number,
         at: Date
     ): Promise<string[]> {
-        // Each batch starts after the one before, or at the window's first id, a minute early, as ids
-        // are made by the app and createdAt by the database: the id > start bound keeps it to the window.
+        // Each batch starts after the one before, or at the window's first id, a minute early, as an id
+        // and createdAt are made apart (CLOCK_MARGIN_MS): the id > start bound keeps it to the window.
         // Postgres reads it as a BitmapAnd of (channelId, id) from start and the author's entries of
         // (authorId, nonce), so a batch costs more the more messages the author ever sent; measured at M7.
         const start = after ?? firstIdAt(new Date(from.getTime() - CLOCK_MARGIN_MS))

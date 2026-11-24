@@ -1,3 +1,6 @@
 export * from './adapters/query-bus-block-list.adapter'
+export * from './adapters/query-bus-dm-access.adapter'
+export * from './adapters/query-bus-dm-channels.adapter'
 export * from './adapters/query-bus-friends.adapter'
+export * from './persistence/prisma-dm.repository'
 export * from './persistence/prisma-relationship.repository'

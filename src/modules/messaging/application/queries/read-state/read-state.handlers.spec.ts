@@ -1,6 +1,7 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
 import { MembershipPort } from '@/modules/servers'
 import { ReadScope, ReadStateRepositoryPort, readFloor } from '../../../domain'
+import { DM_STARTED, DmWorld, dms } from '../../dm-test-world.shared-spec'
 import { ListReadStatesQuery } from './read-state.queries'
 import { ListReadStatesHandler } from './read-state.handlers'
 
@@ -49,7 +50,7 @@ const JOINED_OT = new Date('2026-11-01T08:00:00Z')
 const JOINED_ND = new Date('2026-11-10T19:30:00Z')
 
 /** Bình is in ÔT and NĐ (a role there), and was in a third server, gone by the time it is checked. */
-function world() {
+function world(dmWorld: DmWorld = {}) {
     const asked: { roleIds: string[]; channels: ReadScope[] }[] = []
     const readStates = {
         states: jest.fn(async (_userId: string, roleIds: string[], channels: ReadScope[]) => {
@@ -76,6 +77,7 @@ function world() {
         membersAmong: jest.fn(),
         channelMembers: jest.fn(),
         sharedServers: jest.fn(),
+        sharingAServer: jest.fn(),
         serverIdsOf: jest.fn(),
         membershipsOf: jest.fn(async () => [
             { serverId: 'ot', joinedAt: JOINED_OT },
@@ -83,7 +85,8 @@ function world() {
             { serverId: 'nd', joinedAt: JOINED_ND }
         ])
     }
-    const handler = new ListReadStatesHandler(readStates, checker, membership)
+    const dmAccess = dms(dmWorld)
+    const handler = new ListReadStatesHandler(readStates, checker, membership, dmAccess)
     return { list: () => handler.execute(new ListReadStatesQuery('binh')), asked }
 }
 
@@ -125,5 +128,22 @@ describe('ListReadStatesHandler (REQ-MSG-09, SRS 5.1)', () => {
                 ]
             }
         ])
+    })
+
+    it('adds each DM shown in their list, with no server, read from when it began (D-244)', async () => {
+        const { list, asked } = world({
+            conversations: [
+                { channelId: 'dm-an-binh', userIds: ['an', 'binh'] },
+                { channelId: 'dm-binh-chi', userIds: ['binh', 'chi'] }
+            ],
+            // Closed by Bình, nothing said since: not shown, so not counted.
+            shown: { binh: ['dm-an-binh'] }
+        })
+
+        const states = await list()
+
+        expect(states.at(-1)).toMatchObject({ serverId: null, channelId: 'dm-an-binh' })
+        expect(states.map((state) => state.channelId)).not.toContain('dm-binh-chi')
+        expect(asked[0]!.channels.at(-1)).toEqual({ channelId: 'dm-an-binh', floorId: readFloor(DM_STARTED) })
     })
 })

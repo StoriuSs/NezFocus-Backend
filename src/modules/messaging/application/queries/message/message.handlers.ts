@@ -5,7 +5,7 @@ import { CHANNEL_DIRECTORY, ChannelDirectoryPort, ROLE_DIRECTORY, RoleDirectoryP
 import { MessagePreview } from '@/modules/notifications'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { MESSAGE_REPOSITORY, MessageRepositoryPort, REACTION_REPOSITORY, ReactionRepositoryPort } from '../../../domain'
-import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort, DM_ACCESS, DmAccessPort } from '../../ports'
 import { openChannel } from '../../services/channel-access'
 import { messageViews, ReadMessageView, withReactions } from '../../services/message-views'
 import { ListMessagePreviewsQuery, ListMessagesQuery } from './message.queries'
@@ -19,7 +19,8 @@ export interface MessagePageView {
 
 /**
  * Whoever may view the channel reads all of its history (no separate right
- * to read older messages, D-47); a timed-out member included. Each message
+ * to read older messages, D-47); a timed-out member included; the two of a
+ * DM, even once they may no longer message each other (D-238). Each message
  * comes with its reactions as the reader sees them (REQ-MSG-05).
  */
 @QueryHandler(ListMessagesQuery)
@@ -31,11 +32,17 @@ export class ListMessagesHandler implements IQueryHandler<ListMessagesQuery> {
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
-        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
 
     async execute({ userId, channelId, cursor, limit }: ListMessagesQuery): Promise<MessagePageView> {
-        const { serverId } = await openChannel(this.channels, this.permissions, channelId, userId, new Date())
+        const { serverId } = await openChannel(
+            { channels: this.channels, checker: this.permissions, dms: this.dms },
+            channelId,
+            userId,
+            new Date()
+        )
         const page = await this.messages.page(channelId, cursor, limit)
         const [views, summaries] = await Promise.all([
             messageViews({ users: this.users, roles: this.roles, files: this.files }, serverId, page.items),

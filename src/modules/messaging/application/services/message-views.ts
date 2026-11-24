@@ -74,7 +74,7 @@ async function addressOf(users: UserDirectoryPort, key: string): Promise<string 
 }
 
 /**
- * The records of one server's channel with each author's picture turned
+ * The records of one channel (of a server, or a DM: `serverId` null, no roles to name) with each author's picture turned
  * into an address, the authors of the messages they answer and the people
  * system messages are about included, and the roles they mention named
  * (D-171). One signature per picture, however many messages share it: a
@@ -83,7 +83,7 @@ async function addressOf(users: UserDirectoryPort, key: string): Promise<string 
  */
 export async function messageViews(
     { users, roles, files }: MessageViewSources,
-    serverId: string,
+    serverId: string | null,
     records: MessageRecord[]
 ): Promise<MessageView[]> {
     const authors = records.flatMap((record) => [
@@ -100,7 +100,9 @@ export async function messageViews(
         Promise.all(keys.map(async (key) => [key, await addressOf(users, key)] as const)).then(
             (pairs) => new Map(pairs)
         ),
-        roles.rolesOf(serverId, roleIds).then((found) => new Map(found.map((role) => [role.id, role.name]))),
+        (serverId ? roles.rolesOf(serverId, roleIds) : Promise.resolve([])).then(
+            (found) => new Map(found.map((role) => [role.id, role.name]))
+        ),
         // Signing is local work, no request to the storage (S3StorageService.getSignedReadUrl).
         Promise.all(records.map((record) => Promise.all(record.attachments.map((file) => attachmentView(files, file)))))
     ])

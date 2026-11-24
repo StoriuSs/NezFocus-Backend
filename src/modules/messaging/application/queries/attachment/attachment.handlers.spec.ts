@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import { AttachmentNotFoundError, AttachmentRecord, AttachmentRepositoryPort } from '../../../domain'
@@ -70,7 +71,8 @@ const handler = new GetAttachmentLinksHandler(
             server,
             member: { userId, roleIds: [], timeoutUntil: null }
         }))
-    } as PermissionCheckerPort
+    } as PermissionCheckerPort,
+    dms()
 )
 const links = (userId: string, id: string) => handler.execute(new GetAttachmentLinksQuery(userId, id))
 

@@ -27,6 +27,10 @@ class InMemorySettings implements UserSettingsRepositoryPort {
         return row ? { ...row } : null
     }
 
+    async allowingServerMemberMessages(userIds: string[]) {
+        return userIds.filter((userId) => this.rows.get(userId)?.allowServerMemberMessages)
+    }
+
     async update(userId: string, changes: SettingsChanges, zone?: TimezoneChange) {
         this.beforeWrite?.()
         const row = this.rows.get(userId)

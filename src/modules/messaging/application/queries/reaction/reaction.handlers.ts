@@ -11,6 +11,7 @@ import {
     REACTORS_SHOWN,
     ReactionRepositoryPort
 } from '../../../domain'
+import { DM_ACCESS, DmAccessPort } from '../../ports'
 import { openMessage } from '../../services/message-access'
 import { ListReactorsQuery } from './reaction.queries'
 
@@ -34,11 +35,18 @@ export class ListReactorsHandler implements IQueryHandler<ListReactorsQuery> {
         @Inject(MESSAGE_REPOSITORY) private readonly messages: MessageRepositoryPort,
         @Inject(REACTION_REPOSITORY) private readonly reactions: ReactionRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
-        @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort
+        @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
 
     async execute({ userId, messageId, emoji }: ListReactorsQuery): Promise<ReactorsView> {
-        await openMessage(this.messages, this.channels, this.permissions, messageId, userId, new Date())
+        await openMessage(
+            this.messages,
+            { channels: this.channels, checker: this.permissions, dms: this.dms },
+            messageId,
+            userId,
+            new Date()
+        )
         const standard = normaliseEmoji(emoji)
         if (!standard) return { users: [], count: 0 }
         const { users, count } = await this.reactions.reactors(messageId, standard, REACTORS_SHOWN)

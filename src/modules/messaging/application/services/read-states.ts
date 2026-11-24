@@ -2,9 +2,13 @@ import { AccessMember, AccessServer, channelPermissions, Permission } from '@/mo
 import { MembershipPort } from '@/modules/servers'
 import { ChannelReadState, ReadStateRepositoryPort, readFloor } from '../../domain'
 
-/** A channel's read state as the API gives it: with its server, so the rail can add up each server (C-05). */
+/**
+ * A channel's read state as the API gives it: with its server, so the rail
+ * can add up each server (C-05); null for a DM, which the 💬 badge adds up
+ * (D-244).
+ */
 export interface ReadStateView extends ChannelReadState {
-    serverId: string
+    serverId: string | null
 }
 
 /**
@@ -25,18 +29,23 @@ export async function joinedAt(membership: MembershipPort, userId: string, serve
     return found?.joinedAt ?? null
 }
 
-/** The person's state in these channels of one server: from when they joined it, with the roles they hold there. */
+/**
+ * The person's state in these channels of one server, from when they joined
+ * it, with the roles they hold there; or in a DM (`serverId` null, no
+ * member), from when it began.
+ */
 export async function readStatesIn(
     readStates: ReadStateRepositoryPort,
-    serverId: string,
-    member: AccessMember,
+    userId: string,
+    serverId: string | null,
+    member: AccessMember | null,
     joined: Date,
     channelIds: string[]
 ): Promise<ReadStateView[]> {
     const floorId = readFloor(joined)
     const states = await readStates.states(
-        member.userId,
-        member.roleIds,
+        userId,
+        member?.roleIds ?? [],
         channelIds.map((channelId) => ({ channelId, floorId }))
     )
     return states.map((state) => ({ serverId, ...state }))

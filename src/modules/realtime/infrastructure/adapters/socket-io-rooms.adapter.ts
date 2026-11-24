@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Server } from 'socket.io'
 import type { OpenedConnection } from '@/modules/realtime/application'
-import { SocketRoomsPort } from '@/modules/realtime/application/ports'
-import { userRoom } from '@/modules/realtime/domain'
+import { DmRoomsPort, SocketRoomsPort } from '@/modules/realtime/application/ports'
+import { channelRoom, userRoom } from '@/modules/realtime/domain'
 
 /** What the gateway keeps on each socket it let in (RealtimeGateway): the connection OpenConnection answered. */
 interface ConnectionData {
@@ -10,13 +10,13 @@ interface ConnectionData {
 }
 
 /**
- * SocketRoomsPort over the gateway's socket.io server. `fetchSockets` and
+ * SocketRoomsPort, and DmRoomsPort, over the gateway's socket.io server. `fetchSockets` and
  * `socketsLeave` / `socketsJoin` go through the Redis adapter, so sockets on
  * every instance are found and moved. Attached by RealtimeModule, like the
  * event publisher; before that (nothing is connected) nothing moves.
  */
 @Injectable()
-export class SocketIoRooms implements SocketRoomsPort {
+export class SocketIoRooms implements SocketRoomsPort, DmRoomsPort {
     private readonly logger = new Logger(SocketIoRooms.name)
     private server: Server | undefined
 
@@ -48,5 +48,9 @@ export class SocketIoRooms implements SocketRoomsPort {
             if (join.length > 0) sockets.socketsJoin(join)
         }
         return Promise.resolve()
+    }
+
+    async join(channelId: string, userIds: string[]): Promise<void> {
+        for (const userId of userIds) await this.move(userId, [], [channelRoom(channelId)])
     }
 }

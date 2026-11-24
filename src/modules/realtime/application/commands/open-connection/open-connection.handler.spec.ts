@@ -1,3 +1,4 @@
+import type { DmChannelsPort } from '../../ports'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { MembershipPort } from '@/modules/servers'
 import { PrincipalPort } from '@/modules/auth'
@@ -49,7 +50,7 @@ const study: AccessServer = {
     ]
 }
 
-function setup(options: { holder?: TicketHolder | null; servers?: string[]; revoked?: Error } = {}) {
+function setup(options: { holder?: TicketHolder | null; servers?: string[]; revoked?: Error; dms?: string[] } = {}) {
     const redeemed: string[] = []
     const tickets: TicketStorePort = {
         issue: async () => 'unused',
@@ -68,6 +69,7 @@ function setup(options: { holder?: TicketHolder | null; servers?: string[]; revo
         membersAmong: jest.fn(),
         channelMembers: jest.fn(),
         sharedServers: jest.fn(),
+        sharingAServer: jest.fn(),
         serverIdsOf: async () => options.servers ?? ['study', 'left'],
         membershipsOf: jest.fn()
     }
@@ -76,7 +78,8 @@ function setup(options: { holder?: TicketHolder | null; servers?: string[]; revo
         access: async (serverId) =>
             serverId === 'study' ? { server: study, member: { userId: AN, roleIds: [], timeoutUntil: null } } : null
     }
-    const handler = new OpenConnectionHandler(tickets, principals, membership, checker)
+    const dms: DmChannelsPort = { channelIdsOf: jest.fn(async () => options.dms ?? []) }
+    const handler = new OpenConnectionHandler(tickets, principals, membership, checker, dms)
     return { handler, redeemed }
 }
 
@@ -130,6 +133,16 @@ describe('Opening a realtime connection', () => {
         const { handler } = setup({ revoked: ended })
 
         await expect(handler.execute(new OpenConnectionCommand('ticket-1'))).rejects.toBe(ended)
+    })
+
+    it('puts the socket in the room of each of its DMs, closed ones too (D-242, D-244)', async () => {
+        const { handler } = setup({ servers: [], dms: ['dm-an-binh', 'dm-an-chi'] })
+
+        const { rooms } = await handler.execute(new OpenConnectionCommand('ticket-1'))
+
+        expect(rooms.sort()).toEqual(
+            ['session:session-1', 'user:user-an', 'channel:dm-an-binh', 'channel:dm-an-chi'].sort()
+        )
     })
 
     it('opens with only its own rooms when it is in no server', async () => {

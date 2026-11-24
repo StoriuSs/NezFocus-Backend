@@ -1,11 +1,14 @@
 import { EventBus } from '@nestjs/cqrs'
+import type { LastMessage, LastMessagesPort } from '@/modules/messaging'
 import { Presence, PresencePort } from '@/modules/realtime'
 import { MembershipPort, SharedServer } from '@/modules/servers'
 import { DirectoryUser, UserDirectoryPort } from '@/modules/users'
-import { LimitsUnavailableError, shownPerson } from '@/shared/domain'
+import { isHidden, LimitsUnavailableError, shownPerson } from '@/shared/domain'
 import { RateLimitRule } from '@/shared/types/rate-limit.type'
 import {
     afterWrite,
+    DmEntry,
+    DmRepositoryPort,
     PairState,
     RelationshipDecision,
     RelationshipEntry,
@@ -17,8 +20,11 @@ import { SocialLimitPort } from './ports'
 /*
  * People for the social handler specs, in memory (spec 09): An, Bình, Chi,
  * Dũng completed; Giang waiting to be deleted; Hà deleted for good; Khoa
- * never completed. An and Bình share the server "ot". Times in Hồ Chí Minh
- * City for An.
+ * never completed. An and Bình share the server "ot", Bình and Chi the
+ * server "nd". Times in Hồ Chí Minh City for An. Everyone lets server
+ * members message them until a test says otherwise (`allowing`). DMs and
+ * their last messages as the Prisma repository and messaging keep them,
+ * on a clock a test moves (`clock`).
  */
 
 const NAMES = ['an', 'binh', 'chi', 'dung', 'giang', 'ha', 'khoa'] as const
@@ -133,6 +139,8 @@ export function socialWorld() {
     }
 
     const zones = new Map<string, string>([['an', 'Asia/Ho_Chi_Minh']])
+    /** Who lets members of a server they share message them (on by default). */
+    const allowing = new Set<string>(NAMES)
     const users = {
         findById: jest.fn(async (id: string) => people.get(id) ?? null),
         findByUsername: jest.fn(
@@ -140,6 +148,9 @@ export function socialWorld() {
                 [...people.values()].find((one) => one.username === username && !one.deletedAt) ?? null
         ),
         timeZoneOf: jest.fn(async (id: string) => zones.get(id) ?? null),
+        allowingServerMemberMessages: jest.fn(async (ids: string[]) =>
+            ids.filter((id) => allowing.has(id) && people.get(id)?.completedAt && !people.get(id)?.deletedAt)
+        ),
         avatarUrl: jest.fn(async (key: string | null) => (key ? `https://cdn/${key}` : null))
     } as unknown as UserDirectoryPort & { findByUsername: jest.Mock }
 
@@ -166,11 +177,117 @@ export function socialWorld() {
     } as unknown as PresencePort
 
     const shared = new Map<string, SharedServer[]>([
-        [key('an', 'binh'), [{ serverId: 'ot', name: 'Ôn thi Giải tích 2' }]]
+        [key('an', 'binh'), [{ serverId: 'ot', name: 'Ôn thi Giải tích 2' }]],
+        [key('binh', 'chi'), [{ serverId: 'nd', name: 'Nhóm đồ án' }]]
     ])
     const membership = {
-        sharedServers: jest.fn(async (viewerId: string, otherId: string) => shared.get(key(viewerId, otherId)) ?? [])
+        sharedServers: jest.fn(async (viewerId: string, otherId: string) => shared.get(key(viewerId, otherId)) ?? []),
+        sharingAServer: jest.fn(async (userId: string, otherIds: string[]) =>
+            otherIds.filter((id) => (shared.get(key(userId, id)) ?? []).length > 0)
+        )
     } as unknown as MembershipPort
+
+    /** The database's clock, which stamps DMs, close marks and messages alike. */
+    const clock = { now: new Date('2026-11-24T08:00:00Z') }
+    const tick = () => (clock.now = new Date(clock.now.getTime() + 60_000))
+    /** Channel id → the DmChannel row. */
+    const dmRows = new Map<
+        string,
+        { low: string; high: string; lowClosedAt: Date | null; highClosedAt: Date | null; createdAt: Date }
+    >()
+    const dmOf = (a: string, b: string) => {
+        const [low, high] = [a, b].sort()
+        return [...dmRows].find(([, row]) => row.low === low && row.high === high)
+    }
+    const dmEntry = (userId: string, channelId: string): DmEntry | null => {
+        const row = dmRows.get(channelId)
+        if (!row || (row.low !== userId && row.high !== userId)) return null
+        const low = row.low === userId
+        const other = people.get(low ? row.high : row.low)!
+        return {
+            channelId,
+            other: shownPerson(other),
+            otherGone: isHidden(other),
+            closedAt: low ? row.lowClosedAt : row.highClosedAt,
+            createdAt: row.createdAt
+        }
+    }
+    const dms: DmRepositoryPort = {
+        findByPair: jest.fn(async (userId: string, otherId: string) => {
+            const found = dmOf(userId, otherId)
+            return found
+                ? {
+                      channelId: found[0],
+                      userIds: [found[1].low, found[1].high] as [string, string],
+                      createdAt: found[1].createdAt
+                  }
+                : null
+        }),
+        find: jest.fn(async (channelId: string) => {
+            const row = dmRows.get(channelId)
+            return row
+                ? { channelId, userIds: [row.low, row.high] as [string, string], createdAt: row.createdAt }
+                : null
+        }),
+        open: jest.fn(async (userId: string, otherId: string) => {
+            const found = dmOf(userId, otherId)
+            if (found) {
+                const [channelId, row] = found
+                const side = row.low === userId ? 'lowClosedAt' : 'highClosedAt'
+                if (!row[side]) return { channelId, created: false, reopened: false }
+                row[side] = null
+                return { channelId, created: false, reopened: true }
+            }
+            const [low, high] = [userId, otherId].sort() as [string, string]
+            const channelId = `dm-${low}-${high}`
+            const now = tick()
+            dmRows.set(channelId, {
+                low,
+                high,
+                createdAt: now,
+                lowClosedAt: low === userId ? null : now,
+                highClosedAt: high === userId ? null : now
+            })
+            return { channelId, created: true, reopened: false }
+        }),
+        close: jest.fn(async (userId: string, channelId: string) => {
+            const row = dmRows.get(channelId)
+            if (!row || (row.low !== userId && row.high !== userId)) return null
+            const side = row.low === userId ? 'lowClosedAt' : 'highClosedAt'
+            if (row[side]) return false
+            row[side] = tick()
+            return true
+        }),
+        entriesOf: jest.fn(async (userId: string) =>
+            [...dmRows.keys()].map((id) => dmEntry(userId, id)).filter((entry): entry is DmEntry => !!entry)
+        ),
+        entryOf: jest.fn(async (userId: string, channelId: string) => dmEntry(userId, channelId)),
+        channelIdsOf: jest.fn(async (userId: string) =>
+            [...dmRows].filter(([, row]) => row.low === userId || row.high === userId).map(([id]) => id)
+        )
+    }
+    /** Channel id → its last message not deleted. */
+    const lastSaid = new Map<string, LastMessage>()
+    /** A message in a DM, now by the clock. */
+    const say = (channelId: string, authorId: string, content = 'Chào nha') => {
+        const at = tick()
+        lastSaid.set(channelId, {
+            channelId,
+            id: `m-${at.getTime()}`,
+            type: 'regular',
+            systemEvent: null,
+            authorId,
+            content,
+            mentionUsers: [],
+            files: { count: 0, images: 0 },
+            createdAt: at
+        })
+    }
+    const lastMessages: LastMessagesPort & { lastMessagesOf: jest.Mock } = {
+        lastMessagesOf: jest.fn(async (channelIds: string[]) =>
+            channelIds.flatMap((id) => (lastSaid.has(id) ? [lastSaid.get(id)!] : []))
+        )
+    }
 
     const eventBus = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
     const published = <T>(type: new (...args: never[]) => T): T[] =>
@@ -200,6 +317,13 @@ export function socialWorld() {
         presence,
         online,
         membership,
+        allowing,
+        shared,
+        dms,
+        dmRows,
+        lastMessages,
+        say,
+        clock,
         eventBus,
         published,
         stateOf,

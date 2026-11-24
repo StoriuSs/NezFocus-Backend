@@ -79,6 +79,10 @@ export class UserDirectory implements UserDirectoryPort {
         return (await this.settings.find(id))?.presence ?? 'online'
     }
 
+    allowingServerMemberMessages(ids: string[]): Promise<string[]> {
+        return this.settings.allowingServerMemberMessages(ids)
+    }
+
     async requestDeletion(id: string, at: Date): Promise<DirectoryUser | null> {
         const user = await this.users.requestDeletion(id, at)
         return user ? toDirectoryUser(user) : null

@@ -22,7 +22,8 @@ export interface MentionWork {
  * becomes its name as words, which can make the text longer: past 2000
  * characters it is refused like a text too long (`length`), before anything
  * is counted. The people are only candidates: `reachingViewers` keeps those
- * who see the channel.
+ * who see the channel. A DM has no roles and no one may mention everyone
+ * there (D-238): role tokens and @everyone / @here stay as written, as words.
  */
 export async function keptText(
     roles: RoleDirectoryPort,
@@ -32,7 +33,7 @@ export async function keptText(
     const decided = decideMentions(content, {
         authorId,
         mayMentionEveryone: (channel.permissions & Permission.MENTION_EVERYONE) !== 0n,
-        roles: named.length ? await roles.rolesOf(channel.serverId, named) : [],
+        roles: named.length && channel.serverId ? await roles.rolesOf(channel.serverId, named) : [],
         answeredAuthorId
     })
     if (!isMessageContent(decided.content)) throw new MessageRuleError('length')
@@ -55,7 +56,8 @@ export interface Reach {
  * read, then each one's permissions read. Presence that cannot be read
  * reaches no one. `heldHere`: an edit of a message whose @here already
  * reached people keeps them (D-176). One permission read per person, so it
- * runs once the message is counted.
+ * runs once the message is counted. In a DM, only the other one of the two
+ * can be reached (D-238), and nothing is read.
  */
 export async function reachingViewers(
     { checker, presence, membership }: Reach,
@@ -64,6 +66,7 @@ export async function reachingViewers(
     heldHere?: string[]
 ): Promise<MessageMentions> {
     const { userIds } = mentions
+    if (channel.type === 'dm') return { ...mentions, userIds: userIds.filter((id) => id === channel.otherId) }
     const viewers = userIds.length ? await viewersOf(checker, channel.serverId, channelId, userIds, now) : []
     if (!mentions.here) return { ...mentions, userIds: viewers }
     if (heldHere) return { ...mentions, userIds: viewers, hereUserIds: heldHere }

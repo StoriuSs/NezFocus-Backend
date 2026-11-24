@@ -1,3 +1,4 @@
+import { DM_STARTED, dms } from '../../dm-test-world.shared-spec'
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort, MembershipPort } from '@/modules/servers'
@@ -13,6 +14,15 @@ import {
 import { ReadStateUpdatedEvent } from '../../events/read-state-updated.event'
 import { AckChannelCommand } from './read-state.commands'
 import { AckChannelHandler } from './read-state.handlers'
+
+/** A DM of An and Bình (D-238); Chi may no longer write in hers with An. */
+const DM_WORLD = {
+    conversations: [
+        { channelId: 'dm-an-binh', userIds: ['an', 'binh'] as [string, string] },
+        { channelId: 'dm-an-chi', userIds: ['an', 'chi'] as [string, string] }
+    ],
+    silenced: ['chi']
+}
 
 const server: AccessServer = {
     ownerId: 'an',
@@ -130,17 +140,20 @@ function world() {
         membersAmong: jest.fn(),
         channelMembers: jest.fn(),
         sharedServers: jest.fn(),
+        sharingAServer: jest.fn(),
         serverIdsOf: jest.fn(),
         membershipsOf: jest.fn(async () => [{ serverId: 'ot', joinedAt: JOINED }])
     }
     const events = { publish: jest.fn() }
+    const dmAccess = dms(DM_WORLD)
     const handler = new AckChannelHandler(
         readStates,
         messages,
         channels,
         checker,
         membership,
-        events as unknown as EventBus
+        events as unknown as EventBus,
+        dmAccess
     )
     const ack = (userId: string, channelId: string, messageId: string | null = null) =>
         handler.execute(new AckChannelCommand(userId, channelId, messageId))
@@ -220,5 +233,22 @@ describe('AckChannelHandler (REQ-MSG-09, D-46, D-173)', () => {
                 channels: [{ channelId: 'ban-quan-ly', floorId: readFloor(JOINED) }]
             }
         ])
+    })
+})
+
+describe('Reading a DM (D-238, D-244)', () => {
+    it('marks it read for one of its two, from when it began, with no server and no roles', async () => {
+        const { ack, asked } = world()
+
+        const state = await ack('chi', 'dm-an-chi')
+
+        expect(state.serverId).toBeNull()
+        expect(asked).toEqual([
+            { userId: 'chi', roleIds: [], channels: [{ channelId: 'dm-an-chi', floorId: readFloor(DM_STARTED) }] }
+        ])
+    })
+
+    it('is NOT_FOUND to anyone else', async () => {
+        await expect(world().ack('binh', 'dm-an-chi')).rejects.toBeInstanceOf(ChannelNotFoundError)
     })
 })

@@ -39,6 +39,8 @@ import {
 import {
     ATTACHMENT_STORAGE,
     AttachmentStoragePort,
+    DM_ACCESS,
+    DmAccessPort,
     FILE_CLEANUP,
     FileCleanupPort,
     SEND_LIMIT,
@@ -47,7 +49,7 @@ import {
     UploadForm
 } from '../../ports'
 import { attachmentView, AttachmentView } from '../../services/attachment-views'
-import { openChannel, requireSending } from '../../services/channel-access'
+import { ChannelSources, openChannel, requireSending } from '../../services/channel-access'
 import { countUpload } from '../../services/sending-limits'
 import { CleanUpAttachmentsCommand, CompleteUploadCommand, RequestUploadCommand } from './attachment.commands'
 
@@ -68,7 +70,8 @@ const UPLOAD_KEY_GRACE_MS = 60 * 1000
  * one (D-165). The form writes only to an upload key, which is deleted a
  * minute after the form expires: the file checked and sent is a copy the form
  * cannot reach. The file belongs to no channel yet: sending it checks the
- * channel it goes to.
+ * channel it goes to. In a DM, only while they may still message the other
+ * one (D-238).
  */
 @CommandHandler(RequestUploadCommand)
 export class RequestUploadHandler implements ICommandHandler<RequestUploadCommand> {
@@ -80,12 +83,18 @@ export class RequestUploadHandler implements ICommandHandler<RequestUploadComman
         @Inject(FILE_CLEANUP) private readonly cleanup: FileCleanupPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
-        @Inject(SEND_LIMIT) private readonly limit: SendLimitPort
+        @Inject(SEND_LIMIT) private readonly limit: SendLimitPort,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
+
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
 
     async execute({ userId, channelId, filename, size }: RequestUploadCommand): Promise<UploadTicket> {
         const now = new Date()
-        const channel = await openChannel(this.channels, this.permissions, channelId, userId, now)
+        const channel = await openChannel(this.access, channelId, userId, now, 'write')
         requireSending(channel, now)
         if ((channel.permissions & Permission.ATTACH_FILES) === 0n) throw new CannotAttachError()
 

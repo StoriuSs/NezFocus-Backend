@@ -37,3 +37,19 @@ export class TimedOutError extends DomainError {
         this.details = { timeoutUntil: timeoutUntil.toISOString() }
     }
 }
+
+/**
+ * In a DM, the other one may not be messaged now (REQ-SOCIAL-04, D-238):
+ * not friends and no server shared with someone who lets server members
+ * write, a block either way, an account gone. The same answer for every
+ * reason, as social gives it: social's CannotMessageUserError says the same,
+ * kept apart because social imports this module, never the other way.
+ */
+export class CannotMessageUserError extends DomainError {
+    readonly kind = 'forbidden'
+    readonly errorKey = 'CANNOT_MESSAGE_USER'
+
+    constructor(userId: string) {
+        super(`Cannot reach user ${userId}`)
+    }
+}

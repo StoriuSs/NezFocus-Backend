@@ -377,9 +377,12 @@ see it as deleted in their lists (D-182), and it can be unfriended or
 unblocked but not asked, accepted or blocked (`NOT_FOUND_ERROR`). Once it is
 deleted for good, `ForgetDeletedAccountHandler` (social) deletes its
 `Relationship` and `Block` rows, either way; every read leaves out an
-account deleted for good, so an event lost there shows nothing. A call in
-progress and how a conversation shows the deleted account come with M6 L3
-and L4.
+account deleted for good, so an event lost there shows nothing. A
+conversation with it stays, its history kept (M6 L3, spec 09
+`deleted-account`): its `DmChannel` and messages are never deleted, the
+other one sees it as deleted in `GET /me/dms` and may no longer write there
+(`CANNOT_MESSAGE_USER`), and no one opens a new one with it (`NOT_FOUND_ERROR`).
+A call in progress comes with M6 L4.
 
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.

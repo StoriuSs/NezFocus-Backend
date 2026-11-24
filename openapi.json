@@ -6530,6 +6530,152 @@
           "social"
         ]
       }
+    },
+    "/api/v1/me/dms": {
+      "get": {
+        "operationId": "DmsController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DmListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My DMs shown in my list, the latest active first: never closed, or a message after I closed it (D-244).",
+        "tags": [
+          "social"
+        ]
+      },
+      "post": {
+        "operationId": "DmsController_open_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenDmRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DmResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Open my DM with someone (D-242): the one there is, whatever stands\nbetween us now, open again on my side; or a new one, for someone I\nmay message. Not found: oneself, no such account, one deleted or\nwaiting to be. CANNOT_MESSAGE_USER: every other reason, the same.",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/me/dms/{dmId}": {
+      "delete": {
+        "operationId": "DmsController_close_v1",
+        "parameters": [
+          {
+            "name": "dmId",
+            "required": true,
+            "in": "path",
+            "description": "The DM's channel id: its messages go through the channel routes (D-238).",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Close a DM on my side (D-244): it leaves my list until a message comes; closed already, nothing changes.",
+        "tags": [
+          "social"
+        ]
+      }
     }
   },
   "info": {
@@ -9405,7 +9551,9 @@
         "type": "object",
         "properties": {
           "server_id": {
-            "type": "string"
+            "type": "string",
+            "nullable": true,
+            "description": "The channel's server, for the rail's sums (C-05); null for a DM, which the 💬 badge counts (D-244)."
           },
           "channel_id": {
             "type": "string"
@@ -11164,6 +11312,174 @@
           "user",
           "bio",
           "mutual_servers"
+        ]
+      },
+      "DmMentionedUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name"
+        ]
+      },
+      "DmMessageFilesResponseDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "images": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "images"
+        ]
+      },
+      "DmLastMessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "regular",
+              "system"
+            ],
+            "type": "string"
+          },
+          "system_event": {
+            "type": "string",
+            "nullable": true,
+            "description": "What a system message says happened (`call_ended` from M6 L4); null on a regular one."
+          },
+          "author_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Who wrote it; null on a system message."
+          },
+          "id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "As written, its tokens (`<@id>`) named by `mention_users`."
+          },
+          "mention_users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DmMentionedUserResponseDto"
+            }
+          },
+          "files": {
+            "$ref": "#/components/schemas/DmMessageFilesResponseDto"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "system_event",
+          "author_id",
+          "id",
+          "content",
+          "mention_users",
+          "files",
+          "created_at"
+        ]
+      },
+      "DmResponseDto": {
+        "type": "object",
+        "properties": {
+          "presence": {
+            "nullable": true,
+            "description": "What I see of them: a friend, or someone I share a server with (D-242); null for anyone else or an account gone.",
+            "enum": [
+              "online",
+              "idle",
+              "dnd",
+              "offline"
+            ],
+            "type": "string"
+          },
+          "last_message": {
+            "nullable": true,
+            "description": "Null in a DM with no message left.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DmLastMessageResponseDto"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "The DM's channel id: its messages, pins, reads go through the channel routes (D-238)."
+          },
+          "user": {
+            "description": "Nulls for an account deleted or waiting to be: the client says \"Tài khoản đã bị xóa\" (D-182).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SocialPersonResponseDto"
+              }
+            ]
+          },
+          "can_message": {
+            "type": "boolean",
+            "description": "Whether I may message them now (REQ-SOCIAL-04): false shows the locked composer, no call button."
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "presence",
+          "last_message",
+          "id",
+          "user",
+          "can_message",
+          "created_at"
+        ]
+      },
+      "DmListResponseDto": {
+        "type": "object",
+        "properties": {
+          "dms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DmResponseDto"
+            }
+          }
+        },
+        "required": [
+          "dms"
+        ]
+      },
+      "OpenDmRequestDto": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "user_id"
         ]
       }
     }

@@ -46,6 +46,19 @@ export class PrismaMembership implements MembershipPort {
         return rows.map(({ serverId, server }) => ({ serverId, name: server.name }))
     }
 
+    async sharingAServer(userId: string, otherIds: string[]): Promise<string[]> {
+        if (otherIds.length === 0) return []
+        const rows = await this.prisma.member.findMany({
+            where: {
+                userId: { in: otherIds },
+                server: { deletedAt: null, members: { some: { userId } } }
+            },
+            distinct: ['userId'],
+            select: { userId: true }
+        })
+        return rows.map((row) => row.userId)
+    }
+
     async membershipsOf(userId: string): Promise<Membership[]> {
         return this.prisma.member.findMany({
             where: { userId, server: { deletedAt: null } },

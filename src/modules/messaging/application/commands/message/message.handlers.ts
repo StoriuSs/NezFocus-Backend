@@ -30,8 +30,15 @@ import { MessageCreatedEvent } from '../../events/message-created.event'
 import { MessageDeletedEvent } from '../../events/message-deleted.event'
 import { MessagesBulkDeletedEvent } from '../../events/messages-bulk-deleted.event'
 import { MessageUpdatedEvent } from '../../events/message-updated.event'
-import { ATTACHMENT_STORAGE, AttachmentStoragePort, SEND_LIMIT, SendLimitPort } from '../../ports'
-import { openChannel, requireSending, timedOutUntil } from '../../services/channel-access'
+import {
+    ATTACHMENT_STORAGE,
+    AttachmentStoragePort,
+    DM_ACCESS,
+    DmAccessPort,
+    SEND_LIMIT,
+    SendLimitPort
+} from '../../ports'
+import { ChannelSources, openChannel, requireSending, timedOutUntil } from '../../services/channel-access'
 import { keptText, MentionWork, Reach, reachingViewers } from '../../services/mentions'
 import { openMessage } from '../../services/message-access'
 import { requireSendableFiles } from '../../services/message-files'
@@ -71,6 +78,10 @@ import {
  * can make it too long (`length`). Once counted, the people it is about
  * (those mentioned, the author answered, deleted or not, D-39) who see the
  * channel get their mention rows with the message (D-164).
+ *
+ * A DM (D-238) is opened for writing: social says whether the sender may
+ * still message the other one (CANNOT_MESSAGE_USER, the same for every
+ * reason); its mentions reach only the other one.
  */
 @CommandHandler(SendMessageCommand)
 export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
@@ -85,8 +96,14 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
         @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
         @Inject(PRESENCE) private readonly presence: PresencePort,
         @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
+
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
 
     /** Whom a message reaches: permissions, presence and members (services/mentions.ts). */
     private get reach(): Reach {
@@ -102,7 +119,7 @@ export class SendMessageHandler implements ICommandHandler<SendMessageCommand> {
         attachmentIds
     }: SendMessageCommand): Promise<MessageView> {
         const now = new Date()
-        const channel = await openChannel(this.channels, this.permissions, channelId, userId, now)
+        const channel = await openChannel(this.access, channelId, userId, now, 'write')
         requireSending(channel, now)
         const views = (records: MessageRecord[]) =>
             messageViews({ users: this.users, roles: this.roles, files: this.files }, channel.serverId, records)
@@ -172,8 +189,14 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
         @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
         @Inject(PRESENCE) private readonly presence: PresencePort,
         @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
+
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
 
     /** Whom a message reaches: permissions, presence and members (services/mentions.ts). */
     private get reach(): Reach {
@@ -182,14 +205,7 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
 
     async execute({ userId, messageId, content }: EditMessageCommand): Promise<MessageView> {
         const now = new Date()
-        const { message, channel } = await openMessage(
-            this.messages,
-            this.channels,
-            this.permissions,
-            messageId,
-            userId,
-            now
-        )
+        const { message, channel } = await openMessage(this.messages, this.access, messageId, userId, now, 'write')
         // Timed out comes before any other reason, as when sending (REQ-MSG-05).
         const until = timedOutUntil(channel, now)
         if (until) throw new TimedOutError(until)
@@ -231,7 +247,9 @@ export class EditMessageHandler implements ICommandHandler<EditMessageCommand> {
 
 /**
  * The author deletes their own message unless timed out, MANAGE_MESSAGES
- * anyone's (REQ-MSG-05, SRS 1.70); a system message no one. The row stays,
+ * anyone's (REQ-MSG-05, SRS 1.70); a system message no one. In a DM, each
+ * only their own, even once they may no longer message the other one
+ * (D-238): no one manages it. The row stays,
  * emptied, for the replies to it; the history no longer shows it.
  */
 @CommandHandler(DeleteMessageCommand)
@@ -240,19 +258,18 @@ export class DeleteMessageHandler implements ICommandHandler<DeleteMessageComman
         @Inject(MESSAGE_REPOSITORY) private readonly messages: MessageRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
+
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
 
     async execute({ userId, messageId }: DeleteMessageCommand): Promise<void> {
         const now = new Date()
-        const { message, channel } = await openMessage(
-            this.messages,
-            this.channels,
-            this.permissions,
-            messageId,
-            userId,
-            now
-        )
+        const { message, channel } = await openMessage(this.messages, this.access, messageId, userId, now)
         // Timed out comes before any other reason, as when sending (REQ-MSG-05).
         const until = timedOutUntil(channel, now)
         if (until) throw new TimedOutError(until)

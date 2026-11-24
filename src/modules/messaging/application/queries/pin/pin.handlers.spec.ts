@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
@@ -81,7 +82,8 @@ function world() {
         checker,
         users as unknown as UserDirectoryPort,
         { rolesOf: jest.fn(async () => []) } as RoleDirectoryPort,
-        FILES
+        FILES,
+        dms()
     )
     return { handler, pins, reactions }
 }

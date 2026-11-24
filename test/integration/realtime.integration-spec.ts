@@ -409,6 +409,78 @@ describe('Realtime connection (integration)', () => {
         })
     })
 
+    describe('direct messages (D-242, D-244)', () => {
+        /** An and Bình friends, so either may open a DM. */
+        async function friends() {
+            const [low, high] = [users.an.id, users.binh.id].sort()
+            await prisma.relationship.create({
+                data: {
+                    userLowId: low!,
+                    userHighId: high!,
+                    requesterId: users.an.id,
+                    status: 'accepted',
+                    acceptedAt: new Date()
+                }
+            })
+        }
+        const openDm = async (who: string, other: string) => {
+            const res = await as(who, api().post('/api/v1/me/dms'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ user_id: users[other].id })
+            expect(res.status).toBe(200)
+            return res.body.data.id as string
+        }
+        const say = (who: string, channelId: string, content: string) =>
+            as(who, api().post(`/api/v1/channels/${channelId}/messages`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ content, nonce: randomUUID() })
+        const heardIn = (socket: Socket, channelId: string) =>
+            new Promise<{ content: string }>((resolve) => {
+                const listener = (data: { message: { channel_id: string; content: string } }) => {
+                    if (data.message.channel_id !== channelId) return
+                    socket.off('message.created', listener)
+                    resolve(data.message)
+                }
+                socket.on('message.created', listener)
+            })
+
+        afterEach(async () => {
+            const ids = [users.an.id, users.binh.id]
+            await prisma.channel.deleteMany({
+                where: { dm: { OR: [{ userLowId: { in: ids } }, { userHighId: { in: ids } }] } }
+            })
+            await prisma.relationship.deleteMany({
+                where: { OR: [{ userLowId: { in: ids } }, { userHighId: { in: ids } }] }
+            })
+        })
+
+        it('puts both of a new DM in its room at once: the first message reaches the other one, no reconnection', async () => {
+            await friends()
+            const an = await connectAs('an')
+            const binh = await connectAs('binh')
+            const made = hears(an, 'dm.created', 2000)
+
+            const dm = await openDm('an', 'binh')
+            expect(await made).toMatchObject({ dm: { id: dm, user: { id: users.binh.id } } })
+            const reached = heardIn(binh, dm)
+            expect((await say('an', dm, 'Bình ơi, rảnh không?')).status).toBe(201)
+
+            expect(await reached).toMatchObject({ content: 'Bình ơi, rảnh không?' })
+        })
+
+        it('puts a socket in the room of each of its DMs when it connects, one closed on its side too', async () => {
+            await friends()
+            // Made by An: closed on Bình's side until its first message (D-244).
+            const dm = await openDm('an', 'binh')
+            const binh = await connectAs('binh')
+            const reached = heardIn(binh, dm)
+
+            await say('an', dm, 'Tin đầu tiên')
+
+            expect(await reached).toMatchObject({ content: 'Tin đầu tiên' })
+        })
+    })
+
     describe('typing (REQ-MSG-06)', () => {
         it('tells the channel who is typing, twice in 8 seconds at most from one tab', async () => {
             const { generalId } = await serverWith('an', ['binh'])

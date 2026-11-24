@@ -1,7 +1,8 @@
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
-import { CannotSendError, ChannelNotFoundError, TimedOutError } from '../../domain'
-import { openChannel, requireSending, timedOutUntil, viewersOf } from './channel-access'
+import { CannotMessageUserError, CannotSendError, ChannelNotFoundError, TimedOutError } from '../../domain'
+import { dms, DM_STARTED } from '../dm-test-world.shared-spec'
+import { ChannelUse, openChannel, requireMessaging, requireSending, timedOutUntil, viewersOf } from './channel-access'
 
 const NOW = new Date('2026-10-18T21:47:00Z')
 const LATER = new Date('2026-10-18T22:30:00Z')
@@ -67,8 +68,17 @@ function world() {
             members[userId] ? { server, member: { userId, ...members[userId] } } : null
         )
     }
-    const open = (channelId: string, userId: string) => openChannel(channels, checker, channelId, userId, NOW)
-    return { open, checker }
+    // A DM of An and Bình; Chi may no longer write in hers with An (D-238).
+    const dmAccess = dms({
+        conversations: [
+            { channelId: 'dm-an-binh', userIds: ['an', 'binh'] },
+            { channelId: 'dm-an-chi', userIds: ['an', 'chi'] }
+        ],
+        silenced: ['chi']
+    })
+    const open = (channelId: string, userId: string, use?: ChannelUse) =>
+        openChannel({ channels, checker, dms: dmAccess }, channelId, userId, NOW, use)
+    return { open, checker, dmAccess }
 }
 
 describe('Opening a channel to read or post (NFR-SEC-05)', () => {
@@ -167,5 +177,48 @@ describe('Whether a timeout holds the person back (deleting one’s own message,
     it('gives nothing to the owner though a timeout is on record (appendix B, step 1)', async () => {
         const { open } = world()
         expect(timedOutUntil(await open('hoi-dap', 'an'), NOW)).toBeNull()
+    })
+})
+
+describe('Opening a DM (D-238)', () => {
+    it('lets each of its two read it, with no server, no roles and no timeout', async () => {
+        const { open, checker, dmAccess } = world()
+        const opened = await open('dm-an-binh', 'binh')
+        expect(opened).toMatchObject({ serverId: null, type: 'dm', member: null, otherId: 'an', createdAt: DM_STARTED })
+        expect(opened.permissions).toBe(Permission.VIEW_CHANNEL)
+        expect(timedOutUntil(opened, NOW)).toBeNull()
+        expect(checker.access).not.toHaveBeenCalled()
+        // Reading asks nothing about writing.
+        expect(dmAccess.canMessage).not.toHaveBeenCalled()
+    })
+
+    it('answers not found to anyone else, as for a channel they may not view', async () => {
+        await expect(world().open('dm-an-binh', 'phong')).rejects.toBeInstanceOf(ChannelNotFoundError)
+        await expect(world().open('dm-khong-co', 'an')).rejects.toBeInstanceOf(ChannelNotFoundError)
+    })
+
+    it('lets someone who may message the other one send, attach and react, never manage', async () => {
+        const opened = await world().open('dm-an-binh', 'an', 'write')
+        const may = (flag: bigint) => (opened.permissions & flag) === flag
+        expect(may(Permission.SEND_MESSAGES) && may(Permission.ATTACH_FILES) && may(Permission.ADD_REACTIONS)).toBe(
+            true
+        )
+        expect(may(Permission.MANAGE_MESSAGES) || may(Permission.MENTION_EVERYONE)).toBe(false)
+        expect(() => requireSending(opened, NOW)).not.toThrow()
+        expect(() => requireMessaging(opened)).not.toThrow()
+    })
+
+    it('refuses someone who may no longer message the other one with the one shared answer', async () => {
+        const { open } = world()
+        const opened = await open('dm-an-chi', 'chi', 'write')
+        expect(() => requireSending(opened, NOW)).toThrow(CannotMessageUserError)
+        expect(() => requireMessaging(opened)).toThrow(CannotMessageUserError)
+        // They still read it.
+        await expect(open('dm-an-chi', 'chi')).resolves.toMatchObject({ type: 'dm' })
+    })
+
+    it('lets a server channel pass requireMessaging: its permissions decide', async () => {
+        const opened = await world().open('thong-bao', 'binh', 'write')
+        expect(() => requireMessaging(opened)).not.toThrow()
     })
 })

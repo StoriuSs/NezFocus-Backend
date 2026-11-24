@@ -14,10 +14,10 @@ import {
     requirePinsIn,
     TimedOutError
 } from '../../../domain'
-import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
+import { ATTACHMENT_STORAGE, AttachmentStoragePort, DM_ACCESS, DmAccessPort } from '../../ports'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { PinsUpdatedEvent } from '../../events/pins-updated.event'
-import { timedOutUntil } from '../../services/channel-access'
+import { ChannelSources, requireMessaging, timedOutUntil } from '../../services/channel-access'
 import { openMessage } from '../../services/message-access'
 import { messageViews } from '../../services/message-views'
 import { PinMessageCommand, UnpinMessageCommand } from './pin.commands'
@@ -27,20 +27,22 @@ import { PinMessageCommand, UnpinMessageCommand } from './pin.commands'
  * (REQ-MSG-07): a message of that channel they see (else not found, naming
  * nothing), while not timed out (said first, as for deleting), with
  * MANAGE_MESSAGES, and not in a voice room's chat, which has no pins
- * (D-213). Gives the channel's server.
+ * (D-213). In a DM both pin, while they may still message the other one
+ * (D-238, D-242: a pin writes a system message the other one reads). Gives
+ * the channel's server, null for a DM.
  */
 async function requirePinning(
     messages: MessageRepositoryPort,
-    channels: ChannelDirectoryPort,
-    permissions: PermissionCheckerPort,
+    access: ChannelSources,
     { userId, channelId, messageId }: PinMessageCommand | UnpinMessageCommand
-): Promise<string> {
+): Promise<string | null> {
     const now = new Date()
-    const { message, channel } = await openMessage(messages, channels, permissions, messageId, userId, now)
+    const { message, channel } = await openMessage(messages, access, messageId, userId, now, 'write')
     if (message.channelId !== channelId) throw new MessageNotFoundError(messageId)
     const until = timedOutUntil(channel, now)
     if (until) throw new TimedOutError(until)
-    if ((channel.permissions & Permission.MANAGE_MESSAGES) === 0n) throw new CannotPinError()
+    if (channel.type === 'dm') requireMessaging(channel)
+    else if ((channel.permissions & Permission.MANAGE_MESSAGES) === 0n) throw new CannotPinError()
     requirePinsIn(channel.type)
     return channel.serverId
 }
@@ -61,11 +63,17 @@ export class PinMessageHandler implements ICommandHandler<PinMessageCommand> {
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
         @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
 
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
+
     async execute(command: PinMessageCommand): Promise<void> {
-        const serverId = await requirePinning(this.messages, this.channels, this.permissions, command)
+        const serverId = await requirePinning(this.messages, this.access, command)
         const { userId, channelId, messageId } = command
 
         const { decision, notice } = await this.pins.pin(channelId, messageId, userId, decidePin)
@@ -88,11 +96,17 @@ export class UnpinMessageHandler implements ICommandHandler<UnpinMessageCommand>
         @Inject(PIN_REPOSITORY) private readonly pins: PinRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
 
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
+
     async execute(command: UnpinMessageCommand): Promise<void> {
-        await requirePinning(this.messages, this.channels, this.permissions, command)
+        await requirePinning(this.messages, this.access, command)
         const { channelId, messageId } = command
 
         if (await this.pins.unpin(channelId, messageId))

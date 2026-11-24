@@ -322,7 +322,8 @@ export function notificationWorld() {
         membershipsOf: jest.fn(),
         membersAmong: jest.fn(),
         channelMembers: jest.fn(),
-        sharedServers: jest.fn()
+        sharedServers: jest.fn(),
+        sharingAServer: jest.fn()
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (serverId: string, userId: string) =>

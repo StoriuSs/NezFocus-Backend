@@ -1,12 +1,16 @@
+import { ApiProperty } from '@nestjs/swagger'
 import { Expose } from 'class-transformer'
-import { IsInt, IsString, Max, Min } from 'class-validator'
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
 import { READ_COUNT_CAP } from '../../../domain'
 
-/** How far the reader has read one channel (text, or a voice room's chat), and what is new there to them (REQ-MSG-09). */
+/** How far the reader has read one channel (text, a voice room's chat, or a DM), and what is new there to them (REQ-MSG-09). */
 export class ReadStateResponseDto {
+    /** The channel's server, for the rail's sums (C-05); null for a DM, which the 💬 badge counts (D-244). */
     @Expose()
+    @ApiProperty({ type: String, nullable: true })
+    @IsOptional()
     @IsString()
-    serverId: string
+    serverId: string | null
 
     @Expose()
     @IsString()

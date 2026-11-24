@@ -8,6 +8,7 @@ import { UsersModule } from '@/modules/users/users.module'
 import {
     AnnounceChosenPresenceHandler,
     DisconnectEndedSessionsHandler,
+    DM_ROOMS,
     EVENT_PUBLISHER,
     HideDeletedAccountPresenceHandler,
     IssueTicketHandler,
@@ -40,7 +41,9 @@ import { RealtimeController, RealtimeGateway } from './presentation'
  * MEMBERSHIP, CHANNEL_DIRECTORY and the two change events from servers,
  * PERMISSION_CHECKER from permissions,
  * USER_DIRECTORY (the status one chose) from users; FRIENDS (whom presence
- * also goes to, D-242) from social's global FriendsModule.
+ * also goes to, D-242) and DM_CHANNELS (whose rooms a socket joins) from
+ * social's global modules. Gives social DM_ROOMS: a new DM's two people
+ * into its room at once.
  */
 @Module({
     imports: [CqrsModule, AuthModule, ServersModule, PermissionsModule, UsersModule],
@@ -54,6 +57,7 @@ import { RealtimeController, RealtimeGateway } from './presentation'
         { provide: EVENT_PUBLISHER, useExisting: SocketIoEventPublisher },
         SocketIoRooms,
         { provide: SOCKET_ROOMS, useExisting: SocketIoRooms },
+        { provide: DM_ROOMS, useExisting: SocketIoRooms },
         RoomMoves,
         IssueTicketHandler,
         OpenConnectionHandler,
@@ -68,7 +72,7 @@ import { RealtimeController, RealtimeGateway } from './presentation'
         PublishMemberChangeHandler,
         RealtimeGateway
     ],
-    exports: [EVENT_PUBLISHER, PRESENCE]
+    exports: [EVENT_PUBLISHER, PRESENCE, DM_ROOMS]
 })
 export class RealtimeModule implements OnModuleInit {
     constructor(

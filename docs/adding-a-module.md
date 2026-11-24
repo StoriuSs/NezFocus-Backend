@@ -87,6 +87,13 @@ change every model at once, not one); **`deletedAt`** if rows must survive
 deletion for business reasons (see [account-deletion.md](./account-deletion.md));
 and **money as an integer in the smallest unit** — never a float.
 
+A module writes only the tables of its own `.prisma` file, with one
+exception (NezFocus D-244): the `Channel` row of a direct message (`type =
+dm`, no server) belongs to `social`, which writes it with its `DmChannel` in
+one transaction, under the pair's lock. `servers` keeps only channels with a
+server (it leaves `dm` rows out of every read); messaging's tables point at
+`Channel` as for any channel. Ask the owner before adding another.
+
 → [prisma-module.md](./prisma-module.md)
 
 ## 2. The domain
@@ -256,7 +263,7 @@ has none), each folder named like the files in it; `messaging`, `tasks`
 `moderation`, `reconcile`, `room`; D-211) and `study` (`room-session`,
 `room-presence`, `session-control`, `session-timer`, `solo-session`, and
 the query area `study-stats`; D-226) and `social` (`relationship`,
-`block`, and the query areas `relationship`, `person`; D-243) too;
+`block`, `dm`, and the query areas `relationship`, `person`, `dm`; D-243) too;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`
@@ -477,9 +484,14 @@ depends one way only, messaging on notifications. Voice answers servers'
 same way, through `RoomPeopleModule` in `voice.module.ts`: voice on servers; and study
 answers servers' `ROOM_SESSIONS` (each voice room's study session, D-220)
 through `RoomSessionsModule` in `study.module.ts`; social answers realtime's
-`FRIENDS` (whom presence also goes to) and notifications' `BLOCK_LIST` (whom
-people blocked) through `FriendsModule` and `BlockListModule` in
-`social.module.ts` (D-242): social on realtime and notifications. Servers and notifications
+`FRIENDS` (whom presence also goes to) and `DM_CHANNELS` (the DM rooms a
+socket joins), notifications' `BLOCK_LIST` (whom people blocked) and
+messaging's `DM_ACCESS` (a DM's two people, who may still write; D-238)
+through `FriendsModule`, `DmChannelsModule`, `BlockListModule` and
+`DmAccessModule` in `social.module.ts` (D-242): social on realtime,
+notifications and messaging. A module may also offer a port to the one that
+depends on it, from its own tables or sockets, exported by its Nest module:
+messaging's `LAST_MESSAGES` and realtime's `DM_ROOMS`, which social imports. Servers and notifications
 import each other's `index.ts` (`NOTIFIER` one way, `MEMBERSHIP` the other),
 which D-185 accepted: neither index loads the other's Nest module, so no
 token is undefined when Nest reads `@Inject`. Ask the owner before adding another such pair.
@@ -588,7 +600,8 @@ invite, all reading `ListMyServersQuery` (the e2e suite
 `servers-write-then-read` covers the 404). Social does the same for every
 change of a relationship or a block (D-237): it reads the one person with
 `GetRelationshipQuery`, the list's `ListMyRelationshipsQuery` for one
-person, both built by `relationshipViews` (`presentation/http/relationship-answer.ts`).
+person, both built by `relationshipViews` (`presentation/http/relationship-answer.ts`);
+opening a DM reads it back with `GetDmQuery`, built by `dmViews` as the list is.
 
 **A second exception: commands that tell a channel a message (NezFocus
 D-169).** Sending and editing build the message anyway, to send

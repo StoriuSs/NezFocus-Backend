@@ -61,6 +61,13 @@ export interface MembershipPort {
      * D-243). Both the same person: all of theirs.
      */
     sharedServers(viewerId: string, otherId: string): Promise<SharedServer[]>
+
+    /**
+     * Those of `otherIds` who share at least one server, not deleted, with
+     * `userId`: who may write to whom in a DM (REQ-SOCIAL-04, D-238). One
+     * read for them all.
+     */
+    sharingAServer(userId: string, otherIds: string[]): Promise<string[]>
 }
 
 export const MEMBERSHIP = Symbol('MembershipPort')

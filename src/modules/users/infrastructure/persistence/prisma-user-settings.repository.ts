@@ -43,6 +43,15 @@ export class PrismaUserSettingsRepository implements UserSettingsRepositoryPort 
         return row ? toSettings(row) : null
     }
 
+    async allowingServerMemberMessages(userIds: string[]): Promise<string[]> {
+        if (userIds.length === 0) return []
+        const rows = await this.prisma.userSettings.findMany({
+            where: { userId: { in: userIds }, allowServerMemberMessages: true, user: { deletedAt: null } },
+            select: { userId: true }
+        })
+        return rows.map((row) => row.userId)
+    }
+
     async update(userId: string, changes: SettingsChanges, timezone?: TimezoneChange): Promise<UserSettings | null> {
         // One UPDATE … WHERE: Postgres re-checks the condition on the locked
         // row, so of two zone changes at once the second matches nothing.

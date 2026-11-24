@@ -4,7 +4,9 @@
  * due soon, which the tasks module sends through the bus (REQ-TASK-04); a
  * study session started or ended, which the study module sends (D-222). The
  * system messages servers asks for (SYSTEM_MESSAGES) come with the join
- * message. MessagingModule itself is imported from './messaging.module'.
+ * message. Social answers DM_ACCESS (D-238) and reads the last message of
+ * each conversation (LAST_MESSAGES, D-244). MessagingModule itself is
+ * imported from './messaging.module'.
  */
 export { CleanUpAttachmentsCommand } from './application/commands/attachment/attachment.commands'
 export {
@@ -12,3 +14,10 @@ export {
     PostTaskDueCommand
 } from './application/commands/system-message/system-message.commands'
 export type { StudySessionNotice, TaskDueData } from './domain'
+export { DM_ACCESS, type DmAccessPort, type DmConversation } from './application/ports/dm-access.port'
+export {
+    LAST_MESSAGES,
+    type LastMessage,
+    type LastMessagePerson,
+    type LastMessagesPort
+} from './application/ports/last-messages.port'

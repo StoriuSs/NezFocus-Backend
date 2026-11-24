@@ -20,6 +20,9 @@ export interface UserSettingsRepositoryPort {
     /** A live user's settings; null if the user is gone or has none. */
     find(userId: string): Promise<UserSettings | null>
 
+    /** Those of `userIds`, live, who let members of a server they share write to them (REQ-SOCIAL-04). */
+    allowingServerMemberMessages(userIds: string[]): Promise<string[]>
+
     /**
      * Apply `changes`, and `timezone` if given. The zone's rule is checked in
      * the statement that writes, not by an earlier read: two tabs changing

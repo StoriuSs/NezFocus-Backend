@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends and blocks) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends, blocks and direct messages) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -678,9 +678,10 @@ a friendship and for a conversation; a block has a direction; one open call
 per conversation. A conversation's messages are a `Channel` of type `dm` with
 no server (D-167, `Channel_dm_check`), so messaging's tables need nothing
 new; every read of a server's channels names its server, and servers'
-`CHANNEL_DIRECTORY` finds no server for one, so to messaging, tasks and voice
-it is not found until L3 (`serverChannelType` in servers' and permissions'
-adapters says so to TypeScript).
+`CHANNEL_DIRECTORY` finds no server for one, so to tasks, voice and study it
+is not found (`serverChannelType` in servers' and permissions' adapters says
+so to TypeScript). Social writes that `Channel` row with its `DmChannel`, in
+one transaction (D-244).
 
 Friends and blocks (M6 L2, D-237, D-242, D-243) group by area like the
 modules above: `commands/relationship` (a request by username or from a
@@ -701,6 +702,22 @@ notifications' `NOTIFIER`. The module answers realtime's `FRIENDS`
 someone who blocked the one acting; items of people one blocked hidden from
 the inbox until unblocked) through the global `FriendsModule` and
 `BlockListModule`.
+
+Direct messages (M6 L3, D-238, D-242, D-244) are the areas `commands/dm`
+(opening one, made under the pair's lock with its `Channel` row; closing one
+on one's side) and `queries/dm` (`GET /me/dms`, one DM for the answer of
+`POST /me/dms`, and what other modules ask). Who may message whom is a pure
+function, `mayMessage` in `domain/dm.rules.ts` (friends, or a shared server
+with a recipient who lets server members write; never across a block or to an
+account gone), read for a whole list at once by `services/dm-reach.ts`;
+whether a DM shows in one's list is `isShownDm` (never closed, or a message
+after the close mark, both on the app's clock, which stamps messages too). A DM's messages go
+through messaging's routes: messaging defines `DM_ACCESS`, which this module
+answers through `DmAccessModule` (its two people, whether one may still
+write, the DMs shown in a list for their unread), and gives this module
+`LAST_MESSAGES` for the list. Realtime defines `DM_CHANNELS` (the DM rooms a
+socket joins when it connects), answered through `DmChannelsModule`, and
+gives `DM_ROOMS` (a new DM's two people into its room at once).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

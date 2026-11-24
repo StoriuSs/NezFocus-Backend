@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import {
@@ -87,7 +88,8 @@ function world() {
         messages as unknown as MessageRepositoryPort,
         reactions as unknown as ReactionRepositoryPort,
         channels,
-        checker
+        checker,
+        dms()
     )
     return { handler, reactions }
 }

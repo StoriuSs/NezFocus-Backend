@@ -21,8 +21,8 @@ export type PinDecision = 'pin' | 'already'
  * Pins are a text channel's: the chat of a voice room has none (D-213). Its
  * page shows no Pins panel, so only a forged request is refused here.
  */
-export function requirePinsIn(channelType: 'text' | 'voice'): void {
-    if (channelType !== 'text') throw new MessageRuleError('room_chat')
+export function requirePinsIn(channelType: 'text' | 'voice' | 'dm'): void {
+    if (channelType === 'voice') throw new MessageRuleError('room_chat')
 }
 
 /** Whether the message is pinned (REQ-MSG-07, SRS 1.71): a regular one, while the channel has room. */

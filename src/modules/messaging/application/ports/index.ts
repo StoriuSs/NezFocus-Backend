@@ -1,4 +1,6 @@
 export * from './attachment-storage.port'
+export * from './dm-access.port'
 export * from './file-cleanup.port'
+export * from './last-messages.port'
 export * from './message-purge.port'
 export * from './send-limit.port'

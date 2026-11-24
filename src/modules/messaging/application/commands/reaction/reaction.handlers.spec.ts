@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
@@ -10,12 +11,22 @@ import {
     ReactionFacts,
     ReactionRepositoryPort,
     StoredMessage,
-    TimedOutError
+    TimedOutError,
+    CannotMessageUserError
 } from '../../../domain'
 import { ReactionAddedEvent } from '../../events/reaction-added.event'
 import { ReactionRemovedEvent } from '../../events/reaction-removed.event'
 import { AddReactionCommand, RemoveReactionCommand } from './reaction.commands'
 import { AddReactionHandler, RemoveReactionHandler } from './reaction.handlers'
+
+/** A DM of An and Bình (D-238); Chi may no longer write in hers with An. */
+const DM_WORLD = {
+    conversations: [
+        { channelId: 'dm-an-binh', userIds: ['an', 'binh'] as [string, string] },
+        { channelId: 'dm-an-chi', userIds: ['an', 'chi'] as [string, string] }
+    ],
+    silenced: ['chi']
+}
 
 /**
  * One server: Bình a member, Phong timed out for an hour, Khánh an
@@ -82,6 +93,8 @@ function world({ noNewReactions = false } = {}) {
     seed('m1')
     seed('m2', 'ban-quan-ly')
     seed('m3', 'hoi-dap', 'system')
+    seed('m6', 'dm-an-binh')
+    seed('m7', 'dm-an-chi')
 
     /** messageId → emoji → people, in the order given. */
     const given = new Map<string, Map<string, string[]>>()
@@ -116,7 +129,7 @@ function world({ noNewReactions = false } = {}) {
         find: jest.fn(async (id: string) => messages.get(id) ?? null)
     } as unknown as MessageRepositoryPort
     const channels: ChannelDirectoryPort = {
-        serverIdOf: jest.fn(async () => 'ot'),
+        serverIdOf: jest.fn(async (id: string) => (id.startsWith('dm-') ? null : 'ot')),
         channelIdsOf: async () => [],
         studyRoomOf: async () => null,
         namesOf: async () => ({ servers: new Map(), channels: new Map() })
@@ -133,8 +146,9 @@ function world({ noNewReactions = false } = {}) {
     }
     const events = { publish: jest.fn() }
     const bus = events as unknown as EventBus
-    const adder = new AddReactionHandler(repository, reactions, channels, checker, bus)
-    const remover = new RemoveReactionHandler(repository, reactions, channels, checker, bus)
+    const dmAccess = dms(DM_WORLD)
+    const adder = new AddReactionHandler(repository, reactions, channels, checker, bus, dmAccess)
+    const remover = new RemoveReactionHandler(repository, reactions, channels, checker, bus, dmAccess)
     const add = (userId: string, messageId: string, emoji: string) =>
         adder.execute(new AddReactionCommand(userId, messageId, emoji))
     const remove = (userId: string, messageId: string, emoji: string) =>
@@ -258,5 +272,24 @@ describe('RemoveReactionHandler (REQ-MSG-05, SRS 1.71)', () => {
     it('answers not found for a message in a channel they do not see', async () => {
         const { remove } = world()
         await expect(remove('binh', 'm2', '👍')).rejects.toBeInstanceOf(MessageNotFoundError)
+    })
+})
+
+describe('Reactions in a DM (D-238)', () => {
+    it('lets either of its two react', async () => {
+        const { add, events } = world()
+
+        await add('binh', 'm6', '👍')
+
+        expect(events.publish).toHaveBeenCalledTimes(1)
+    })
+
+    it('refuses a reaction from someone who may no longer message the other one, but lets them take theirs off', async () => {
+        const { add, remove, on, events } = world()
+        on('m7').set('👍', ['chi'])
+
+        await expect(add('chi', 'm7', '❤️')).rejects.toBeInstanceOf(CannotMessageUserError)
+        await remove('chi', 'm7', '👍')
+        expect(events.publish).toHaveBeenCalledTimes(1)
     })
 })

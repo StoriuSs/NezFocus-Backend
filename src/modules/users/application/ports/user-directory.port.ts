@@ -9,7 +9,7 @@ import type { ChosenPresence } from '@/modules/users/domain/user-settings.rules'
  * entity. The dependency runs one way: auth depends on this interface; nothing
  * here knows auth exists. servers uses it too, for people's pictures,
  * realtime for the status one chose, and social to find a person by
- * username (D-243).
+ * username (D-243) and who lets server members message them (D-238).
  */
 export interface DirectoryUser {
     id: string
@@ -93,6 +93,13 @@ export interface UserDirectoryPort {
 
     /** The status chosen in their menu (REQ-AUTH-07, D-78); online before the account is completed or once it is gone. */
     presenceOf(id: string): Promise<ChosenPresence>
+    /**
+     * Those of `ids` who let members of a server they share message them
+     * ("Allow messages from server members", on by default; REQ-SOCIAL-04):
+     * for who may open or write a DM (D-238). An account gone, or not
+     * completed, is not among them. One read for them all.
+     */
+    allowingServerMemberMessages(ids: string[]): Promise<string[]>
 
     /**
      * Record that the owner asked to delete the account (REQ-AUTH-09, D-141);

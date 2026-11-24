@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { EventBus } from '@nestjs/cqrs'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort, RoleDirectoryPort } from '@/modules/servers'
@@ -13,13 +14,23 @@ import {
     PinFacts,
     PinRepositoryPort,
     StoredMessage,
-    TimedOutError
+    TimedOutError,
+    CannotMessageUserError
 } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { PinsUpdatedEvent } from '../../events/pins-updated.event'
 import { PinMessageCommand, UnpinMessageCommand } from './pin.commands'
 import { PinMessageHandler, UnpinMessageHandler } from './pin.handlers'
 import { AttachmentStoragePort } from '../../ports'
+
+/** A DM of An and Bình (D-238); Chi may no longer write in hers with An. */
+const DM_WORLD = {
+    conversations: [
+        { channelId: 'dm-an-binh', userIds: ['an', 'binh'] as [string, string] },
+        { channelId: 'dm-an-chi', userIds: ['an', 'chi'] as [string, string] }
+    ],
+    silenced: ['chi']
+}
 
 /** Links signed by name only: no storage in these tests. */
 const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
@@ -104,6 +115,8 @@ function world() {
     seed('m2', 'ban-quan-ly')
     seed('m3', 'hoi-dap', 'system')
     seed('m5', 'phong-hoc')
+    seed('m6', 'dm-an-binh')
+    seed('m7', 'dm-an-chi')
 
     const pinned = new Map<string, string[]>()
     const pinsOf = (channelId: string) => pinned.get(channelId) ?? []
@@ -157,7 +170,7 @@ function world() {
         find: jest.fn(async (id: string) => messages.get(id) ?? null)
     } as unknown as MessageRepositoryPort
     const channels: ChannelDirectoryPort = {
-        serverIdOf: jest.fn(async () => 'ot'),
+        serverIdOf: jest.fn(async (id: string) => (id.startsWith('dm-') ? null : 'ot')),
         channelIdsOf: async () => [],
         studyRoomOf: async () => null,
         namesOf: async () => ({ servers: new Map(), channels: new Map() })
@@ -175,6 +188,7 @@ function world() {
     const users = { avatarUrl: jest.fn(async () => null) } as unknown as UserDirectoryPort
     const events = { publish: jest.fn() }
     const bus = events as unknown as EventBus
+    const dmAccess = dms(DM_WORLD)
     const pinner = new PinMessageHandler(
         repository,
         pins,
@@ -183,9 +197,10 @@ function world() {
         users,
         { rolesOf: jest.fn(async () => []) } as RoleDirectoryPort,
         FILES,
-        bus
+        bus,
+        dmAccess
     )
-    const unpinner = new UnpinMessageHandler(repository, pins, channels, checker, bus)
+    const unpinner = new UnpinMessageHandler(repository, pins, channels, checker, bus, dmAccess)
     const pin = (userId: string, channelId: string, messageId: string) =>
         pinner.execute(new PinMessageCommand(userId, channelId, messageId))
     const unpin = (userId: string, channelId: string, messageId: string) =>
@@ -311,5 +326,23 @@ describe('UnpinMessageHandler (REQ-MSG-07, SRS 1.71)', () => {
         const { unpin, events } = world()
         await expect(unpin('chi', 'phong-hoc', 'm5')).rejects.toMatchObject({ details: { rule: 'room_chat' } })
         expect(events.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('Pins in a DM (D-238)', () => {
+    it('lets either of its two pin and unpin, no MANAGE_MESSAGES needed', async () => {
+        const { pin, unpin, pinsOf } = world()
+
+        await pin('binh', 'dm-an-binh', 'm6')
+        expect(pinsOf('dm-an-binh')).toEqual(['m6'])
+        await unpin('an', 'dm-an-binh', 'm6')
+        expect(pinsOf('dm-an-binh')).toEqual([])
+    })
+
+    it('refuses someone who may no longer message the other one: a pin writes a message they read (D-242)', async () => {
+        const { pin, pinsOf } = world()
+
+        await expect(pin('chi', 'dm-an-chi', 'm7')).rejects.toBeInstanceOf(CannotMessageUserError)
+        expect(pinsOf('dm-an-chi')).toEqual([])
     })
 })

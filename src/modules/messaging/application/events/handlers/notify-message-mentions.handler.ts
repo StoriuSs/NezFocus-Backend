@@ -17,7 +17,9 @@ import { MessageUpdatedEvent } from '../message-updated.event'
  * A message sent or edited puts an item in the inbox of each person it is
  * about (REQ-NOTIF-01, D-183, D-188), through NOTIFIER (D-185), after the
  * message is saved: a failure here never fails the send (it is logged).
- * System messages have no author and make none.
+ * System messages have no author and make none, and a DM makes none
+ * (D-238: its two people read it whole; the 💬 badge counts it): a channel
+ * with no server is one, or is gone.
  *
  * Those who had read the channel past the message get theirs read (D-199):
  * read before NOTIFIER writes, and again after, for an ack that landed in
@@ -41,6 +43,7 @@ export class NotifyMessageMentionsHandler implements IEventHandler<MessageCreate
         const { message } = event
         if (!message.author) return
         try {
+            // No server: a DM, which puts nothing in an inbox (D-238), or a channel gone since.
             const serverId = await this.channels.serverIdOf(message.channelId)
             if (!serverId) return
             const sources = await mentionSourcesOf(

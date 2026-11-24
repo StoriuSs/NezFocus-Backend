@@ -1,3 +1,4 @@
+import { dms } from '../../dm-test-world.shared-spec'
 import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort } from '@/modules/permissions'
 import { ChannelDirectoryPort } from '@/modules/servers'
 import {
@@ -9,6 +10,8 @@ import {
     AttachmentTooLargeError,
     AttachmentTypeError,
     CannotAttachError,
+    CannotMessageUserError,
+    ChannelNotFoundError,
     CheckedFile,
     CLEAN_UP_AFTER_MS,
     FileType,
@@ -124,7 +127,7 @@ function world() {
         delete: jest.fn(async (key: string) => void kept.delete(key))
     }
     const channels: ChannelDirectoryPort = {
-        serverIdOf: jest.fn(async () => 'ot'),
+        serverIdOf: jest.fn(async (id: string) => (id.startsWith('dm-') ? null : 'ot')),
         channelIdsOf: async () => [],
         studyRoomOf: async () => null,
         namesOf: async () => ({ servers: new Map(), channels: new Map() })
@@ -153,10 +156,17 @@ function world() {
         }),
         release: jest.fn()
     }
-    const requester = new RequestUploadHandler(attachments, storage, cleanup, channels, checker, limit)
+    const dmAccess = dms({
+        conversations: [
+            { channelId: 'dm-an-binh', userIds: ['an', 'binh'] },
+            { channelId: 'dm-an-chi', userIds: ['an', 'chi'] }
+        ],
+        silenced: ['chi']
+    })
+    const requester = new RequestUploadHandler(attachments, storage, cleanup, channels, checker, limit, dmAccess)
     const completer = new CompleteUploadHandler(attachments, storage)
-    const request = (userId: string, filename: string, size = 1000) =>
-        requester.execute(new RequestUploadCommand(userId, 'hoi-dap', filename, size))
+    const request = (userId: string, filename: string, size = 1000, channelId = 'hoi-dap') =>
+        requester.execute(new RequestUploadCommand(userId, channelId, filename, size))
     /** Where the form posts (its `key` field). */
     const formKey = (id: string) => rows.get(id)!.storageKey.replace('attachments/', 'uploads/')
     /** Chi uploads `bytes` as `filename`: the form, then the file reaches the storage. */
@@ -195,6 +205,16 @@ describe('RequestUploadHandler (REQ-MSG-04, D-165)', () => {
         const { request } = world()
         await expect(request('binh', 'a.png')).rejects.toBeInstanceOf(CannotAttachError)
         await expect(request('phong', 'a.png')).rejects.toBeInstanceOf(TimedOutError)
+    })
+
+    it('gives a form in a DM only while one may still message the other one (D-238, D-242)', async () => {
+        const { request } = world()
+
+        await expect(request('binh', 'de-cuong.pdf', 1000, 'dm-an-binh')).resolves.toMatchObject({
+            attachmentId: expect.any(String)
+        })
+        await expect(request('chi', 'de-cuong.pdf', 1000, 'dm-an-chi')).rejects.toBeInstanceOf(CannotMessageUserError)
+        await expect(request('binh', 'de-cuong.pdf', 1000, 'dm-an-chi')).rejects.toBeInstanceOf(ChannelNotFoundError)
     })
 
     it('refuses a type not sent, a name with nothing in it, and a file over 25 MB, before any form', async () => {

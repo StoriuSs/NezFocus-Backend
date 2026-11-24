@@ -59,7 +59,7 @@ function world({ mentioned = [] as string[], readers = [] as string[][], joined 
         readersPast: jest.fn(async () => reads.shift() ?? [])
     } as unknown as ReadStateRepositoryPort & { readersPast: jest.Mock }
     const channels = {
-        serverIdOf: jest.fn(async (id: string) => (id === 'gone' ? null : 'ot'))
+        serverIdOf: jest.fn(async (id: string) => (id === 'gone' || id.startsWith('dm-') ? null : 'ot'))
     } as unknown as ChannelDirectoryPort
     const membership = {
         channelMembers: jest.fn(async (_serverId: string, filter: { roleIds?: string[]; userIds?: string[] }) => {
@@ -161,6 +161,20 @@ describe('NotifyMessageMentionsHandler (REQ-NOTIF-01, D-183)', () => {
             await handler.handle(event)
             expect(notifier.messageMentions).not.toHaveBeenCalled()
         }
+    })
+
+    it('puts nothing in an inbox for a message in a DM, even one mentioning the other one (D-238)', async () => {
+        const { handler, notifier, readStates } = world({ mentioned: ['binh'] })
+        const dm = message({
+            channelId: 'dm-an-binh',
+            mentionUsers: [{ id: 'binh', username: 'binh', displayName: 'Bình' }]
+        })
+
+        await handler.handle(new MessageCreatedEvent(dm, 'n1'))
+        await handler.handle(new MessageUpdatedEvent(dm))
+
+        expect(notifier.messageMentions).not.toHaveBeenCalled()
+        expect(readStates.readersPast).not.toHaveBeenCalled()
     })
 
     it('keeps a failure to itself, logged: the message is sent either way', async () => {

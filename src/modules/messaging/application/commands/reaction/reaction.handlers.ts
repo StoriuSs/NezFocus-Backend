@@ -14,7 +14,8 @@ import {
 } from '../../../domain'
 import { ReactionAddedEvent } from '../../events/reaction-added.event'
 import { ReactionRemovedEvent } from '../../events/reaction-removed.event'
-import { timedOutUntil } from '../../services/channel-access'
+import { DM_ACCESS, DmAccessPort } from '../../ports'
+import { ChannelSources, requireMessaging, timedOutUntil } from '../../services/channel-access'
 import { openMessage } from '../../services/message-access'
 import { AddReactionCommand, RemoveReactionCommand } from './reaction.commands'
 
@@ -23,7 +24,8 @@ import { AddReactionCommand, RemoveReactionCommand } from './reaction.commands'
  * in its one standard form (`normaliseEmoji`): a timeout refuses before
  * anything else; an emoji already on the message may
  * be clicked by anyone, a new one needs ADD_REACTIONS and room under 20,
- * decided with the message locked (`decideReaction`). Only a reaction that
+ * decided with the message locked (`decideReaction`). In a DM, any emoji,
+ * while they may still message the other one (D-238). Only a reaction that
  * was not there tells the channel.
  */
 @CommandHandler(AddReactionCommand)
@@ -33,21 +35,21 @@ export class AddReactionHandler implements ICommandHandler<AddReactionCommand> {
         @Inject(REACTION_REPOSITORY) private readonly reactions: ReactionRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
+
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
 
     async execute({ userId, messageId, emoji: given }: AddReactionCommand): Promise<void> {
         const now = new Date()
-        const { message, channel } = await openMessage(
-            this.messages,
-            this.channels,
-            this.permissions,
-            messageId,
-            userId,
-            now
-        )
+        const { message, channel } = await openMessage(this.messages, this.access, messageId, userId, now, 'write')
         const until = timedOutUntil(channel, now)
         if (until) throw new TimedOutError(until)
+        requireMessaging(channel)
         const emoji = normaliseEmoji(given)
         if (!emoji) throw new MessageRuleError('emoji')
 
@@ -61,7 +63,8 @@ export class AddReactionHandler implements ICommandHandler<AddReactionCommand> {
 
 /**
  * Someone takes their emoji off a message they see (REQ-MSG-05); while timed
- * out they cannot (SRS 1.71). One they had not given changes nothing and
+ * out they cannot (SRS 1.71); in a DM they can, even once they may no longer
+ * message the other one (D-238). One they had not given changes nothing and
  * tells no one.
  */
 @CommandHandler(RemoveReactionCommand)
@@ -71,19 +74,18 @@ export class RemoveReactionHandler implements ICommandHandler<RemoveReactionComm
         @Inject(REACTION_REPOSITORY) private readonly reactions: ReactionRepositoryPort,
         @Inject(CHANNEL_DIRECTORY) private readonly channels: ChannelDirectoryPort,
         @Inject(PERMISSION_CHECKER) private readonly permissions: PermissionCheckerPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(DM_ACCESS) private readonly dms: DmAccessPort
     ) {}
+
+    /** Where opening a channel reads (services/channel-access.ts). */
+    private get access(): ChannelSources {
+        return { channels: this.channels, checker: this.permissions, dms: this.dms }
+    }
 
     async execute({ userId, messageId, emoji: given }: RemoveReactionCommand): Promise<void> {
         const now = new Date()
-        const { message, channel } = await openMessage(
-            this.messages,
-            this.channels,
-            this.permissions,
-            messageId,
-            userId,
-            now
-        )
+        const { message, channel } = await openMessage(this.messages, this.access, messageId, userId, now)
         const until = timedOutUntil(channel, now)
         if (until) throw new TimedOutError(until)
         // Not one emoji: none of that was given, so nothing to take off.

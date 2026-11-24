@@ -146,7 +146,10 @@ export const MESSAGES = {
         RELATIONSHIPS_LISTED: 'Relationships fetched',
         RELATIONSHIP_CHANGED: 'Relationship changed',
         PERSON_FOUND: 'Person found',
-        PROFILE_FETCHED: 'Profile fetched'
+        PROFILE_FETCHED: 'Profile fetched',
+        DMS_LISTED: 'Direct messages fetched',
+        DM_OPENED: 'Direct message opened',
+        DM_CLOSED: 'Direct message closed'
     },
 
     // Health messages

@@ -10,6 +10,11 @@ export { EVENT_PUBLISHER, type EventPublisherPort } from './application/ports/ev
 // Whom presence also goes to: a person's friends, answered by social (D-242).
 export { FRIENDS, type FriendsPort } from './application/ports/friends.port'
 
+// A person's direct messages, whose rooms their sockets join, answered by social (D-242);
+// and the sockets of a new one's two people put in its room at once.
+export { DM_CHANNELS, type DmChannelsPort } from './application/ports/dm-channels.port'
+export { DM_ROOMS, type DmRoomsPort } from './application/ports/dm-rooms.port'
+
 // What others see of everyone not offline (REQ-AUTH-07), for @here (D-166).
 export { PRESENCE, type PresencePort } from './application/ports/presence.port'
 export type { Presence } from './domain/presence.rules'

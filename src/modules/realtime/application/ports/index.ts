@@ -1,3 +1,5 @@
+export * from './dm-channels.port'
+export * from './dm-rooms.port'
 export * from './event-publisher.port'
 export * from './friends.port'
 export * from './ticket-store.port'

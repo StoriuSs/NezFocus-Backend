@@ -295,7 +295,7 @@ describe('Social (integration)', () => {
     })
 
     describe("a conversation's channel and the servers' reads", () => {
-        it('never lists it with a server, and finds no channel there for messages or tasks', async () => {
+        it('never lists it with a server; its messages are its two people’s only, and it has no tasks', async () => {
             const created = await as('an', api().post('/api/v1/servers'))
                 .set('Idempotency-Key', randomUUID())
                 .send({ name: 'Ôn thi Giải tích 2', template: 'study' })
@@ -309,11 +309,15 @@ describe('Social (integration)', () => {
             expect(channelIds.length).toBeGreaterThan(0)
             expect(channelIds).not.toContain(dmChannelId)
 
-            // Until L3 opens conversations to messaging (D-238), a channel with
-            // no server is no channel at all, even to its two people.
-            for (const path of [`channels/${dmChannelId}/messages`, `channels/${dmChannelId}/tasks`]) {
-                const res = await as('an', api().get(`/api/v1/${path}`))
-                expect([path, res.status, res.body.meta?.type]).toEqual([path, 404, 'NOT_FOUND_ERROR'])
+            // Its two people read it through the channel routes (D-238, M6 L3);
+            // anyone else, and the task board of a server, find no channel.
+            expect((await as('an', api().get(`/api/v1/channels/${dmChannelId}/messages`))).status).toBe(200)
+            for (const [who, path] of [
+                ['chi', `channels/${dmChannelId}/messages`],
+                ['an', `channels/${dmChannelId}/tasks`]
+            ] as [Who, string][]) {
+                const res = await as(who, api().get(`/api/v1/${path}`))
+                expect([who, path, res.status, res.body.meta?.type]).toEqual([who, path, 404, 'NOT_FOUND_ERROR'])
             }
         })
     })
