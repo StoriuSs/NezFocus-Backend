@@ -55,6 +55,9 @@ async function addressOf(users: UserDirectoryPort, key: string): Promise<string 
     }
 }
 
+/** The items that show their message now: mentions and replies. A missed call names its message only to be read with it (D-242). */
+const showsMessage = (type: NotificationType) => type === 'mention' || type === 'reply'
+
 /**
  * The items as views, in the order given, each message read once for all of
  * them (D-184). An item whose message was deleted is left out: its row goes
@@ -67,8 +70,8 @@ export async function notificationViews(
     const people = records.map((record) => record.actor).filter((actor): actor is NotificationPerson => !!actor)
     const keys = [...new Set(people.map((person) => person.avatarKey).filter((key): key is string => !!key))]
     const asked = new Map<string, { id: string; serverId: string }>()
-    for (const { messageId, serverId } of records) {
-        if (messageId && serverId) asked.set(messageId, { id: messageId, serverId })
+    for (const { type, messageId, serverId } of records) {
+        if (showsMessage(type) && messageId && serverId) asked.set(messageId, { id: messageId, serverId })
     }
     const [urls, messages] = await Promise.all([
         Promise.all(keys.map(async (key) => [key, await addressOf(users, key)] as const)).then(
@@ -79,8 +82,9 @@ export async function notificationViews(
             : Promise.resolve(new Map<string, MessagePreview>())
     ])
     return records.flatMap(({ actor, userId: _userId, ...record }) => {
-        const message = record.messageId ? messages.get(record.messageId) : undefined
-        if (record.messageId && !message) return []
+        const shown = showsMessage(record.type) && record.messageId
+        const message = shown ? messages.get(record.messageId!) : undefined
+        if (shown && !message) return []
         return [
             {
                 ...record,

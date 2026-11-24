@@ -3,6 +3,7 @@ import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
     AttachmentNotFoundError,
+    CallEndedNotice,
     ChannelNotFoundError,
     firstIdAt,
     MessageCursor,
@@ -251,6 +252,20 @@ export class PrismaMessageRepository implements MessageRepositoryPort {
             return await toRecordOf(this.prisma, row)
         } catch (error) {
             // The channel deleted meanwhile (its foreign key): nothing to write in.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
+    async createCallEnded(channelId: string, notice: CallEndedNotice): Promise<MessageRecord | null> {
+        try {
+            const row = await this.prisma.message.create({
+                data: { channelId, type: 'system', systemEvent: 'call_ended', systemData: { ...notice }, content: '' },
+                select: MESSAGE
+            })
+            return await toRecordOf(this.prisma, row)
+        } catch (error) {
+            // The DM deleted meanwhile (its foreign key): nothing to write in.
             if (prismaCode(error) === 'P2003') return null
             throw error
         }

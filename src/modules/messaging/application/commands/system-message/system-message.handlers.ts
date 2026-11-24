@@ -1,12 +1,18 @@
-import { Inject } from '@nestjs/common'
+import { Inject, Logger } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
+import { NOTIFIER, NotifierPort } from '@/modules/notifications'
 import { ROLE_DIRECTORY, RoleDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { MESSAGE_REPOSITORY, MessageRepositoryPort } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { ATTACHMENT_STORAGE, AttachmentStoragePort } from '../../ports'
 import { messageViews } from '../../services/message-views'
-import { PostMemberJoinedCommand, PostStudySessionCommand, PostTaskDueCommand } from './system-message.commands'
+import {
+    PostCallEndedCommand,
+    PostMemberJoinedCommand,
+    PostStudySessionCommand,
+    PostTaskDueCommand
+} from './system-message.commands'
 
 /**
  * Someone joined a server by a link (D-180): "<who> joined the server" is
@@ -90,4 +96,47 @@ export class PostStudySessionHandler implements ICommandHandler<PostStudySession
     }
 }
 
-export const SYSTEM_MESSAGE_COMMAND_HANDLERS = [PostMemberJoinedHandler, PostTaskDueHandler, PostStudySessionHandler]
+/**
+ * A call over (REQ-MSG-08, D-106): "{Bình / Bạn} đã gọi · …" written in
+ * its DM with no author, the call in `systemData` (D-168), and the DM
+ * hears it. Its caller reads it as their own (D-173), as `userId` names
+ * them: unread for the callee only, so a missed call shows the DM again on
+ * their side (D-244). A missed call's item (REQ-SOCIAL-06) is written
+ * through NOTIFIER before the DM hears the message (L4-f): a tab reading
+ * the DM can only mark it read once it is there, or it would stay unread
+ * for good. The item failing is logged; the message is still heard. A DM
+ * gone since gets nothing.
+ */
+@CommandHandler(PostCallEndedCommand)
+export class PostCallEndedHandler implements ICommandHandler<PostCallEndedCommand> {
+    private readonly logger = new Logger(PostCallEndedHandler.name)
+
+    constructor(
+        @Inject(MESSAGE_REPOSITORY) private readonly messages: MessageRepositoryPort,
+        @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
+        @Inject(ROLE_DIRECTORY) private readonly roles: RoleDirectoryPort,
+        @Inject(ATTACHMENT_STORAGE) private readonly files: AttachmentStoragePort,
+        @Inject(NOTIFIER) private readonly notifier: NotifierPort,
+        private readonly events: EventBus
+    ) {}
+
+    async execute({ channelId, notice, missedCalleeId }: PostCallEndedCommand): Promise<void> {
+        const message = await this.messages.createCallEnded(channelId, notice)
+        if (!message) return
+        if (missedCalleeId) {
+            await this.notifier
+                .missedCall({ callerId: notice.userId, calleeId: missedCalleeId, channelId, messageId: message.id })
+                .catch((error: unknown) => this.logger.error(`No missed call item for message ${message.id}`, error))
+        }
+        // No server: a DM's message reads no role (D-238).
+        const [view] = await messageViews({ users: this.users, roles: this.roles, files: this.files }, null, [message])
+        this.events.publish(new MessageCreatedEvent(view, null))
+    }
+}
+
+export const SYSTEM_MESSAGE_COMMAND_HANDLERS = [
+    PostMemberJoinedHandler,
+    PostTaskDueHandler,
+    PostStudySessionHandler,
+    PostCallEndedHandler
+]

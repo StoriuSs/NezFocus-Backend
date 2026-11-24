@@ -148,6 +148,22 @@ export type StudySessionNotice =
       }
     | { event: 'study_session_ended'; sessionId: string; reason: string }
 
+/**
+ * What a call's message in its DM keeps (REQ-MSG-08, D-106, D-242): who
+ * called (`userId`, the person it is about, D-168: it reads as theirs, so
+ * only the callee has it unread, D-173), how it ended, and for how long.
+ */
+export interface CallEndedNotice {
+    userId: string
+    callId: string
+    status: 'ended' | 'declined' | 'missed' | 'failed'
+    /** Only on `missed`: `no_answer`, `cancelled` or `busy`. */
+    endReason: string | null
+    video: boolean
+    /** From answering to the end, in seconds; null when never answered, or failed to connect (D-120). */
+    durationSeconds: number | null
+}
+
 /** How long before the due date the earliest reminder is said: none is looked for before then. */
 export const TASK_DUE_EARLIEST_MS = 24 * 3600_000
 
@@ -215,6 +231,12 @@ export interface MessageRepositoryPort {
      * in `systemData`. Null if the channel is gone by now.
      */
     createStudySession(channelId: string, notice: StudySessionNotice): Promise<MessageRecord | null>
+    /**
+     * Write "{who} đã gọi · Cuộc gọi nhỡ / … / 12 phút" in a DM (REQ-MSG-08,
+     * D-106): a system message, the call in `systemData`. Null if the DM is
+     * gone by now.
+     */
+    createCallEnded(channelId: string, notice: CallEndedNotice): Promise<MessageRecord | null>
     /** Up to `limit` messages of the channel from `cursor`; `around` splits them half before, half from the id on. */
     page(channelId: string, cursor: MessageCursor, limit: number): Promise<MessagePage>
     /** The messages among `ids` not deleted, in no order: what inbox items show (D-184). */

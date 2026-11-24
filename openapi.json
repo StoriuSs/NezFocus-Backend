@@ -6676,6 +6676,264 @@
           "social"
         ]
       }
+    },
+    "/api/v1/dms/{dmId}/calls": {
+      "post": {
+        "operationId": "CallsController_start_v1",
+        "parameters": [
+          {
+            "name": "dmId",
+            "required": true,
+            "in": "path",
+            "description": "The DM's channel id: its messages go through the channel routes (D-238).",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCallRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CallResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Call the other one of my DM: ringing, or `missed` at once (`busy`)\nwhen they are in a call, ringing out, or rung by two already; the call\nthey make to me in this DM is answered (two calling each other meet in\none). CANNOT_MESSAGE_USER: someone I may not message, every reason the\nsame. CALL_IN_PROGRESS: me in another call already.",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/calls/{callId}/accept": {
+      "post": {
+        "operationId": "CallsController_accept_v1",
+        "parameters": [
+          {
+            "name": "callId",
+            "required": true,
+            "in": "path",
+            "description": "A call of mine: one of two others is not found, as none (NFR-SEC-05).",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CallResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Answer a call ringing to me: the others ringing to me are missed as busy (D-120).",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/calls/{callId}/decline": {
+      "post": {
+        "operationId": "CallsController_decline_v1",
+        "parameters": [
+          {
+            "name": "callId",
+            "required": true,
+            "in": "path",
+            "description": "A call of mine: one of two others is not found, as none (NFR-SEC-05).",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CallResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Decline a call ringing to me: no inbox item for me (REQ-SOCIAL-06).",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/calls/{callId}/end": {
+      "post": {
+        "operationId": "CallsController_end_v1",
+        "parameters": [
+          {
+            "name": "callId",
+            "required": true,
+            "in": "path",
+            "description": "A call of mine: one of two others is not found, as none (NFR-SEC-05).",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CallResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Hang up: ringing, its caller cancels and its callee declines; active, it ends (D-242).",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/me/call": {
+      "get": {
+        "operationId": "CallsController_mine_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyCallResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My open calls (D-245): the one I make or am in, and up to two ringing to me.",
+        "tags": [
+          "social"
+        ]
+      }
     }
   },
   "info": {
@@ -11480,6 +11738,124 @@
         },
         "required": [
           "user_id"
+        ]
+      },
+      "CallResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "ringing",
+              "active",
+              "ended",
+              "declined",
+              "missed",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "end_reason": {
+            "nullable": true,
+            "description": "Why a call was missed: `no_answer` (45 seconds), `cancelled` (its caller hung up), `busy`; null otherwise.",
+            "enum": [
+              "no_answer",
+              "cancelled",
+              "busy"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "dm_id": {
+            "type": "string",
+            "description": "The DM it belongs to: its chat sits beside the call."
+          },
+          "caller_id": {
+            "type": "string"
+          },
+          "callee_id": {
+            "type": "string"
+          },
+          "video": {
+            "type": "boolean",
+            "description": "Started as a video call; either camera turns on or off at any time."
+          },
+          "user": {
+            "description": "The other one of the two, as I see them; nulls for an account deleted or waiting to be (D-182).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SocialPersonResponseDto"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When it started ringing."
+          },
+          "accepted_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When it was answered: the call's clock counts from here (spec 09)."
+          },
+          "ended_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "status",
+          "end_reason",
+          "id",
+          "dm_id",
+          "caller_id",
+          "callee_id",
+          "video",
+          "user",
+          "created_at",
+          "accepted_at",
+          "ended_at"
+        ]
+      },
+      "StartCallRequestDto": {
+        "type": "object",
+        "properties": {
+          "video": {
+            "type": "boolean",
+            "description": "A video call: the camera on from the start. Either camera turns on or off at any time."
+          }
+        },
+        "required": [
+          "video"
+        ]
+      },
+      "MyCallResponseDto": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "nullable": true,
+            "description": "The call I make (ringing) or am in (active): the call page and the `call` dock; null for none.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallResponseDto"
+              }
+            ]
+          },
+          "incoming": {
+            "description": "The calls ringing to me, oldest first, at most two (the cards).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallResponseDto"
+            }
+          }
+        },
+        "required": [
+          "current",
+          "incoming"
         ]
       }
     }

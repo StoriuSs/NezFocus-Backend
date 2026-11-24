@@ -15,6 +15,12 @@ export const QUEUES = {
     /** Messaging's own work: deleting a banned member's recent messages (D-181). */
     MESSAGING: 'messaging',
     /**
+     * The social module's timed work (ARCHITECTURE 6): a call still ringing
+     * 45 seconds on. Each job carries the call's version and is dropped when
+     * it no longer matches (D-242).
+     */
+    SOCIAL: 'social',
+    /**
      * The study module's timed work (ARCHITECTURE 5): the end of a session's
      * phase, a Solo's 10 minutes of waiting, a room's 5 minutes empty, a
      * person's 3 minutes away (D-215). Each job carries the session's version

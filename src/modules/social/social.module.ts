@@ -7,22 +7,32 @@ import { DM_CHANNELS, FRIENDS } from '@/modules/realtime'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ServersModule } from '@/modules/servers/servers.module'
 import { UsersModule } from '@/modules/users/users.module'
+import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
     BLOCK_COMMAND_HANDLERS,
+    CALL_COMMAND_HANDLERS,
+    CALL_JOBS,
+    CALL_QUERY_HANDLERS,
     DM_COMMAND_HANDLERS,
     DM_QUERY_HANDLERS,
+    EndBlockedCallsHandler,
+    EndDeletedAccountCallsHandler,
     ForgetDeletedAccountHandler,
     NotifyRelationshipChangeHandler,
     PERSON_QUERY_HANDLERS,
+    PublishCallChangeHandler,
     PublishDmChangeHandler,
     PublishRelationshipChangeHandler,
+    RecordCallEndHandler,
     RELATIONSHIP_COMMAND_HANDLERS,
     RELATIONSHIP_QUERY_HANDLERS,
     SOCIAL_LIMIT
 } from './application'
-import { DM_REPOSITORY, RELATIONSHIP_REPOSITORY } from './domain'
+import { CALL_REPOSITORY, DM_REPOSITORY, RELATIONSHIP_REPOSITORY } from './domain'
 import {
+    BullMqCallJobs,
+    PrismaCallRepository,
     PrismaDmRepository,
     PrismaRelationshipRepository,
     QueryBusBlockList,
@@ -30,7 +40,14 @@ import {
     QueryBusDmChannels,
     QueryBusFriends
 } from './infrastructure'
-import { BlocksController, DmsController, PeopleController, RelationshipsController } from './presentation'
+import {
+    BlocksController,
+    CallsController,
+    DmsController,
+    PeopleController,
+    RelationshipsController,
+    SocialJobsConsumer
+} from './presentation'
 
 /**
  * Friends, blocks, direct messages and one-to-one calls (SRS 4.9,
@@ -38,24 +55,31 @@ import { BlocksController, DmsController, PeopleController, RelationshipsControl
  * friends and blocks (L2, D-237, D-243): requests by username or from a
  * profile, a day's 50 of them, lookups and profiles with the servers two
  * people share; direct messages (L3, D-238, D-244): opening, closing, the
- * list, who may message whom; calls come with L4.
+ * list, who may message whom; calls (L4a, D-239, D-245): calling,
+ * answering, declining, hanging up, busy, 45 seconds of ringing on the
+ * `social` queue (and its sweep), the call's message in the DM and the
+ * missed call's item; their media comes with L4b.
  *
  * Asks users for people (USER_DIRECTORY), servers for the servers two
  * people share (MEMBERSHIP), realtime for presence (PRESENCE) and tells
  * each person's tabs through its EVENT_PUBLISHER; puts friend items in
  * inboxes through notifications' NOTIFIER (global). Reads the last message
  * of each DM from messaging (LAST_MESSAGES); puts a new DM's sockets in its
- * room through realtime's DM_ROOMS. Hears users' AccountDeletedEvent
- * (D-243). Answers realtime's FRIENDS and DM_CHANNELS, notifications'
+ * room through realtime's DM_ROOMS; writes a call's message through
+ * messaging's PostCallEndedCommand over the bus. Hears users'
+ * AccountDeletedEvent (D-243) and auth's AccountDeletionRequestedEvent
+ * (a call cut off). Answers realtime's FRIENDS and DM_CHANNELS, notifications'
  * BLOCK_LIST and messaging's DM_ACCESS through the global modules below.
  * RateLimiter comes from the global CacheModule.
  */
 @Module({
-    imports: [CqrsModule, MessagingModule, RealtimeModule, ServersModule, UsersModule],
-    controllers: [RelationshipsController, BlocksController, PeopleController, DmsController],
+    imports: [CqrsModule, MessagingModule, RealtimeModule, ServersModule, UsersModule, registerQueues(QUEUES.SOCIAL)],
+    controllers: [RelationshipsController, BlocksController, PeopleController, DmsController, CallsController],
     providers: [
         { provide: RELATIONSHIP_REPOSITORY, useClass: PrismaRelationshipRepository },
         { provide: DM_REPOSITORY, useClass: PrismaDmRepository },
+        { provide: CALL_REPOSITORY, useClass: PrismaCallRepository },
+        { provide: CALL_JOBS, useClass: BullMqCallJobs },
         { provide: SOCIAL_LIMIT, useExisting: RateLimiter },
         ...RELATIONSHIP_COMMAND_HANDLERS,
         ...BLOCK_COMMAND_HANDLERS,
@@ -63,10 +87,17 @@ import { BlocksController, DmsController, PeopleController, RelationshipsControl
         ...PERSON_QUERY_HANDLERS,
         ...DM_COMMAND_HANDLERS,
         ...DM_QUERY_HANDLERS,
+        ...CALL_COMMAND_HANDLERS,
+        ...CALL_QUERY_HANDLERS,
         PublishRelationshipChangeHandler,
         PublishDmChangeHandler,
+        PublishCallChangeHandler,
+        RecordCallEndHandler,
+        EndBlockedCallsHandler,
+        EndDeletedAccountCallsHandler,
         NotifyRelationshipChangeHandler,
-        ForgetDeletedAccountHandler
+        ForgetDeletedAccountHandler,
+        SocialJobsConsumer
     ]
 })
 export class SocialModule {}

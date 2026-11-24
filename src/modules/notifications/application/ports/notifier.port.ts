@@ -28,6 +28,14 @@ export interface ServerNotice {
     serverName: string
 }
 
+/** A missed call: who called whom, in which DM, and the message saying so (`call_ended`). */
+export interface MissedCallNotice {
+    callerId: string
+    calleeId: string
+    channelId: string
+    messageId: string
+}
+
 /** What was done to a member (REQ-ROLE-04): never by whom. */
 export interface ModerationNotice {
     action: ModerationAction
@@ -98,6 +106,13 @@ export interface NotifierPort {
 
     /** A request between the two declined, cancelled or ended by a block (REQ-NOTIF-03): its item goes. */
     friendRequestClosed(userId: string, otherId: string): Promise<void>
+
+    /**
+     * A call to `calleeId` missed (REQ-SOCIAL-06, D-120): no answer, its
+     * caller hung up, or the callee busy. One `missed_call` item for them,
+     * naming the call's message in the DM; read when they read the DM past it.
+     */
+    missedCall(notice: MissedCallNotice): Promise<void>
 }
 
 export const NOTIFIER = Symbol('NotifierPort')

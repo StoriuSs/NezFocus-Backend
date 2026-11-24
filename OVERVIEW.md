@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends, blocks and direct messages) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends, blocks, direct messages and the calls' state machine, their media to come) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -718,6 +718,27 @@ write, the DMs shown in a list for their unread), and gives this module
 `LAST_MESSAGES` for the list. Realtime defines `DM_CHANNELS` (the DM rooms a
 socket joins when it connects), answered through `DmChannelsModule`, and
 gives `DM_ROOMS` (a new DM's two people into its room at once).
+
+Calls (M6 L4a, D-239, D-242, D-245) are the areas `commands/call` (calling
+from a DM, answering, declining, hanging up, the 45 seconds of ringing) and
+`queries/call` (one call for the answer of each command, D-159, and
+`GET /me/call`: the call one makes or is in, and up to two ringing to one).
+What each command does is a pure function of `domain/call.rules.ts`, decided
+on the open calls of the people it is about, read under their advisory locks
+(`call:<userId>`, smaller id first: being busy is a person's, not a DM's): a
+person either makes or is in one call, or is rung by up to two; a call to
+someone busy is made missed at once, two calling each other in one DM meet
+in one call, a command that comes after the call changed answers it as it
+is. Each change raises the call's `version`; a call made ringing gets a job
+on the `social` queue (`call-<id>-ring-<version>`), and `call-sweep` misses
+those whose job was lost. After the commit (`CallChangedEvent`), `call.*`
+goes to the two (`call.ringing` to every tab of the callee), and a call over
+writes its `call_ended` message in the DM through messaging's
+`PostCallEndedCommand` (the caller's own, so unread for the callee); for a
+missed call messaging first writes the callee's `missed_call` item through
+`NOTIFIER`, naming that message, then lets the DM hear it, so a tab reading
+the DM reads the item with it. A block, or an account starting to wait for
+deletion, ends its calls at once. The call's media (LiveKit) comes with L4b.
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

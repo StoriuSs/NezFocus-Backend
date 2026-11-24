@@ -87,7 +87,8 @@ export function notificationWorld() {
                     (row.type === 'owner_transferred' && row.serverId !== null && serverIds.includes(row.serverId)) ||
                     row.type === 'moderation' ||
                     row.type === 'friend_request' ||
-                    row.type === 'friend_accepted')
+                    row.type === 'friend_accepted' ||
+                    row.type === 'missed_call')
         )
 
     const repository: NotificationRepositoryPort = {
@@ -210,7 +211,7 @@ export function notificationWorld() {
                 (row) =>
                     row.userId === userId &&
                     row.channelId === channelId &&
-                    (row.type === 'mention' || row.type === 'reply') &&
+                    (row.type === 'mention' || row.type === 'reply' || row.type === 'missed_call') &&
                     row.messageId! <= messageId &&
                     row.readAt === null
             )
@@ -281,6 +282,31 @@ export function notificationWorld() {
                     task: null,
                     server: null,
                     note,
+                    readAt: null,
+                    createdAt: at
+                }
+                rows.push(row)
+                return row
+            }
+        ),
+        addMissedCallItem: jest.fn(
+            async (userId: string, actorId: string, channelId: string, messageId: string, at: Date) => {
+                if (deletedAccounts.has(userId) || deletedAccounts.has(actorId)) return null
+                const row: Row = {
+                    id: nextId(),
+                    userId,
+                    type: 'missed_call',
+                    serverId: null,
+                    channelId,
+                    messageId,
+                    taskId: null,
+                    actorId,
+                    actor: person(actorId),
+                    reason: null,
+                    roleId: null,
+                    task: null,
+                    server: null,
+                    note: null,
                     readAt: null,
                     createdAt: at
                 }

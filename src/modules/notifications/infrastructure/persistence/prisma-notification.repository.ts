@@ -34,13 +34,14 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0]
 /** Rows written by one statement: a channel of 500 people is one (D-183, measured in L6). */
 const WRITE_BATCH = 500
 
-/** The item types a message makes, the ones reading a channel marks read (D-188). */
-const MESSAGE_TYPES = Prisma.sql`'mention'::"NotificationType", 'reply'::"NotificationType"`
+/** The item types naming a message, the ones reading a channel marks read (D-188; a missed call's, D-242). */
+const MESSAGE_TYPES = Prisma.sql`'mention'::"NotificationType", 'reply'::"NotificationType", 'missed_call'::"NotificationType"`
 
 /**
  * A person's items they may see now (REQ-NOTIF-03): of a channel they view,
  * a server handed to them that they are still in, any moderation item, the
- * friend items (no server, D-242); none from someone they blocked (an item
+ * friend items and missed calls (no server, D-242: a missed call is always
+ * of a DM of theirs); none from someone they blocked (an item
  * with no actor stays: `actorId NOT IN` alone would drop it), but for a
  * server handed to them, which is about their own role (L2-d).
  */
@@ -52,7 +53,7 @@ const inScope = (
     OR: [
         { channelId: { in: channelIds } },
         { type: 'owner_transferred', serverId: { in: serverIds } },
-        { type: { in: ['moderation', 'friend_request', 'friend_accepted'] } }
+        { type: { in: ['moderation', 'friend_request', 'friend_accepted', 'missed_call'] } }
     ],
     ...(hiddenActorIds.length > 0 && {
         AND: [{ OR: [{ actorId: null }, { actorId: { notIn: hiddenActorIds } }, { type: 'owner_transferred' }] }]
@@ -234,6 +235,26 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
             return toNotificationRecord(row)
         } catch (error) {
             // Either account gone for good meanwhile: no one to tell.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
+    async addMissedCallItem(
+        userId: string,
+        actorId: string,
+        channelId: string,
+        messageId: string,
+        at: Date
+    ): Promise<NotificationRecord | null> {
+        try {
+            const row = await this.prisma.notification.create({
+                data: { userId, type: 'missed_call', actorId, channelId, messageId, createdAt: at },
+                select: NOTIFICATION
+            })
+            return toNotificationRecord(row)
+        } catch (error) {
+            // The DM, its message or either account gone for good meanwhile: no one to tell.
             if (prismaCode(error) === 'P2003') return null
             throw error
         }

@@ -8,6 +8,7 @@
 export {
     NOTIFIER,
     type MessageNotice,
+    type MissedCallNotice,
     type ModerationNotice,
     type NotifierPort,
     type ServerNotice,

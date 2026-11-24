@@ -5,6 +5,7 @@ import { CleanUpAttachmentsCommand } from '@/modules/messaging'
 import { CleanUpNotificationsCommand } from '@/modules/notifications'
 import { SweepPresenceCommand } from '@/modules/realtime'
 import { CleanUpServersCommand } from '@/modules/servers'
+import { SweepCallTimersCommand } from '@/modules/social'
 import { SweepStudyTimersCommand } from '@/modules/study'
 import { SweepDeletedAccountsCommand } from '@/modules/users'
 import { ReconcileVoiceRoomsCommand } from '@/modules/voice'
@@ -88,5 +89,12 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
         id: 'study-sweep',
         everyMs: MINUTE_MS,
         command: (now) => new SweepStudyTimersCommand(now)
+    },
+    {
+        // Misses the calls still ringing 45 seconds on whose job was lost or
+        // is late, so a lost job never keeps two people busy (D-242).
+        id: 'call-sweep',
+        everyMs: MINUTE_MS,
+        command: (now) => new SweepCallTimersCommand(now)
     }
 ]

@@ -151,13 +151,26 @@ export interface NotificationRepositoryPort {
         at: Date
     ): Promise<NotificationRecord | null>
 
+    /**
+     * Writes one `missed_call` item for the person, from `actorId`, naming
+     * the call's message in the DM, unread. None when the DM or either
+     * account is gone for good meanwhile.
+     */
+    addMissedCallItem(
+        userId: string,
+        actorId: string,
+        channelId: string,
+        messageId: string,
+        at: Date
+    ): Promise<NotificationRecord | null>
+
     /** Takes off the request items between the two, whichever way it was sent (REQ-NOTIF-03). */
     removeFriendRequests(userId: string, otherId: string): Promise<RemovedNotification[]>
 
     /** Takes off the items of messages of one channel (deleted, REQ-NOTIF-03). */
     removeForMessages(channelId: string, messageIds: string[]): Promise<RemovedNotification[]>
 
-    /** Marks read the person's mention and reply items of the channel up to `messageId` (D-188); the ids marked. */
+    /** Marks read the person's mention, reply and missed call items of the channel up to `messageId` (D-188, D-242); the ids marked. */
     markReadUpTo(userId: string, channelId: string, messageId: string, at: Date): Promise<string[]>
 
     /** Marks read the person's kick and ban items of the server not read yet (D-202); the ids marked. */

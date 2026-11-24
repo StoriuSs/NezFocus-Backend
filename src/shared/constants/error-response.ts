@@ -77,6 +77,8 @@ export const ERROR_TYPES = {
     FRIEND_REQUEST_PENDING: 'FRIEND_REQUEST_PENDING',
     // A friend request to a friend.
     ALREADY_FRIENDS: 'ALREADY_FRIENDS',
+    // Calling while making or in another call (a tab behind, D-245).
+    CALL_IN_PROGRESS: 'CALL_IN_PROGRESS',
 
     // Realtime errors (SRS 5.2)
     // A socket offered no ticket, a made-up one, or one spent or out of time:
@@ -186,6 +188,7 @@ export const ERROR_CODES = {
     FOCUS_SESSION_ACTIVE: '409900',
     FRIEND_REQUEST_PENDING: '409920',
     ALREADY_FRIENDS: '409921',
+    CALL_IN_PROGRESS: '409922',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)
     UPLOAD_INVALID_FILE: '400002',

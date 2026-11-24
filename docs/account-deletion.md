@@ -382,7 +382,10 @@ conversation with it stays, its history kept (M6 L3, spec 09
 `deleted-account`): its `DmChannel` and messages are never deleted, the
 other one sees it as deleted in `GET /me/dms` and may no longer write there
 (`CANNOT_MESSAGE_USER`), and no one opens a new one with it (`NOT_FOUND_ERROR`).
-A call in progress comes with M6 L4.
+A call in progress ends as soon as the deletion is asked
+(`EndDeletedAccountCallsHandler`, social, hears
+`AccountDeletionRequestedEvent`): answered, it ends as any call does, its
+message written in the DM; still ringing, it is missed (M6 L4a, D-242).
 
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.

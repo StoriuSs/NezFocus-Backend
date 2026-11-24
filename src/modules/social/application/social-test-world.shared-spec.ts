@@ -7,15 +7,21 @@ import { isHidden, LimitsUnavailableError, shownPerson } from '@/shared/domain'
 import { RateLimitRule } from '@/shared/types/rate-limit.type'
 import {
     afterWrite,
+    Call,
+    CallPlan,
+    CallRecord,
+    CallRepositoryPort,
+    ChangedCall,
     DmEntry,
     DmRepositoryPort,
+    isOpenCall,
     PairState,
     RelationshipDecision,
     RelationshipEntry,
     RelationshipRepositoryPort,
     Standing
 } from '../domain'
-import { SocialLimitPort } from './ports'
+import { CallJobsPort, SocialLimitPort } from './ports'
 
 /*
  * People for the social handler specs, in memory (spec 09): An, Bình, Chi,
@@ -289,6 +295,81 @@ export function socialWorld() {
         )
     }
 
+    /** Call id → the Call row; times come from the test, as the app's clock gives them. */
+    const callRows = new Map<string, Call>()
+    let callsMade = 0
+    const callRecord = (call: Call): CallRecord => ({
+        ...call,
+        caller: shownPerson(people.get(call.callerId)!),
+        callee: shownPerson(people.get(call.calleeId)!)
+    })
+    /** The open calls of any of `userIds`, oldest first, as copies: a plan changes rows only when applied. */
+    const openCallsOf = (userIds: string[]) =>
+        [...callRows.values()]
+            .filter((call) => isOpenCall(call) && (userIds.includes(call.callerId) || userIds.includes(call.calleeId)))
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+            .map((call) => callRecord({ ...call }))
+    const calls: CallRepositoryPort & { change: jest.Mock } = {
+        find: jest.fn(async (callId: string) => (callRows.has(callId) ? callRecord(callRows.get(callId)!) : null)),
+        openOf: jest.fn(async (userId: string) => openCallsOf([userId])),
+        change: jest.fn(async (userIds: string[], decide: (open: Call[]) => CallPlan) => {
+            const open = openCallsOf(userIds)
+            const plan = decide(open)
+            const changed: ChangedCall[] = []
+            let madeId: string | null = null
+            if (plan.create) {
+                const { at, ...made } = plan.create
+                callsMade += 1
+                madeId = `call-${callsMade}`
+                const row: Call = {
+                    ...made,
+                    id: madeId,
+                    version: 0,
+                    createdAt: at,
+                    acceptedAt: null,
+                    endedAt: made.status === 'missed' ? at : null
+                }
+                callRows.set(madeId, row)
+                changed.push({ call: callRecord(row), before: null })
+            }
+            for (const { call, to } of plan.changes) {
+                const row = callRows.get(call.id)!
+                if (row.version !== call.version) throw new Error(`call ${call.id} changed meanwhile (P2025)`)
+                const next: Call = { ...row, ...to, version: row.version + 1 }
+                callRows.set(call.id, next)
+                changed.push({ call: callRecord(next), before: call.status })
+            }
+            const answerId = plan.answer === 'new' ? madeId! : plan.answer
+            return { changed, answer: callRecord(callRows.get(answerId)!) }
+        }),
+        ringingSince: jest.fn(async (before: Date) =>
+            [...callRows.values()]
+                .filter((call) => call.status === 'ringing' && call.createdAt < before)
+                .map(({ id, version }) => ({ id, version }))
+        )
+    }
+    /** A call written as if made earlier: ringing from An to Bình unless told. */
+    const callAs = (changes: Partial<Call> & Pick<Call, 'callerId' | 'calleeId' | 'dmChannelId'>): Call => {
+        callsMade += 1
+        const row: Call = {
+            id: `call-${callsMade}`,
+            video: false,
+            status: 'ringing',
+            endReason: null,
+            version: 0,
+            createdAt: new Date('2026-11-24T08:00:00Z'),
+            acceptedAt: null,
+            endedAt: null,
+            ...changes
+        }
+        callRows.set(row.id, row)
+        return row
+    }
+    const callJobs: CallJobsPort & { ringOutAt: jest.Mock; dropRingOut: jest.Mock } = {
+        ringOutAt: jest.fn(async () => undefined),
+        dropRingOut: jest.fn(async () => undefined)
+    }
+
     const eventBus = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
     const published = <T>(type: new (...args: never[]) => T): T[] =>
         eventBus.publish.mock.calls.map(([event]) => event).filter((event): event is T => event instanceof type)
@@ -324,6 +405,10 @@ export function socialWorld() {
         lastMessages,
         say,
         clock,
+        calls,
+        callRows,
+        callAs,
+        callJobs,
         eventBus,
         published,
         stateOf,

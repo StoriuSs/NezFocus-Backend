@@ -149,7 +149,10 @@ export const MESSAGES = {
         PROFILE_FETCHED: 'Profile fetched',
         DMS_LISTED: 'Direct messages fetched',
         DM_OPENED: 'Direct message opened',
-        DM_CLOSED: 'Direct message closed'
+        DM_CLOSED: 'Direct message closed',
+        CALL_STARTED: 'Call started',
+        CALL_CHANGED: 'Call changed',
+        CALLS_FETCHED: 'Calls fetched'
     },
 
     // Health messages

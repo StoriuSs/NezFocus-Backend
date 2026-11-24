@@ -1,11 +1,22 @@
 import { EventBus } from '@nestjs/cqrs'
 import { RoleDirectoryPort } from '@/modules/servers'
+import { NotifierPort } from '@/modules/notifications'
 import { UserDirectoryPort } from '@/modules/users'
-import { MessageRecord, MessageRepositoryPort, StudySessionNotice, TaskDueData } from '../../../domain'
+import { CallEndedNotice, MessageRecord, MessageRepositoryPort, StudySessionNotice, TaskDueData } from '../../../domain'
 import { MessageCreatedEvent } from '../../events/message-created.event'
 import { AttachmentStoragePort } from '../../ports'
-import { PostMemberJoinedCommand, PostStudySessionCommand, PostTaskDueCommand } from './system-message.commands'
-import { PostMemberJoinedHandler, PostStudySessionHandler, PostTaskDueHandler } from './system-message.handlers'
+import {
+    PostCallEndedCommand,
+    PostMemberJoinedCommand,
+    PostStudySessionCommand,
+    PostTaskDueCommand
+} from './system-message.commands'
+import {
+    PostCallEndedHandler,
+    PostMemberJoinedHandler,
+    PostStudySessionHandler,
+    PostTaskDueHandler
+} from './system-message.handlers'
 
 const FILES = { readLink: async (key: string) => `signed:${key}` } as unknown as AttachmentStoragePort
 
@@ -61,7 +72,17 @@ function world(channelGone = false) {
                 systemData,
                 systemUser: starter ? { id: starter, username: starter, displayName: 'An', avatarKey: null } : null
             }
-        })
+        }),
+        createCallEnded: jest.fn(async (channelId: string, notice: CallEndedNotice) =>
+            channelGone
+                ? null
+                : {
+                      ...joined(channelId, notice.userId),
+                      id: 'call-message',
+                      systemEvent: 'call_ended',
+                      systemData: { ...notice }
+                  }
+        )
     } as unknown as jest.Mocked<MessageRepositoryPort>
     const users = { avatarUrl: jest.fn(async () => null) } as unknown as UserDirectoryPort
     const roles = { rolesOf: jest.fn(async () => []) } as unknown as RoleDirectoryPort
@@ -69,7 +90,16 @@ function world(channelGone = false) {
     const handler = new PostMemberJoinedHandler(messages, users, roles, FILES, events as unknown as EventBus)
     const taskDue = new PostTaskDueHandler(messages, users, roles, FILES, events as unknown as EventBus)
     const studySession = new PostStudySessionHandler(messages, users, roles, FILES, events as unknown as EventBus)
-    return { handler, taskDue, studySession, messages, events }
+    /** What happened, in order: the missed call's item, the message heard. */
+    const order: string[] = []
+    events.publish.mockImplementation(() => order.push('message.created'))
+    const notifier = {
+        missedCall: jest.fn(async () => {
+            order.push('missed_call item')
+        })
+    } as unknown as NotifierPort & { missedCall: jest.Mock }
+    const callEnded = new PostCallEndedHandler(messages, users, roles, FILES, notifier, events as unknown as EventBus)
+    return { handler, taskDue, studySession, callEnded, messages, roles, events, notifier, order }
 }
 
 describe('PostMemberJoinedHandler (REQ-SRV-01, D-83, D-180)', () => {
@@ -184,5 +214,61 @@ describe('PostStudySessionHandler (REQ-MSG-08, D-222)', () => {
         const gone = world(true)
         await gone.studySession.execute(new PostStudySessionCommand('ot', 'phong-hoc', ended))
         expect(gone.events.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('PostCallEndedHandler (REQ-MSG-08, D-106, D-242)', () => {
+    const notice: CallEndedNotice = {
+        userId: 'an',
+        callId: 'goi',
+        status: 'missed',
+        endReason: 'no_answer',
+        video: false,
+        durationSeconds: null
+    }
+
+    it('posts a call over in its DM as its caller’s, reading no role (no server); no item when nobody missed it', async () => {
+        const { callEnded, messages, roles, events, notifier } = world()
+        const ended = { ...notice, status: 'ended' as const, endReason: null, durationSeconds: 195 }
+
+        await callEnded.execute(new PostCallEndedCommand('dm-an-binh', ended, null))
+
+        expect(messages.createCallEnded).toHaveBeenCalledWith('dm-an-binh', ended)
+        expect(roles.rolesOf).not.toHaveBeenCalled()
+        expect(events.publish.mock.calls[0][0]).toMatchObject({
+            message: { channelId: 'dm-an-binh', author: null, systemEvent: 'call_ended', systemData: ended }
+        })
+        expect(notifier.missedCall).not.toHaveBeenCalled()
+    })
+
+    it('writes the missed call item naming the message before any tab hears the message (L4-f)', async () => {
+        const { callEnded, notifier, order } = world()
+
+        await callEnded.execute(new PostCallEndedCommand('dm-an-binh', notice, 'binh'))
+
+        // A tab reading the DM marks the item read only if it is already there.
+        expect(order).toEqual(['missed_call item', 'message.created'])
+        expect(notifier.missedCall).toHaveBeenCalledWith({
+            callerId: 'an',
+            calleeId: 'binh',
+            channelId: 'dm-an-binh',
+            messageId: 'call-message'
+        })
+    })
+
+    it('still lets the DM hear the message when the item cannot be written', async () => {
+        const { callEnded, notifier, events } = world()
+        notifier.missedCall.mockRejectedValueOnce(new Error('database down'))
+
+        await callEnded.execute(new PostCallEndedCommand('dm-an-binh', notice, 'binh'))
+
+        expect(events.publish).toHaveBeenCalledTimes(1)
+    })
+
+    it('writes nothing more and tells no one when the DM is gone', async () => {
+        const gone = world(true)
+        await gone.callEnded.execute(new PostCallEndedCommand('dm-an-binh', notice, 'binh'))
+        expect(gone.events.publish).not.toHaveBeenCalled()
+        expect(gone.notifier.missedCall).not.toHaveBeenCalled()
     })
 })

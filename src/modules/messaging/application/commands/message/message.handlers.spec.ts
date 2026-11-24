@@ -219,6 +219,7 @@ function world({ limited = false } = {}) {
         createMemberJoined: jest.fn(),
         createTaskDue: jest.fn(),
         createStudySession: jest.fn(),
+        createCallEnded: jest.fn(),
         removeRecent: jest.fn()
     }
     /** A message already in a channel, by someone (or a system message when `by` is null). */

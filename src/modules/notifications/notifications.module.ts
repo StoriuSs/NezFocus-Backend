@@ -8,6 +8,7 @@ import { NOTIFICATION_REPOSITORY } from './domain'
 import {
     CleanUpNotificationsHandler,
     ForgetDeletedAccountItemsHandler,
+    CALL_ITEM_COMMAND_HANDLERS,
     FRIEND_ITEM_COMMAND_HANDLERS,
     INBOX_QUERY_HANDLERS,
     ITEM_COMMAND_HANDLERS,
@@ -44,6 +45,7 @@ import { NotificationsController } from './presentation'
         ...ITEM_COMMAND_HANDLERS,
         ...TASK_ITEM_COMMAND_HANDLERS,
         ...SERVER_ITEM_COMMAND_HANDLERS,
+        ...CALL_ITEM_COMMAND_HANDLERS,
         ...FRIEND_ITEM_COMMAND_HANDLERS,
         ...READ_COMMAND_HANDLERS,
         CleanUpNotificationsHandler,

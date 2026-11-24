@@ -3,10 +3,12 @@ import { CommandBus } from '@nestjs/cqrs'
 import { TaskReminder, UnassignedBy } from '../../domain'
 import {
     AddFriendItemCommand,
+    AddMissedCallItemCommand,
     AddServerItemCommand,
     AddTaskItemsCommand,
     ForgetTaskItemsCommand,
     MessageNotice,
+    MissedCallNotice,
     ModerationNotice,
     NotifierPort,
     ReadChannelItemsCommand,
@@ -138,5 +140,9 @@ export class CommandBusNotifier implements NotifierPort {
 
     async friendRequestClosed(userId: string, otherId: string): Promise<void> {
         await this.commandBus.execute(new RemoveFriendRequestItemsCommand(userId, otherId))
+    }
+
+    async missedCall({ callerId, calleeId, channelId, messageId }: MissedCallNotice): Promise<void> {
+        await this.commandBus.execute(new AddMissedCallItemCommand(calleeId, callerId, channelId, messageId))
     }
 }

@@ -202,6 +202,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `409900` | `FOCUS_SESSION_ACTIVE` | Starting a session in a study room that has one, or a session while already in another (a room's or one's own) |
 | `409920` | `FRIEND_REQUEST_PENDING` | A friend request to someone who has not answered one's last |
 | `409921` | `ALREADY_FRIENDS` | A friend request to a friend |
+| `409922` | `CALL_IN_PROGRESS` | Calling while making or in another call (a tab behind, D-245) |
 | `410300` | `INVITE_INVALID` | An invite that expired, ran out of uses, was revoked, or whose server was deleted |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |

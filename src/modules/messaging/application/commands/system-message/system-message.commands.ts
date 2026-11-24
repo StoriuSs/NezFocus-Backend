@@ -1,4 +1,4 @@
-import { StudySessionNotice, TaskDueData } from '../../../domain'
+import { CallEndedNotice, StudySessionNotice, TaskDueData } from '../../../domain'
 
 /**
  * Post "<who> joined the server" in its welcome channel (REQ-SRV-01, D-83):
@@ -35,5 +35,20 @@ export class PostStudySessionCommand {
         readonly serverId: string,
         readonly channelId: string,
         readonly notice: StudySessionNotice
+    ) {}
+}
+
+/**
+ * Post that a call is over in its DM (REQ-MSG-08, D-106, D-242): sent by
+ * the social module through the bus after the change is committed, never
+ * by a route. A missed call names its callee: their inbox item, naming the
+ * message, is written before the message is heard (L4-f).
+ */
+export class PostCallEndedCommand {
+    constructor(
+        readonly channelId: string,
+        readonly notice: CallEndedNotice,
+        /** The callee of a missed call (REQ-SOCIAL-06); null for any other end. */
+        readonly missedCalleeId: string | null
     ) {}
 }
