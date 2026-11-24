@@ -3,6 +3,7 @@ import { IQueryHandler, QueryHandler } from '@nestjs/cqrs'
 import { PRESENCE, PresencePort } from '@/modules/realtime'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { RELATIONSHIP_REPOSITORY, RelationshipRepositoryPort } from '../../../domain'
+import { StudyActivities } from '../../services/activities'
 import { RelationshipView, relationshipViews, ViewSources } from '../../services/relationship-views'
 import {
     GetRelationshipQuery,
@@ -12,16 +13,17 @@ import {
     ListMyRelationshipsQuery
 } from './relationship.queries'
 
-/** What the list handlers read: the rows, pictures and presence. */
+/** What the list handlers read: the rows, pictures, presence and study activity. */
 abstract class RelationshipReader {
     protected readonly views: ViewSources
 
     constructor(
         @Inject(RELATIONSHIP_REPOSITORY) protected readonly relationships: RelationshipRepositoryPort,
         @Inject(USER_DIRECTORY) users: UserDirectoryPort,
-        @Inject(PRESENCE) presence: PresencePort
+        @Inject(PRESENCE) presence: PresencePort,
+        activities: StudyActivities
     ) {
-        this.views = { users, presence }
+        this.views = { users, presence, activities }
     }
 }
 

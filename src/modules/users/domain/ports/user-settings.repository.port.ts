@@ -23,6 +23,11 @@ export interface UserSettingsRepositoryPort {
     /** Those of `userIds`, live, who let members of a server they share write to them (REQ-SOCIAL-04). */
     allowingServerMemberMessages(userIds: string[]): Promise<string[]>
 
+    /** The two settings of the study activity line (D-247), by id, for those of `userIds` live, completed and not waiting to be deleted. */
+    studyActivitySettingsOf(
+        userIds: string[]
+    ): Promise<Map<string, Pick<UserSettings, 'showStudyActivity' | 'presence'>>>
+
     /**
      * Apply `changes`, and `timezone` if given. The zone's rule is checked in
      * the statement that writes, not by an earlier read: two tabs changing

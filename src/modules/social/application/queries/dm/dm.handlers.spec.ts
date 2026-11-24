@@ -26,7 +26,8 @@ async function setUp() {
         world.membership,
         world.users,
         world.presence,
-        world.lastMessages
+        world.lastMessages,
+        world.activities
     ] as const
     const reach = [world.dms, world.relationships, world.membership, world.users] as const
     const handlers = {
@@ -96,6 +97,20 @@ describe('ListMyDmsHandler (REQ-SOCIAL-04, D-244)', () => {
         const binh = (await list('an')).find((dm) => dm.id === 'dm-an-binh')!
 
         expect(binh).toMatchObject({ presence: null, canMessage: false })
+    })
+
+    it('gives the other one’s study activity where their presence is given, none once nothing links us (D-247)', async () => {
+        const { world, list } = await setUp()
+        world.inRoom.set('binh', 'phong-voice')
+        world.inRoom.set('dung', 'phong-hoc')
+
+        const before = await list('an')
+        expect(before.find((dm) => dm.id === 'dm-an-binh')).toMatchObject({ activity: { room: 'voice', solo: null } })
+        expect(before.find((dm) => dm.id === 'dm-an-dung')).toMatchObject({ activity: { room: 'study', solo: null } })
+
+        world.shared.clear()
+        const binh = (await list('an')).find((dm) => dm.id === 'dm-an-binh')!
+        expect(binh).toMatchObject({ presence: null, activity: null })
     })
 
     it('shows an account since waiting to be deleted as deleted, with no presence, not to be written to (D-182)', async () => {

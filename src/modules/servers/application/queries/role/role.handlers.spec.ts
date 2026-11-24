@@ -1,6 +1,6 @@
 import { EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheckerPort, ServerAccess } from '@/modules/permissions'
 import { UserDirectoryPort } from '@/modules/users'
-import { PresenceReaderPort } from '../../ports'
+import { MemberActivityPort, PresenceReaderPort } from '../../ports'
 import {
     ChannelNotFoundError,
     MemberRepositoryPort,
@@ -29,6 +29,19 @@ const presence: PresenceReaderPort = {
             ['binh', 'idle'],
             ['chi', 'online']
         ])
+}
+
+/** Bình studies alone; nobody else shows any activity (D-247). */
+const activity: MemberActivityPort = {
+    activitiesOf: async (userIds) =>
+        new Map(
+            userIds
+                .filter((userId) => userId === 'binh')
+                .map((userId) => [
+                    userId,
+                    { room: null, solo: { status: 'paused', phase: 'focus', phaseEndsAt: null } }
+                ])
+        )
 }
 
 const access = (userId: string, roleIds: string[] = []): ServerAccess => ({
@@ -120,7 +133,8 @@ describe('ListMembersHandler (D-152)', () => {
             directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort,
             pictures,
-            presence
+            presence,
+            activity
         )
         await expect(handler.execute(new ListMembersQuery('chi', 'ot', search))).resolves.toEqual(page)
         expect(directory.search).toHaveBeenCalledWith('ot', { ...search, viewers: null }, ['binh', 'chi'])
@@ -145,7 +159,8 @@ describe('ListMembersHandler (D-152)', () => {
                 directory as unknown as MemberRepositoryPort,
                 { access: jest.fn().mockResolvedValue(viewer) } as unknown as PermissionCheckerPort,
                 pictures,
-                presence
+                presence,
+                activity
             )
 
         await handlerFor(viewerAccess('binh', ['docs'])).execute(new ListMembersQuery('binh', 'ot', search, 'tai-lieu'))
@@ -171,7 +186,8 @@ describe('ListMembersHandler (D-152)', () => {
             directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort,
             pictures,
-            presence
+            presence,
+            activity
         )
         await expect(handler.execute(new ListMembersQuery('x', 'ot', search))).rejects.toThrow(ServerNotFoundError)
         expect(directory.search).not.toHaveBeenCalled()
@@ -190,12 +206,18 @@ describe('ListMembersHandler (D-152)', () => {
                 directory as unknown as MemberRepositoryPort,
                 checker as unknown as PermissionCheckerPort,
                 pictures,
-                presence
+                presence,
+                activity
             )
             return (await handler.execute(new ListMembersQuery(viewer.member.userId, 'ot', search))).items[0]
         }
-        expect(await listFor(access('chi'))).toEqual({ ...dung, timeoutReason: null, status: 'offline' })
-        expect(await listFor(access('an'))).toEqual({ ...dung, status: 'offline' })
+        expect(await listFor(access('chi'))).toEqual({
+            ...dung,
+            timeoutReason: null,
+            status: 'offline',
+            activity: null
+        })
+        expect(await listFor(access('an'))).toEqual({ ...dung, status: 'offline', activity: null })
     })
 
     it('gives each member what others see of them, offline for anyone not shown (REQ-AUTH-07, D-175)', async () => {
@@ -209,7 +231,8 @@ describe('ListMembersHandler (D-152)', () => {
             directory as unknown as MemberRepositoryPort,
             checker as unknown as PermissionCheckerPort,
             pictures,
-            presence
+            presence,
+            activity
         )
 
         const { items } = await handler.execute(new ListMembersQuery('chi', 'ot', { ...search, presence: 'online' }))
@@ -217,6 +240,29 @@ describe('ListMembersHandler (D-152)', () => {
         expect(items.map(({ userId, status }) => ({ userId, status }))).toEqual([
             { userId: 'binh', status: 'idle' },
             { userId: 'dung', status: 'offline' }
+        ])
+    })
+
+    it('gives each member their study activity line, null for one who shows none (D-108, D-240)', async () => {
+        const members = [
+            { userId: 'binh', timeoutUntil: null },
+            { userId: 'dung', timeoutUntil: null }
+        ]
+        const directory = { search: jest.fn().mockResolvedValue({ items: members, total: 2 }) }
+        const checker = { access: jest.fn().mockResolvedValue(access('chi')) }
+        const handler = new ListMembersHandler(
+            directory as unknown as MemberRepositoryPort,
+            checker as unknown as PermissionCheckerPort,
+            pictures,
+            presence,
+            activity
+        )
+
+        const { items } = await handler.execute(new ListMembersQuery('chi', 'ot', search))
+
+        expect(items.map(({ userId, activity }) => ({ userId, activity }))).toEqual([
+            { userId: 'binh', activity: { room: null, solo: { status: 'paused', phase: 'focus', phaseEndsAt: null } } },
+            { userId: 'dung', activity: null }
         ])
     })
 })

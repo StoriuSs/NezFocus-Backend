@@ -22,13 +22,22 @@ import {
     ServerNotFoundError,
     timeoutForViewer
 } from '../../../domain'
-import { MemberPresence, PRESENCE_READER, PresenceReaderPort } from '../../ports'
+import {
+    MEMBER_ACTIVITY,
+    MemberActivity,
+    MemberActivityPort,
+    MemberPresence,
+    PRESENCE_READER,
+    PresenceReaderPort
+} from '../../ports'
 import { requireServerPermission } from '../../services/require-permission'
 import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
 
-/** A member as listed: with what others see of them (REQ-AUTH-07). */
+/** A member as listed: with what others see of them (REQ-AUTH-07), and of their study (D-108, D-240). */
 export interface ListedMember extends MemberListItem {
     status: MemberPresence
+    /** Null when they show none: hidden, in a call, not studying (D-247). */
+    activity: MemberActivity | null
 }
 
 @QueryHandler(ListRolesQuery)
@@ -78,7 +87,8 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
         @Inject(MEMBER_REPOSITORY) private readonly members: MemberRepositoryPort,
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly directory: UserDirectoryPort,
-        @Inject(PRESENCE_READER) private readonly presence: PresenceReaderPort
+        @Inject(PRESENCE_READER) private readonly presence: PresenceReaderPort,
+        @Inject(MEMBER_ACTIVITY) private readonly activity: MemberActivityPort
     ) {}
 
     /**
@@ -86,7 +96,8 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
      * running timeout shows to all, its reason to those who may time people
      * out and to the one timed out (D-154). Each member comes with what
      * others see of them, and the page may be of those online or offline,
-     * or put those online first (D-175). With a channel, only those who view
+     * or put those online first (D-175), and their study activity line, the
+     * same for every viewer (D-240). With a channel, only those who view
      * it, for someone who views it (D-192, the task assignee picker).
      */
     async execute({
@@ -112,13 +123,17 @@ export class ListMembersHandler implements IQueryHandler<ListMembersQuery> {
         const shown = await this.presence.everyoneShown()
         const { items, total } = await this.members.search(serverId, { ...search, viewers }, [...shown.keys()])
         // The repository gives the stored picture keys; the client needs addresses.
-        const pictured = await Promise.all(
-            items.map(async (item) => ({ ...item, avatarUrl: await this.directory.avatarUrl(item.avatarUrl) }))
-        )
+        const [pictured, activities] = await Promise.all([
+            Promise.all(
+                items.map(async (item) => ({ ...item, avatarUrl: await this.directory.avatarUrl(item.avatarUrl) }))
+            ),
+            this.activity.activitiesOf(items.map((item) => item.userId))
+        ])
         return {
             items: pictured.map((item) => ({
                 ...timeoutForViewer(item, { userId, mayModerate }, now),
-                status: shown.get(item.userId) ?? 'offline'
+                status: shown.get(item.userId) ?? 'offline',
+                activity: activities.get(item.userId) ?? null
             })),
             total
         }

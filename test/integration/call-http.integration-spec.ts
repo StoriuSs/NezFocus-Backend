@@ -693,6 +693,44 @@ describe('Calls (integration)', () => {
         })
     })
 
+    describe('the study activity line and calls (M6 L5, D-240, D-247)', () => {
+        afterEach(async () => {
+            await prisma.focusSession.deleteMany({ where: { userId: { in: Object.values(users).map((u) => u.id) } } })
+        })
+
+        it('tells friends a Solo, hides it while its person is in a call, and tells it again once the call is over', async () => {
+            const dm = await dmOf('an', 'binh')
+            await befriend('an', 'chi')
+            const chiTab = await connectAs('chi')
+            /** The next line Chi hears of An. */
+            const lineOfAn = () => hears(chiTab, 'activity.updated')
+
+            const started = lineOfAn()
+            const solo = await as('an', api().post('/api/v1/me/solo-session'))
+                .set('Idempotency-Key', randomUUID())
+                .send({})
+            expect(solo.status).toBe(201)
+            expect(await started).toEqual({
+                user_id: users.an.id,
+                activity: { room: null, solo: { status: 'running', phase: 'focus', phase_ends_at: expect.any(String) } }
+            })
+
+            const made = (await call('an', dm)).body.data.id as string
+            const hidden = lineOfAn()
+            await act('binh', made, 'accept')
+            expect(await hidden).toEqual({ user_id: users.an.id, activity: null })
+            const list = await as('chi', api().get('/api/v1/me/relationships'))
+            const an = (list.body.data.relationships as { user: { id: string }; activity: unknown }[]).find(
+                (entry) => entry.user.id === users.an.id
+            )
+            expect(an?.activity).toBeNull()
+
+            const shown = lineOfAn()
+            await act('an', made, 'end')
+            expect(await shown).toMatchObject({ user_id: users.an.id, activity: { solo: { status: 'running' } } })
+        })
+    })
+
     describe('a job across a restart (NFR-REL-02)', () => {
         it('misses a call whose job was set before the app stopped, once it is back', async () => {
             const dm = await dmOf('an', 'binh')

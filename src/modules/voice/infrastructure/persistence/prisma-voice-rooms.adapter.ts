@@ -20,4 +20,14 @@ export class PrismaVoiceRooms implements VoiceRoomsPort {
     roomOf(userId: string): Promise<RoomOccupancy | null> {
         return this.prisma.voiceState.findUnique({ where: { userId }, select: OCCUPANCY })
     }
+
+    async roomsOf(userIds: string[]): Promise<RoomOccupancy[]> {
+        if (userIds.length === 0) return []
+        return this.prisma.voiceState.findMany({ where: { userId: { in: userIds } }, select: OCCUPANCY })
+    }
+
+    async peopleInRooms(channelIds: string[]): Promise<RoomOccupancy[]> {
+        if (channelIds.length === 0) return []
+        return this.prisma.voiceState.findMany({ where: { channelId: { in: channelIds } }, select: OCCUPANCY })
+    }
 }

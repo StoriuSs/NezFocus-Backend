@@ -15,6 +15,7 @@ export { StartCallRequestDto } from './start-call.request.dto'
 export { UserIdParamsDto } from './user-id.params.dto'
 
 // Responses
+export { ActivityResponseDto } from './activity.response.dto'
 export { CallMediaResponseDto } from './call-media.response.dto'
 export { CallResponseDto } from './call.response.dto'
 export { DmLastMessageResponseDto } from './dm-last-message.response.dto'
@@ -29,3 +30,4 @@ export { PersonProfileResponseDto } from './person-profile.response.dto'
 export { RelationshipListResponseDto } from './relationship-list.response.dto'
 export { RelationshipResponseDto } from './relationship.response.dto'
 export { SocialPersonResponseDto } from './social-person.response.dto'
+export { SoloActivityResponseDto } from './solo-activity.response.dto'

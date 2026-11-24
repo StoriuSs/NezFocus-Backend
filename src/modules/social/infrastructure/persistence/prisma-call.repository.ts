@@ -121,6 +121,17 @@ export class PrismaCallRepository implements CallRepositoryPort {
         return rows.map(toRecord)
     }
 
+    async inActiveCalls(userIds: string[]): Promise<string[]> {
+        if (userIds.length === 0) return []
+        // `active` is one of the open statuses: the partial indexes Call_open_caller_idx / _callee_idx serve it.
+        const rows = await this.prisma.call.findMany({
+            where: { status: 'active', OR: [{ callerId: { in: userIds } }, { calleeId: { in: userIds } }] },
+            select: { callerId: true, calleeId: true }
+        })
+        const asked = new Set(userIds)
+        return [...new Set(rows.flatMap((row) => [row.callerId, row.calleeId]))].filter((userId) => asked.has(userId))
+    }
+
     async presenceOf(callIds: string[]): Promise<Map<string, CallPresence[]>> {
         const byCall = new Map<string, CallPresence[]>(callIds.map((callId) => [callId, []]))
         if (callIds.length === 0) return byCall

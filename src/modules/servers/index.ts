@@ -21,7 +21,7 @@ export {
 // Presence for the member list and invites: answered by realtime (D-160 pattern).
 export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from './application/ports/presence-reader.port'
 // Which server a channel is in, for the messaging module's permission checks; a server's channels, for realtime's rooms;
-// the names of rooms and servers, for study's history (D-230).
+// the names of rooms and servers, for study's history (D-230); which rooms are study rooms, for social's activity (D-247).
 export {
     CHANNEL_DIRECTORY,
     type ChannelDirectoryPort,
@@ -34,6 +34,13 @@ export { ROLE_DIRECTORY, type DirectoryRole, type RoleDirectoryPort } from './ap
 export { ROOM_PEOPLE, type RoomPeoplePort, type RoomPerson } from './application/ports/room-people.port'
 // The study session of each voice room, for the rooms in GET /servers: answered by study (D-180 pattern, D-220).
 export { ROOM_SESSIONS, type RoomSession, type RoomSessionsPort } from './application/ports/room-sessions.port'
+// The study activity line of each member in the member list: answered by social (D-180 pattern, D-247).
+export {
+    MEMBER_ACTIVITY,
+    type MemberActivity,
+    type MemberActivityPort,
+    type MemberSoloActivity
+} from './application/ports/member-activity.port'
 // "X joined the server" in the welcome channel: answered by messaging (D-160 pattern, D-180).
 export { SYSTEM_MESSAGES, type SystemMessagesPort } from './application/ports/system-messages.port'
 

@@ -12,6 +12,7 @@ import {
     UserSettingsRepositoryPort
 } from '@/modules/users/domain'
 import { PresenceChosenEvent } from '../../events/presence-chosen.event'
+import { StudyActivitySwitchedEvent } from '../../events/study-activity-switched.event'
 import { UpdateSettingsCommand } from './update-settings.command'
 
 /**
@@ -21,7 +22,9 @@ import { UpdateSettingsCommand } from './update-settings.command'
  * clock; a change too soon is refused with when it may happen, and nothing
  * else sent with it is saved. A status chosen in the menu is told to the
  * other modules once saved: the realtime module shows it to others
- * (REQ-AUTH-07), and tells nothing when what they see is the same.
+ * (REQ-AUTH-07), and tells nothing when what they see is the same. So is
+ * "Show study activity": the social module tells the activity line again
+ * (D-247).
  */
 @CommandHandler(UpdateSettingsCommand)
 export class UpdateSettingsHandler implements ICommandHandler<UpdateSettingsCommand> {
@@ -49,6 +52,9 @@ export class UpdateSettingsHandler implements ICommandHandler<UpdateSettingsComm
             // Each time it is sent, unchanged or not: of two tabs choosing at once, the last told is the last saved.
             if (rest.presence !== undefined) {
                 this.eventBus.publish(new PresenceChosenEvent(userId, updated.presence))
+            }
+            if (rest.showStudyActivity !== undefined) {
+                this.eventBus.publish(new StudyActivitySwitchedEvent(userId, updated.showStudyActivity))
             }
             return settingsView(updated, now)
         }

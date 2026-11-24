@@ -762,6 +762,25 @@ joins and leaves the webhooks lost and closes rooms no active call has; an
 active call over closes its room; an ended sign-in session puts its call
 connection out (D-214).
 
+The study activity line (M6 L5, D-240, D-247) is the same for every viewer:
+the kind of room one is in (`study` or `voice`) and one's Solo, or null when
+"Show study activity" is off, the status chosen is invisible, one is in an
+active call, or studies nowhere: the pure `activityOf` of
+`domain/activity.rules.ts`. The class `StudyActivities` in
+`application/services` reads it for a whole list at once (the settings
+through users' `USER_DIRECTORY`, the rooms through voice's `VOICE_ROOMS`,
+which are study rooms through servers' `CHANNEL_DIRECTORY`, Solos through
+study's `SOLO_SESSIONS`, its own active calls). Lists, DMs and profiles carry
+it where they carry presence; servers' member list asks for it through
+`MEMBER_ACTIVITY` (social's global `MemberActivityModule`). After a change
+that may change it (a voice room joined or left, a Solo's change, a status
+or the switch saved, a call becoming active or ending, a server's channels
+changed), `AnnounceActivityHandler` sends `activity.updated` to each server
+of the person and each friend, as presence goes; never a change of someone
+hidden (`mayTellActivity`), and read and sent under the person's advisory
+lock (`ACTIVITY_LOCK`, `PrismaActivityLock`), so the last line sent is the
+one now.
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in

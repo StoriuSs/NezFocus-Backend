@@ -56,7 +56,8 @@ function world() {
         channelIdsOf: async () => [],
 
         studyRoomOf: async () => null,
-        namesOf: async () => ({ servers: new Map(), channels: new Map() })
+        namesOf: async () => ({ servers: new Map(), channels: new Map() }),
+        studyRoomsAmong: async () => []
     }
     const members: Record<string, { roleIds: string[]; timeoutUntil: Date | null }> = {
         an: { roleIds: [], timeoutUntil: LATER },

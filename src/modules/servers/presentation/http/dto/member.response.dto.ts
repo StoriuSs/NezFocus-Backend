@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { Expose } from 'class-transformer'
-import { IsBoolean, IsDate, IsIn, IsOptional, IsString } from 'class-validator'
+import { Expose, Type } from 'class-transformer'
+import { IsBoolean, IsDate, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { MEMBER_PRESENCES } from '../../../application/ports'
+import { MemberActivityResponseDto } from './member-activity.response.dto'
 
 export class MemberResponseDto {
     @Expose()
@@ -53,4 +54,12 @@ export class MemberResponseDto {
     @ApiProperty({ enum: MEMBER_PRESENCES })
     @IsIn(MEMBER_PRESENCES)
     status: (typeof MEMBER_PRESENCES)[number]
+
+    /** What they are studying now (D-108, D-240); null when they show nothing: hidden, in a call, nowhere (D-247). */
+    @Expose()
+    @ApiProperty({ type: MemberActivityResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => MemberActivityResponseDto)
+    activity: MemberActivityResponseDto | null
 }

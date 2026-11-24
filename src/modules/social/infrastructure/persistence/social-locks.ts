@@ -20,6 +20,9 @@ export async function lockPair(tx: Tx, low: string, high: string): Promise<void>
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${pairLock(low, high)}, 0))`
 }
 
+/** Each id once, smaller first (byte order): the order every lock of many people is taken in. */
+const inLockOrder = (userIds: string[]) => [...new Set(userIds)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+
 /**
  * The advisory lock held while a person's calls change (D-242): by person,
  * not by DM, as being busy is a person's (a call in one DM makes them busy
@@ -33,8 +36,21 @@ export const callLock = (userId: string) => `call:${userId}`
  * same order, so they wait for each other and never deadlock.
  */
 export async function lockCallers(tx: Tx, userIds: string[]): Promise<void> {
-    const ordered = [...new Set(userIds)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-    for (const userId of ordered) {
+    for (const userId of inLockOrder(userIds)) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${callLock(userId)}, 0))`
+    }
+}
+
+/**
+ * The advisory lock held while a person's activity line is read and sent
+ * (D-247 L5-e): two changes told at once take turns. Scoped to the
+ * transaction.
+ */
+export const activityLock = (userId: string) => `activity:${userId}`
+
+/** Takes activityLock of each of `userIds`, smaller id first, as lockCallers. */
+export async function lockActivities(tx: Tx, userIds: string[]): Promise<void> {
+    for (const userId of inLockOrder(userIds)) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${activityLock(userId)}, 0))`
     }
 }

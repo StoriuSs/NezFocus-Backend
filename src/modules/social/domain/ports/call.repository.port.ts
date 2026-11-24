@@ -63,6 +63,8 @@ export interface CallRepositoryPort {
     ringingSince(before: Date): Promise<{ id: string; version: number }[]>
     /** The active calls, for the sweep's deadlines and reconciliation. */
     activeCalls(): Promise<Call[]>
+    /** Those of `userIds` in an active call, made or received: their activity line shows nothing (D-247). */
+    inActiveCalls(userIds: string[]): Promise<string[]>
     /** The CallParticipant rows of each of `callIds` (none: an empty list). */
     presenceOf(callIds: string[]): Promise<Map<string, CallPresence[]>>
     /**

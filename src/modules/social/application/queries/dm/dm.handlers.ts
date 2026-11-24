@@ -12,6 +12,7 @@ import {
     RELATIONSHIP_REPOSITORY,
     RelationshipRepositoryPort
 } from '../../../domain'
+import { StudyActivities } from '../../services/activities'
 import { mayReach, recipientOf } from '../../services/dm-reach'
 import { DmView, dmViews, DmViewSources } from '../../services/dm-views'
 import {
@@ -29,7 +30,7 @@ const conversationOf = (pair: DmPair): DmConversation => ({
     createdAt: pair.createdAt
 })
 
-/** What the view handlers read: the rows, who may be messaged, presence, pictures, last messages. */
+/** What the view handlers read: the rows, who may be messaged, presence, study activity, pictures, last messages. */
 abstract class DmReader {
     protected readonly views: DmViewSources
 
@@ -39,9 +40,10 @@ abstract class DmReader {
         @Inject(MEMBERSHIP) membership: MembershipPort,
         @Inject(USER_DIRECTORY) users: UserDirectoryPort,
         @Inject(PRESENCE) presence: PresencePort,
-        @Inject(LAST_MESSAGES) lastMessages: LastMessagesPort
+        @Inject(LAST_MESSAGES) lastMessages: LastMessagesPort,
+        activities: StudyActivities
     ) {
-        this.views = { relationships, membership, users, presence, lastMessages }
+        this.views = { relationships, membership, users, presence, activities, lastMessages }
     }
 }
 

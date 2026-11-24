@@ -52,6 +52,26 @@ export class PrismaUserSettingsRepository implements UserSettingsRepositoryPort 
         return rows.map((row) => row.userId)
     }
 
+    async studyActivitySettingsOf(
+        userIds: string[]
+    ): Promise<Map<string, Pick<UserSettings, 'showStudyActivity' | 'presence'>>> {
+        if (userIds.length === 0) return new Map()
+        // A settings row is made when the account is completed: no row, not completed.
+        const rows = await this.prisma.userSettings.findMany({
+            where: { userId: { in: userIds }, user: { deletedAt: null, deletionRequestedAt: null } },
+            select: { userId: true, showStudyActivity: true, presence: true }
+        })
+        return new Map(
+            rows.map((row) => [
+                row.userId,
+                {
+                    showStudyActivity: row.showStudyActivity,
+                    presence: PRESENCES.find((known) => known === row.presence) ?? 'online'
+                }
+            ])
+        )
+    }
+
     async update(userId: string, changes: SettingsChanges, timezone?: TimezoneChange): Promise<UserSettings | null> {
         // One UPDATE … WHERE: Postgres re-checks the condition on the locked
         // row, so of two zone changes at once the second matches nothing.

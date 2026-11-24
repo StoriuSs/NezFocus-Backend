@@ -11,6 +11,7 @@ import {
     RELATIONSHIP_REPOSITORY,
     RelationshipRepositoryPort
 } from '../../../domain'
+import { StudyActivities } from '../../services/activities'
 import { dmViews, DmViewSources } from '../../services/dm-views'
 import { DmChangedEvent } from '../dm-changed.event'
 
@@ -36,9 +37,10 @@ export class PublishDmChangeHandler implements IEventHandler<DmChangedEvent> {
         @Inject(MEMBERSHIP) membership: MembershipPort,
         @Inject(USER_DIRECTORY) users: UserDirectoryPort,
         @Inject(PRESENCE) presence: PresencePort,
-        @Inject(LAST_MESSAGES) lastMessages: LastMessagesPort
+        @Inject(LAST_MESSAGES) lastMessages: LastMessagesPort,
+        activities: StudyActivities
     ) {
-        this.views = { relationships, membership, users, presence, lastMessages }
+        this.views = { relationships, membership, users, presence, activities, lastMessages }
     }
 
     async handle({ userId, channelId, change, otherId }: DmChangedEvent): Promise<void> {

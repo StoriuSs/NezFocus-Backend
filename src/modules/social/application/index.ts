@@ -17,6 +17,8 @@ export * from './commands/relationship/relationship.commands'
 export * from './commands/relationship/relationship.handlers'
 
 // Queries
+export * from './queries/activity/activity.queries'
+export * from './queries/activity/activity.handlers'
 export * from './queries/call/call.queries'
 export * from './queries/call/call.handlers'
 export * from './queries/dm/dm.queries'
@@ -27,6 +29,7 @@ export * from './queries/relationship/relationship.queries'
 export * from './queries/relationship/relationship.handlers'
 
 // Services
+export * from './services/activities'
 export * from './services/call-views'
 export * from './services/dm-views'
 export * from './services/relationship-views'
@@ -37,6 +40,7 @@ export * from './events/dm-changed.event'
 export * from './events/relationship-changed.event'
 
 // Event handlers
+export * from './events/handlers/announce-activity.handler'
 export * from './events/handlers/close-ended-call-room.handler'
 export * from './events/handlers/end-blocked-calls.handler'
 export * from './events/handlers/end-deleted-account-calls.handler'

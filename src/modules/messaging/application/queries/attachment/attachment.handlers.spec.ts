@@ -64,7 +64,8 @@ const handler = new GetAttachmentLinksHandler(
         serverIdOf: jest.fn(async () => 'ot'),
         channelIdsOf: async () => [],
         studyRoomOf: async () => null,
-        namesOf: async () => ({ servers: new Map(), channels: new Map() })
+        namesOf: async () => ({ servers: new Map(), channels: new Map() }),
+        studyRoomsAmong: async () => []
     } as ChannelDirectoryPort,
     {
         access: jest.fn(async (_serverId: string, userId: string) => ({

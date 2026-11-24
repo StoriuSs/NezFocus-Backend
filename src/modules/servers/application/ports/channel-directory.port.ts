@@ -55,6 +55,13 @@ export interface ChannelDirectoryPort {
      * see them is PERMISSION_CHECKER's to answer; one deleted is left out.
      */
     namesOf(serverIds: string[], channelIds: string[]): Promise<PlaceNames>
+
+    /**
+     * Those of these voice rooms that are study rooms, in a server not
+     * deleted: whether someone in a room is "studying with a group" or "in a
+     * voice room" (D-79, D-247). One read for them all.
+     */
+    studyRoomsAmong(channelIds: string[]): Promise<string[]>
 }
 
 export const CHANNEL_DIRECTORY = Symbol('ChannelDirectoryPort')

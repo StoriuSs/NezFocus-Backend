@@ -3,7 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express'
 import request from 'supertest'
 import { RedisClientType } from 'redis'
 import { requestDayOf } from '@/modules/social/domain'
-import { FRIEND_REQUESTS_PER_PERSON_DAY } from '@/modules/social/application'
+import { ACTIVITY_LOCK, ActivityLockPort, FRIEND_REQUESTS_PER_PERSON_DAY } from '@/modules/social/application'
 import { REDIS_CLIENT } from '@/shared/infrastructure/cache/redis-client.provider'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
@@ -604,6 +604,123 @@ describe('Social (integration)', () => {
             expect([blocked.status, blocked.body.meta.type]).toEqual([404, 'NOT_FOUND_ERROR'])
             const removed = await as('an', api().delete(`/api/v1/me/relationships/${users.binh.id}`))
             expect([removed.status, removed.body.data.type]).toEqual([200, 'none'])
+        })
+    })
+
+    describe('the study activity line (M6 L5, D-240, D-247)', () => {
+        /** Friends, written straight to the table. */
+        const befriend = (a: Who, b: Who) =>
+            prisma.relationship.create({
+                data: { ...pairOf(a, b), requesterId: users[a].id, status: 'accepted', acceptedAt: new Date() }
+            })
+        const settingsOf = (who: Who, body: object) =>
+            as(who, api().patch('/api/v1/users/me/settings')).send(body).expect(200)
+        const friendLine = async (who: Who, of: Who) =>
+            (
+                (await as(who, api().get('/api/v1/me/relationships'))).body.data.relationships as Record<
+                    string,
+                    unknown
+                >[]
+            ).find((entry) => (entry.user as { id: string }).id === users[of].id)?.activity
+
+        afterEach(async () => {
+            const ids = Object.values(users).map((user) => user.id)
+            await prisma.voiceState.deleteMany({ where: { userId: { in: ids } } })
+            await prisma.focusSession.deleteMany({ where: { userId: { in: ids } } })
+            await prisma.userSettings.updateMany({
+                where: { userId: { in: ids } },
+                data: { showStudyActivity: true, presence: 'online' }
+            })
+        })
+
+        it('shows where a friend studies on my list, their profile and the member list, the same for every viewer', async () => {
+            await befriend('an', 'binh')
+            await befriend('an', 'chi')
+            const created = await as('an', api().post('/api/v1/servers'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Ôn thi Giải tích 2', template: 'standard' })
+            const serverId = created.body.data.id as string
+            await prisma.member.create({ data: { serverId, userId: users.binh.id } })
+            const room = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ type: 'voice', name: 'Phòng học im lặng', is_private: false, view_role_ids: [] })
+            const roomId = room.body.data.id as string
+            await prisma.channel.update({ where: { id: roomId }, data: { isStudyRoom: true } })
+            await prisma.voiceState.create({
+                data: { userId: users.binh.id, channelId: roomId, participantSid: 'PA_binh', joinedAt: new Date() }
+            })
+            const solo = await as('chi', api().post('/api/v1/me/solo-session'))
+                .set('Idempotency-Key', randomUUID())
+                .send({})
+            expect(solo.status).toBe(201)
+
+            expect(await friendLine('an', 'binh')).toEqual({ room: 'study', solo: null })
+            expect(await friendLine('an', 'chi')).toEqual({
+                room: null,
+                solo: { status: 'running', phase: 'focus', phase_ends_at: solo.body.data.phase_ends_at }
+            })
+            const profile = await as('an', api().get(`/api/v1/users/${users.binh.id}/profile`))
+            expect(profile.body.data.activity).toEqual({ room: 'study', solo: null })
+            const members = await as('binh', api().get(`/api/v1/servers/${serverId}/members`))
+            expect(members.status).toBe(200)
+            const lines = Object.fromEntries(
+                (members.body.data.items as { user_id: string; activity: unknown }[]).map((item) => [
+                    item.user_id,
+                    item.activity
+                ])
+            )
+            expect(lines).toEqual({ [users.an.id]: null, [users.binh.id]: { room: 'study', solo: null } })
+
+            // Not a study room any more: "in a voice room".
+            await prisma.channel.update({ where: { id: roomId }, data: { isStudyRoom: false } })
+            expect(await friendLine('an', 'binh')).toEqual({ room: 'voice', solo: null })
+        })
+
+        it('tells one person’s line one turn at a time, across connections; another person’s meanwhile (L5-e)', async () => {
+            const lock = app.get<ActivityLockPort>(ACTIVITY_LOCK)
+            const steps: string[] = []
+            const turn = (name: string, userIds: string[], ms: number) =>
+                lock.whileHeld(userIds, async () => {
+                    steps.push(`${name} in`)
+                    await new Promise((resolve) => setTimeout(resolve, ms))
+                    steps.push(`${name} out`)
+                })
+
+            const first = turn('first', [users.an.id], 300)
+            await new Promise((resolve) => setTimeout(resolve, 50))
+            await Promise.all([
+                first,
+                turn('second', [users.binh.id, users.an.id], 0),
+                turn('other', [users.chi.id], 0)
+            ])
+
+            expect(steps.indexOf('other in')).toBeLessThan(steps.indexOf('first out'))
+            expect(steps.indexOf('second in')).toBeGreaterThan(steps.indexOf('first out'))
+        })
+
+        it('shows nothing of an account waiting to be deleted, shown as deleted (D-182)', async () => {
+            await befriend('an', 'chi')
+            await as('chi', api().post('/api/v1/me/solo-session')).set('Idempotency-Key', randomUUID()).send({})
+            expect(await friendLine('an', 'chi')).not.toBeNull()
+
+            await prisma.user.update({ where: { id: users.chi.id }, data: { deletionRequestedAt: new Date() } })
+
+            expect(await friendLine('an', 'chi')).toBeNull()
+        })
+
+        it('shows nothing of someone who turned the switch off or chose invisible, Solo included (D-79)', async () => {
+            await befriend('an', 'chi')
+            await as('chi', api().post('/api/v1/me/solo-session')).set('Idempotency-Key', randomUUID()).send({})
+            expect(await friendLine('an', 'chi')).not.toBeNull()
+
+            await settingsOf('chi', { show_study_activity: false })
+            expect(await friendLine('an', 'chi')).toBeNull()
+
+            await settingsOf('chi', { show_study_activity: true, presence: 'invisible' })
+            expect(await friendLine('an', 'chi')).toBeNull()
+
+            await settingsOf('chi', { presence: 'online' })
+            expect(await friendLine('an', 'chi')).toMatchObject({ solo: { status: 'running' } })
         })
     })
 })

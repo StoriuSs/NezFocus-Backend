@@ -8,6 +8,7 @@
 export {
     AccountCompletionInput,
     DirectoryUser,
+    StudyActivitySettings,
     UserDirectoryPort,
     USER_DIRECTORY
 } from './application/ports/user-directory.port'
@@ -19,6 +20,7 @@ export { UsernameTakenError } from './domain/errors/username.errors'
 export { AccountDeletedEvent } from './application/events/account-deleted.event'
 export { UserProfileUpdatedEvent } from './application/events/user-profile-updated.event'
 export { PresenceChosenEvent } from './application/events/presence-chosen.event'
+export { StudyActivitySwitchedEvent } from './application/events/study-activity-switched.event'
 // The statuses one chooses in their menu (REQ-AUTH-07, D-78).
 export type { ChosenPresence } from './domain/user-settings.rules'
 

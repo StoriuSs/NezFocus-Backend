@@ -11,6 +11,7 @@ import {
 import {
     AccountCompletionInput,
     DirectoryUser,
+    StudyActivitySettings,
     UserDirectoryPort
 } from '@/modules/users/application/ports/user-directory.port'
 import { STORAGE, StoragePort } from '@/modules/users/application/ports/storage.port'
@@ -81,6 +82,10 @@ export class UserDirectory implements UserDirectoryPort {
 
     allowingServerMemberMessages(ids: string[]): Promise<string[]> {
         return this.settings.allowingServerMemberMessages(ids)
+    }
+
+    studyActivitySettingsOf(ids: string[]): Promise<Map<string, StudyActivitySettings>> {
+        return this.settings.studyActivitySettingsOf(ids)
     }
 
     async requestDeletion(id: string, at: Date): Promise<DirectoryUser | null> {

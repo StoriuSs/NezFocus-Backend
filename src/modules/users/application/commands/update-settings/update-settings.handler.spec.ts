@@ -2,6 +2,7 @@ import { EventBus } from '@nestjs/cqrs'
 import { UpdateSettingsHandler } from './update-settings.handler'
 import { UpdateSettingsCommand } from './update-settings.command'
 import { PresenceChosenEvent } from '../../events/presence-chosen.event'
+import { StudyActivitySwitchedEvent } from '../../events/study-activity-switched.event'
 import {
     SettingsChanges,
     TIMEZONE_CHANGE_INTERVAL_MS,
@@ -29,6 +30,17 @@ class InMemorySettings implements UserSettingsRepositoryPort {
 
     async allowingServerMemberMessages(userIds: string[]) {
         return userIds.filter((userId) => this.rows.get(userId)?.allowServerMemberMessages)
+    }
+
+    async studyActivitySettingsOf(userIds: string[]) {
+        return new Map(
+            userIds.flatMap((userId) => {
+                const row = this.rows.get(userId)
+                return row
+                    ? [[userId, { showStudyActivity: row.showStudyActivity, presence: row.presence }] as const]
+                    : []
+            })
+        )
     }
 
     async update(userId: string, changes: SettingsChanges, zone?: TimezoneChange) {
@@ -103,6 +115,17 @@ describe('UpdateSettingsHandler', () => {
 
         expect(events.publish).toHaveBeenCalledTimes(1)
         expect(events.publish).toHaveBeenCalledWith(new PresenceChosenEvent('user-1', 'online'))
+    })
+
+    it('tells the other modules the study activity switch once saved, on or off (D-247)', async () => {
+        const { repo, events, handler } = world()
+
+        await update(handler, { showStudyActivity: false })
+        await update(handler, { theme: 'dark' })
+
+        expect(repo.rows.get('user-1')).toMatchObject({ showStudyActivity: false })
+        expect(events.publish).toHaveBeenCalledTimes(1)
+        expect(events.publish).toHaveBeenCalledWith(new StudyActivitySwitchedEvent('user-1', false))
     })
 
     it('changes the zone at once after completing the account, and starts the 24 hours', async () => {

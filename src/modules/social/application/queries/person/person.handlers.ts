@@ -5,12 +5,14 @@ import { MEMBERSHIP, MembershipPort } from '@/modules/servers'
 import { DirectoryUser, USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { isHidden } from '@/shared/domain'
 import {
+    Activity,
     PersonNotFoundError,
     RELATIONSHIP_REPOSITORY,
     RelationshipRepositoryPort,
     RelationshipType
 } from '../../../domain'
 import { SOCIAL_LIMIT, SocialLimitPort } from '../../ports'
+import { StudyActivities } from '../../services/activities'
 import { findByUsername } from '../../services/find-by-username'
 import { PersonView, personViews } from '../../services/relationship-views'
 import { GetPersonProfileQuery, LookUpPersonQuery } from './person.queries'
@@ -24,25 +26,28 @@ export interface MutualServerView {
 /**
  * A person's card or profile (D-109, D-110, D-111): who they are, their bio,
  * where we stand, the servers we share in the order of mine. Their presence
- * only when we are friends or share a server (whoever else sees it there);
- * none for anyone else. An account waiting to be deleted shows as deleted
+ * and study activity only when we are friends or share a server (whoever
+ * else sees them there); none for anyone else. An account waiting to be deleted shows as deleted
  * (D-182): no name, no bio, no servers.
  */
 export interface PersonProfileView {
     user: PersonView
     bio: string | null
     presence: Presence | null
+    /** What they study now (D-79, D-240): the ProfilePopover's block; null when they show nothing or it is not for me. */
+    activity: Activity | null
     relationship: RelationshipType
     mutualServers: MutualServerView[]
 }
 
-/** What both reads share: the person's rows, our servers, their picture and presence. */
+/** What both reads share: the person's rows, our servers, their picture, presence and study activity. */
 abstract class PersonReader {
     constructor(
         @Inject(RELATIONSHIP_REPOSITORY) private readonly relationships: RelationshipRepositoryPort,
         @Inject(USER_DIRECTORY) protected readonly users: UserDirectoryPort,
         @Inject(MEMBERSHIP) private readonly membership: MembershipPort,
-        @Inject(PRESENCE) private readonly presence: PresencePort
+        @Inject(PRESENCE) private readonly presence: PresencePort,
+        private readonly activities: StudyActivities
     ) {}
 
     /** Their profile as `viewerId` sees it, or not found when the account is gone for good. */
@@ -53,12 +58,17 @@ abstract class PersonReader {
             hidden ? Promise.resolve([]) : this.membership.sharedServers(viewerId, other.id)
         ])
         if (!entry) throw new PersonNotFoundError(other.id)
-        const [user] = await personViews(this.users, [entry.person])
         const seen = !hidden && (entry.type === 'friend' || shared.length > 0)
+        const [[user], shown, activity] = await Promise.all([
+            personViews(this.users, [entry.person]),
+            seen ? this.presence.everyoneShown() : null,
+            seen ? this.activities.ofOne(other.id) : null
+        ])
         return {
             user: user!,
             bio: hidden ? null : other.bio,
-            presence: seen ? ((await this.presence.everyoneShown()).get(other.id) ?? 'offline') : null,
+            presence: shown ? (shown.get(other.id) ?? 'offline') : null,
+            activity,
             relationship: entry.type,
             mutualServers: shared.map(({ serverId, name }) => ({ id: serverId, name }))
         }
@@ -79,9 +89,10 @@ export class LookUpPersonHandler extends PersonReader implements IQueryHandler<L
         @Inject(USER_DIRECTORY) users: UserDirectoryPort,
         @Inject(MEMBERSHIP) membership: MembershipPort,
         @Inject(PRESENCE) presence: PresencePort,
+        activities: StudyActivities,
         @Inject(SOCIAL_LIMIT) private readonly limit: SocialLimitPort
     ) {
-        super(relationships, users, membership, presence)
+        super(relationships, users, membership, presence, activities)
     }
 
     async execute({ userId, username }: LookUpPersonQuery): Promise<PersonProfileView> {

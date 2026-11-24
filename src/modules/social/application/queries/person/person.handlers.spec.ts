@@ -5,7 +5,7 @@ import { GetPersonProfileHandler, LookUpPersonHandler } from './person.handlers'
 
 function setUp() {
     const world = socialWorld()
-    const sources = [world.relationships, world.users, world.membership, world.presence] as const
+    const sources = [world.relationships, world.users, world.membership, world.presence, world.activities] as const
     return {
         world,
         lookUp: (username: string) =>
@@ -24,6 +24,7 @@ describe('LookUpPersonHandler (D-110)', () => {
             user: { id: 'binh', username: 'binh', displayName: 'BINH', avatarUrl: 'https://cdn/binh.png' },
             bio: 'Bio of binh',
             presence: 'online',
+            activity: null,
             relationship: 'incoming',
             mutualServers: [{ id: 'ot', name: 'Ôn thi Giải tích 2' }]
         })
@@ -81,9 +82,23 @@ describe('GetPersonProfileHandler (D-109, D-111)', () => {
             user: { id: 'giang', username: null, displayName: null, avatarUrl: null },
             bio: null,
             presence: null,
+            activity: null,
             relationship: 'friend',
             mutualServers: []
         })
+    })
+
+    it('gives their study activity where their presence is given: a friend or a shared server (D-79, D-247)', async () => {
+        const { world, profile } = setUp()
+        world.inRoom.set('binh', 'phong-hoc')
+        world.inRoom.set('dung', 'phong-voice')
+        world.inRoom.set('chi', 'phong-nd')
+        world.befriend('an', 'dung')
+
+        await expect(profile('binh')).resolves.toMatchObject({ activity: { room: 'study', solo: null } })
+        await expect(profile('dung')).resolves.toMatchObject({ activity: { room: 'voice', solo: null } })
+        // Chi is no friend of An and shares no server with her.
+        await expect(profile('chi')).resolves.toMatchObject({ presence: null, activity: null })
     })
 
     it('finds no profile of an account deleted for good or never completed', async () => {

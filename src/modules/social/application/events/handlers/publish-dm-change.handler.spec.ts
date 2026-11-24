@@ -20,7 +20,8 @@ async function setUp() {
         world.membership,
         world.users,
         world.presence,
-        world.lastMessages
+        world.lastMessages,
+        world.activities
     )
     const { channelId } = await world.dms.open('an', 'binh')
     return { world, told, rooms, handler, channelId }
@@ -40,6 +41,15 @@ describe('PublishDmChangeHandler (SRS 5.2, D-242, D-244)', () => {
                 data: { dm: expect.objectContaining({ id: channelId, user: expect.objectContaining({ id: 'binh' }) }) }
             }
         ])
+    })
+
+    it('gives the other one’s study activity with the DM, as the list does (D-247)', async () => {
+        const { world, told, handler, channelId } = await setUp()
+        world.inRoom.set('binh', 'phong-hoc')
+
+        await handler.handle(new DmChangedEvent('an', channelId, 'created', 'binh'))
+
+        expect((told[0]!.data.dm as { activity: unknown }).activity).toEqual({ room: 'study', solo: null })
     })
 
     it('tells the tabs of the one who opened it again or closed it whether it is in their list now', async () => {

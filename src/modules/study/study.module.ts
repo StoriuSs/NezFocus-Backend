@@ -25,6 +25,7 @@ import {
     SESSION_JOBS,
     SESSION_TIMER_COMMAND_HANDLERS,
     SOLO_SESSION_COMMAND_HANDLERS,
+    SOLO_SESSIONS,
     SOLO_SESSION_QUERY_HANDLERS,
     STUDY_SETTINGS,
     STUDY_STATS_QUERY_HANDLERS,
@@ -34,6 +35,7 @@ import { FOCUS_SESSION_REPOSITORY, STUDY_STATS_REPOSITORY } from './domain'
 import {
     BullMqSessionJobs,
     PrismaFocusSessionRepository,
+    PrismaSoloSessions,
     PrismaStudyStatsRepository,
     QueryBusRoomSessions
 } from './infrastructure'
@@ -56,7 +58,8 @@ import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from '.
  * Tells the room and each person through realtime's EVENT_PUBLISHER, and
  * says a start and an end in the room's chat through messaging's
  * PostStudySessionCommand, sent over the bus. Answers servers' ROOM_SESSIONS
- * through RoomSessionsModule below. The sweep of src/maintenance runs the
+ * through RoomSessionsModule below, and gives social each person's Solo
+ * (SOLO_SESSIONS, D-247) for their activity line. The sweep of src/maintenance runs the
  * timers whose job was lost and checks every room with a session (D-225).
  *
  * ConfigService comes from the global ConfigModule (study.config.ts).
@@ -76,6 +79,7 @@ import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from '.
         { provide: FOCUS_SESSION_REPOSITORY, useClass: PrismaFocusSessionRepository },
         { provide: STUDY_STATS_REPOSITORY, useClass: PrismaStudyStatsRepository },
         { provide: SESSION_JOBS, useClass: BullMqSessionJobs },
+        { provide: SOLO_SESSIONS, useClass: PrismaSoloSessions },
         ...ROOM_SESSION_COMMAND_HANDLERS,
         ...ROOM_PRESENCE_COMMAND_HANDLERS,
         ...SESSION_CONTROL_COMMAND_HANDLERS,
@@ -108,7 +112,8 @@ import { FocusSessionsController, MyStudyController, StudyJobsConsumer } from '.
                 return { minuteMs: minuteMs! }
             }
         }
-    ]
+    ],
+    exports: [SOLO_SESSIONS]
 })
 export class StudyModule {}
 

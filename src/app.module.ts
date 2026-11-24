@@ -73,6 +73,7 @@ import {
     DmAccessModule,
     DmChannelsModule,
     FriendsModule,
+    MemberActivityModule,
     SocialModule
 } from '@/modules/social/social.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
@@ -212,12 +213,13 @@ import { RolesGuard } from '@/shared/presentation'
         RoomSessionsModule,
         SocialModule,
         // Answer realtime's FRIENDS and DM_CHANNELS, notifications' BLOCK_LIST, messaging's DM_ACCESS, voice's
-        // ACTIVE_CALLS (D-242, D-238, D-246).
+        // ACTIVE_CALLS, servers' MEMBER_ACTIVITY (D-242, D-238, D-246, D-247).
         FriendsModule,
         BlockListModule,
         DmChannelsModule,
         DmAccessModule,
         ActiveCallsModule,
+        MemberActivityModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

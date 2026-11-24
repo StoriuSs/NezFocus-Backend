@@ -3,6 +3,7 @@ import { Expose, Type } from 'class-transformer'
 import { IsBoolean, IsDate, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator'
 import type { Presence } from '@/modules/realtime'
 import { SHOWN_PRESENCES } from '../../../application'
+import { ActivityResponseDto } from './activity.response.dto'
 import { DmLastMessageResponseDto } from './dm-last-message.response.dto'
 import { SocialPersonResponseDto } from './social-person.response.dto'
 
@@ -29,6 +30,14 @@ export class DmResponseDto {
     @IsOptional()
     @IsIn(SHOWN_PRESENCES)
     presence: Presence | null
+
+    /** What they study now, where their presence is given (D-240, D-247); null when they show nothing. */
+    @Expose()
+    @ApiProperty({ type: ActivityResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => ActivityResponseDto)
+    activity: ActivityResponseDto | null
 
     /** Whether I may message them now (REQ-SOCIAL-04): false shows the locked composer, no call button. */
     @Expose()

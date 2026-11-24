@@ -451,7 +451,9 @@ export function studyWorld() {
         namesOf: jest.fn(async (serverIds: string[], channelIds: string[]) => ({
             servers: named(serverIds, SERVER_NAMES),
             channels: named(channelIds, ROOM_NAMES)
-        }))
+        })),
+        // Social's (D-247), not study's.
+        studyRoomsAmong: async () => []
     }
     const checker: PermissionCheckerPort = {
         access: async (serverId, userId) =>
@@ -475,7 +477,10 @@ export function studyWorld() {
         roomOf: async (userId: string) => {
             const channelId = inRoom.get(userId)
             return channelId ? { userId, channelId, joinedAt: NOW } : null
-        }
+        },
+        // Social's (D-247), not study's.
+        roomsOf: async () => [],
+        peopleInRooms: async () => []
     }
     const users = {
         timeZoneOf: jest.fn(async (userId: string) => (userId === 'an' ? 'Asia/Ho_Chi_Minh' : null)),

@@ -4,6 +4,7 @@ import { SHOWN_PRESENCES } from '../../../application'
 import { RELATIONSHIP_TYPES, RelationshipType } from '../../../domain'
 import { Expose, Type } from 'class-transformer'
 import { IsArray, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { ActivityResponseDto } from './activity.response.dto'
 import { MutualServerResponseDto } from './mutual-server.response.dto'
 import { SocialPersonResponseDto } from './social-person.response.dto'
 
@@ -30,6 +31,14 @@ export class PersonProfileResponseDto {
     @IsOptional()
     @IsIn(SHOWN_PRESENCES)
     presence: Presence | null
+
+    /** What they study now, the ProfilePopover's block (D-79, D-240): only when we are friends or share a server; null otherwise. */
+    @Expose()
+    @ApiProperty({ type: ActivityResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => ActivityResponseDto)
+    activity: ActivityResponseDto | null
 
     /** Where we stand, as RelationshipResponseDto's `type`. */
     @Expose()

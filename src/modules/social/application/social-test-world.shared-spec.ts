@@ -1,9 +1,10 @@
 import { EventBus } from '@nestjs/cqrs'
 import type { LastMessage, LastMessagesPort } from '@/modules/messaging'
 import { Presence, PresencePort } from '@/modules/realtime'
-import { MembershipPort, SharedServer } from '@/modules/servers'
-import { DirectoryUser, UserDirectoryPort } from '@/modules/users'
-import type { CallConnection, CallMediaPort } from '@/modules/voice'
+import { ChannelDirectoryPort, MembershipPort, SharedServer } from '@/modules/servers'
+import type { SoloSessionsPort, SoloState } from '@/modules/study'
+import { DirectoryUser, StudyActivitySettings, UserDirectoryPort } from '@/modules/users'
+import type { CallConnection, CallMediaPort, RoomOccupancy, VoiceRoomsPort } from '@/modules/voice'
 import { isHidden, LimitsUnavailableError, shownPerson } from '@/shared/domain'
 import { RateLimitRule } from '@/shared/types/rate-limit.type'
 import {
@@ -25,6 +26,7 @@ import {
     Standing
 } from '../domain'
 import { CallJobsPort, SocialLimitPort } from './ports'
+import { StudyActivities } from './services/activities'
 
 /*
  * People for the social handler specs, in memory (spec 09): An, Bình, Chi,
@@ -33,7 +35,11 @@ import { CallJobsPort, SocialLimitPort } from './ports'
  * server "nd". Times in Hồ Chí Minh City for An. Everyone lets server
  * members message them until a test says otherwise (`allowing`). DMs and
  * their last messages as the Prisma repository and messaging keep them,
- * on a clock a test moves (`clock`).
+ * on a clock a test moves (`clock`). Study activity (D-247): the server "ot"
+ * has the study room "phong-hoc" and the voice room "phong-voice", "nd"
+ * the study room "phong-nd"; nobody is in a room or a Solo until a test
+ * puts them there (`inRoom`, `solos`); everyone completed shows activity
+ * until a test changes `activitySettings`.
  */
 
 const NAMES = ['an', 'binh', 'chi', 'dung', 'giang', 'ha', 'khoa'] as const
@@ -148,6 +154,10 @@ export function socialWorld() {
     }
 
     const zones = new Map<string, string>([['an', 'Asia/Ho_Chi_Minh']])
+    /** The two settings of each one's activity line, as users keeps them (D-247). */
+    const activitySettings = new Map<string, StudyActivitySettings>(
+        NAMES.map((id) => [id, { showStudyActivity: true, presence: 'online' }])
+    )
     /** Who lets members of a server they share message them (on by default). */
     const allowing = new Set<string>(NAMES)
     const users = {
@@ -159,6 +169,16 @@ export function socialWorld() {
         timeZoneOf: jest.fn(async (id: string) => zones.get(id) ?? null),
         allowingServerMemberMessages: jest.fn(async (ids: string[]) =>
             ids.filter((id) => allowing.has(id) && people.get(id)?.completedAt && !people.get(id)?.deletedAt)
+        ),
+        studyActivitySettingsOf: jest.fn(
+            async (ids: string[]) =>
+                new Map(
+                    ids.flatMap((id) => {
+                        const one = people.get(id)
+                        const settings = activitySettings.get(id)
+                        return one?.completedAt && !isHidden(one) && settings ? [[id, { ...settings }] as const] : []
+                    })
+                )
         ),
         avatarUrl: jest.fn(async (key: string | null) => (key ? `https://cdn/${key}` : null))
     } as unknown as UserDirectoryPort & { findByUsername: jest.Mock }
@@ -189,7 +209,13 @@ export function socialWorld() {
         [key('an', 'binh'), [{ serverId: 'ot', name: 'Ôn thi Giải tích 2' }]],
         [key('binh', 'chi'), [{ serverId: 'nd', name: 'Nhóm đồ án' }]]
     ])
+    const serversOf = new Map<string, string[]>([
+        ['an', ['ot']],
+        ['binh', ['ot', 'nd']],
+        ['chi', ['nd']]
+    ])
     const membership = {
+        serverIdsOf: jest.fn(async (userId: string) => serversOf.get(userId) ?? []),
         sharedServers: jest.fn(async (viewerId: string, otherId: string) => shared.get(key(viewerId, otherId)) ?? []),
         sharingAServer: jest.fn(async (userId: string, otherIds: string[]) =>
             otherIds.filter((id) => (shared.get(key(userId, id)) ?? []).length > 0)
@@ -373,6 +399,12 @@ export function socialWorld() {
                 return { call: callRecord(next), presence, written: true, evict }
             }
         ),
+        inActiveCalls: jest.fn(async (userIds: string[]) =>
+            [...callRows.values()]
+                .filter((call) => call.status === 'active')
+                .flatMap((call) => [call.callerId, call.calleeId])
+                .filter((userId) => userIds.includes(userId))
+        ),
         inSessions: jest.fn(async (sessionIds: string[]) =>
             [...callPresence.entries()].flatMap(([callId, rows]) =>
                 callRows.get(callId)?.status === 'active'
@@ -426,6 +458,43 @@ export function socialWorld() {
         })
     }
 
+    /** Person → the voice room they are in (VoiceState). */
+    const inRoom = new Map<string, string>()
+    const occupancy = (userId: string, channelId: string): RoomOccupancy => ({
+        userId,
+        channelId,
+        joinedAt: new Date('2026-11-24T07:30:00Z')
+    })
+    const voiceRooms: VoiceRoomsPort = {
+        peopleIn: jest.fn(),
+        roomOf: jest.fn(),
+        roomsOf: jest.fn(async (userIds: string[]) =>
+            userIds.flatMap((userId) => (inRoom.has(userId) ? [occupancy(userId, inRoom.get(userId)!)] : []))
+        ),
+        peopleInRooms: jest.fn(async (channelIds: string[]) =>
+            [...inRoom]
+                .filter(([, channelId]) => channelIds.includes(channelId))
+                .map(([userId, c]) => occupancy(userId, c))
+        )
+    }
+    const serverChannels = new Map<string, string[]>([
+        ['ot', ['hoi-dap', 'phong-hoc', 'phong-voice']],
+        ['nd', ['phong-nd']]
+    ])
+    const studyRooms = new Set(['phong-hoc', 'phong-nd'])
+    const channels = {
+        channelIdsOf: jest.fn(async (serverId: string) => serverChannels.get(serverId) ?? []),
+        studyRoomsAmong: jest.fn(async (channelIds: string[]) => channelIds.filter((id) => studyRooms.has(id)))
+    } as unknown as ChannelDirectoryPort
+    /** Person → their Solo not ended. */
+    const solos = new Map<string, Omit<SoloState, 'userId'>>()
+    const soloSessions: SoloSessionsPort = {
+        solosOf: jest.fn(async (userIds: string[]) =>
+            userIds.flatMap((userId) => (solos.has(userId) ? [{ userId, ...solos.get(userId)! }] : []))
+        )
+    }
+    const activities = new StudyActivities(users, calls, voiceRooms, channels, soloSessions)
+
     const eventBus = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
     const published = <T>(type: new (...args: never[]) => T): T[] =>
         eventBus.publish.mock.calls.map(([event]) => event).filter((event): event is T => event instanceof type)
@@ -468,6 +537,15 @@ export function socialWorld() {
         callPresence,
         callMedia,
         liveRooms,
+        activitySettings,
+        inRoom,
+        voiceRooms,
+        channels,
+        studyRooms,
+        solos,
+        soloSessions,
+        activities,
+        serversOf,
         eventBus,
         published,
         stateOf,

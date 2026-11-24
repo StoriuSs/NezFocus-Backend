@@ -3,6 +3,7 @@ import { EventsHandler, IEventHandler } from '@nestjs/cqrs'
 import { EVENT_PUBLISHER, EventPublisherPort, PRESENCE, PresencePort } from '@/modules/realtime'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { flip, listChange, PairState, RELATIONSHIP_REPOSITORY, RelationshipRepositoryPort } from '../../../domain'
+import { StudyActivities } from '../../services/activities'
 import { relationshipViews, ViewSources } from '../../services/relationship-views'
 import { RelationshipChangedEvent } from '../relationship-changed.event'
 
@@ -24,9 +25,10 @@ export class PublishRelationshipChangeHandler implements IEventHandler<Relations
         @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisherPort,
         @Inject(RELATIONSHIP_REPOSITORY) private readonly relationships: RelationshipRepositoryPort,
         @Inject(USER_DIRECTORY) users: UserDirectoryPort,
-        @Inject(PRESENCE) presence: PresencePort
+        @Inject(PRESENCE) presence: PresencePort,
+        activities: StudyActivities
     ) {
-        this.views = { users, presence }
+        this.views = { users, presence, activities }
     }
 
     async handle({ actorId, otherId, before, after }: RelationshipChangedEvent): Promise<void> {

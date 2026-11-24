@@ -12,7 +12,13 @@ function setUp() {
     const publisher = {
         toUser: (to: string, event: string, data: Record<string, unknown>) => sent.push({ to, event, data })
     } as unknown as EventPublisherPort
-    const handler = new PublishRelationshipChangeHandler(publisher, world.relationships, world.users, world.presence)
+    const handler = new PublishRelationshipChangeHandler(
+        publisher,
+        world.relationships,
+        world.users,
+        world.presence,
+        world.activities
+    )
     /** An wrote `write` to the pair with Bình, standing at `before` as she sees it. */
     const tell = async (before: PairState, write: Written) => {
         await world.relationships.change('an', 'binh', () => write, new Date())
@@ -23,7 +29,7 @@ function setUp() {
         sent
             .map(({ to, event, data }) => [to, event, (data.relationship as { type?: string })?.type ?? data.userId])
             .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-    return { world, tell, told }
+    return { world, tell, told, sent: () => sent }
 }
 
 describe('PublishRelationshipChangeHandler (SRS 5.2, D-242)', () => {
@@ -34,6 +40,20 @@ describe('PublishRelationshipChangeHandler (SRS 5.2, D-242)', () => {
             ['an', 'relationship.added', 'outgoing'],
             ['binh', 'relationship.added', 'incoming']
         ])
+    })
+
+    it('gives a new friend’s study activity with the friendship, as the list does (D-247)', async () => {
+        const { world, tell, sent } = setUp()
+        world.befriend('binh', 'an', false)
+        world.inRoom.set('binh', 'phong-hoc')
+        world.inRoom.set('an', 'phong-voice')
+
+        await tell({ standing: 'incoming', blocking: false, blockedBy: false }, { write: 'accept' })
+
+        const activityFor = (to: string) =>
+            (sent().find((one) => one.to === to)?.data.relationship as { activity?: unknown } | undefined)?.activity
+        expect(activityFor('an')).toEqual({ room: 'study', solo: null })
+        expect(activityFor('binh')).toEqual({ room: 'voice', solo: null })
     })
 
     it('tells the one blocked only that the friendship went', async () => {

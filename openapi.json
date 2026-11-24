@@ -8829,6 +8829,65 @@
           "user_ids"
         ]
       },
+      "MemberSoloActivityResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "running",
+              "paused",
+              "waiting"
+            ],
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "focus",
+              "short_break",
+              "long_break"
+            ],
+            "type": "string"
+          },
+          "phase_ends_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "While running only: the client shows \"còn N phút\" from it."
+          }
+        },
+        "required": [
+          "status",
+          "phase",
+          "phase_ends_at"
+        ]
+      },
+      "MemberActivityResponseDto": {
+        "type": "object",
+        "properties": {
+          "room": {
+            "nullable": true,
+            "description": "The kind of room they are in: a study room, with a session or not, or another voice room.",
+            "enum": [
+              "study",
+              "voice"
+            ],
+            "type": "string"
+          },
+          "solo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberSoloActivityResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "room",
+          "solo"
+        ]
+      },
       "MemberResponseDto": {
         "type": "object",
         "properties": {
@@ -8841,6 +8900,16 @@
               "offline"
             ],
             "type": "string"
+          },
+          "activity": {
+            "nullable": true,
+            "description": "What they are studying now (D-108, D-240); null when they show nothing: hidden, in a call, nowhere (D-247).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberActivityResponseDto"
+              }
+            ]
           },
           "user_id": {
             "type": "string"
@@ -8885,6 +8954,7 @@
         },
         "required": [
           "status",
+          "activity",
           "user_id",
           "username",
           "display_name",
@@ -11454,6 +11524,65 @@
           "has_more"
         ]
       },
+      "SoloActivityResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "running",
+              "paused",
+              "waiting"
+            ],
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "focus",
+              "short_break",
+              "long_break"
+            ],
+            "type": "string"
+          },
+          "phase_ends_at": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "While running only: the client shows \"còn N phút\" from it."
+          }
+        },
+        "required": [
+          "status",
+          "phase",
+          "phase_ends_at"
+        ]
+      },
+      "ActivityResponseDto": {
+        "type": "object",
+        "properties": {
+          "room": {
+            "nullable": true,
+            "description": "The kind of room they are in: a study room, with a session or not, or another voice room.",
+            "enum": [
+              "study",
+              "voice"
+            ],
+            "type": "string"
+          },
+          "solo": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SoloActivityResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "room",
+          "solo"
+        ]
+      },
       "SocialPersonResponseDto": {
         "type": "object",
         "properties": {
@@ -11510,6 +11639,16 @@
             ],
             "type": "string"
           },
+          "activity": {
+            "nullable": true,
+            "description": "What a friend studies now (D-240, D-247); null for anyone else, and for a friend who shows nothing.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivityResponseDto"
+              }
+            ]
+          },
           "user": {
             "$ref": "#/components/schemas/SocialPersonResponseDto"
           },
@@ -11523,6 +11662,7 @@
           "type",
           "since",
           "presence",
+          "activity",
           "user",
           "note"
         ]
@@ -11589,6 +11729,16 @@
             ],
             "type": "string"
           },
+          "activity": {
+            "nullable": true,
+            "description": "What they study now, the ProfilePopover's block (D-79, D-240): only when we are friends or share a server; null otherwise.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivityResponseDto"
+              }
+            ]
+          },
           "relationship": {
             "description": "Where we stand, as RelationshipResponseDto's `type`.",
             "enum": [
@@ -11616,6 +11766,7 @@
         },
         "required": [
           "presence",
+          "activity",
           "relationship",
           "user",
           "bio",
@@ -11724,6 +11875,16 @@
             ],
             "type": "string"
           },
+          "activity": {
+            "nullable": true,
+            "description": "What they study now, where their presence is given (D-240, D-247); null when they show nothing.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivityResponseDto"
+              }
+            ]
+          },
           "last_message": {
             "nullable": true,
             "description": "Null in a DM with no message left.",
@@ -11757,6 +11918,7 @@
         },
         "required": [
           "presence",
+          "activity",
           "last_message",
           "id",
           "user",

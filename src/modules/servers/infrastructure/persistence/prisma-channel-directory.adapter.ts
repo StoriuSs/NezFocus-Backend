@@ -47,6 +47,15 @@ export class PrismaChannelDirectory implements ChannelDirectoryPort {
         }
     }
 
+    async studyRoomsAmong(channelIds: string[]): Promise<string[]> {
+        if (channelIds.length === 0) return []
+        const rows = await this.prisma.channel.findMany({
+            where: { id: { in: channelIds }, type: 'voice', isStudyRoom: true, server: { deletedAt: null } },
+            select: { id: true }
+        })
+        return rows.map((row) => row.id)
+    }
+
     async namesOf(serverIds: string[], channelIds: string[]): Promise<PlaceNames> {
         const [servers, channels] = await Promise.all([
             serverIds.length === 0

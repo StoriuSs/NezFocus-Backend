@@ -5,13 +5,18 @@ import { MessagingModule } from '@/modules/messaging/messaging.module'
 import { BLOCK_LIST } from '@/modules/notifications'
 import { DM_CHANNELS, FRIENDS } from '@/modules/realtime'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
+import { MEMBER_ACTIVITY } from '@/modules/servers'
 import { ServersModule } from '@/modules/servers/servers.module'
+import { StudyModule } from '@/modules/study/study.module'
 import { UsersModule } from '@/modules/users/users.module'
 import { ACTIVE_CALLS } from '@/modules/voice'
 import { VoiceModule } from '@/modules/voice/voice.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
+    ACTIVITY_LOCK,
+    ACTIVITY_QUERY_HANDLERS,
+    AnnounceActivityHandler,
     BLOCK_COMMAND_HANDLERS,
     CALL_COMMAND_HANDLERS,
     CALL_JOBS,
@@ -33,19 +38,22 @@ import {
     RecordCallMediaHandler,
     RELATIONSHIP_COMMAND_HANDLERS,
     RELATIONSHIP_QUERY_HANDLERS,
-    SOCIAL_LIMIT
+    SOCIAL_LIMIT,
+    StudyActivities
 } from './application'
 import { CALL_REPOSITORY, DM_REPOSITORY, RELATIONSHIP_REPOSITORY } from './domain'
 import {
     BullMqCallJobs,
     CommandBusActiveCalls,
+    PrismaActivityLock,
     PrismaCallRepository,
     PrismaDmRepository,
     PrismaRelationshipRepository,
     QueryBusBlockList,
     QueryBusDmAccess,
     QueryBusDmChannels,
-    QueryBusFriends
+    QueryBusFriends,
+    QueryBusMemberActivity
 } from './infrastructure'
 import {
     BlocksController,
@@ -67,7 +75,9 @@ import {
  * `social` queue (and its sweep), the call's message in the DM and the
  * missed call's item; their media (L4b, D-242, D-246): joining the call's
  * room, 15 seconds to connect and 30 to come back (a job on the same queue),
- * the rooms set right by the sweep, ended sessions put out.
+ * the rooms set right by the sweep, ended sessions put out; the study
+ * activity line (L5, D-240, D-247): on the lists, the profile and the member
+ * list, told again as `activity.updated`.
  *
  * Asks users for people (USER_DIRECTORY), servers for the servers two
  * people share (MEMBERSHIP), realtime for presence (PRESENCE) and tells
@@ -78,9 +88,14 @@ import {
  * messaging's PostCallEndedCommand over the bus; the calls' rooms at
  * LiveKit through voice's CALL_MEDIA. Hears users' AccountDeletedEvent
  * (D-243), auth's AccountDeletionRequestedEvent (a call cut off) and
- * SessionsEndedEvent (D-214), voice's CallMediaChangedEvent. Answers realtime's FRIENDS and DM_CHANNELS, notifications'
- * BLOCK_LIST, messaging's DM_ACCESS and voice's ACTIVE_CALLS through the
- * global modules below.
+ * SessionsEndedEvent (D-214), voice's CallMediaChangedEvent. For the
+ * activity line, reads voice's VOICE_ROOMS, servers' CHANNEL_DIRECTORY,
+ * study's SOLO_SESSIONS and each person's settings, and hears voice's
+ * VoiceStateChangedEvent, study's FocusSessionChangedEvent, users'
+ * PresenceChosenEvent and StudyActivitySwitchedEvent, servers'
+ * ServerChangedEvent. Answers realtime's FRIENDS and DM_CHANNELS,
+ * notifications' BLOCK_LIST, messaging's DM_ACCESS, voice's ACTIVE_CALLS
+ * and servers' MEMBER_ACTIVITY through the global modules below.
  * RateLimiter comes from the global CacheModule.
  */
 @Module({
@@ -89,6 +104,7 @@ import {
         MessagingModule,
         RealtimeModule,
         ServersModule,
+        StudyModule,
         UsersModule,
         VoiceModule,
         registerQueues(QUEUES.SOCIAL)
@@ -100,6 +116,8 @@ import {
         { provide: CALL_REPOSITORY, useClass: PrismaCallRepository },
         { provide: CALL_JOBS, useClass: BullMqCallJobs },
         { provide: SOCIAL_LIMIT, useExisting: RateLimiter },
+        StudyActivities,
+        { provide: ACTIVITY_LOCK, useClass: PrismaActivityLock },
         ...RELATIONSHIP_COMMAND_HANDLERS,
         ...BLOCK_COMMAND_HANDLERS,
         ...RELATIONSHIP_QUERY_HANDLERS,
@@ -109,6 +127,7 @@ import {
         ...CALL_COMMAND_HANDLERS,
         ...CALL_MEDIA_COMMAND_HANDLERS,
         ...CALL_QUERY_HANDLERS,
+        ...ACTIVITY_QUERY_HANDLERS,
         PublishRelationshipChangeHandler,
         PublishDmChangeHandler,
         PublishCallChangeHandler,
@@ -120,6 +139,7 @@ import {
         EndDeletedAccountCallsHandler,
         NotifyRelationshipChangeHandler,
         ForgetDeletedAccountHandler,
+        AnnounceActivityHandler,
         SocialJobsConsumer
     ]
 })
@@ -190,3 +210,16 @@ export class DmAccessModule {}
     exports: [ACTIVE_CALLS]
 })
 export class ActiveCallsModule {}
+
+/**
+ * Servers' MEMBER_ACTIVITY port (the activity line in the member list,
+ * D-247), answered by this module the same way: social uses servers, never
+ * the other way. AppModule imports it.
+ */
+@Global()
+@Module({
+    imports: [CqrsModule],
+    providers: [{ provide: MEMBER_ACTIVITY, useClass: QueryBusMemberActivity }],
+    exports: [MEMBER_ACTIVITY]
+})
+export class MemberActivityModule {}

@@ -488,14 +488,16 @@ through `RoomSessionsModule` in `study.module.ts`; social answers realtime's
 socket joins), notifications' `BLOCK_LIST` (whom people blocked) and
 messaging's `DM_ACCESS` (a DM's two people, who may still write; D-238)
 and voice's `ACTIVE_CALLS` (a voice room's token ends one's call; D-246)
-through `FriendsModule`, `DmChannelsModule`, `BlockListModule`,
-`DmAccessModule` and `ActiveCallsModule` in `social.module.ts` (D-242):
-social on realtime, notifications, messaging and voice. A module may also
+and servers' `MEMBER_ACTIVITY` (the study activity line in the member list;
+D-247) through `FriendsModule`, `DmChannelsModule`, `BlockListModule`,
+`DmAccessModule`, `ActiveCallsModule` and `MemberActivityModule` in
+`social.module.ts` (D-242): social on realtime, notifications, messaging,
+voice and servers. A module may also
 offer a port to the one that depends on it, from its own tables or sockets,
 exported by its Nest module: messaging's `LAST_MESSAGES`, realtime's
-`DM_ROOMS` and voice's `CALL_MEDIA` (a call's LiveKit room, answered by the
-class `CallMedia` of voice's `application/services`, D-239), which social
-imports. Servers and notifications
+`DM_ROOMS`, voice's `CALL_MEDIA` (a call's LiveKit room, answered by the
+class `CallMedia` of voice's `application/services`, D-239) and study's
+`SOLO_SESSIONS` (each person's Solo, D-247), which social imports. Servers and notifications
 import each other's `index.ts` (`NOTIFIER` one way, `MEMBERSHIP` the other),
 which D-185 accepted: neither index loads the other's Nest module, so no
 token is undefined when Nest reads `@Inject`. Ask the owner before adding another such pair.

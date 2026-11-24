@@ -1,6 +1,7 @@
 import type { LastMessage, LastMessagesPort } from '@/modules/messaging'
 import { Presence, PresencePort } from '@/modules/realtime'
-import { DmEntry, isShownDm } from '../../domain'
+import { Activity, DmEntry, isShownDm } from '../../domain'
+import type { StudyActivities } from './activities'
 import { reachOf, ReachSources } from './dm-reach'
 import { PersonView, personViews } from './relationship-views'
 
@@ -15,6 +16,8 @@ export interface DmView {
      * account gone.
      */
     presence: Presence | null
+    /** What they study now, where their presence is given (D-240, D-247); null when they show nothing. */
+    activity: Activity | null
     /** Whether I may message them now (REQ-SOCIAL-04): the composer and the call button follow it. */
     canMessage: boolean
     /** The last message not deleted, for the row's second line; null in a DM with none. */
@@ -22,9 +25,10 @@ export interface DmView {
     createdAt: Date
 }
 
-/** What DM views read: who may be messaged, presence, pictures, last messages. */
+/** What DM views read: who may be messaged, presence, study activity, pictures, last messages. */
 export interface DmViewSources extends ReachSources {
     presence: PresencePort
+    activities: StudyActivities
     lastMessages: LastMessagesPort
 }
 
@@ -36,7 +40,7 @@ const activeAt = (view: DmView): number => (view.lastMessage?.createdAt ?? view.
  * only those shown in their list (isShownDm, D-244), the latest active
  * first (spec 09 Q5: a new message brings its DM to the top): the last
  * messages read first, so a DM not shown costs nothing more. One read of
- * each kind for them all.
+ * each kind for them all; the activity lines after who may be seen.
  */
 export async function dmViews(
     sources: DmViewSources,
@@ -61,12 +65,16 @@ export async function dmViews(
         )
     ])
     const seen = new Set([...reach.sharing, ...reach.friends])
+    const studying = await sources.activities.of(
+        recipients.filter((one) => !one.gone && seen.has(one.id)).map((one) => one.id)
+    )
     const views = entries.map((entry, index): DmView => {
         const otherId = entry.other.id
         return {
             id: entry.channelId,
             user: people[index]!,
             presence: !entry.otherGone && seen.has(otherId) ? (shown.get(otherId) ?? 'offline') : null,
+            activity: !entry.otherGone && seen.has(otherId) ? (studying.get(otherId) ?? null) : null,
             canMessage: reach.messageable.has(otherId),
             lastMessage: lastOf.get(entry.channelId) ?? null,
             createdAt: entry.createdAt

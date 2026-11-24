@@ -152,6 +152,10 @@ class FakeDirectory implements UserDirectoryPort {
     async allowingServerMemberMessages(ids: string[]) {
         return ids
     }
+    // Social's (D-247), not auth's.
+    async studyActivitySettingsOf() {
+        return new Map()
+    }
     // Conditional, like the repository's statements.
     async requestDeletion(id: string, at: Date) {
         const user = this.users.get(id)

@@ -9,7 +9,8 @@ import type { ChosenPresence } from '@/modules/users/domain/user-settings.rules'
  * entity. The dependency runs one way: auth depends on this interface; nothing
  * here knows auth exists. servers uses it too, for people's pictures,
  * realtime for the status one chose, and social to find a person by
- * username (D-243) and who lets server members message them (D-238).
+ * username (D-243), who lets server members message them (D-238) and whose
+ * study activity others may see (D-247).
  */
 export interface DirectoryUser {
     id: string
@@ -48,6 +49,12 @@ export interface AccountCompletionInput {
     language: string
     /** Now: also when the Terms were agreed to. */
     completedAt: Date
+}
+
+/** The two settings a person's study activity line follows (D-79, D-247). */
+export interface StudyActivitySettings {
+    showStudyActivity: boolean
+    presence: ChosenPresence
 }
 
 export interface UserDirectoryPort {
@@ -100,6 +107,14 @@ export interface UserDirectoryPort {
      * completed, is not among them. One read for them all.
      */
     allowingServerMemberMessages(ids: string[]): Promise<string[]>
+
+    /**
+     * What decides whether others see the study activity of each of `ids`
+     * (REQ-AUTH-07, D-79): the "Show study activity" switch, and the status
+     * chosen in the menu (invisible hides it). An account gone, waiting to be
+     * deleted (D-182) or not completed is not among them. One read for them all.
+     */
+    studyActivitySettingsOf(ids: string[]): Promise<Map<string, StudyActivitySettings>>
 
     /**
      * Record that the owner asked to delete the account (REQ-AUTH-09, D-141);

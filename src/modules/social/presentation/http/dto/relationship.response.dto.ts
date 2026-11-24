@@ -4,6 +4,7 @@ import { SHOWN_PRESENCES } from '../../../application'
 import { RELATIONSHIP_TYPES, RelationshipType } from '../../../domain'
 import { Expose, Type } from 'class-transformer'
 import { IsDate, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { ActivityResponseDto } from './activity.response.dto'
 import { SocialPersonResponseDto } from './social-person.response.dto'
 
 /**
@@ -42,4 +43,12 @@ export class RelationshipResponseDto {
     @IsOptional()
     @IsIn(SHOWN_PRESENCES)
     presence: Presence | null
+
+    /** What a friend studies now (D-240, D-247); null for anyone else, and for a friend who shows nothing. */
+    @Expose()
+    @ApiProperty({ type: ActivityResponseDto, nullable: true })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => ActivityResponseDto)
+    activity: ActivityResponseDto | null
 }
