@@ -33,17 +33,18 @@ export class PrismaChannelDirectory implements ChannelDirectoryPort {
                 studyLongBreakEvery: true
             }
         })
-        return (
-            row && {
-                serverId: row.serverId,
-                isStudyRoom: row.isStudyRoom,
-                studyStarter: row.studyStarter,
-                focusMinutes: row.studyFocusMinutes,
-                shortBreakMinutes: row.studyShortBreakMinutes,
-                longBreakMinutes: row.studyLongBreakMinutes,
-                longBreakEvery: row.studyLongBreakEvery
-            }
-        )
+        // A voice channel always has a server (Channel_dm_check): the test
+        // only tells TypeScript so.
+        if (!row?.serverId) return null
+        return {
+            serverId: row.serverId,
+            isStudyRoom: row.isStudyRoom,
+            studyStarter: row.studyStarter,
+            focusMinutes: row.studyFocusMinutes,
+            shortBreakMinutes: row.studyShortBreakMinutes,
+            longBreakMinutes: row.studyLongBreakMinutes,
+            longBreakEvery: row.studyLongBreakEvery
+        }
     }
 
     async namesOf(serverIds: string[], channelIds: string[]): Promise<PlaceNames> {

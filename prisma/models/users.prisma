@@ -93,6 +93,18 @@ model User {
   dailyStudies   DailyStudy[]
   streak         Streak?
 
+  // Owned by the social module (prisma/models/social.prisma); declared here
+  // only because Prisma needs both sides of a relation.
+  relationshipsLow  Relationship[]    @relation("RelationshipLow")
+  relationshipsHigh Relationship[]    @relation("RelationshipHigh")
+  blocksGiven       Block[]           @relation("BlockBy")
+  blocksReceived    Block[]           @relation("BlockOf")
+  dmChannelsLow     DmChannel[]       @relation("DmChannelLow")
+  dmChannelsHigh    DmChannel[]       @relation("DmChannelHigh")
+  callsMade         Call[]            @relation("CallCaller")
+  callsReceived     Call[]            @relation("CallCallee")
+  callConnections   CallParticipant[] @relation("CallParticipantUser")
+
   @@index([username])
   @@index([deletedAt])
   @@index([deletionRequestedAt])

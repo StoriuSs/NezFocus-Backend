@@ -69,6 +69,10 @@ model Category {
 enum ChannelType {
   text
   voice
+  /// A direct message conversation (M6, D-167): no server, no category, no
+  /// name. The social module makes it with its DmChannel row and keeps who
+  /// the two people are; Channel_dm_check (in the migration) holds the rest.
+  dm
 }
 
 /// Who may post in a text channel (REQ-ROLE-03).
@@ -86,13 +90,17 @@ enum StudyStarter {
   managers
 }
 
-/// A text channel or a voice room. Every column is here from M1 although some
+/// A text channel or a voice room of a server, or a direct message
+/// conversation (type dm, M6). Every column is here from M1 although some
 /// only take effect later (D-144): voice rooms in M4, study rooms in M4–M5,
 /// the Task Board in M3, who may post once there are messages (M2).
 model Channel {
   id         String      @id @default(uuid(7))
-  serverId   String
-  server     Server      @relation("ServerChannels", fields: [serverId], references: [id], onDelete: Cascade)
+  /// Empty for a dm channel, and only for one (Channel_dm_check, D-242):
+  /// every read of a server's channels filters by serverId, so none of them
+  /// meets a conversation.
+  serverId   String?
+  server     Server?     @relation("ServerChannels", fields: [serverId], references: [id], onDelete: Cascade)
   /// Empty: listed above the first category, with no heading.
   categoryId String?
   category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -141,9 +149,15 @@ model Channel {
   // only because Prisma needs both sides of a relation.
   voiceStates VoiceState[]
 
+  // Owned by the social module (prisma/models/social.prisma); declared here
+  // only because Prisma needs both sides of a relation.
+  dm DmChannel?
+
   // No two channels of one kind share a name in the same category, or among
   // the channels outside any. The migration makes this index NULLS NOT
-  // DISTINCT so that "no category" counts as one group.
+  // DISTINCT so that "no category" counts as one group, and partial (WHERE
+  // serverId IS NOT NULL, 20261124100000_social) so that conversations, which
+  // all have the same empty name, stay out of it.
   @@unique([serverId, categoryId, type, nameKey])
   // Target of the composite keys below: a role or channel of one server can
   // never be tied to another server's.

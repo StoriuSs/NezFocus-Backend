@@ -1,4 +1,8 @@
-/** The kinds of inbox item (spec 06): those of M3; friends and reports come with their milestones (D-144). */
+/**
+ * The kinds of inbox item (spec 06): those of M3, and M6's friend requests and
+ * missed calls, which belong to no server (D-242); reports come with M7
+ * (D-144).
+ */
 export type NotificationType =
     | 'mention'
     | 'reply'
@@ -7,6 +11,9 @@ export type NotificationType =
     | 'task_unassigned'
     | 'owner_transferred'
     | 'moderation'
+    | 'friend_request'
+    | 'friend_accepted'
+    | 'missed_call'
 
 /** Why a message mentions someone, which the item's title says (spec 06 › Chữ): by name, a role, @everyone, @here. */
 export type MentionReason = 'user' | 'role' | 'everyone' | 'here'

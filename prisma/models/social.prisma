@@ -1,0 +1,171 @@
+// Owned by src/modules/social (SRS 4.9, 7.1; ARCHITECTURE 9): only it writes
+// them. Other modules ask it through ports: messaging whether someone may
+// write in a direct message (DM_ACCESS, D-238), voice hears nothing from here
+// and tells it who is in a call's media room (CALL_MEDIA, D-239).
+//
+// A pair of people is stored with the smaller id first (userLowId <
+// userHighId, a check in the migration), so a pair has one row whichever of
+// the two acted, and the primary key is the pair (D-242).
+
+/// Where a friendship stands (REQ-SOCIAL-01). No row: strangers. Declining,
+/// cancelling and unfriending delete the row; blocking deletes it and adds a
+/// Block.
+enum RelationshipStatus {
+  /// requesterId asked, the other has not answered.
+  pending
+  accepted
+}
+
+/// Two people who are friends, or one of whom asked the other.
+model Relationship {
+  userLowId   String
+  userLow     User   @relation("RelationshipLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHighId  String
+  userHigh    User   @relation("RelationshipHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+  /// Which of the two sent the request: one of the pair (a check in the
+  /// migration). Kept after it is accepted: the inbox item friend_accepted
+  /// goes to them.
+  requesterId String
+
+  status RelationshipStatus @default(pending)
+  /// The message sent with a request by username, at most 150 characters.
+  /// Emptied once accepted (ARCHITECTURE 9).
+  note   String?
+
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  /// Set once accepted, and only then (Relationship_status_check).
+  acceptedAt DateTime? @db.Timestamptz(6)
+
+  @@id([userLowId, userHighId])
+  // A person's friends and requests where they are the larger id of the pair;
+  // the key serves those where they are the smaller.
+  @@index([userHighId])
+}
+
+/// blockerId blocked blockedId (REQ-SOCIAL-03). One way: two people may block
+/// each other, and each unblocks for themselves. Either row stops both from
+/// writing, calling or asking the other (D-242).
+model Block {
+  blockerId String
+  blocker   User   @relation("BlockBy", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User   @relation("BlockOf", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([blockerId, blockedId])
+  // Whether anyone blocked me, read before every direct message and call.
+  @@index([blockedId])
+}
+
+/// The direct message conversation of two people (REQ-SOCIAL-04): one per
+/// pair. Its messages are a Channel's, of type dm and with no server (D-167),
+/// so messaging's tables need nothing else.
+model DmChannel {
+  channelId  String  @id
+  channel    Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userLowId  String
+  userLow    User    @relation("DmChannelLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHighId String
+  userHigh   User    @relation("DmChannelHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+
+  /// When each of the two closed it on their side (D-242). Empty: shown in
+  /// their list. A message sent after it shows it again; opening it empties
+  /// it.
+  lowClosedAt  DateTime? @db.Timestamptz(6)
+  highClosedAt DateTime? @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  calls Call[]
+
+  @@unique([userLowId, userHighId])
+  // A person's conversations where they are the larger id of the pair.
+  @@index([userHighId])
+}
+
+/// Where a call is (REQ-SOCIAL-05, ARCHITECTURE 6). ringing and active are
+/// open: one open call per conversation (a partial unique index in the
+/// migration). The other four are final.
+enum CallStatus {
+  ringing
+  active
+  /// Answered, then over.
+  ended
+  /// The callee declined it.
+  declined
+  /// Not answered: see endReason.
+  missed
+  /// Answered, but the two were not both in the media room within 15 seconds.
+  failed
+}
+
+/// Why a call was missed (D-242); only on missed calls (Call_status_check).
+enum CallEndReason {
+  /// 45 seconds without an answer.
+  no_answer
+  /// The caller hung up while it rang.
+  cancelled
+  /// The callee was in another call, or already had two ringing.
+  busy
+}
+
+/// A one-to-one call in a direct message conversation.
+model Call {
+  id          String    @id @default(uuid(7))
+  dmChannelId String
+  dmChannel   DmChannel @relation(fields: [dmChannelId], references: [channelId], onDelete: Cascade)
+  /// The two people, the caller first. Kept on the call, not only on the
+  /// conversation, so "my open call" and "is this person busy" read one
+  /// index each.
+  callerId    String
+  caller      User      @relation("CallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  calleeId    String
+  callee      User      @relation("CallCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+  /// Started as a video call. Either camera turns on or off at any time.
+  video       Boolean   @default(false)
+
+  status    CallStatus     @default(ringing)
+  endReason CallEndReason?
+  /// Every change of status raises version: a timed job of the call (45 s,
+  /// 15 s, 30 s) carries the version it was set for and is dropped when they
+  /// differ, as for study sessions.
+  version   Int            @default(0)
+
+  /// When it started ringing.
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  /// When the callee answered; the call's length counts from here.
+  acceptedAt DateTime? @db.Timestamptz(6)
+  /// When it reached a final status. For a call ended by someone gone too
+  /// long, when they left (D-242).
+  endedAt    DateTime? @db.Timestamptz(6)
+
+  participants CallParticipant[]
+
+  // A conversation's calls, latest first.
+  @@index([dmChannelId, id])
+  // The partial indexes Call_open_caller_idx and Call_open_callee_idx (in the
+  // migration) find a person's open call; these serve the foreign keys.
+  @@index([callerId])
+  @@index([calleeId])
+}
+
+/// One of the two people of a call in its media room (call:<id>), as
+/// LiveKit's webhooks say (D-239). Read by the 15-second and 30-second rules.
+model CallParticipant {
+  callId String
+  call   Call   @relation(fields: [callId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("CallParticipantUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// LiveKit's id of the connection. A participant_left of an older one (a
+  /// reload) changes nothing, as for VoiceState.
+  participantSid String
+  /// When the connection joined.
+  joinedAt       DateTime  @db.Timestamptz(6)
+  /// When it left. Empty: in the room now.
+  leftAt         DateTime? @db.Timestamptz(6)
+
+  @@id([callId, userId])
+  @@index([userId])
+}

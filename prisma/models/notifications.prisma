@@ -5,9 +5,8 @@
 // people at once (D-183). Items are kept 90 days, read or not (SRS 7.3).
 // Ids are UUIDv7: the inbox is newest first and pages by id.
 
-/// What an item is about. Later milestones add values (friend requests and
-/// missed calls in M6, reports in M7). A check in the migration says which
-/// of the links below each one has.
+/// What an item is about. Later milestones add values (reports in M7). A
+/// check in the migration says which of the links below each one has.
 enum NotificationType {
   /// Mentioned in a message, also through @everyone, @here or a role
   /// (REQ-NOTIF-01). An answer that also mentions is this one.
@@ -25,6 +24,15 @@ enum NotificationType {
   /// I was kicked, banned or timed out (REQ-ROLE-04). Still shown after I
   /// left or was put out of the server.
   moderation
+  /// Someone asked to be my friend (REQ-SOCIAL-01). data: { note }. Deleted
+  /// once the request is answered or cancelled (REQ-NOTIF-03).
+  friend_request
+  /// Someone accepted my request (D-111).
+  friend_accepted
+  /// A call to me was missed (REQ-SOCIAL-06): no answer, cancelled, or I was
+  /// busy. Names the call's call_ended message, so reading the conversation
+  /// up to it marks it read, as for a mention (D-242).
+  missed_call
 }
 
 /// An item of a person's inbox.
@@ -34,9 +42,10 @@ model Notification {
   user   User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
   type   NotificationType
 
-  /// The server the item is about: every type so far has one. A server
-  /// removed for good (30 days after it is deleted) takes its items with it,
-  /// moderation items too (D-188).
+  /// The server the item is about: every type has one but the three of M6
+  /// (friend_request, friend_accepted, missed_call), which belong to no
+  /// server. A server removed for good (30 days after it is deleted) takes
+  /// its items with it, moderation items too (D-188).
   serverId  String?
   server    Server?  @relation(fields: [serverId], references: [id], onDelete: Cascade)
   /// The channel of a message or a task item; the inbox hides it once I can

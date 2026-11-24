@@ -50,7 +50,7 @@ a request.
 
 Prisma models live in one file per module, under `prisma/models/`
 (`users.prisma` holds two models, `auth.prisma` five, `servers.prisma` nine,
-`messaging.prisma` six, `tasks.prisma` three, `notifications.prisma` and `voice.prisma` one each, `study.prisma` five):
+`messaging.prisma` six, `tasks.prisma` three, `notifications.prisma` and `voice.prisma` one each, `study.prisma` and `social.prisma` five each):
 
 ```prisma
 // prisma/models/orders.prisma

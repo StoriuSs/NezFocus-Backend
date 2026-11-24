@@ -8445,7 +8445,7 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`, `call_ended`); null on a regular one."
           },
           "system_data": {
             "type": "object",
@@ -8613,7 +8613,7 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`, `call_ended`); null on a regular one."
           },
           "system_data": {
             "type": "object",
@@ -8838,7 +8838,7 @@
           "system_event": {
             "type": "string",
             "nullable": true,
-            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`); null on a regular one."
+            "description": "What a system message reports (`member_joined`, `message_pinned`, `task_due`,\n`study_session_started`, `study_session_ended`, `call_ended`); null on a regular one."
           },
           "system_data": {
             "type": "object",
@@ -9755,7 +9755,10 @@
               "task_reminder",
               "task_unassigned",
               "owner_transferred",
-              "moderation"
+              "moderation",
+              "friend_request",
+              "friend_accepted",
+              "missed_call"
             ],
             "type": "string"
           },

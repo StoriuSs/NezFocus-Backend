@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common'
+import { ChannelType } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { AccessSourcePort } from '../../application/ports'
-import { AccessMember, AccessServer } from '../../domain'
+import { AccessChannel, AccessMember, AccessServer } from '../../domain'
 
 /**
  * Reads, never writes, the servers module's tables (ARCHITECTURE 2.1: the one
@@ -42,6 +43,7 @@ export class PrismaAccessSource implements AccessSourcePort {
                     roles,
                     channels: channels.map(({ viewRoles, ...channel }) => ({
                         ...channel,
+                        type: serverChannelType(channel.type),
                         viewRoleIds: viewRoles.map((view) => view.roleId)
                     }))
                 }
@@ -58,4 +60,13 @@ export class PrismaAccessSource implements AccessSourcePort {
         if (!member) return null
         return { userId, roleIds: member.roles.map((role) => role.roleId), timeoutUntil: member.timeoutUntil }
     }
+}
+
+/**
+ * A server's channels are text or voice: conversations (type dm, M6) have no
+ * server (Channel_dm_check), and every read here names one.
+ */
+function serverChannelType(type: ChannelType): AccessChannel['type'] {
+    if (type === 'dm') throw new Error('A dm channel was read as a server channel: the read must name its server')
+    return type
 }

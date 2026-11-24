@@ -2,8 +2,8 @@
 // writes them.
 //
 // Every message belongs to a channel of the servers module. A direct message
-// conversation (M6) will be a Channel row too, of type dm and with no server;
-// the social module keeps which two people it joins (D-167). So these tables
+// conversation (M6) is a Channel row too, of type dm and with no server; the
+// social module keeps which two people it joins (D-167). So these tables
 // never need a second kind of conversation.
 //
 // Ids are UUIDv7, so ordering by id is ordering by time (ARCHITECTURE 2.4):
@@ -18,8 +18,7 @@ enum MessageType {
   system
 }
 
-/// What a system message reports. Later milestones add values (study
-/// sessions in M4, calls in M6).
+/// What a system message reports.
 enum SystemEvent {
   /// Someone joined the server (D-83). systemData: { userId }.
   member_joined
@@ -37,6 +36,11 @@ enum SystemEvent {
   /// A study session of the room ended (REQ-MSG-08, D-222). systemData:
   /// { sessionId, reason }.
   study_session_ended
+  /// A call of a direct message conversation reached a final status
+  /// (REQ-SOCIAL-05, D-242). systemData: { callId, callerId, video, status,
+  /// endReason, durationSeconds }: durationSeconds from answering to the end,
+  /// null when never answered.
+  call_ended
 }
 
 /// A message in a channel.

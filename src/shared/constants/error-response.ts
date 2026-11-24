@@ -67,6 +67,17 @@ export const ERROR_TYPES = {
     // (REQ-STUDY-02, REQ-STUDY-05).
     FOCUS_SESSION_ACTIVE: 'FOCUS_SESSION_ACTIVE',
 
+    // Social errors (SRS appendix A, D-242)
+    // Writing, calling, opening a conversation or sending a friend request to
+    // someone one may not reach: not friends and no server in common where
+    // they allow it, or a block either way. One error for every reason, so it
+    // tells nothing (REQ-SOCIAL-01, REQ-SOCIAL-04).
+    CANNOT_MESSAGE_USER: 'CANNOT_MESSAGE_USER',
+    // A friend request to someone who has not answered one's last (REQ-SOCIAL-01).
+    FRIEND_REQUEST_PENDING: 'FRIEND_REQUEST_PENDING',
+    // A friend request to a friend.
+    ALREADY_FRIENDS: 'ALREADY_FRIENDS',
+
     // Realtime errors (SRS 5.2)
     // A socket offered no ticket, a made-up one, or one spent or out of time:
     // buy a new one (POST /realtime/ticket) and connect again.
@@ -153,6 +164,7 @@ export const ERROR_CODES = {
     ROLE_HIERARCHY_VIOLATION: '403302',
     BANNED_FROM_SERVER: '403303',
     MEMBER_TIMED_OUT: '403304',
+    CANNOT_MESSAGE_USER: '403920',
 
     // Task error codes (400)
     INVALID_TASK_ASSIGNEE: '400500',
@@ -172,6 +184,8 @@ export const ERROR_CODES = {
     MAX_REACTIONS_REACHED: '409401',
     MAX_OPEN_TASKS_REACHED: '409500',
     FOCUS_SESSION_ACTIVE: '409900',
+    FRIEND_REQUEST_PENDING: '409920',
+    ALREADY_FRIENDS: '409921',
 
     // Upload error codes (400, 404, 413, 415, 422, 500)
     UPLOAD_INVALID_FILE: '400002',

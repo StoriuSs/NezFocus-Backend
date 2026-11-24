@@ -1,5 +1,6 @@
 import { Prisma } from '@/generated/prisma/client'
 import { MembershipSnapshot } from '../../domain'
+import { serverChannelType } from './server-channels'
 
 /** Everything one member's view of a server, or a change to its channel list, is decided from. */
 export const membershipSelect = {
@@ -47,6 +48,7 @@ export function toMembership({ server, ...member }: MembershipRow): MembershipSn
             ...server,
             channels: server.channels.map(({ viewRoles, ...channel }) => ({
                 ...channel,
+                type: serverChannelType(channel.type),
                 viewRoleIds: viewRoles.map((view) => view.roleId)
             }))
         },

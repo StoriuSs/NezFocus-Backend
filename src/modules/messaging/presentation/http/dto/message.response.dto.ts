@@ -66,7 +66,7 @@ export class MessageResponseDto {
 
     /**
      * What a system message reports (`member_joined`, `message_pinned`, `task_due`,
-     * `study_session_started`, `study_session_ended`); null on a regular one.
+     * `study_session_started`, `study_session_ended`, `call_ended`); null on a regular one.
      */
     @Expose()
     @ApiProperty({ type: String, nullable: true })

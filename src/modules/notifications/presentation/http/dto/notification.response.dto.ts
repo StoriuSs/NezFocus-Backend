@@ -14,7 +14,10 @@ const TYPES: NotificationType[] = [
     'task_reminder',
     'task_unassigned',
     'owner_transferred',
-    'moderation'
+    'moderation',
+    'friend_request',
+    'friend_accepted',
+    'missed_call'
 ]
 const REASONS: MentionReason[] = ['user', 'role', 'everyone', 'here']
 

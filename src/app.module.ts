@@ -67,6 +67,7 @@ import { NotificationsModule, NotifierModule } from '@/modules/notifications/not
 import { TasksModule } from '@/modules/tasks/tasks.module'
 import { RoomPeopleModule, VoiceModule } from '@/modules/voice/voice.module'
 import { RoomSessionsModule, StudyModule } from '@/modules/study/study.module'
+import { SocialModule } from '@/modules/social/social.module'
 import { AccessTokenGuard, throttleByUser, TOKEN_SERVICE, type TokenServicePort } from '@/modules/auth'
 
 // Guards
@@ -202,6 +203,7 @@ import { RolesGuard } from '@/shared/presentation'
         StudyModule,
         // Answers servers' ROOM_SESSIONS port: the study session of each voice room (D-220).
         RoomSessionsModule,
+        SocialModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

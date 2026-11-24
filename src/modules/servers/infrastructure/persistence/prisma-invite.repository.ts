@@ -13,6 +13,7 @@ import {
     JoinDecision,
     JoinFacts
 } from '../../domain'
+import { serverChannelType } from './server-channels'
 import { membershipsLock } from './server-locks'
 
 const prismaCode = (error: unknown) => (error as { code?: string })?.code
@@ -143,7 +144,7 @@ export class PrismaInviteRepository implements InviteRepositoryPort {
             inviterName: inviter.state === 'member' ? (inviter.displayName ?? inviter.username) : null,
             channel: channel && {
                 id: channel.id,
-                type: channel.type,
+                type: serverChannelType(channel.type),
                 name: channel.name,
                 isPrivate: channel.isPrivate,
                 sendMode: channel.sendMode,

@@ -186,6 +186,7 @@ were dropped; no `2xxxxx` code is sent any more.
 | `403302` | `ROLE_HIERARCHY_VIOLATION` | Acting on a role or member ranked the same as or above oneself |
 | `403303` | `BANNED_FROM_SERVER` | Joining a server one is banned from |
 | `403304` | `MEMBER_TIMED_OUT` | Doing more than viewing while timed out (`data.timeout_until`) |
+| `403920` | `CANNOT_MESSAGE_USER` | Writing, calling, opening a conversation or sending a friend request to someone one may not reach (not friends and no server in common where they allow it, or a block either way): one error for every reason |
 | `404000` | `NOT_FOUND_ERROR` | No such route or resource (also an unknown sign-in provider) |
 | `404001` | `USER_NOT_FOUND` | No such user |
 | `404002` | `UPLOAD_FILE_NOT_FOUND` | No such stored file |
@@ -198,6 +199,8 @@ were dropped; no `2xxxxx` code is sent any more.
 | `409401` | `MAX_REACTIONS_REACHED` | A 21st different emoji on a message |
 | `409500` | `MAX_OPEN_TASKS_REACHED` | A 501st open task in a channel |
 | `409900` | `FOCUS_SESSION_ACTIVE` | Starting a session in a study room that has one, or a session while already in another (a room's or one's own) |
+| `409920` | `FRIEND_REQUEST_PENDING` | A friend request to someone who has not answered one's last |
+| `409921` | `ALREADY_FRIENDS` | A friend request to a friend |
 | `410300` | `INVITE_INVALID` | An invite that expired, ran out of uses, was revoked, or whose server was deleted |
 | `413000` | `PAYLOAD_TOO_LARGE_ERROR` | A JSON body over body-parser's limit |
 | `413001` | `UPLOAD_FILE_TOO_LARGE` | The file is over its route's limit (an avatar: 8 MB); any 413 raised inside Nest gets this one |

@@ -369,6 +369,12 @@ Session's Host is `SetNull`. Its Solo ends (`signed_out`, D-229:
 auth's `SignedOutEvent`), and it is put out of its room, which closes its time
 there (M5 L3, L4a).
 
+The social tables (M6) hold an account's friendships, blocks, conversations
+and calls. Like the study tables, their `onDelete: Cascade` on `User` never
+runs. What a deletion request ends there (its friendships and requests, a
+call in progress) and how a conversation shows the deleted account (D-182)
+come with M6 L2 to L4.
+
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.
 

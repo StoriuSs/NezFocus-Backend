@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with ten modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -78,7 +78,7 @@ flowchart TB
 
     subgraph stack["One server"]
         Nginx["nginx on the host<br/>TLS, routing, IP allow-lists"]
-        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications, voice, study"]
+        App["NestJS API<br/>auth, users, servers, permissions, realtime, messaging, tasks, notifications, voice, study, social"]
         PG[("PostgreSQL")]
         RD[("Redis<br/>sessions cache, queues, limits")]
         Backup["Backup service<br/>nightly dumps"]
@@ -671,6 +671,17 @@ best other week, the streak), and `GET /me/study-sessions` one's sessions of
 it, 20 a page after the last line's session, each room named as one may know
 it now through servers' `CHANNEL_DIRECTORY` (D-230).
 
+`src/modules/social/` holds friends, blocks, direct messages and one-to-one
+calls (SRS 4.9, ARCHITECTURE 9). So far (M6 L1) its tables and their checks
+(`social.prisma`, D-242): a pair of people is one row, smaller id first, for
+a friendship and for a conversation; a block has a direction; one open call
+per conversation. A conversation's messages are a `Channel` of type `dm` with
+no server (D-167, `Channel_dm_check`), so messaging's tables need nothing
+new; every read of a server's channels names its server, and servers'
+`CHANNEL_DIRECTORY` finds no server for one, so to messaging, tasks and voice
+it is not found until L3 (`serverChannelType` in servers' and permissions'
+adapters says so to TypeScript).
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -764,10 +775,11 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up, a deleted account's inbox
 │   ├── modules/voice/          # Voice and video rooms: LiveKit behind MEDIA_ROOMS, who is in which room
 │   ├── modules/study/          # Study sessions in rooms and alone, seconds studied per day, streaks
+│   ├── modules/social/         # Friends, blocks, direct messages, one-to-one calls
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync
-├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma, tasks.prisma, notifications.prisma, voice.prisma, study.prisma) and migrations
+├── prisma/                     # Schema (models/auth.prisma, users.prisma, servers.prisma, messaging.prisma, tasks.prisma, notifications.prisma, voice.prisma, study.prisma, social.prisma) and migrations
 ├── test/                       # e2e and integration suites
 ├── k6/                         # Load-test scripts
 ├── monitoring/                 # Prometheus, Loki, Alloy, Grafana, Alertmanager
