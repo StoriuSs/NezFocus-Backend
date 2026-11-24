@@ -2,9 +2,9 @@ import { Inject, Logger } from '@nestjs/common'
 import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { MEMBERSHIP, MembershipPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
+import { CALL_MEDIA, type CallMediaPort } from '@/modules/voice'
 import {
     CALL_REPOSITORY,
-    CallNotFoundError,
     CallRecord,
     CallRepositoryPort,
     CannotMessageUserError,
@@ -23,7 +23,8 @@ import {
     RING_MS
 } from '../../../domain'
 import { CALL_JOBS, CallJobsPort } from '../../ports'
-import { CallSources, changeCalls } from '../../services/change-calls'
+import { CallMediaSwept, MediaSources, sweepCallMedia } from '../../services/call-room'
+import { CallSources, changeCalls, partyCallOf } from '../../services/change-calls'
 import { mayReach, ReachSources, recipientOf } from '../../services/dm-reach'
 import {
     AcceptCallCommand,
@@ -53,10 +54,8 @@ abstract class CallHandler {
     }
 
     /** The call, when `userId` is one of its two; not found otherwise, the same as none (NFR-SEC-05). */
-    protected async callOf(userId: string, callId: string): Promise<CallRecord> {
-        const call = await this.calls.find(callId)
-        if (!call || (call.callerId !== userId && call.calleeId !== userId)) throw new CallNotFoundError(callId)
-        return call
+    protected callOf(userId: string, callId: string): Promise<CallRecord> {
+        return partyCallOf(this.calls, userId, callId)
     }
 
     /** Whether `userId` may message the other one now: calling and answering are messaging (REQ-SOCIAL-05, D-242). */
@@ -163,19 +162,55 @@ async function ringOut(sources: CallSources, callId: string, version: number, no
     return after.endReason === 'no_answer' && after.version === version + 1
 }
 
+/** What one sweep did: calls missed by it, and what it did to the call rooms (null: the database not reached). */
+export interface CallTimersSwept {
+    missed: number
+    media: CallMediaSwept | null
+}
+
 /**
  * The calls still ringing 45 seconds on whose job was lost (Redis down when
  * it was set, the app stopped between the commit and setting it) or is
  * late (D-242), each missed as its job would: a job that comes meanwhile
  * finds it done. Without it, a lost job would keep its two people busy for
- * good. One that fails is logged and left for the next run. Returns how
- * many it missed.
+ * good. One that fails is logged and left for the next run.
+ *
+ * Then the active calls' rooms (D-242, D-246, sweepCallMedia): a media
+ * deadline whose job was lost, the joins and leaves LiveKit's webhooks
+ * lost, the rooms no active call has, each call on its own; LiveKit
+ * unreachable leaves rooms and rows to the next run, the deadlines still run.
  */
 @CommandHandler(SweepCallTimersCommand)
-export class SweepCallTimersHandler extends CallHandler implements ICommandHandler<SweepCallTimersCommand> {
+export class SweepCallTimersHandler implements ICommandHandler<SweepCallTimersCommand> {
     private readonly logger = new Logger(SweepCallTimersHandler.name)
+    private readonly sources: MediaSources
 
-    async execute({ now }: SweepCallTimersCommand): Promise<number> {
+    constructor(
+        @Inject(CALL_REPOSITORY) private readonly calls: CallRepositoryPort,
+        @Inject(CALL_JOBS) jobs: CallJobsPort,
+        @Inject(CALL_MEDIA) media: CallMediaPort,
+        events: EventBus
+    ) {
+        this.sources = { calls, jobs, events, media }
+    }
+
+    async execute({ now }: SweepCallTimersCommand): Promise<CallTimersSwept> {
+        const missed = await this.ringOuts(now)
+        let media: CallMediaSwept | null = null
+        try {
+            media = await sweepCallMedia(this.sources, now)
+        } catch (error) {
+            this.logger.warn(`The call rooms not swept: ${String(error)}`)
+        }
+        if (media && media.timedOut + media.fixed + media.closed > 0) {
+            this.logger.warn(
+                `Call rooms set right by the sweep: ${media.timedOut} ended, ${media.fixed} joins or leaves, ${media.closed} rooms closed`
+            )
+        }
+        return { missed, media }
+    }
+
+    private async ringOuts(now: Date): Promise<number> {
         let missed = 0
         for (const { id, version } of await this.calls.ringingSince(new Date(now.getTime() - RING_MS))) {
             try {

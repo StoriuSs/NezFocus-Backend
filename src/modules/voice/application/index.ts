@@ -16,9 +16,11 @@ export * from './queries/room/room.queries'
 export * from './queries/room/room.handlers'
 
 // Services
+export * from './services/call-media'
 export * from './services/room-people'
 
 // Events
+export * from './events/call-media-changed.event'
 export * from './events/voice-leave-requested.event'
 export * from './events/voice-state-changed.event'
 

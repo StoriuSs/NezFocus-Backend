@@ -92,7 +92,10 @@ export const MAINTENANCE_TASKS: MaintenanceTask[] = [
     },
     {
         // Misses the calls still ringing 45 seconds on whose job was lost or
-        // is late, so a lost job never keeps two people busy (D-242).
+        // is late, so a lost job never keeps two people busy (D-242); runs
+        // the media deadlines of active calls whose job was lost, writes the
+        // joins and leaves LiveKit's webhooks lost and closes the call rooms
+        // no active call has (D-246).
         id: 'call-sweep',
         everyMs: MINUTE_MS,
         command: (now) => new SweepCallTimersCommand(now)

@@ -1,4 +1,5 @@
 export * from './call.rules'
+export * from './call-media.rules'
 export * from './dm.rules'
 export * from './errors'
 export * from './ports'

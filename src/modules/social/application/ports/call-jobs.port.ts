@@ -12,6 +12,15 @@ export interface CallJobsPort {
 
     /** Drop the ring-out set for `version`, still waiting: the call changed. One running now is not stopped. */
     dropRingOut(callId: string, version: number): Promise<void>
+
+    /**
+     * Run at `at` the deadline of the active call's media for `version`
+     * (15 seconds to connect, 30 to come back, D-242). Setting the same one twice is one job.
+     */
+    checkMediaAt(callId: string, version: number, at: Date): Promise<void>
+
+    /** Drop the media check set for `version`, still waiting: the call or its room changed. One running now is not stopped. */
+    dropMediaCheck(callId: string, version: number): Promise<void>
 }
 
 export const CALL_JOBS = Symbol('CallJobsPort')

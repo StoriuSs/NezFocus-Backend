@@ -151,6 +151,15 @@ export class LiveKitMediaRooms implements MediaRoomsPort {
         }
     }
 
+    async closeRoom(room: string): Promise<void> {
+        try {
+            await this.rooms.deleteRoom(room)
+        } catch (error) {
+            if (isNotFound(error)) return
+            throw this.unavailable('close', room, error)
+        }
+    }
+
     /**
      * The 503 the person sees, with the cause in the log: the answer itself
      * only says to try again, and a refused key would never pass by waiting.

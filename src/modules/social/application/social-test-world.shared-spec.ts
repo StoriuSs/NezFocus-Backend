@@ -3,18 +3,21 @@ import type { LastMessage, LastMessagesPort } from '@/modules/messaging'
 import { Presence, PresencePort } from '@/modules/realtime'
 import { MembershipPort, SharedServer } from '@/modules/servers'
 import { DirectoryUser, UserDirectoryPort } from '@/modules/users'
+import type { CallConnection, CallMediaPort } from '@/modules/voice'
 import { isHidden, LimitsUnavailableError, shownPerson } from '@/shared/domain'
 import { RateLimitRule } from '@/shared/types/rate-limit.type'
 import {
     afterWrite,
     Call,
     CallPlan,
+    CallPresence,
     CallRecord,
     CallRepositoryPort,
     ChangedCall,
     DmEntry,
     DmRepositoryPort,
     isOpenCall,
+    MediaWrite,
     PairState,
     RelationshipDecision,
     RelationshipEntry,
@@ -309,7 +312,9 @@ export function socialWorld() {
             .filter((call) => isOpenCall(call) && (userIds.includes(call.callerId) || userIds.includes(call.calleeId)))
             .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
             .map((call) => callRecord({ ...call }))
-    const calls: CallRepositoryPort & { change: jest.Mock } = {
+    /** Call id → its CallParticipant rows. */
+    const callPresence = new Map<string, CallPresence[]>()
+    const calls: CallRepositoryPort & { change: jest.Mock; recordMedia: jest.Mock } = {
         find: jest.fn(async (callId: string) => (callRows.has(callId) ? callRecord(callRows.get(callId)!) : null)),
         openOf: jest.fn(async (userId: string) => openCallsOf([userId])),
         change: jest.fn(async (userIds: string[], decide: (open: Call[]) => CallPlan) => {
@@ -346,6 +351,36 @@ export function socialWorld() {
             [...callRows.values()]
                 .filter((call) => call.status === 'ringing' && call.createdAt < before)
                 .map(({ id, version }) => ({ id, version }))
+        ),
+        activeCalls: jest.fn(async () =>
+            [...callRows.values()].filter((call) => call.status === 'active').map((call) => ({ ...call }))
+        ),
+        presenceOf: jest.fn(
+            async (callIds: string[]) =>
+                new Map(callIds.map((callId) => [callId, (callPresence.get(callId) ?? []).map((row) => ({ ...row }))]))
+        ),
+        recordMedia: jest.fn(
+            async (callId: string, decide: (call: Call | null, presence: CallPresence[]) => MediaWrite) => {
+                const row = callRows.get(callId)
+                const before = (callPresence.get(callId) ?? []).map((one) => ({ ...one }))
+                const { write, evict } = decide(row ? { ...row } : null, row ? before : [])
+                if (!row) return { call: null, presence: [], written: false, evict }
+                if (!write) return { call: callRecord(row), presence: before, written: false, evict }
+                const presence = [...before.filter((one) => one.userId !== write.userId), write]
+                callPresence.set(callId, presence)
+                const next = { ...row, version: row.version + 1 }
+                callRows.set(callId, next)
+                return { call: callRecord(next), presence, written: true, evict }
+            }
+        ),
+        inSessions: jest.fn(async (sessionIds: string[]) =>
+            [...callPresence.entries()].flatMap(([callId, rows]) =>
+                callRows.get(callId)?.status === 'active'
+                    ? rows
+                          .filter((row) => !row.leftAt && row.sessionId && sessionIds.includes(row.sessionId))
+                          .map((row) => ({ callId, row: { ...row } }))
+                    : []
+            )
         )
     }
     /** A call written as if made earlier: ringing from An to Bình unless told. */
@@ -365,9 +400,30 @@ export function socialWorld() {
         callRows.set(row.id, row)
         return row
     }
-    const callJobs: CallJobsPort & { ringOutAt: jest.Mock; dropRingOut: jest.Mock } = {
+    const callJobs: CallJobsPort & {
+        ringOutAt: jest.Mock
+        dropRingOut: jest.Mock
+        checkMediaAt: jest.Mock
+        dropMediaCheck: jest.Mock
+    } = {
         ringOutAt: jest.fn(async () => undefined),
-        dropRingOut: jest.fn(async () => undefined)
+        dropRingOut: jest.fn(async () => undefined),
+        checkMediaAt: jest.fn(async () => undefined),
+        dropMediaCheck: jest.fn(async () => undefined)
+    }
+    /** Call id → who LiveKit has in its room; the rooms it has are those listed here. */
+    const liveRooms = new Map<string, CallConnection[]>()
+    const callMedia: { [K in keyof CallMediaPort]: jest.Mock } = {
+        joinToken: jest.fn(async (callId: string, userId: string) => ({
+            token: `token-${callId}-${userId}`,
+            url: 'ws://livekit.test'
+        })),
+        participants: jest.fn(async (callId: string) => liveRooms.get(callId) ?? []),
+        rooms: jest.fn(async () => [...liveRooms.keys()]),
+        removeConnection: jest.fn(async () => true),
+        close: jest.fn(async (callId: string) => {
+            liveRooms.delete(callId)
+        })
     }
 
     const eventBus = { publish: jest.fn() } as unknown as EventBus & { publish: jest.Mock }
@@ -409,6 +465,9 @@ export function socialWorld() {
         callRows,
         callAs,
         callJobs,
+        callPresence,
+        callMedia,
+        liveRooms,
         eventBus,
         published,
         stateOf,

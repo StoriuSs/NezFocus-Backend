@@ -7,24 +7,30 @@ import { DM_CHANNELS, FRIENDS } from '@/modules/realtime'
 import { RealtimeModule } from '@/modules/realtime/realtime.module'
 import { ServersModule } from '@/modules/servers/servers.module'
 import { UsersModule } from '@/modules/users/users.module'
+import { ACTIVE_CALLS } from '@/modules/voice'
+import { VoiceModule } from '@/modules/voice/voice.module'
 import { QUEUES, registerQueues } from '@/shared/infrastructure/queue/queues'
 import { RateLimiter } from '@/shared/infrastructure/rate-limit/rate-limiter'
 import {
     BLOCK_COMMAND_HANDLERS,
     CALL_COMMAND_HANDLERS,
     CALL_JOBS,
+    CALL_MEDIA_COMMAND_HANDLERS,
     CALL_QUERY_HANDLERS,
+    CloseEndedCallRoomHandler,
     DM_COMMAND_HANDLERS,
     DM_QUERY_HANDLERS,
     EndBlockedCallsHandler,
     EndDeletedAccountCallsHandler,
     ForgetDeletedAccountHandler,
+    LeaveEndedSessionCallsHandler,
     NotifyRelationshipChangeHandler,
     PERSON_QUERY_HANDLERS,
     PublishCallChangeHandler,
     PublishDmChangeHandler,
     PublishRelationshipChangeHandler,
     RecordCallEndHandler,
+    RecordCallMediaHandler,
     RELATIONSHIP_COMMAND_HANDLERS,
     RELATIONSHIP_QUERY_HANDLERS,
     SOCIAL_LIMIT
@@ -32,6 +38,7 @@ import {
 import { CALL_REPOSITORY, DM_REPOSITORY, RELATIONSHIP_REPOSITORY } from './domain'
 import {
     BullMqCallJobs,
+    CommandBusActiveCalls,
     PrismaCallRepository,
     PrismaDmRepository,
     PrismaRelationshipRepository,
@@ -58,7 +65,9 @@ import {
  * list, who may message whom; calls (L4a, D-239, D-245): calling,
  * answering, declining, hanging up, busy, 45 seconds of ringing on the
  * `social` queue (and its sweep), the call's message in the DM and the
- * missed call's item; their media comes with L4b.
+ * missed call's item; their media (L4b, D-242, D-246): joining the call's
+ * room, 15 seconds to connect and 30 to come back (a job on the same queue),
+ * the rooms set right by the sweep, ended sessions put out.
  *
  * Asks users for people (USER_DIRECTORY), servers for the servers two
  * people share (MEMBERSHIP), realtime for presence (PRESENCE) and tells
@@ -66,14 +75,24 @@ import {
  * inboxes through notifications' NOTIFIER (global). Reads the last message
  * of each DM from messaging (LAST_MESSAGES); puts a new DM's sockets in its
  * room through realtime's DM_ROOMS; writes a call's message through
- * messaging's PostCallEndedCommand over the bus. Hears users'
- * AccountDeletedEvent (D-243) and auth's AccountDeletionRequestedEvent
- * (a call cut off). Answers realtime's FRIENDS and DM_CHANNELS, notifications'
- * BLOCK_LIST and messaging's DM_ACCESS through the global modules below.
+ * messaging's PostCallEndedCommand over the bus; the calls' rooms at
+ * LiveKit through voice's CALL_MEDIA. Hears users' AccountDeletedEvent
+ * (D-243), auth's AccountDeletionRequestedEvent (a call cut off) and
+ * SessionsEndedEvent (D-214), voice's CallMediaChangedEvent. Answers realtime's FRIENDS and DM_CHANNELS, notifications'
+ * BLOCK_LIST, messaging's DM_ACCESS and voice's ACTIVE_CALLS through the
+ * global modules below.
  * RateLimiter comes from the global CacheModule.
  */
 @Module({
-    imports: [CqrsModule, MessagingModule, RealtimeModule, ServersModule, UsersModule, registerQueues(QUEUES.SOCIAL)],
+    imports: [
+        CqrsModule,
+        MessagingModule,
+        RealtimeModule,
+        ServersModule,
+        UsersModule,
+        VoiceModule,
+        registerQueues(QUEUES.SOCIAL)
+    ],
     controllers: [RelationshipsController, BlocksController, PeopleController, DmsController, CallsController],
     providers: [
         { provide: RELATIONSHIP_REPOSITORY, useClass: PrismaRelationshipRepository },
@@ -88,11 +107,15 @@ import {
         ...DM_COMMAND_HANDLERS,
         ...DM_QUERY_HANDLERS,
         ...CALL_COMMAND_HANDLERS,
+        ...CALL_MEDIA_COMMAND_HANDLERS,
         ...CALL_QUERY_HANDLERS,
         PublishRelationshipChangeHandler,
         PublishDmChangeHandler,
         PublishCallChangeHandler,
         RecordCallEndHandler,
+        RecordCallMediaHandler,
+        CloseEndedCallRoomHandler,
+        LeaveEndedSessionCallsHandler,
         EndBlockedCallsHandler,
         EndDeletedAccountCallsHandler,
         NotifyRelationshipChangeHandler,
@@ -154,3 +177,16 @@ export class DmChannelsModule {}
     exports: [DM_ACCESS]
 })
 export class DmAccessModule {}
+
+/**
+ * Voice's ACTIVE_CALLS port (joining a voice room ends one's active call,
+ * D-246), answered by this module the same way: social uses voice's
+ * CALL_MEDIA, never the other way. AppModule imports it.
+ */
+@Global()
+@Module({
+    imports: [CqrsModule],
+    providers: [{ provide: ACTIVE_CALLS, useClass: CommandBusActiveCalls }],
+    exports: [ACTIVE_CALLS]
+})
+export class ActiveCallsModule {}

@@ -6,6 +6,7 @@ import { DomainError } from '@/shared/domain/domain-error'
 import { EVENT_PUBLISHER, EventPublisherPort } from '@/modules/realtime'
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
 import {
+    callOfRoom,
     channelOfRoom,
     joinWrite,
     leaveWrite,
@@ -17,6 +18,8 @@ import {
     voiceRoomOf
 } from '../../../domain'
 import {
+    ACTIVE_CALLS,
+    ActiveCallsPort,
     EVENT_RECEIPTS,
     EventReceiptsPort,
     MEDIA_EVENTS,
@@ -25,6 +28,7 @@ import {
     MediaEventsPort,
     MediaRoomsPort
 } from '../../ports'
+import { CallMediaChangedEvent } from '../../events/call-media-changed.event'
 import { standingOf } from '../../services/room-recheck'
 import { changeEvents } from '../../services/voice-changes'
 import { ApplyMediaEventCommand } from './media-event.commands'
@@ -36,8 +40,10 @@ const isShare = (event: MediaEvent): event is ShareEvent =>
 /**
  * Who came into a voice room and who went out, as LiveKit tells it (D-210):
  * the truth about who is in a room. A webhook not signed by LiveKit is
- * refused (401) before anything is read from it. One about any other room
- * (calls are M6's) or of another kind is answered and left alone.
+ * refused (401) before anything is read from it. One about a call's room
+ * (`call:<id>`) is told to social (CallMediaChangedEvent, D-239), which
+ * keeps the calls; one about any other room, or of another kind, is
+ * answered and left alone.
  *
  * Taken once per event id: the same event sent again changes nothing. Out
  * of order is the rules' work: a late participant_joined of an older
@@ -49,7 +55,11 @@ const isShare = (event: MediaEvent): event is ShareEvent =>
  *
  * Someone who joined a room while still connected to another (two tabs, two
  * rooms) is put out of the other: one connection per account (D-210). The
- * participant_left that follows changes nothing.
+ * participant_left that follows changes nothing. The same goes for a call:
+ * the active call of someone who joined a voice room ends (D-242, D-246),
+ * asked of social through ACTIVE_CALLS. Their voice token ended it already,
+ * unless they answered a call in another tab between the token and the
+ * join; a call that cannot be ended makes the event come again.
  *
  * Someone who joined a room they may no longer be in (a token taken before
  * a ban or a timeout, used within its ten minutes; the room deleted) is put
@@ -72,12 +82,15 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisherPort,
         private readonly events: EventBus,
-        @Inject(PRINCIPAL) private readonly principals: PrincipalPort
+        @Inject(PRINCIPAL) private readonly principals: PrincipalPort,
+        @Inject(ACTIVE_CALLS) private readonly calls: ActiveCallsPort
     ) {}
 
     async execute({ body, authorization }: ApplyMediaEventCommand): Promise<void> {
         const event = await this.mediaEvents.read(body, authorization)
         if (event.kind === 'other') return
+        const callId = callOfRoom(event.room)
+        if (callId) return this.callRoom(event, callId)
         const channelId = channelOfRoom(event.room)
         if (!channelId) return
         if (!(await this.receipts.firstSight(event.id))) return
@@ -103,6 +116,7 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             result = await this.states.change(event.identity, (current) =>
                 event.kind === 'joined' ? joinWrite(current, connection) : leaveWrite(current, event.participantSid)
             )
+            if (event.kind === 'joined' && result?.after) await this.calls.endFor(event.identity)
         } catch (error) {
             await this.receipts.forget(event.id)
             throw error
@@ -116,6 +130,35 @@ export class ApplyMediaEventHandler implements ICommandHandler<ApplyMediaEventCo
             // Not reached now: the reconciliation puts them out within minutes (the adapter logged why).
             await this.media.removeParticipant(voiceRoomOf(before.channelId), event.identity).catch(() => undefined)
         }
+    }
+
+    /**
+     * A join or a leave in a call's room, told to social once per event id
+     * (D-239); a screen there is no call's (D-242) and is left. A join made
+     * with the token of a session already ended is put out here, as in a
+     * voice room (D-214), and not told. The session store unreachable
+     * throws, the id forgotten: the event is sent again.
+     */
+    private async callRoom(event: MediaEvent, callId: string): Promise<void> {
+        if (event.kind !== 'joined' && event.kind !== 'left') return
+        if (!(await this.receipts.firstSight(event.id))) return
+        if (event.kind === 'joined') {
+            try {
+                if (!(await this.sessionLive(event))) return
+            } catch (error) {
+                await this.receipts.forget(event.id)
+                throw error
+            }
+        }
+        const { identity: userId, participantSid } = event
+        this.events.publish(
+            new CallMediaChangedEvent(
+                callId,
+                event.kind === 'joined'
+                    ? { kind: 'joined', userId, participantSid, joinedAt: event.joinedAt, sessionId: event.sessionId }
+                    : { kind: 'left', userId, participantSid, at: new Date() }
+            )
+        )
     }
 
     /**

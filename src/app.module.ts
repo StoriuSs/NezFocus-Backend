@@ -68,6 +68,7 @@ import { TasksModule } from '@/modules/tasks/tasks.module'
 import { RoomPeopleModule, VoiceModule } from '@/modules/voice/voice.module'
 import { RoomSessionsModule, StudyModule } from '@/modules/study/study.module'
 import {
+    ActiveCallsModule,
     BlockListModule,
     DmAccessModule,
     DmChannelsModule,
@@ -210,11 +211,13 @@ import { RolesGuard } from '@/shared/presentation'
         // Answers servers' ROOM_SESSIONS port: the study session of each voice room (D-220).
         RoomSessionsModule,
         SocialModule,
-        // Answer realtime's FRIENDS and DM_CHANNELS, notifications' BLOCK_LIST, messaging's DM_ACCESS (D-242, D-238).
+        // Answer realtime's FRIENDS and DM_CHANNELS, notifications' BLOCK_LIST, messaging's DM_ACCESS, voice's
+        // ACTIVE_CALLS (D-242, D-238, D-246).
         FriendsModule,
         BlockListModule,
         DmChannelsModule,
         DmAccessModule,
+        ActiveCallsModule,
 
         // Every module's periodic jobs, on one schedule list
         MaintenanceModule

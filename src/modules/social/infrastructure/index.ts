@@ -1,4 +1,5 @@
 export * from './adapters/bullmq-call-jobs.adapter'
+export * from './adapters/command-bus-active-calls.adapter'
 export * from './adapters/query-bus-block-list.adapter'
 export * from './adapters/query-bus-dm-access.adapter'
 export * from './adapters/query-bus-dm-channels.adapter'

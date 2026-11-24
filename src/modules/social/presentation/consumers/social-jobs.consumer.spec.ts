@@ -1,6 +1,6 @@
 import { CommandBus } from '@nestjs/cqrs'
 import { Job } from 'bullmq'
-import { RingOutCallCommand } from '../../application'
+import { CheckCallMediaCommand, RingOutCallCommand } from '../../application'
 import { SOCIAL_JOBS } from '../../infrastructure/adapters/social-jobs'
 import { SocialJobsConsumer } from './social-jobs.consumer'
 
@@ -15,6 +15,16 @@ describe('SocialJobsConsumer (ARCHITECTURE 6)', () => {
         const { commandBus, consumer } = setUp()
         await consumer.process(job)
         expect(commandBus.execute).toHaveBeenCalledWith(new RingOutCallCommand('goi', 0))
+    })
+
+    it('checks a call’s media through the command, with the version it was set for (D-242)', async () => {
+        const { commandBus, consumer } = setUp()
+        await consumer.process({
+            name: SOCIAL_JOBS.MEDIA_CHECK,
+            id: 'call-goi-media-3',
+            data: { callId: 'goi', version: 3 }
+        } as Job)
+        expect(commandBus.execute).toHaveBeenCalledWith(new CheckCallMediaCommand('goi', 3))
     })
 
     it('a failure fails the job, for the queue to try again', async () => {

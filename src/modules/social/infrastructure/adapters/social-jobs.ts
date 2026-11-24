@@ -7,13 +7,18 @@
 
 export const SOCIAL_JOBS = {
     /** A call still ringing 45 seconds on, missed (REQ-SOCIAL-05). */
-    RING_OUT: 'call-ring-out'
+    RING_OUT: 'call-ring-out',
+    /** An answered call nobody connected to in 15 seconds, or somebody left 30 seconds ago, ended (D-242). */
+    MEDIA_CHECK: 'call-media-check'
 } as const
 
 /** Only what to read again when it runs: the call, and the version it was set for (D-242). */
-export interface RingOutJob {
+export interface CallVersionJob {
     callId: string
     version: number
 }
 
-export type SocialJob = RingOutJob
+export type RingOutJob = CallVersionJob
+export type MediaCheckJob = CallVersionJob
+
+export type SocialJob = CallVersionJob

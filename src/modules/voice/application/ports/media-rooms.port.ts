@@ -85,6 +85,13 @@ export interface MediaRoomsPort {
      * @throws MediaRoomsUnavailableError when the media server cannot be reached
      */
     muteTrack(room: string, identity: string, trackSid: string): Promise<void>
+
+    /**
+     * Closes a room: everyone in it is put out (a call over, D-242). Nothing
+     * happens when there is no such room.
+     * @throws MediaRoomsUnavailableError when the media server cannot be reached
+     */
+    closeRoom(room: string): Promise<void>
 }
 
 export const MEDIA_ROOMS = Symbol('MediaRoomsPort')

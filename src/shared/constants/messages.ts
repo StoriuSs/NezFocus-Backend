@@ -152,6 +152,7 @@ export const MESSAGES = {
         DM_CLOSED: 'Direct message closed',
         CALL_STARTED: 'Call started',
         CALL_CHANGED: 'Call changed',
+        CALL_JOINED: 'Call joined',
         CALLS_FETCHED: 'Calls fetched'
     },
 

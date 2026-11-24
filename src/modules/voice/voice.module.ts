@@ -8,6 +8,8 @@ import { ServersModule } from '@/modules/servers/servers.module'
 import { UsersModule } from '@/modules/users/users.module'
 import { VOICE_STATE_REPOSITORY } from './domain'
 import {
+    CALL_MEDIA,
+    CallMedia,
     CONNECTION_COMMAND_HANDLERS,
     EVENT_RECEIPTS,
     MEDIA_EVENT_COMMAND_HANDLERS,
@@ -47,7 +49,10 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
  * Asks servers where a channel is (CHANNEL_DIRECTORY), permissions what
  * someone may do there (PERMISSION_CHECKER), users the names and pictures
  * (USER_DIRECTORY). Answers servers' ROOM_PEOPLE through RoomPeopleModule
- * below, and tells study who is in a room (VOICE_ROOMS, D-225).
+ * below, and tells study who is in a room (VOICE_ROOMS, D-225). Gives
+ * social the rooms of one-to-one calls (CALL_MEDIA, D-239) and tells it
+ * what happens in them (CallMediaChangedEvent); asks it to end the call of
+ * someone joining a voice room (ACTIVE_CALLS, social's global module, D-246).
  * ConfigService comes from the global ConfigModule (livekit.config.ts),
  * REDIS_CLIENT from the global CacheModule.
  */
@@ -60,6 +65,7 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
         { provide: EVENT_RECEIPTS, useClass: RedisEventReceipts },
         { provide: VOICE_STATE_REPOSITORY, useClass: PrismaVoiceStateRepository },
         { provide: VOICE_ROOMS, useClass: PrismaVoiceRooms },
+        { provide: CALL_MEDIA, useClass: CallMedia },
         ...CONNECTION_COMMAND_HANDLERS,
         ...MEDIA_EVENT_COMMAND_HANDLERS,
         ...MODERATION_COMMAND_HANDLERS,
@@ -72,7 +78,7 @@ import { LiveKitWebhookController, VoiceController } from './presentation'
         LeaveDeletedAccountRoomHandler,
         LeaveEndedSessionRoomsHandler
     ],
-    exports: [VOICE_ROOMS]
+    exports: [VOICE_ROOMS, CALL_MEDIA]
 })
 export class VoiceModule implements OnApplicationBootstrap {
     private readonly logger = new Logger(VoiceModule.name)

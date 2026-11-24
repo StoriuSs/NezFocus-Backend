@@ -1,8 +1,8 @@
 /*
  * One-to-one calls (REQ-SOCIAL-05, SOCIAL-06, ARCHITECTURE 6, D-242,
  * D-245): calling from a DM, answering, declining, hanging up, and what
- * time does to a call nobody answers. Its media (the LiveKit room) comes
- * with M6 L4b.
+ * time does to a call nobody answers. Its media (the LiveKit room) is the
+ * area call-media (M6 L4b).
  */
 
 /** Call the other one of my DM (`POST /dms/{id}/calls`); answers the call (made, or the one already open there). */

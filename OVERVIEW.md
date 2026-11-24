@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends, blocks, direct messages and the calls' state machine, their media to come) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends, blocks, direct messages and the calls, with their LiveKit rooms) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -738,7 +738,29 @@ writes its `call_ended` message in the DM through messaging's
 missed call messaging first writes the callee's `missed_call` item through
 `NOTIFIER`, naming that message, then lets the DM hear it, so a tab reading
 the DM reads the item with it. A block, or an account starting to wait for
-deletion, ends its calls at once. The call's media (LiveKit) comes with L4b.
+deletion, ends its calls at once.
+
+A call's media (M6 L4b, D-239, D-242, D-246) is the area
+`commands/call-media`. Voice stays the one module that speaks to LiveKit:
+it gives social the port `CALL_MEDIA` (tokens for the room `call:<id>`,
+who is in it, putting a connection out, closing it; the class `CallMedia`
+in `voice/application/services`) and turns the webhooks of `call:` rooms
+into `CallMediaChangedEvent`. `POST /calls/{id}/join` answers the call and
+a token while it is active (none while ringing or over); the token takes
+its person out of their voice room first, and a voice room's token ends
+the active call one is in, which voice asks of social through
+`ACTIVE_CALLS` (social's global `ActiveCallsModule`), and again when the
+join's webhook comes (a call answered in another tab meanwhile): one media
+connection per account. Who of the two is in the room is a `CallParticipant` row each,
+written under the call's locks by the pure rules of
+`domain/call-media.rules.ts` (someone not of the call, or a call not
+active, put out); every join or leave that writes a row raises the call's
+version and sets its one media job again (`call-<id>-media-<version>`): not both in 15
+seconds after answering, `failed`; one out 30 seconds, `ended` at the time
+they left. `call-sweep` runs a deadline whose job was lost, writes the
+joins and leaves the webhooks lost and closes rooms no active call has; an
+active call over closes its room; an ended sign-in session puts its call
+connection out (D-214).
 
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so

@@ -1,18 +1,19 @@
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { AddressInfo } from 'net'
 import { getQueueToken } from '@nestjs/bullmq'
 import { CommandBus, EventBus } from '@nestjs/cqrs'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { Queue } from 'bullmq'
+import { AccessToken, TokenVerifier } from 'livekit-server-sdk'
 import request from 'supertest'
 import { io, Socket } from 'socket.io-client'
-import { AccountDeletionRequestedEvent } from '@/modules/auth'
+import { AccountDeletionRequestedEvent, SessionsEndedEvent } from '@/modules/auth'
 import { SweepCallTimersCommand } from '@/modules/social'
 import { CALL_JOBS, CallJobsPort } from '@/modules/social/application'
 import { QUEUES } from '@/shared/infrastructure/queue/queues'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import { bootApp, closeApp, completeAccount, FRONTEND, signInWithCode } from './helpers'
-import { testClientIp } from './targets'
+import { livekitTarget, testClientIp } from './targets'
 
 /**
  * One-to-one calls through the whole app (REQ-SOCIAL-05, SOCIAL-06, SRS
@@ -21,10 +22,15 @@ import { testClientIp } from './targets'
  * once, two calls to one person; 45 seconds of ringing on a clock moved by
  * the test, and across a restart (NFR-REL-02); the call's message in the
  * DM and the missed call's inbox item; a block or an account deletion
- * cutting a call off. Its media (LiveKit) comes with L4b.
+ * cutting a call off. Its media (L4b, D-239, D-242, D-246): the token to
+ * its LiveKit room, LiveKit's webhooks of that room (signed by the test with
+ * the key pair of the LiveKit of test:services:up, as in voice-http: a real
+ * participant needs a WebRTC client), 15 seconds to connect and 30 to come
+ * back, one media connection per account with voice rooms, an ended
+ * session put out.
  *
- * Requires Postgres, Redis and Mailpit: `pnpm test:services:up`, then
- * `pnpm test:integration`.
+ * Requires Postgres, Redis, Mailpit and LiveKit: `pnpm test:services:up`,
+ * then `pnpm test:integration`.
  */
 describe('Calls (integration)', () => {
     const CLIENT_IP = testClientIp()
@@ -144,6 +150,7 @@ describe('Calls (integration)', () => {
         await prisma?.channel
             .deleteMany({ where: { dm: { OR: [{ userLowId: { in: ids } }, { userHighId: { in: ids } }] } } })
             .catch(() => undefined)
+        await prisma?.server.deleteMany({ where: { ownerId: { in: ids } } }).catch(() => undefined)
         await prisma?.user.deleteMany({ where: { email: { startsWith: PREFIX } } }).catch(() => undefined)
         await closeApp(app)
     })
@@ -471,6 +478,218 @@ describe('Calls (integration)', () => {
                 )
                 expect(row.status).toBe('ended')
             }
+        })
+    })
+
+    describe('its media: the LiveKit room of a call (L4b, D-239, D-242, D-246)', () => {
+        const join = (who: Who, callId: string) => as(who, api().post(`/api/v1/calls/${callId}/join`))
+        const claimsOf = (token: string) =>
+            new TokenVerifier(livekitTarget.apiKey, livekitTarget.apiSecret).verify(token)
+        /** A call from An to Bình, answered: its id. */
+        async function answered(): Promise<{ dm: string; id: string }> {
+            const dm = await dmOf('an', 'binh')
+            const id = (await call('an', dm)).body.data.id as string
+            expect((await act('binh', id, 'accept')).body.data.status).toBe('active')
+            return { dm, id }
+        }
+
+        /** A webhook of the call's room as LiveKit sends it: signed, the body as text. */
+        async function roomHook(
+            kind: 'participant_joined' | 'participant_left',
+            who: Who,
+            callId: string,
+            sid: string,
+            sessionId?: string,
+            room = `call:${callId}`
+        ) {
+            const joinedAt = new Date()
+            const body = JSON.stringify({
+                event: kind,
+                id: `EV_${randomUUID()}`,
+                createdAt: String(Math.floor(Date.now() / 1000)),
+                room: { sid: 'RM_test', name: room },
+                participant: {
+                    sid,
+                    identity: users[who].id,
+                    joinedAt: String(Math.floor(joinedAt.getTime() / 1000)),
+                    joinedAtMs: String(joinedAt.getTime()),
+                    ...(sessionId ? { attributes: { session_id: sessionId } } : {})
+                }
+            })
+            const signer = new AccessToken(livekitTarget.apiKey, livekitTarget.apiSecret)
+            signer.sha256 = createHash('sha256').update(body).digest('base64')
+            const res = await api()
+                .post('/api/v1/voice/livekit-webhook')
+                .set('X-Forwarded-For', CLIENT_IP)
+                .set('Content-Type', 'application/webhook+json')
+                .set('Authorization', await signer.toJwt())
+                .send(body)
+            expect(res.status).toBe(200)
+        }
+        const joins = (who: Who, callId: string, sid = `PA_${who}`, sessionId?: string) =>
+            roomHook('participant_joined', who, callId, sid, sessionId)
+        const leaves = (who: Who, callId: string, sid = `PA_${who}`) => roomHook('participant_left', who, callId, sid)
+        /** The call's CallParticipant rows once `count` are there (the webhook is heard after it answers). */
+        const rowsOf = (callId: string, count: number) =>
+            eventually(
+                () => prisma.callParticipant.findMany({ where: { callId }, orderBy: { joinedAt: 'asc' } }),
+                (rows) => rows.length >= count
+            )
+
+        it('gives each of an active call a token to its room, microphone and camera, with their session', async () => {
+            const { id } = await answered()
+
+            const res = await join('binh', id)
+
+            expect(res.status).toBe(200)
+            expect(res.body.data).toMatchObject({ call: { id, status: 'active' }, media: { url: livekitTarget.url } })
+            const claims = await claimsOf(res.body.data.media.token)
+            expect(claims).toMatchObject({ sub: users.binh.id, attributes: { session_id: expect.any(String) } })
+            expect(claims.video).toMatchObject({
+                roomJoin: true,
+                room: `call:${id}`,
+                canPublishSources: ['microphone', 'camera'],
+                canPublishData: false
+            })
+            // Answering set the 15 seconds, at the version it made.
+            const job = await callQueue().getJob(`call-${id}-media-1`)
+            expect(job?.data).toEqual({ callId: id, version: 1 })
+            expect(job?.opts.delay).toBeGreaterThan(10_000)
+        })
+
+        it('gives no token for a call ringing or over (200, its status), and finds none for someone not of it', async () => {
+            const dm = await dmOf('an', 'binh')
+            const id = (await call('an', dm)).body.data.id as string
+
+            const ringing = await join('an', id)
+            expect(ringing.status).toBe(200)
+            expect(ringing.body.data).toMatchObject({ call: { id, status: 'ringing' }, media: null })
+            expect((await join('chi', id)).status).toBe(404)
+
+            await act('an', id, 'end')
+            expect((await join('binh', id)).body.data).toMatchObject({ call: { status: 'missed' }, media: null })
+        })
+
+        it('fails a call nobody connected to 15 seconds after answering: no length (D-120)', async () => {
+            const { dm, id } = await answered()
+            await joins('an', id)
+            await rowsOf(id, 1)
+
+            await after(16)
+
+            const row = await prisma.call.findUniqueOrThrow({ where: { id } })
+            expect(row).toMatchObject({ status: 'failed', endReason: null })
+            const message = await eventually(
+                () => messagesOf('an', dm),
+                (items) => items.length > 0
+            )
+            expect(message[0]).toMatchObject({ system_event: 'call_ended', system_data: { status: 'failed' } })
+            expect((message[0].system_data as Record<string, unknown>).duration_seconds).toBeNull()
+        })
+
+        it('ends a call 30 seconds after one of the two left, at the time they left', async () => {
+            const { id } = await answered()
+            await joins('an', id)
+            await joins('binh', id)
+            await rowsOf(id, 2)
+            const before = new Date()
+            await leaves('binh', id)
+            const left = await eventually(
+                () =>
+                    prisma.callParticipant.findUniqueOrThrow({
+                        where: { callId_userId: { callId: id, userId: users.binh.id } }
+                    }),
+                (one) => one.leftAt !== null
+            )
+            expect(left.leftAt!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
+
+            await after(31)
+
+            expect(await prisma.call.findUniqueOrThrow({ where: { id } })).toMatchObject({
+                status: 'ended',
+                endedAt: left.leftAt
+            })
+        })
+
+        it('keeps a call one of the two came back to within 30 seconds (a reload)', async () => {
+            const { id } = await answered()
+            await joins('an', id)
+            await joins('binh', id)
+            await rowsOf(id, 2)
+            await leaves('binh', id)
+            await joins('binh', id, 'PA_binh_reloaded')
+            await eventually(
+                () =>
+                    prisma.callParticipant.findUniqueOrThrow({
+                        where: { callId_userId: { callId: id, userId: users.binh.id } }
+                    }),
+                (one) => one.participantSid === 'PA_binh_reloaded'
+            )
+
+            await after(31)
+
+            expect((await prisma.call.findUniqueOrThrow({ where: { id } })).status).toBe('active')
+            await act('an', id, 'end')
+        })
+
+        it('writes nothing for someone not of the call joining its room, nor anyone joining a call over', async () => {
+            const { id } = await answered()
+            await joins('chi', id)
+            await act('an', id, 'end')
+            await joins('binh', id)
+            await new Promise((resolve) => setTimeout(resolve, 300))
+
+            expect(await prisma.callParticipant.findMany({ where: { callId: id } })).toEqual([])
+        })
+
+        it('keeps one media connection per account: a voice room ends my call, a call takes me out of my voice room', async () => {
+            const created = await as('an', api().post('/api/v1/servers'))
+                .set('Idempotency-Key', randomUUID())
+                .send({ name: 'Nhóm học Giải tích', template: 'standard' })
+            const serverId = created.body.data.id as string
+            const room = await as('an', api().post(`/api/v1/servers/${serverId}/channels`))
+                .set('Idempotency-Key', randomUUID())
+                .send({ type: 'voice', name: 'Phòng ôn thi', is_private: false, view_role_ids: [] })
+            const roomId = room.body.data.id as string
+
+            const first = await answered()
+            const token = await as('an', api().post('/api/v1/voice/token')).send({ channel_id: roomId })
+            expect(token.status).toBe(201)
+            expect(await prisma.call.findUniqueOrThrow({ where: { id: first.id } })).toMatchObject({ status: 'ended' })
+
+            await prisma.voiceState.create({
+                data: { userId: users.an.id, channelId: roomId, participantSid: 'PA_room', joinedAt: new Date() }
+            })
+            const second = (await call('an', first.dm)).body.data.id as string
+            await act('binh', second, 'accept')
+            expect((await join('an', second)).body.data.media).not.toBeNull()
+            expect(await prisma.voiceState.findUnique({ where: { userId: users.an.id } })).toBeNull()
+
+            // A voice token taken before the call was answered in another tab, used now: the call ends.
+            await roomHook('participant_joined', 'an', second, 'PA_room_2', undefined, `voice:${roomId}`)
+            expect(await prisma.call.findUniqueOrThrow({ where: { id: second } })).toMatchObject({ status: 'ended' })
+        })
+
+        it('marks out the call connection of a session that ended: 30 seconds to come back (D-214)', async () => {
+            const { id } = await answered()
+            const token = (await join('an', id)).body.data.media.token as string
+            const sessionId = (await claimsOf(token)).attributes!.session_id!
+            await joins('an', id, 'PA_an', sessionId)
+            await joins('binh', id)
+            await rowsOf(id, 2)
+
+            app.get(EventBus).publish(new SessionsEndedEvent([sessionId]))
+
+            const row = await eventually(
+                () =>
+                    prisma.callParticipant.findUniqueOrThrow({
+                        where: { callId_userId: { callId: id, userId: users.an.id } }
+                    }),
+                (one) => one.leftAt !== null
+            )
+            expect(row.leftAt).not.toBeNull()
+            await after(31)
+            expect((await prisma.call.findUniqueOrThrow({ where: { id } })).status).toBe('ended')
         })
     })
 

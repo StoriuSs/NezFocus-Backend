@@ -8,10 +8,14 @@ import {
     CallChanges,
     CallOutcome,
     CallPlan,
+    CallPresence,
     CallRecord,
     CallRepositoryPort,
     CallStatus,
-    ChangedCall
+    ChangedCall,
+    MediaRecorded,
+    MediaWrite,
+    SessionConnection
 } from '../../domain'
 import { lockCallers, Tx } from './social-locks'
 
@@ -34,6 +38,14 @@ const CALL_ROW = {
 } as const satisfies Prisma.CallSelect
 
 type CallRow = Prisma.CallGetPayload<{ select: typeof CALL_ROW }>
+
+const PRESENCE_ROW = {
+    userId: true,
+    participantSid: true,
+    joinedAt: true,
+    leftAt: true,
+    sessionId: true
+} as const satisfies Prisma.CallParticipantSelect
 
 const OPEN: CallStatus[] = ['ringing', 'active']
 
@@ -102,6 +114,66 @@ export class PrismaCallRepository implements CallRepositoryPort {
                 toRecord(await tx.call.findUniqueOrThrow({ where: { id: answerId }, select: CALL_ROW }))
             return { changed, answer }
         })
+    }
+
+    async activeCalls(): Promise<Call[]> {
+        const rows = await this.prisma.call.findMany({ where: { status: 'active' }, select: CALL_ROW })
+        return rows.map(toRecord)
+    }
+
+    async presenceOf(callIds: string[]): Promise<Map<string, CallPresence[]>> {
+        const byCall = new Map<string, CallPresence[]>(callIds.map((callId) => [callId, []]))
+        if (callIds.length === 0) return byCall
+        const rows = await this.prisma.callParticipant.findMany({
+            where: { callId: { in: callIds } },
+            select: { callId: true, ...PRESENCE_ROW }
+        })
+        for (const { callId, ...row } of rows) byCall.get(callId)!.push(row)
+        return byCall
+    }
+
+    async recordMedia(
+        callId: string,
+        decide: (call: Call | null, presence: CallPresence[]) => MediaWrite
+    ): Promise<MediaRecorded> {
+        const people = await this.prisma.call.findUnique({
+            where: { id: callId },
+            select: { callerId: true, calleeId: true }
+        })
+        if (!people) return { call: null, presence: [], written: false, ...decide(null, []) }
+        return this.prisma.$transaction(async (tx) => {
+            await lockCallers(tx, [people.callerId, people.calleeId])
+            const call = toRecord(await tx.call.findUniqueOrThrow({ where: { id: callId }, select: CALL_ROW }))
+            const presence = await tx.callParticipant.findMany({ where: { callId }, select: PRESENCE_ROW })
+            const { write, evict } = decide(call, presence)
+            if (!write) return { call, presence, written: false, evict }
+            const { userId, ...columns } = write
+            await tx.callParticipant.upsert({
+                where: { callId_userId: { callId, userId } },
+                create: { callId, ...write },
+                update: columns
+            })
+            const after = await tx.call.update({
+                where: { id: callId, version: call.version },
+                data: { version: { increment: 1 } },
+                select: CALL_ROW
+            })
+            return {
+                call: toRecord(after),
+                presence: [...presence.filter((row) => row.userId !== userId), write],
+                written: true,
+                evict
+            }
+        })
+    }
+
+    async inSessions(sessionIds: string[]): Promise<SessionConnection[]> {
+        if (sessionIds.length === 0) return []
+        const rows = await this.prisma.callParticipant.findMany({
+            where: { sessionId: { in: sessionIds }, leftAt: null, call: { status: 'active' } },
+            select: { callId: true, ...PRESENCE_ROW }
+        })
+        return rows.map(({ callId, ...row }) => ({ callId, row }))
     }
 
     async ringingSince(before: Date): Promise<{ id: string; version: number }[]> {

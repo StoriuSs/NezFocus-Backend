@@ -151,7 +151,8 @@ model Call {
 }
 
 /// One of the two people of a call in its media room (call:<id>), as
-/// LiveKit's webhooks say (D-239). Read by the 15-second and 30-second rules.
+/// LiveKit's webhooks say (D-239): their latest connection. Read by the
+/// 15-second and 30-second rules (D-242).
 model CallParticipant {
   callId String
   call   Call   @relation(fields: [callId], references: [id], onDelete: Cascade)
@@ -165,7 +166,13 @@ model CallParticipant {
   joinedAt       DateTime  @db.Timestamptz(6)
   /// When it left. Empty: in the room now.
   leftAt         DateTime? @db.Timestamptz(6)
+  /// The sign-in session whose join token made the connection (the token's
+  /// session_id attribute): that session ending puts it out (D-214, D-242).
+  /// Null for a token without it. Not a foreign key, as for VoiceState.
+  sessionId      String?
 
   @@id([callId, userId])
   @@index([userId])
+  // The connections of sessions just ended (D-214).
+  @@index([sessionId])
 }

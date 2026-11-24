@@ -1,4 +1,11 @@
-import { CallInProgressError, CallNotFoundError, CannotMessageUserError, DmNotFoundError } from '../../../domain'
+import {
+    Call,
+    CallInProgressError,
+    CallNotFoundError,
+    CallPresence,
+    CannotMessageUserError,
+    DmNotFoundError
+} from '../../../domain'
 import { CallChangedEvent } from '../../events/call-changed.event'
 import { socialWorld } from '../../social-test-world.shared-spec'
 import {
@@ -40,7 +47,7 @@ async function setUp() {
         decline: new DeclineCallHandler(...deps),
         end: new EndCallHandler(...deps),
         ringOut: new RingOutCallHandler(...deps),
-        sweep: new SweepCallTimersHandler(...deps)
+        sweep: new SweepCallTimersHandler(world.calls, world.callJobs, world.callMedia, world.eventBus)
     }
     const anBinh = (await world.dms.open('an', 'binh')).channelId
     const binhChi = (await world.dms.open('chi', 'binh')).channelId
@@ -163,6 +170,20 @@ describe('AcceptCallHandler', () => {
         expect(told().slice(2)).toEqual(['an→binh ringing→active', 'chi→binh ringing→missed (busy)'])
     })
 
+    it('gives the call answered its media job: 15 seconds from answering for both to connect (D-242)', async () => {
+        const { world, handlers, anBinh, start } = await setUp()
+        const callId = await start('an', anBinh)
+
+        await handlers.accept.execute(new AcceptCallCommand('binh', callId))
+
+        const row = world.callRows.get(callId)!
+        expect(world.callJobs.checkMediaAt).toHaveBeenCalledWith(
+            callId,
+            row.version,
+            new Date(row.acceptedAt!.getTime() + 15_000)
+        )
+    })
+
     it('refuses one I may no longer message (blocked while it rang), the call left ringing', async () => {
         const { world, handlers, anBinh, start } = await setUp()
         const callId = await start('an', anBinh)
@@ -222,6 +243,17 @@ describe('DeclineCallHandler and EndCallHandler (D-242)', () => {
         await handlers.end.execute(new EndCallCommand(userId, callId))
 
         expect(world.callRows.get(callId)).toMatchObject({ status, endedAt: expect.any(Date) })
+    })
+
+    it('drops the media job of an active call that ends (D-242)', async () => {
+        const { world, handlers, anBinh, start } = await setUp()
+        const callId = await start('an', anBinh)
+        await handlers.accept.execute(new AcceptCallCommand('binh', callId))
+        const answeredAt = world.callRows.get(callId)!.version
+
+        await handlers.end.execute(new EndCallCommand('an', callId))
+
+        expect(world.callJobs.dropMediaCheck).toHaveBeenCalledWith(callId, answeredAt)
     })
 
     it('changes nothing when the other one hung up first (D-245)', async () => {
@@ -288,7 +320,7 @@ describe('RingOutCallHandler and SweepCallTimersHandler (45 seconds)', () => {
             createdAt: new Date(now.getTime() - 10_000)
         })
 
-        await expect(handlers.sweep.execute(new SweepCallTimersCommand(now))).resolves.toBe(1)
+        await expect(handlers.sweep.execute(new SweepCallTimersCommand(now))).resolves.toMatchObject({ missed: 1 })
 
         expect(world.callRows.get(old.id)).toMatchObject({ status: 'missed', endReason: 'no_answer', endedAt: now })
         expect(world.callRows.get(young.id)!.status).toBe('ringing')
@@ -305,6 +337,142 @@ describe('RingOutCallHandler and SweepCallTimersHandler (45 seconds)', () => {
         })
         world.calls.change.mockRejectedValueOnce(new Error('database down'))
 
-        await expect(handlers.sweep.execute(new SweepCallTimersCommand(now))).resolves.toBe(0)
+        await expect(handlers.sweep.execute(new SweepCallTimersCommand(now))).resolves.toMatchObject({ missed: 0 })
+    })
+})
+
+describe('SweepCallTimersHandler: the call rooms (D-242, D-246)', () => {
+    const acceptedAt = new Date('2026-11-24T21:44:06Z')
+    const at = (seconds: number) => new Date(acceptedAt.getTime() + seconds * 1000)
+    const now = at(200)
+
+    async function roomsSetUp() {
+        const { world, handlers, anBinh, binhChi } = await setUp()
+        const call = (changes: Partial<Call> = {}, dm = anBinh, callerId = 'an') =>
+            world.callAs({
+                callerId,
+                calleeId: 'binh',
+                dmChannelId: dm,
+                status: 'active',
+                version: 1,
+                createdAt: at(-10),
+                acceptedAt,
+                ...changes
+            })
+        const inRoom = (callId: string, userId: string, changes: Partial<CallPresence> = {}) => {
+            const rows = world.callPresence.get(callId) ?? []
+            rows.push({
+                userId,
+                participantSid: `PA_${userId}`,
+                joinedAt: at(2),
+                leftAt: null,
+                sessionId: `session-${userId}`,
+                ...changes
+            })
+            world.callPresence.set(callId, rows)
+        }
+        const sweep = () => handlers.sweep.execute(new SweepCallTimersCommand(now))
+        return { world, anBinh, binhChi, call, inRoom, sweep }
+    }
+
+    it('runs a media deadline whose job was lost', async () => {
+        const { world, call, inRoom, sweep } = await roomsSetUp()
+        const { id } = call()
+        inRoom(id, 'an')
+        inRoom(id, 'binh', { leftAt: at(120) })
+
+        await expect(sweep()).resolves.toMatchObject({ media: { timedOut: 1 } })
+        expect(world.callRows.get(id)).toMatchObject({ status: 'ended', endedAt: at(120) })
+    })
+
+    it('writes the joins and leaves LiveKit has and the webhooks lost, setting the media job again', async () => {
+        const { world, call, inRoom, sweep } = await roomsSetUp()
+        const { id } = call()
+        inRoom(id, 'an')
+        inRoom(id, 'binh')
+        // An's connection gone with no webhook; Bình reloaded, their new connection's webhook lost.
+        world.liveRooms.set(id, [{ userId: 'binh', participantSid: 'PA_binh_2', joinedAt: at(160), sessionId: null }])
+
+        await expect(sweep()).resolves.toMatchObject({ media: { fixed: 3, timedOut: 0, closed: 0 } })
+
+        expect(world.callPresence.get(id)).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ userId: 'an', leftAt: now }),
+                expect.objectContaining({ userId: 'binh', participantSid: 'PA_binh_2', leftAt: null })
+            ])
+        )
+        // An out at 200: the call ends at 230 unless they come back.
+        expect(world.callJobs.checkMediaAt).toHaveBeenLastCalledWith(id, 4, at(230))
+    })
+
+    it('puts out of a call room someone not of the call', async () => {
+        const { world, call, inRoom, sweep } = await roomsSetUp()
+        const { id } = call()
+        inRoom(id, 'an')
+        inRoom(id, 'binh')
+        world.liveRooms.set(id, [
+            { userId: 'an', participantSid: 'PA_an', joinedAt: at(2), sessionId: null },
+            { userId: 'binh', participantSid: 'PA_binh', joinedAt: at(2), sessionId: null },
+            { userId: 'chi', participantSid: 'PA_chi', joinedAt: at(3), sessionId: null }
+        ])
+
+        await sweep()
+
+        expect(world.callMedia.removeConnection).toHaveBeenCalledWith(id, 'chi', 'PA_chi')
+        expect(world.callPresence.get(id)).toHaveLength(2)
+    })
+
+    it('closes a room no active call has, and keeps the room of one active', async () => {
+        const { world, call, inRoom, sweep } = await roomsSetUp()
+        const over = call({ status: 'ended', endedAt: at(9) })
+        const active = call()
+        inRoom(active.id, 'an')
+        inRoom(active.id, 'binh')
+        world.liveRooms.set(over.id, [])
+        world.liveRooms.set('call-gone', [])
+        world.liveRooms.set(active.id, [
+            { userId: 'an', participantSid: 'PA_an', joinedAt: at(2), sessionId: null },
+            { userId: 'binh', participantSid: 'PA_binh', joinedAt: at(2), sessionId: null }
+        ])
+
+        await expect(sweep()).resolves.toMatchObject({ media: { closed: 2 } })
+        expect(world.callMedia.close.mock.calls).toEqual([[over.id], ['call-gone']])
+    })
+
+    it('still runs the media deadlines and the ring-outs when LiveKit cannot be reached', async () => {
+        const { world, anBinh, binhChi, call, inRoom, sweep } = await roomsSetUp()
+        const rung = world.callAs({ callerId: 'chi', calleeId: 'binh', dmChannelId: binhChi, createdAt: at(100) })
+        const { id } = call({}, anBinh)
+        inRoom(id, 'an')
+        world.callMedia.rooms.mockRejectedValue(new Error('LiveKit down'))
+        world.callMedia.participants.mockRejectedValue(new Error('LiveKit down'))
+
+        await expect(sweep()).resolves.toMatchObject({ missed: 1, media: { timedOut: 1, fixed: 0, closed: 0 } })
+        expect(world.callRows.get(rung.id)!.status).toBe('missed')
+        expect(world.callRows.get(id)!.status).toBe('failed')
+    })
+
+    it('goes on to the next call when the room of one cannot be read', async () => {
+        const { world, call, inRoom, sweep } = await roomsSetUp()
+        const first = call()
+        inRoom(first.id, 'an')
+        inRoom(first.id, 'binh')
+        const second = world.callAs({
+            callerId: 'chi',
+            calleeId: 'dung',
+            dmChannelId: 'dm-chi-dung',
+            status: 'active',
+            version: 1,
+            createdAt: at(-10),
+            acceptedAt
+        })
+        inRoom(second.id, 'chi')
+        inRoom(second.id, 'dung')
+        world.callMedia.participants.mockRejectedValueOnce(new Error('LiveKit hiccup'))
+
+        await expect(sweep()).resolves.toMatchObject({ media: { fixed: 2 } })
+        // The first left as it was; the second's two, gone from LiveKit, marked out.
+        expect(world.callPresence.get(first.id)!.every((row) => row.leftAt === null)).toBe(true)
+        expect(world.callPresence.get(second.id)!.every((row) => row.leftAt !== null)).toBe(true)
     })
 })

@@ -16,7 +16,7 @@ import { USER_DIRECTORY } from '@/modules/users'
 import { UsersModule } from '@/modules/users/users.module'
 import { REDIS_CLIENT } from '@/shared/infrastructure/cache/redis-client.provider'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { MEDIA_EVENTS, MEDIA_ROOMS, MediaEventsPort, MediaRoomsPort } from './application'
+import { ACTIVE_CALLS, MEDIA_EVENTS, MEDIA_ROOMS, MediaEventsPort, MediaRoomsPort } from './application'
 import { VoiceModule } from './voice.module'
 
 /** What the modules VoiceModule imports give it, and the app's globals, as empty stand-ins: none is called here. */
@@ -30,9 +30,11 @@ const stand = (token: symbol) => {
 @Module({
     providers: [
         { provide: PrismaService, useValue: {} },
-        { provide: REDIS_CLIENT, useValue: {} }
+        { provide: REDIS_CLIENT, useValue: {} },
+        // social's global ActiveCallsModule (D-246)
+        { provide: ACTIVE_CALLS, useValue: {} }
     ],
-    exports: [PrismaService, REDIS_CLIENT]
+    exports: [PrismaService, REDIS_CLIENT, ACTIVE_CALLS]
 })
 class GlobalsStandIn {}
 

@@ -16,12 +16,20 @@ import {
     StartCallCommand
 } from '../../application'
 import { CallNotFoundError } from '../../domain'
-import { CallIdParamsDto, CallResponseDto, DmIdParamsDto, MyCallResponseDto, StartCallRequestDto } from './dto'
+import {
+    CallIdParamsDto,
+    CallResponseDto,
+    DmIdParamsDto,
+    JoinCallResponseDto,
+    MyCallResponseDto,
+    StartCallRequestDto
+} from './dto'
+import { joinAnswer } from './join-answer'
 
 /**
  * One-to-one calls (SRS 5.1, REQ-SOCIAL-05, ARCHITECTURE 6, D-242, D-245):
- * calling from a DM, answering, declining, hanging up, and my open calls on
- * reload. Each command answers with the call as it is after it, read by
+ * calling from a DM, answering, declining, hanging up, joining its room at
+ * LiveKit, and my open calls on reload. Each command answers with the call as it is after it, read by
  * GetCallQuery (D-159): one that came after the call changed (its caller
  * hung up, the other one ended it) answers it as it is, 200, its `status`
  * saying what became of it (D-245).
@@ -91,6 +99,31 @@ export class CallsController {
     ): Promise<ServiceResponse<CallResponseDto>> {
         await this.commandBus.execute(new EndCallCommand(user.id, callId))
         return createResponse(MESSAGES.SOCIAL.CALL_CHANGED, await this.callOf(user.id, callId))
+    }
+
+    /**
+     * A token to join the call's room at LiveKit (D-239, D-246), sending the
+     * microphone and the camera: its callee after answering, its caller once
+     * it is active, either again on a reload. Being in a voice room puts one
+     * out of it first (D-210). `media` exactly when the answer's call is
+     * active: ringing or over, it is null and `call.status` says what became
+     * of it (joinAnswer reads the call first). Not one
+     * of its two: NOT_FOUND. LiveKit not reached to leave a voice room:
+     * SERVICE_UNAVAILABLE_ERROR. Not `@Idempotent()`: a retry is simply
+     * another token. The token carries this request's sign-in session, whose
+     * end puts the connection out (D-214).
+     */
+    @Post('calls/:callId/join')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(JoinCallResponseDto)
+    async join(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { callId }: CallIdParamsDto
+    ): Promise<ServiceResponse<JoinCallResponseDto>> {
+        return createResponse(
+            MESSAGES.SOCIAL.CALL_JOINED,
+            await joinAnswer(this.commandBus, this.queryBus, user.id, callId, user.sessionId)
+        )
     }
 
     /** My open calls (D-245): the one I make or am in, and up to two ringing to me. */

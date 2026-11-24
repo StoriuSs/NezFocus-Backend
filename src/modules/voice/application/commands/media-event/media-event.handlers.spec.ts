@@ -11,13 +11,15 @@ import {
     VoiceStateRepositoryPort,
     VoiceWrite
 } from '../../../domain'
+import { CallMediaChangedEvent } from '../../events/call-media-changed.event'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
-import { EventReceiptsPort, MediaEvent, MediaEventsPort, MediaRoomsPort } from '../../ports'
+import { ActiveCallsPort, EventReceiptsPort, MediaEvent, MediaEventsPort, MediaRoomsPort } from '../../ports'
 import { ApplyMediaEventCommand } from './media-event.commands'
 import { ApplyMediaEventHandler } from './media-event.handlers'
 
 const LOUNGE = '0190a000-0000-7000-8000-00000000000a'
 const STUDY = '0190a000-0000-7000-8000-00000000000b'
+const CALL = '0190a000-0000-7000-8000-0000000000c1'
 const at = (seconds: number) => new Date(Date.UTC(2026, 10, 18, 10, 0, seconds))
 const joined = (over: Partial<Extract<MediaEvent, { kind: 'joined' | 'left' }>> = {}): MediaEvent => ({
     id: 'EV_1',
@@ -103,6 +105,7 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null, eve
         })
     }
     const events = { publish: jest.fn() }
+    const calls = { endFor: jest.fn().mockResolvedValue(undefined) }
     const handler = new ApplyMediaEventHandler(
         mediaEvents as unknown as MediaEventsPort,
         receipts as unknown as EventReceiptsPort,
@@ -112,10 +115,11 @@ function setup(event: MediaEvent | Error, current: VoiceState | null = null, eve
         checker as unknown as PermissionCheckerPort,
         publisher as unknown as EventPublisherPort,
         events as unknown as EventBus,
-        principals as unknown as PrincipalPort
+        principals as unknown as PrincipalPort,
+        calls as unknown as ActiveCallsPort
     )
     const run = () => handler.execute(new ApplyMediaEventCommand('{"event":"…"}', 'Bearer jwt'))
-    return { run, mediaEvents, receipts, media, states, events, channels, checker, publisher, principals }
+    return { run, mediaEvents, receipts, media, states, events, channels, checker, publisher, principals, calls }
 }
 
 describe("LiveKit's webhooks (D-210)", () => {
@@ -198,13 +202,108 @@ describe("LiveKit's webhooks (D-210)", () => {
         expect(states.change).not.toHaveBeenCalled()
     })
 
-    it('leaves alone an event of another kind, or about a room that is no voice room', async () => {
-        for (const event of [{ id: 'EV_2', kind: 'other' } as MediaEvent, joined({ room: `call:${LOUNGE}` })]) {
+    it('leaves alone an event of another kind, or about a room of no voice channel nor call', async () => {
+        for (const event of [{ id: 'EV_2', kind: 'other' } as MediaEvent, joined({ room: 'call:not-a-uuid' })]) {
             const { run, receipts, states } = setup(event)
             await run()
             expect(receipts.firstSight).not.toHaveBeenCalled()
             expect(states.change).not.toHaveBeenCalled()
         }
+    })
+
+    it('ends the active call of someone who joined a voice room: a token taken before they answered elsewhere (D-246)', async () => {
+        const { run, calls, states } = setup(joined())
+
+        await run()
+
+        expect(calls.endFor).toHaveBeenCalledWith('an')
+        expect(states.change.mock.invocationCallOrder[0]).toBeLessThan(calls.endFor.mock.invocationCallOrder[0])
+    })
+
+    it('ends no call for a leave, a late join, or a join put out', async () => {
+        for (const event of [joined({ kind: 'left', participantSid: 'PA_old' }), joined({ joinedAt: at(-5) })]) {
+            const { run, calls } = setup(event, row())
+            await run()
+            expect(calls.endFor).not.toHaveBeenCalled()
+        }
+        const refused = setup(joined(), null, EVERYONE_DEFAULT_PERMISSIONS & ~Permission.CONNECT)
+        await refused.run()
+        expect(refused.calls.endFor).not.toHaveBeenCalled()
+    })
+
+    it('forgets the join when the call cannot be ended, for LiveKit to send it again', async () => {
+        const { run, calls, receipts } = setup(joined())
+        calls.endFor.mockRejectedValueOnce(new Error('database down'))
+
+        await expect(run()).rejects.toThrow('database down')
+        expect(receipts.forget).toHaveBeenCalledWith('EV_1')
+    })
+
+    it('tells social who joined a call room, with the session of their token, and writes no VoiceState (D-239)', async () => {
+        const { run, events, states, receipts } = setup(joined({ room: `call:${CALL}` }))
+
+        await run()
+
+        expect(events.publish.mock.calls).toEqual([
+            [
+                new CallMediaChangedEvent(CALL, {
+                    kind: 'joined',
+                    userId: 'an',
+                    participantSid: 'PA_new',
+                    joinedAt: at(10),
+                    sessionId: 'session-an'
+                })
+            ]
+        ])
+        expect(receipts.firstSight).toHaveBeenCalledWith('EV_1')
+        expect(states.change).not.toHaveBeenCalled()
+    })
+
+    it('tells social who left a call room, at the time the webhook came', async () => {
+        jest.useFakeTimers({ now: at(40) })
+        try {
+            const { run, events } = setup(joined({ kind: 'left', room: `call:${CALL}` }))
+
+            await run()
+
+            expect(events.publish).toHaveBeenCalledWith(
+                new CallMediaChangedEvent(CALL, { kind: 'left', userId: 'an', participantSid: 'PA_new', at: at(40) })
+            )
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
+    it('puts out of a call room, untold, a join of an ended session (D-214)', async () => {
+        const { run, media, events, principals } = setup(joined({ room: `call:${CALL}` }))
+        principals.resolve.mockRejectedValueOnce(new SessionEnded())
+
+        await run()
+
+        expect(media.removeConnection).toHaveBeenCalledWith(`call:${CALL}`, 'an', 'PA_new')
+        expect(events.publish).not.toHaveBeenCalled()
+    })
+
+    it('tells a call room event once, and forgets it when the session store cannot be asked', async () => {
+        const again = setup(joined({ room: `call:${CALL}` }))
+        again.receipts.firstSight.mockResolvedValueOnce(false)
+        await again.run()
+        expect(again.events.publish).not.toHaveBeenCalled()
+
+        const down = setup(joined({ room: `call:${CALL}` }))
+        down.principals.resolve.mockRejectedValueOnce(new Error('Redis down'))
+        await expect(down.run()).rejects.toThrow('Redis down')
+        expect(down.receipts.forget).toHaveBeenCalledWith('EV_1')
+        expect(down.events.publish).not.toHaveBeenCalled()
+    })
+
+    it('leaves a screen in a call room alone: calls send none (D-242)', async () => {
+        const { run, events, receipts } = setup(share({ room: `call:${CALL}` }))
+
+        await run()
+
+        expect(receipts.firstSight).not.toHaveBeenCalled()
+        expect(events.publish).not.toHaveBeenCalled()
     })
 
     it('puts someone who joined in the room, with the session of their token, and tells it', async () => {

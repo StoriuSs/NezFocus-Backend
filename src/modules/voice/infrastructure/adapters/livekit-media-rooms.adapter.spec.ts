@@ -74,7 +74,8 @@ describe('LiveKitMediaRooms asking LiveKit', () => {
             | 'removeParticipant'
             | 'updateParticipant'
             | 'mutePublishedTrack'
-            | 'getParticipant',
+            | 'getParticipant'
+            | 'deleteRoom',
         outcome: () => Promise<unknown>
     ) => jest.spyOn(RoomServiceClient.prototype, method).mockImplementation(outcome as never)
     const logged = (level: 'warn' | 'error') => jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined)
@@ -195,6 +196,21 @@ describe('LiveKitMediaRooms asking LiveKit', () => {
 
         answers('updateParticipant', () => Promise.reject(new Error('connect ECONNREFUSED')))
         await expect(adapter().setSources('voice:c1', 'user-1', [])).rejects.toBeInstanceOf(MediaRoomsUnavailableError)
+    })
+
+    it('closes a room, nothing for one gone, and reports LiveKit out of reach (D-242)', async () => {
+        logged('warn')
+        const close = answers('deleteRoom', async () => undefined)
+        await adapter().closeRoom('call:c1')
+        expect(close).toHaveBeenCalledWith('call:c1')
+
+        answers('deleteRoom', () =>
+            Promise.reject(new ServerError('not_found', 'room does not exist', 404, 'not_found'))
+        )
+        await expect(adapter().closeRoom('call:c1')).resolves.toBeUndefined()
+
+        answers('deleteRoom', () => Promise.reject(new Error('connect ECONNREFUSED')))
+        await expect(adapter().closeRoom('call:c1')).rejects.toBeInstanceOf(MediaRoomsUnavailableError)
     })
 
     it('takes "not found" for an empty room, and for a person already gone', async () => {

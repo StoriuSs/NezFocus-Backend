@@ -28,4 +28,21 @@ describe('BullMqCallJobs (ARCHITECTURE 6, D-242)', () => {
         await new BullMqCallJobs(queue as unknown as Queue).dropRingOut('goi', 0)
         expect(queue.remove).toHaveBeenCalledWith('call-goi-ring-0')
     })
+
+    it('waits a media check until the deadline, named by the call and its version: call-<id>-media-<version>', async () => {
+        jest.useFakeTimers({ now: new Date('2026-11-24T21:47:00Z') })
+        const queue = { add: jest.fn().mockResolvedValue(undefined) }
+        await new BullMqCallJobs(queue as unknown as Queue).checkMediaAt('goi', 3, new Date('2026-11-24T21:47:15Z'))
+        expect(queue.add).toHaveBeenCalledWith(
+            SOCIAL_JOBS.MEDIA_CHECK,
+            { callId: 'goi', version: 3 },
+            { jobId: 'call-goi-media-3', delay: 15_000 }
+        )
+    })
+
+    it('drops the media check of a version gone by', async () => {
+        const queue = { remove: jest.fn().mockResolvedValue(1) }
+        await new BullMqCallJobs(queue as unknown as Queue).dropMediaCheck('goi', 2)
+        expect(queue.remove).toHaveBeenCalledWith('call-goi-media-2')
+    })
 })

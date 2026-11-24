@@ -1,4 +1,6 @@
 import {
+    callOfRoom,
+    callRoomOf,
     channelOfRoom,
     joinOutcome,
     joinWrite,
@@ -31,6 +33,13 @@ describe('voice rooms (D-210)', () => {
         expect(channelOfRoom(voiceRoomOf(A))).toBe(A)
         expect(channelOfRoom(`call:${A}`)).toBeNull()
         expect(channelOfRoom('voice:probe')).toBeNull()
+    })
+
+    it('names the room of a call, and reads only call rooms back (D-239)', () => {
+        expect(callRoomOf(A)).toBe(`call:${A}`)
+        expect(callOfRoom(callRoomOf(A))).toBe(A)
+        expect(callOfRoom(voiceRoomOf(A))).toBeNull()
+        expect(callOfRoom('call:probe')).toBeNull()
     })
 
     describe('a connection that joined', () => {

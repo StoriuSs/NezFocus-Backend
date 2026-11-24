@@ -31,6 +31,7 @@ export interface VoiceState extends VoiceConnection {
 }
 
 const ROOM_PREFIX = 'voice:'
+const CALL_PREFIX = 'call:'
 // Ids are UUIDs (version 7 for channels); anything else in a room's name is no channel of ours.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -38,13 +39,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const voiceRoomOf = (channelId: string): string => `${ROOM_PREFIX}${channelId}`
 
 /**
- * The voice channel a LiveKit room is for; null for any other room (calls,
- * `call:<id>`, come with M6), so a webhook about one is left alone here.
+ * The voice channel a LiveKit room is for; null for any other room (a
+ * call's, `call:<id>`), so a webhook about one is not taken as a room's.
  */
 export function channelOfRoom(room: string): string | null {
     if (!room.startsWith(ROOM_PREFIX)) return null
     const channelId = room.slice(ROOM_PREFIX.length)
     return UUID.test(channelId) ? channelId : null
+}
+
+/** The LiveKit room of a one-to-one call (ARCHITECTURE 6, D-239). */
+export const callRoomOf = (callId: string): string => `${CALL_PREFIX}${callId}`
+
+/** The call a LiveKit room is for; null for any other room. */
+export function callOfRoom(room: string): string | null {
+    if (!room.startsWith(CALL_PREFIX)) return null
+    const callId = room.slice(CALL_PREFIX.length)
+    return UUID.test(callId) ? callId : null
 }
 
 /**

@@ -6896,6 +6896,56 @@
         ]
       }
     },
+    "/api/v1/calls/{callId}/join": {
+      "post": {
+        "operationId": "CallsController_join_v1",
+        "parameters": [
+          {
+            "name": "callId",
+            "required": true,
+            "in": "path",
+            "description": "A call of mine: one of two others is not found, as none (NFR-SEC-05).",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/JoinCallResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A token to join the call's room at LiveKit (D-239, D-246), sending the\nmicrophone and the camera: its callee after answering, its caller once\nit is active, either again on a reload. Being in a voice room puts one\nout of it first (D-210). `media` exactly when the answer's call is\nactive: ringing or over, it is null and `call.status` says what became\nof it (joinAnswer reads the call first). Not one\nof its two: NOT_FOUND. LiveKit not reached to leave a voice room:\nSERVICE_UNAVAILABLE_ERROR. Not `@Idempotent()`: a retry is simply\nanother token. The token carries this request's sign-in session, whose\nend puts the connection out (D-214).",
+        "tags": [
+          "social"
+        ]
+      }
+    },
     "/api/v1/me/call": {
       "get": {
         "operationId": "CallsController_mine_v1",
@@ -11830,6 +11880,50 @@
         },
         "required": [
           "video"
+        ]
+      },
+      "CallMediaResponseDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Good for the first connection within 10 minutes; LiveKit renews it itself once in."
+          },
+          "url": {
+            "type": "string",
+            "description": "LiveKit's address: ws://localhost:7880 in development, wss:// in production."
+          }
+        },
+        "required": [
+          "token",
+          "url"
+        ]
+      },
+      "JoinCallResponseDto": {
+        "type": "object",
+        "properties": {
+          "media": {
+            "nullable": true,
+            "description": "The token to join its room; null unless the call is `active`.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallMediaResponseDto"
+              }
+            ]
+          },
+          "call": {
+            "description": "The call now: a call ringing or over has no token, and its `status` says what became of it.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "media",
+          "call"
         ]
       },
       "MyCallResponseDto": {

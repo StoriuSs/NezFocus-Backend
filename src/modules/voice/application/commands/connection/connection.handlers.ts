@@ -3,11 +3,11 @@ import { CommandHandler, EventBus, ICommandHandler } from '@nestjs/cqrs'
 import { PERMISSION_CHECKER, PermissionCheckerPort } from '@/modules/permissions'
 import { CHANNEL_DIRECTORY, ChannelDirectoryPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
-import { isHidden } from '@/shared/domain'
 import { VOICE_STATE_REPOSITORY, VoiceStateRepositoryPort, voiceRoomOf } from '../../../domain'
 import { VoiceLeaveRequestedEvent } from '../../events/voice-leave-requested.event'
-import { MEDIA_ROOMS, MediaRoomsPort } from '../../ports'
+import { ACTIVE_CALLS, ActiveCallsPort, MEDIA_ROOMS, MediaRoomsPort } from '../../ports'
 import { leaveRoom } from '../../services/leave-room'
+import { mediaNameOf } from '../../services/media-name'
 import { openRoom } from '../../services/room-access'
 import { IssueJoinTokenCommand, LeaveVoiceCommand } from './connection.commands'
 
@@ -21,7 +21,10 @@ export interface JoinToken {
  * A token to join a voice room (REQ-VC-01, D-210): for one who may CONNECT,
  * sending only what SPEAK and VIDEO allow. Someone in another room is put
  * out of it first (one connection per account), so asking for a token is
- * leaving: the client asks only on "Vào phòng". The same room in another tab
+ * leaving: the client asks only on "Vào phòng". The active call one is in
+ * ends first too (D-242, D-246): asked of social through ACTIVE_CALLS, so
+ * the browser never holds a call and a room at once; the client asks before
+ * (spec 09). A call still ringing is left. The same room in another tab
  * needs nothing here: LiveKit lets one connection per identity in a room,
  * and pushes the older out.
  *
@@ -36,7 +39,8 @@ export class IssueJoinTokenHandler implements ICommandHandler<IssueJoinTokenComm
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(MEDIA_ROOMS) private readonly media: MediaRoomsPort,
         @Inject(VOICE_STATE_REPOSITORY) private readonly states: VoiceStateRepositoryPort,
-        private readonly events: EventBus
+        private readonly events: EventBus,
+        @Inject(ACTIVE_CALLS) private readonly calls: ActiveCallsPort
     ) {}
 
     async execute({ userId, channelId, sessionId }: IssueJoinTokenCommand): Promise<JoinToken> {
@@ -46,13 +50,12 @@ export class IssueJoinTokenHandler implements ICommandHandler<IssueJoinTokenComm
             userId,
             new Date()
         )
+        await this.calls.endFor(userId)
         const current = await this.states.find(userId)
         if (current && current.channelId !== channelId) {
             await leaveRoom({ media: this.media, states: this.states, events: this.events }, current)
         }
-        // The name everyone in the room sees: none for an account shown as deleted (D-182).
-        const user = await this.users.findById(userId)
-        const name = user && !isHidden(user) ? (user.displayName ?? user.username ?? '') : ''
+        const name = await mediaNameOf(this.users, userId)
         return this.media.issueJoinToken({ room: voiceRoomOf(channelId), identity: userId, name, sources, sessionId })
     }
 }

@@ -13,7 +13,7 @@ import {
 } from '../../../domain'
 import { VoiceLeaveRequestedEvent } from '../../events/voice-leave-requested.event'
 import { VoiceStateChangedEvent } from '../../events/voice-state-changed.event'
-import { MediaRoomsPort } from '../../ports'
+import { ActiveCallsPort, MediaRoomsPort } from '../../ports'
 import { IssueJoinTokenCommand, LeaveVoiceCommand } from './connection.commands'
 import { IssueJoinTokenHandler, LeaveVoiceHandler } from './connection.handlers'
 
@@ -74,20 +74,22 @@ function setup({ access = server(), timeoutUntil = null as Date | null, current 
         })
     }
     const events = { publish: jest.fn() }
+    const calls = { endFor: jest.fn().mockResolvedValue(undefined) }
     const token = new IssueJoinTokenHandler(
         channels as unknown as ChannelDirectoryPort,
         checker as unknown as PermissionCheckerPort,
         users as unknown as UserDirectoryPort,
         media as unknown as MediaRoomsPort,
         states as unknown as VoiceStateRepositoryPort,
-        events as unknown as EventBus
+        events as unknown as EventBus,
+        calls as unknown as ActiveCallsPort
     )
     const leave = new LeaveVoiceHandler(
         media as unknown as MediaRoomsPort,
         states as unknown as VoiceStateRepositoryPort,
         events as unknown as EventBus
     )
-    return { token, leave, channels, users, media, writes, events }
+    return { token, leave, channels, users, media, writes, events, calls }
 }
 
 describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
@@ -106,6 +108,30 @@ describe('A token to join a voice room (REQ-VC-01, D-210)', () => {
             // The session asking: it ending puts the connection out (D-214).
             sessionId: 'session-an'
         })
+    })
+
+    it('ends the active call one is in before the token: one media connection per account (D-242, D-246)', async () => {
+        const { token, media, calls } = setup()
+
+        await token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))
+
+        expect(calls.endFor).toHaveBeenCalledWith('an')
+        expect(calls.endFor.mock.invocationCallOrder[0]).toBeLessThan(media.issueJoinToken.mock.invocationCallOrder[0])
+    })
+
+    it('gives no token when the call cannot be ended, and ends none for a room refused', async () => {
+        const failing = setup()
+        failing.calls.endFor.mockRejectedValueOnce(new Error('database down'))
+        await expect(failing.token.execute(new IssueJoinTokenCommand('an', LOUNGE, 'session-an'))).rejects.toThrow(
+            'database down'
+        )
+        expect(failing.media.issueJoinToken).not.toHaveBeenCalled()
+
+        const refused = setup()
+        await expect(
+            refused.token.execute(new IssueJoinTokenCommand('an', 'secret', 'session-an'))
+        ).rejects.toBeInstanceOf(VoiceRoomNotFoundError)
+        expect(refused.calls.endFor).not.toHaveBeenCalled()
     })
 
     it('gives the room no name for an account shown as deleted (D-182)', async () => {
