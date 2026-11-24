@@ -71,6 +71,34 @@ describe('PublishStreakUpdatedHandler (REQ-STUDY-07, D-224, D-232)', () => {
         expect(publisher.toServer).not.toHaveBeenCalled()
     })
 
+    it('tells the count’s own numbers at once, before reading again: they reach the client ahead of the session’s change (D-236)', async () => {
+        const countedUntil = new Date('2026-11-20T13:25:00Z')
+        const { handler, publisher } = setup(
+            { an: { seconds: 1080, countedUntil, readAt: READ } },
+            { current: 4, longest: 9, lastQualifiedDate: '2026-11-19' }
+        )
+
+        const reading = handler.handle(count('an', countedUntil))
+
+        // Before any read: the same tick as the publish of the count, so ahead of focus_session.* (published after it).
+        expect(publisher.toUser).toHaveBeenCalledTimes(1)
+        expect(publisher.toUser).toHaveBeenCalledWith('an', 'streak.updated', {
+            current: 4,
+            longest: 9,
+            todaySeconds: 1080,
+            countedUntil,
+            readAt: NOW
+        })
+        await reading
+        // Then read again, later, which the client keeps (D-232).
+        expect(publisher.toUser).toHaveBeenCalledTimes(2)
+        expect(publisher.toUser).toHaveBeenLastCalledWith(
+            'an',
+            'streak.updated',
+            expect.objectContaining({ readAt: READ })
+        )
+    })
+
     it('says null once the count closed the participation (left, the session ended): in no session now', async () => {
         const { handler, publisher } = setup(
             { an: { seconds: 1500, countedUntil: null, readAt: READ } },
