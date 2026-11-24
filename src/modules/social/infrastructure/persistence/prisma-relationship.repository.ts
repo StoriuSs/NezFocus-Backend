@@ -47,7 +47,8 @@ const entryOfRow = (
     return {
         person: shownPerson(other),
         type,
-        note: type === 'incoming' ? row.note : null,
+        // A request's note, to the one asked and back to the asker (D-248); none once friends.
+        note: type === 'incoming' || type === 'outgoing' ? row.note : null,
         since: row.acceptedAt ?? row.createdAt
     }
 }

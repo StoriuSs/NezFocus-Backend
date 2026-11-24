@@ -16,7 +16,7 @@ export interface PersonView {
 export interface RelationshipView {
     user: PersonView
     type: RelationshipType
-    /** Their request's note, to me only. */
+    /** A request's note: theirs to me, or mine to them (D-248); nobody else's. */
     note: string | null
     since: Date | null
     /** What I see of them, for a friend (D-242: presence goes to friends); null for anyone else. */

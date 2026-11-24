@@ -24,7 +24,7 @@ export class RelationshipResponseDto {
     @IsIn(RELATIONSHIP_TYPES)
     type: RelationshipType
 
-    /** Their request's note, to me only; null otherwise (REQ-SOCIAL-01). */
+    /** A request's note: theirs to me, or mine to them (REQ-SOCIAL-01, D-248); null otherwise. */
     @Expose()
     @IsOptional()
     @IsString()

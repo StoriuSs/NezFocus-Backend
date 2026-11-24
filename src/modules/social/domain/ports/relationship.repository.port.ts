@@ -10,7 +10,7 @@ export interface RelationshipEntry {
     /** `avatarUrl` is the stored picture's key. */
     person: ShownPerson
     type: RelationshipType
-    /** The note of their request to me; never mine to them (REQ-SOCIAL-01: only the receiver sees it). */
+    /** The note of a request: theirs to me, or mine to them (REQ-SOCIAL-01, D-248: the asker sees their own words under Sent). */
     note: string | null
     /** Since when: a request sent, a friendship accepted, a block made; null for none. */
     since: Date | null

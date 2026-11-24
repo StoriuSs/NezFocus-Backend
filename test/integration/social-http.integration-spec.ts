@@ -346,13 +346,17 @@ describe('Social (integration)', () => {
         const typeIn = async (who: Who, other: Who) =>
             (await listOf(who)).find((entry) => entry.user.id === users[other].id)?.type ?? 'none'
 
-        it('asks by username with a note only the one asked sees, and accepting makes friends and tells the asker', async () => {
+        it('asks by username with a note the one asked sees and the asker sees again, and accepting makes friends and tells the asker', async () => {
             const asked = await ask('an', 'binh', '  Mình là An, nhóm ôn Giải tích  ')
             expect([asked.status, asked.body.data.type, asked.body.data.note, asked.body.data.user.id]).toEqual([
                 200,
                 'outgoing',
-                null,
+                'Mình là An, nhóm ôn Giải tích',
                 users.binh.id
+            ])
+            // The asker's own words under "Sent" (D-248, C-30).
+            expect((await listOf('an')).map(({ type, note }) => [type, note])).toEqual([
+                ['outgoing', 'Mình là An, nhóm ôn Giải tích']
             ])
             expect((await listOf('binh')).map(({ type, note }) => [type, note])).toEqual([
                 ['incoming', 'Mình là An, nhóm ôn Giải tích']

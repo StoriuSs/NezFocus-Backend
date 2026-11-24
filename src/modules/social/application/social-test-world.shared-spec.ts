@@ -101,7 +101,7 @@ export function socialWorld() {
         return {
             person: shown,
             type: standing,
-            note: standing === 'incoming' ? row.note : null,
+            note: standing === 'incoming' || standing === 'outgoing' ? row.note : null,
             since: row.acceptedAt ?? row.createdAt
         }
     }
