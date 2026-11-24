@@ -36,7 +36,7 @@ Concretely, what you get on top of Nest:
 | | |
 | --- | --- |
 | **Sign-in you own** | Emailed codes (one flow for sign-up and sign-in) and passwords, sessions with a refresh cookie, Google sign-in, rate limits. No identity server to run |
-| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables) |
+| **An architecture that survives growth** | Hexagonal layers and CQRS, with eleven modules: `users` (the small worked example), the larger `auth`, `servers` (use cases grouped by area), `permissions` (the two ports `servers` asks), `realtime` (sockets: a gateway, and the port every module sends events through), `messaging` (messages in channels, grouped by area like `servers`), `tasks` (the Task Boards of channels, grouped the same way), `notifications` (the inbox, which other modules write to through its `NOTIFIER` port), `voice` (voice and video rooms, whose media LiveKit carries) and `study` (study sessions, Solo, the seconds studied each day, streaks; so far the counting of the seconds studied and Room Sessions started and controlled, their phases moved by timed jobs, with who joins and leaves them, their Host and an empty room, and the Solo) and `social` (friends, blocks, direct messages and one-to-one calls; so far its tables, friends and blocks) |
 | **The safety net** | Rate limiting, idempotency, request timeouts, graceful shutdown, a two-layer cache |
 | **The boring necessities** | Postgres and Prisma, Redis, background jobs, file uploads with image processing, email |
 | **Eyes on it** | Metrics, logs, dashboards, alerts to Discord, optional error tracking |
@@ -682,6 +682,26 @@ new; every read of a server's channels names its server, and servers'
 it is not found until L3 (`serverChannelType` in servers' and permissions'
 adapters says so to TypeScript).
 
+Friends and blocks (M6 L2, D-237, D-242, D-243) group by area like the
+modules above: `commands/relationship` (a request by username or from a
+profile, accepting, and one route that declines, cancels or unfriends),
+`commands/block`, `queries/relationship` (the list, read once, and one
+person after a change, D-159) and `queries/person` (`GET /users/lookup`,
+`GET /users/{id}/profile`: routes under `users/` in this module, with the
+servers two people share from servers' `MEMBERSHIP`). What each action does
+is a pure function, `decideRelationship` in `domain/relationship.rules.ts`,
+run by the repository under the pair's advisory lock
+(`relationship:<low>:<high>`); `services/change-relationship.ts` checks whom
+it names (an account waiting to be deleted is asked nothing, D-243) and
+counts the day's 50 requests in the sender's time zone. After the commit,
+`relationship.*` goes to both people, each as they see the other (someone
+blocked only hears the friendship go), and the inbox items go through
+notifications' `NOTIFIER`. The module answers realtime's `FRIENDS`
+(presence goes to friends too) and notifications' `BLOCK_LIST` (no item for
+someone who blocked the one acting; items of people one blocked hidden from
+the inbox until unblocked) through the global `FriendsModule` and
+`BlockListModule`.
+
 Copy one of these shapes for your own modules: one folder per use case while
 there are few; grouping by area once there are many is the owner's call, so
 ask first. There is a step-by-step in
@@ -775,7 +795,7 @@ Postgres, uploads, Redis and monitoring off it, in the order that pays.
 │   ├── modules/notifications/  # The inbox: items from mentions, replies, tasks, servers; read rules, the 90-day clean-up, a deleted account's inbox
 │   ├── modules/voice/          # Voice and video rooms: LiveKit behind MEDIA_ROOMS, who is in which room
 │   ├── modules/study/          # Study sessions in rooms and alone, seconds studied per day, streaks
-│   ├── modules/social/         # Friends, blocks, direct messages, one-to-one calls
+│   ├── modules/social/         # Friends, blocks, direct messages, one-to-one calls (by area, D-243)
 │   ├── maintenance/            # Scheduled jobs (maintenance-tasks.ts)
 │   ├── shared/                 # Everything cross-cutting
 │   └── bootstrap/              # Scripts: env check, OpenAPI export, user roles, cloud sync

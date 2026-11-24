@@ -8,13 +8,15 @@
 // The cycles a study room may have: a study session's cycle is one of them (D-223).
 export { STUDY_CYCLE_LIMITS, studyCycleProblem, type StudyCycle } from './domain/study-room.rules'
 
-// Which servers someone is in, for the realtime module's rooms (SRS 5.2), and since when (D-170).
+// Which servers someone is in, for the realtime module's rooms (SRS 5.2), and since when (D-170);
+// the servers two people share, for social's profiles (D-109, D-243).
 export {
     MEMBERSHIP,
     type ChannelMemberFilter,
     type MemberSince,
     type Membership,
-    type MembershipPort
+    type MembershipPort,
+    type SharedServer
 } from './application/ports/membership.port'
 // Presence for the member list and invites: answered by realtime (D-160 pattern).
 export { PRESENCE_READER, type MemberPresence, type PresenceReaderPort } from './application/ports/presence-reader.port'

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
 import {
+    FriendItemType,
     HeldMessageItem,
     InboxScope,
     MessageItemsPlan,
@@ -17,6 +18,7 @@ import {
 } from '../../domain'
 import {
     dataOf,
+    friendDataOf,
     MessageItemData,
     NOTIFICATION,
     serverDataOf,
@@ -37,15 +39,24 @@ const MESSAGE_TYPES = Prisma.sql`'mention'::"NotificationType", 'reply'::"Notifi
 
 /**
  * A person's items they may see now (REQ-NOTIF-03): of a channel they view,
- * a server handed to them that they are still in, and any moderation item.
+ * a server handed to them that they are still in, any moderation item, the
+ * friend items (no server, D-242); none from someone they blocked (an item
+ * with no actor stays: `actorId NOT IN` alone would drop it), but for a
+ * server handed to them, which is about their own role (L2-d).
  */
-const inScope = (userId: string, { serverIds, channelIds }: InboxScope): Prisma.NotificationWhereInput => ({
+const inScope = (
+    userId: string,
+    { serverIds, channelIds, hiddenActorIds }: InboxScope
+): Prisma.NotificationWhereInput => ({
     userId,
     OR: [
         { channelId: { in: channelIds } },
         { type: 'owner_transferred', serverId: { in: serverIds } },
-        { type: 'moderation' }
-    ]
+        { type: { in: ['moderation', 'friend_request', 'friend_accepted'] } }
+    ],
+    ...(hiddenActorIds.length > 0 && {
+        AND: [{ OR: [{ actorId: null }, { actorId: { notIn: hiddenActorIds } }, { type: 'owner_transferred' }] }]
+    })
 })
 
 const batches = <T>(all: T[]): T[][] =>
@@ -206,6 +217,35 @@ export class PrismaNotificationRepository implements NotificationRepositoryPort 
             select: { userId: true }
         })
         return [...new Set(rows.map((row) => row.userId))]
+    }
+
+    async addFriendItem(
+        type: FriendItemType,
+        userId: string,
+        actorId: string,
+        note: string | null,
+        at: Date
+    ): Promise<NotificationRecord | null> {
+        try {
+            const row = await this.prisma.notification.create({
+                data: { userId, type, actorId, data: friendDataOf(note), createdAt: at },
+                select: NOTIFICATION
+            })
+            return toNotificationRecord(row)
+        } catch (error) {
+            // Either account gone for good meanwhile: no one to tell.
+            if (prismaCode(error) === 'P2003') return null
+            throw error
+        }
+    }
+
+    async removeFriendRequests(userId: string, otherId: string): Promise<RemovedNotification[]> {
+        // Notification_userId_id_idx for each of the two.
+        return removeWhere(
+            this.prisma,
+            Prisma.sql`"type" = 'friend_request' AND (("userId" = ${userId} AND "actorId" = ${otherId})
+                OR ("userId" = ${otherId} AND "actorId" = ${userId}))`
+        )
     }
 
     async removeForMessages(channelId: string, messageIds: string[]): Promise<RemovedNotification[]> {

@@ -3,6 +3,7 @@ import { AccessServer, EVERYONE_DEFAULT_PERMISSIONS, Permission, PermissionCheck
 import { MembershipPort } from '@/modules/servers'
 import { UserDirectoryPort } from '@/modules/users'
 import {
+    FriendItemType,
     HeldMessageItem,
     InboxScope,
     MessageItemsPlan,
@@ -15,7 +16,7 @@ import {
     TaskPlace,
     TaskReminder
 } from '../domain'
-import { MessagePreview, MessagePreviewsPort } from './ports'
+import { BlockListPort, MessagePreview, MessagePreviewsPort } from './ports'
 
 /*
  * One server for the notifications handler specs, in memory (spec 06):
@@ -77,13 +78,16 @@ export function notificationWorld() {
         return removed
     }
     /** What the Prisma repository's `inScope` keeps (REQ-NOTIF-03). */
-    const seen = (userId: string, { serverIds, channelIds }: InboxScope) =>
+    const seen = (userId: string, { serverIds, channelIds, hiddenActorIds }: InboxScope) =>
         rows.filter(
             (row) =>
                 row.userId === userId &&
+                (row.actorId === null || !hiddenActorIds.includes(row.actorId) || row.type === 'owner_transferred') &&
                 ((row.channelId !== null && channelIds.includes(row.channelId)) ||
                     (row.type === 'owner_transferred' && row.serverId !== null && serverIds.includes(row.serverId)) ||
-                    row.type === 'moderation')
+                    row.type === 'moderation' ||
+                    row.type === 'friend_request' ||
+                    row.type === 'friend_accepted')
         )
 
     const repository: NotificationRepositoryPort = {
@@ -118,6 +122,7 @@ export function notificationWorld() {
                         actor: person(place.actorId),
                         reason: item.reason,
                         roleId: item.roleId,
+                        note: null,
                         readAt: readerIds.has(item.userId) ? at : null,
                         createdAt: at
                     }
@@ -147,6 +152,7 @@ export function notificationWorld() {
                     roleId: null,
                     task: facts,
                     server: null,
+                    note: null,
                     readAt: null,
                     createdAt: at
                 })
@@ -171,6 +177,7 @@ export function notificationWorld() {
                     roleId: null,
                     task: null,
                     server: facts,
+                    note: null,
                     readAt: read ? at : null,
                     createdAt: at
                 }
@@ -256,6 +263,43 @@ export function notificationWorld() {
                     rows.filter((row) => row.userId === userId && deletedAccounts.has(userId)).map((row) => row.id)
                 ).length
         ),
+        addFriendItem: jest.fn(
+            async (type: FriendItemType, userId: string, actorId: string, note: string | null, at: Date) => {
+                if (deletedAccounts.has(userId) || deletedAccounts.has(actorId)) return null
+                const row: Row = {
+                    id: nextId(),
+                    userId,
+                    type,
+                    serverId: null,
+                    channelId: null,
+                    messageId: null,
+                    taskId: null,
+                    actorId,
+                    actor: person(actorId),
+                    reason: null,
+                    roleId: null,
+                    task: null,
+                    server: null,
+                    note,
+                    readAt: null,
+                    createdAt: at
+                }
+                rows.push(row)
+                return row
+            }
+        ),
+        removeFriendRequests: jest.fn(async (userId: string, otherId: string) =>
+            removeIds(
+                rows
+                    .filter(
+                        (row) =>
+                            row.type === 'friend_request' &&
+                            ((row.userId === userId && row.actorId === otherId) ||
+                                (row.userId === otherId && row.actorId === userId))
+                    )
+                    .map((row) => row.id)
+            )
+        ),
         removeOfDeleted: jest.fn(
             async (limit: number) =>
                 removeIds(
@@ -277,7 +321,8 @@ export function notificationWorld() {
         ),
         membershipsOf: jest.fn(),
         membersAmong: jest.fn(),
-        channelMembers: jest.fn()
+        channelMembers: jest.fn(),
+        sharedServers: jest.fn()
     }
     const checker: PermissionCheckerPort = {
         access: jest.fn(async (serverId: string, userId: string) =>
@@ -314,6 +359,7 @@ export function notificationWorld() {
             taskId: null,
             task: null,
             server: null,
+            note: null,
             actorId: 'an',
             actor: person('an'),
             reason: 'user',
@@ -328,7 +374,18 @@ export function notificationWorld() {
     const say = (id: string, content = `tin ${id}`) =>
         messages.set(id, { id, content, mentionUsers: [], mentionRoles: [], files: { count: 0, images: 0 } })
 
-    const deps = [repository, membership, checker, users, previews, eventBus] as const
+    /** Who blocked whom: blocker → blocked. */
+    const blocked = new Map<string, Set<string>>()
+    const block = (blockerId: string, blockedId: string) =>
+        blocked.set(blockerId, new Set([...(blocked.get(blockerId) ?? []), blockedId]))
+    const blocks: BlockListPort = {
+        blockedBy: jest.fn(async (userId: string) => [...(blocked.get(userId) ?? [])]),
+        blockersAmong: jest.fn(async (blockedId: string, userIds: string[]) =>
+            userIds.filter((userId) => blocked.get(userId)?.has(blockedId))
+        )
+    }
+
+    const deps = [repository, membership, checker, users, previews, eventBus, blocks] as const
     const published = (type: new (...args: never[]) => unknown) =>
         eventBus.publish.mock.calls.map(([event]) => event).filter((event) => event instanceof type)
 
@@ -341,6 +398,8 @@ export function notificationWorld() {
         previews,
         eventBus,
         deps,
+        blocks,
+        block,
         seed,
         say,
         published,

@@ -6085,6 +6085,451 @@
           "study"
         ]
       }
+    },
+    "/api/v1/me/relationships": {
+      "get": {
+        "operationId": "RelationshipsController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipListResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Everyone in my list, all at once (D-242): friends with their presence, requests both ways, people I blocked.",
+        "tags": [
+          "social"
+        ]
+      },
+      "post": {
+        "operationId": "RelationshipsController_requestByUsername_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendFriendRequestRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ask someone by username, with an optional note (REQ-SOCIAL-01, D-110).\nThey asked me first: friends. Not found: no such username, oneself,\nan account deleted or waiting to be. CANNOT_MESSAGE_USER: a block\neither way. FRIEND_REQUEST_PENDING, ALREADY_FRIENDS. 50 a day of my\ntime zone: RATE_LIMIT_EXCEEDED with `reason: friend_requests`.",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/me/relationships/{userId}": {
+      "put": {
+        "operationId": "RelationshipsController_request_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ask someone from their profile, no note (D-237): they asked me first,\nfriends; asked already or friends already, nothing changes. Refused as\nthe request by username is.",
+        "tags": [
+          "social"
+        ]
+      },
+      "delete": {
+        "operationId": "RelationshipsController_remove_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Decline their request, cancel mine, or unfriend (D-237): whatever\nstands between us goes; with nothing there, nothing changes. A block\nstays (`DELETE /me/blocks/{user_id}` takes it off).",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/me/relationships/{userId}/accept": {
+      "post": {
+        "operationId": "RelationshipsController_accept_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID identifying one user intent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Accept their request (D-237). Friends already: nothing changes. No\nrequest of theirs (cancelled meanwhile): NOT_FOUND_ERROR, which the\nclient says as an invitation no longer valid.",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/me/blocks/{userId}": {
+      "put": {
+        "operationId": "BlocksController_block_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Block someone: the friendship or request between us goes; neither can\nask, write or call the other (D-242). Blocked already: nothing changes.\nNot found: oneself, an account deleted or waiting to be (D-243).",
+        "tags": [
+          "social"
+        ]
+      },
+      "delete": {
+        "operationId": "BlocksController_unblock_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RelationshipResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Unblock them: strangers again, their inbox items back (D-242). Not blocked: nothing changes.",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/users/lookup": {
+      "get": {
+        "operationId": "PeopleController_lookUp_v1",
+        "parameters": [
+          {
+            "name": "username",
+            "required": true,
+            "in": "query",
+            "description": "As typed: trimmed, a leading \"@\" taken off and lower-cased here as the dialog does.",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PersonProfileResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Someone's card by username (D-110), 30 lookups a minute\n(RATE_LIMIT_EXCEEDED with `reason: user_lookup`). Not found: no such\nusername, oneself, an account deleted or waiting to be. One who\nblocked me is found as anyone (REQ-SOCIAL-01).",
+        "tags": [
+          "social"
+        ]
+      }
+    },
+    "/api/v1/users/{userId}/profile": {
+      "get": {
+        "operationId": "PeopleController_profile_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PersonProfileResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Someone's profile (D-109, D-111); an account waiting to be deleted shows as deleted (D-182).",
+        "tags": [
+          "social"
+        ]
+      }
     }
   },
   "info": {
@@ -9838,6 +10283,11 @@
             "type": "string",
             "nullable": true
           },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "A friend request's note, at most 150 characters; null for every other item (REQ-SOCIAL-01)."
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -9857,6 +10307,7 @@
           "message_id",
           "task_id",
           "role_id",
+          "note",
           "created_at"
         ]
       },
@@ -10545,6 +10996,174 @@
         "required": [
           "items",
           "has_more"
+        ]
+      },
+      "SocialPersonResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "avatar_url"
+        ]
+      },
+      "RelationshipResponseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "friend",
+              "incoming",
+              "outgoing",
+              "blocked",
+              "none"
+            ],
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "When the request was sent, the friendship accepted or the block made; null for `none`."
+          },
+          "presence": {
+            "nullable": true,
+            "description": "What I see of a friend (D-242); null for anyone else.",
+            "enum": [
+              "online",
+              "idle",
+              "dnd",
+              "offline"
+            ],
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SocialPersonResponseDto"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "Their request's note, to me only; null otherwise (REQ-SOCIAL-01)."
+          }
+        },
+        "required": [
+          "type",
+          "since",
+          "presence",
+          "user",
+          "note"
+        ]
+      },
+      "RelationshipListResponseDto": {
+        "type": "object",
+        "properties": {
+          "relationships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelationshipResponseDto"
+            }
+          }
+        },
+        "required": [
+          "relationships"
+        ]
+      },
+      "SendFriendRequestRequestDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "As typed: trimmed, a leading \"@\" taken off and lower-cased here as the dialog does.",
+            "maxLength": 64
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "Seen only by the one asked (tab Đang chờ, inbox); trimmed, empty is none.",
+            "maxLength": 150
+          }
+        },
+        "required": [
+          "username"
+        ]
+      },
+      "MutualServerResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "PersonProfileResponseDto": {
+        "type": "object",
+        "properties": {
+          "presence": {
+            "nullable": true,
+            "description": "Only when we are friends or share a server; null otherwise.",
+            "enum": [
+              "online",
+              "idle",
+              "dnd",
+              "offline"
+            ],
+            "type": "string"
+          },
+          "relationship": {
+            "description": "Where we stand, as RelationshipResponseDto's `type`.",
+            "enum": [
+              "friend",
+              "incoming",
+              "outgoing",
+              "blocked",
+              "none"
+            ],
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SocialPersonResponseDto"
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true
+          },
+          "mutual_servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MutualServerResponseDto"
+            }
+          }
+        },
+        "required": [
+          "presence",
+          "relationship",
+          "user",
+          "bio",
+          "mutual_servers"
         ]
       }
     }

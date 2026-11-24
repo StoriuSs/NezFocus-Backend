@@ -139,3 +139,50 @@ describe('RemoveMessageItemsHandler (REQ-NOTIF-03)', () => {
         expect(world.eventBus.publish).not.toHaveBeenCalled()
     })
 })
+
+describe('SyncMessageItemsHandler and blocks (D-185, D-242)', () => {
+    it('makes no mention item for someone who blocked the author', async () => {
+        const world = notificationWorld()
+        world.say('m1')
+        world.block('chi', 'an')
+
+        await new SyncMessageItemsHandler(...world.deps).execute(
+            new SyncMessageItemsCommand({
+                serverId: 'ot',
+                channelId: 'hoi-dap',
+                messageId: 'm1',
+                actorId: 'an',
+                sentAt: new Date(),
+                sources: { users: ['binh', 'chi'], repliedTo: null, roles: [], everyone: [], here: [] },
+                readerIds: []
+            })
+        )
+
+        expect(world.rows.map((row) => row.userId)).toEqual(['binh'])
+    })
+
+    it('keeps the item of one who blocked the author since, when the message is edited: hidden, back once unblocked', async () => {
+        const world = notificationWorld()
+        world.say('m1')
+        const held = world.seed({ userId: 'chi', messageId: 'm1' })
+        world.block('chi', 'an')
+
+        await new SyncMessageItemsHandler(...world.deps).execute(
+            new SyncMessageItemsCommand({
+                serverId: 'ot',
+                channelId: 'hoi-dap',
+                messageId: 'm1',
+                actorId: 'an',
+                sentAt: new Date(),
+                sources: { users: ['binh', 'chi'], repliedTo: null, roles: [], everyone: [], here: [] },
+                readerIds: []
+            })
+        )
+
+        expect(world.rows.map((row) => [row.userId, row.id === held.id])).toEqual([
+            ['chi', true],
+            ['binh', false]
+        ])
+        expect(world.published(NotificationsDeletedEvent)).toEqual([])
+    })
+})

@@ -115,6 +115,9 @@ class FakeDirectory implements UserDirectoryPort {
     async findByEmail(email: string) {
         return [...this.users.values()].find((u) => u.email === email.toLowerCase() && !u.deletedAt) ?? null
     }
+    async findByUsername(username: string) {
+        return [...this.users.values()].find((user) => user.username === username && !user.deletedAt) ?? null
+    }
     async findById(id: string) {
         return this.users.get(id) ?? null
     }

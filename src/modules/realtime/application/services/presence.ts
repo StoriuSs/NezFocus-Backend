@@ -2,7 +2,14 @@ import { Inject, Logger } from '@nestjs/common'
 import { MEMBERSHIP, type MembershipPort } from '@/modules/servers'
 import { USER_DIRECTORY, type UserDirectoryPort } from '@/modules/users'
 import { liveSockets, shownPresence, type Presence } from '../../domain'
-import { EVENT_PUBLISHER, PRESENCE_STORE, type EventPublisherPort, type PresenceStorePort } from '../ports'
+import {
+    EVENT_PUBLISHER,
+    FRIENDS,
+    PRESENCE_STORE,
+    type EventPublisherPort,
+    type FriendsPort,
+    type PresenceStorePort
+} from '../ports'
 
 /** What working out someone's presence needs. */
 export interface PresenceDeps {
@@ -10,6 +17,24 @@ export interface PresenceDeps {
     publisher: EventPublisherPort
     membership: MembershipPort
     directory: UserDirectoryPort
+    friends: FriendsPort
+}
+
+/** Who hears a person's presence besides their own tabs: their servers, and their friends (D-242). */
+interface Audience {
+    serverIds: string[]
+    friendIds: string[]
+}
+
+const NOBODY: Audience = { serverIds: [], friendIds: [] }
+
+/** Reads the person's servers and friends; throws when either cannot be read. */
+async function audienceOf(deps: PresenceDeps, userId: string): Promise<Audience> {
+    const [serverIds, friendIds] = await Promise.all([
+        deps.membership.serverIdsOf(userId),
+        deps.friends.friendIdsOf(userId)
+    ])
+    return { serverIds, friendIds }
 }
 
 /** How long to wait for a person's lock before going on without it: a holder that died lets go by its expiry. */
@@ -41,13 +66,13 @@ export async function underLock<T>(deps: PresenceDeps, userId: string, work: () 
 /**
  * Works out what others see of `userId` now (presence.rules.ts) from their
  * kept tabs and chosen status, keeps it, and when it changed tells it as
- * `presence.updated`: to their own tabs and to every server they are in
- * (ARCHITECTURE 3.3; friends come in M6). Tabs not heard from for 60
- * seconds are dropped on the way. Returns what others see. Run under the
- * person's lock (`underLock`).
+ * `presence.updated`: to their own tabs, to every server they are in
+ * and to each of their friends (ARCHITECTURE 3.3, D-242). Tabs not heard
+ * from for 60 seconds are dropped on the way. Returns what others see. Run
+ * under the person's lock (`underLock`).
  *
- * The servers are read before anything is kept: when they cannot be, nothing
- * changes and the next signal or sweep tries again. Throws when the store
+ * The servers and friends are read before anything is kept: when they
+ * cannot be, nothing changes and the next signal or sweep tries again. Throws when the store
  * cannot be reached.
  */
 export async function announcePresence(deps: PresenceDeps, userId: string, now: number): Promise<Presence> {
@@ -61,21 +86,23 @@ export async function announcePresence(deps: PresenceDeps, userId: string, now: 
     // Gone for good: no tab left, and offline (or invisible) once the 60 seconds are over.
     const forget = live.length === 0 && shown === 'offline' && kept.lastSeenAt > 0
     if (shown === kept.shown && dead.length === 0 && !forget) return shown
-    const serverIds = shown === kept.shown ? [] : await deps.membership.serverIdsOf(userId)
+    const audience = shown === kept.shown ? NOBODY : await audienceOf(deps, userId)
     await deps.store.show(userId, shown, { deadSocketIds: dead, forget })
-    if (shown !== kept.shown) tellPresence(deps, userId, shown, serverIds)
+    if (shown !== kept.shown) tellPresence(deps, userId, shown, audience)
     return shown
 }
 
 /**
  * Tells what others now see of someone, as `presence.updated`: to their own
- * tabs and to every server they are in (ARCHITECTURE 3.3; friends come in
- * M6, here, for every way presence changes).
+ * tabs, to every server they are in and to each friend (ARCHITECTURE 3.3,
+ * D-242), here for every way presence changes. A friend in a server with
+ * them hears it twice; the client keeps the last.
  */
-function tellPresence(deps: PresenceDeps, userId: string, status: Presence, serverIds: string[]): void {
+function tellPresence(deps: PresenceDeps, userId: string, status: Presence, { serverIds, friendIds }: Audience): void {
     const event = { userId, status }
     deps.publisher.toUser(userId, 'presence.updated', event)
     for (const serverId of serverIds) deps.publisher.toServer(serverId, 'presence.updated', event)
+    for (const friendId of friendIds) deps.publisher.toUser(friendId, 'presence.updated', event)
 }
 
 /**
@@ -83,16 +110,16 @@ function tellPresence(deps: PresenceDeps, userId: string, status: Presence, serv
  * every session ended): offline now, rather than after the 60 seconds a
  * closed tab is held for, and nothing of them kept (D-182: others see the
  * account as deleted, not as someone here a moment ago). Told to their
- * servers when they showed as anything else. A socket of theirs closing
+ * servers and friends when they showed as anything else. A socket of theirs closing
  * later finds them offline already and tells nothing. Run under the
  * person's lock (`underLock`).
  */
 export async function announceGone(deps: PresenceDeps, userId: string): Promise<void> {
     const kept = await deps.store.read(userId)
     if (kept.shown === 'offline' && kept.sockets.size === 0 && kept.lastSeenAt === 0) return
-    const serverIds = kept.shown === 'offline' ? [] : await deps.membership.serverIdsOf(userId)
+    const audience = kept.shown === 'offline' ? NOBODY : await audienceOf(deps, userId)
     await deps.store.show(userId, 'offline', { deadSocketIds: [...kept.sockets.keys()], forget: true })
-    if (kept.shown !== 'offline') tellPresence(deps, userId, 'offline', serverIds)
+    if (kept.shown !== 'offline') tellPresence(deps, userId, 'offline', audience)
 }
 
 /**
@@ -109,9 +136,10 @@ export abstract class PresenceHandler {
         @Inject(PRESENCE_STORE) store: PresenceStorePort,
         @Inject(EVENT_PUBLISHER) publisher: EventPublisherPort,
         @Inject(MEMBERSHIP) membership: MembershipPort,
-        @Inject(USER_DIRECTORY) directory: UserDirectoryPort
+        @Inject(USER_DIRECTORY) directory: UserDirectoryPort,
+        @Inject(FRIENDS) friends: FriendsPort
     ) {
-        this.deps = { store, publisher, membership, directory }
+        this.deps = { store, publisher, membership, directory, friends }
     }
 
     /** `work` under the person's lock; on a failure, `fallback`. */

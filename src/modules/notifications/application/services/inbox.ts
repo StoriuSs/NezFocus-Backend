@@ -4,7 +4,7 @@ import { channelPermissions, Permission, PERMISSION_CHECKER, PermissionCheckerPo
 import { MEMBERSHIP, MembershipPort } from '@/modules/servers'
 import { USER_DIRECTORY, UserDirectoryPort } from '@/modules/users'
 import { InboxScope, NOTIFICATION_REPOSITORY, NotificationRepositoryPort, RemovedNotification } from '../../domain'
-import { MESSAGE_PREVIEWS, MessagePreviewsPort } from '../ports'
+import { BLOCK_LIST, BlockListPort, MESSAGE_PREVIEWS, MessagePreviewsPort } from '../ports'
 import { NotificationViewSources } from './notification-views'
 
 /** How many people's unread counts are read at once, so a large delete leaves the database pool to the requests. */
@@ -22,7 +22,8 @@ export interface RemovedEntry {
 /**
  * What the inbox's handlers read (D-157, D-190): the items, what someone's
  * inbox shows now (`InboxScope`, REQ-NOTIF-03), the messages and pictures
- * items show; and the event bus, for `notification.*`.
+ * items show, whom people blocked (D-242); and the event bus, for
+ * `notification.*`.
  */
 export abstract class Inbox {
     constructor(
@@ -31,7 +32,8 @@ export abstract class Inbox {
         @Inject(PERMISSION_CHECKER) private readonly checker: PermissionCheckerPort,
         @Inject(USER_DIRECTORY) private readonly users: UserDirectoryPort,
         @Inject(MESSAGE_PREVIEWS) private readonly previews: MessagePreviewsPort,
-        protected readonly eventBus: EventBus
+        protected readonly eventBus: EventBus,
+        @Inject(BLOCK_LIST) private readonly blocks: BlockListPort
     ) {}
 
     protected get viewSources(): NotificationViewSources {
@@ -40,7 +42,7 @@ export abstract class Inbox {
 
     /**
      * What the person's inbox shows (REQ-NOTIF-03): the servers they are in,
-     * and the channels they view now in them. Reads the permission cache once
+     * the channels they view now in them, and whom they blocked (D-242). Reads the permission cache once
      * per server, so the page and the unread count filter alike in one query
      * each. A server left or deleted gives none; one rejoined gives its items
      * back, read or not as they were. Moderation items show whatever this is.
@@ -60,7 +62,20 @@ export abstract class Inbox {
                       .map((channel) => channel.id)
                 : []
         )
-        return { serverIds, channelIds }
+        return { serverIds, channelIds, hiddenActorIds: await this.blocks.blockedBy(userId) }
+    }
+
+    /**
+     * Those of `userIds` an item from `actorId` may go to (D-185, D-242): not
+     * the one who acted, nor anyone who blocked them. All of them when the
+     * app acted (no actor).
+     */
+    protected async notBlocking(actorId: string | null, userIds: string[]): Promise<string[]> {
+        if (!actorId) return userIds
+        const others = userIds.filter((userId) => userId !== actorId)
+        if (others.length === 0) return others
+        const blockers = new Set(await this.blocks.blockersAmong(actorId, others))
+        return others.filter((userId) => !blockers.has(userId))
     }
 
     /** The person's unread count, as the badge shows it (REQ-NOTIF-01). */

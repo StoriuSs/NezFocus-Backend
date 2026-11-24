@@ -12,6 +12,12 @@ export interface MemberSince {
     joinedAt: Date
 }
 
+/** A server two people are both members of, by name (D-109: "SERVER CHUNG"). */
+export interface SharedServer {
+    serverId: string
+    name: string
+}
+
 /** Which members of a server: those who view a channel, hold a role, are among some people; every one given narrows. */
 export interface ChannelMemberFilter {
     /** channelViewers of the channel (D-192); null: every member views it. */
@@ -26,7 +32,8 @@ export interface ChannelMemberFilter {
  * in which server. The realtime module asks it when a socket connects, to put
  * the socket in the rooms of its servers (SRS 5.2); the messaging module, for
  * where someone's unread messages start (D-170) and whom a message reaches
- * (D-183); the notifications module, whose inbox items someone sees.
+ * (D-183); the notifications module, whose inbox items someone sees; the
+ * social module, the servers two people share (D-243).
  *
  * Only the list: what the person may do in each server is the permissions
  * module's to answer (PERMISSION_CHECKER).
@@ -47,6 +54,13 @@ export interface MembershipPort {
      * out. One read, however many members.
      */
     channelMembers(serverId: string, filter: ChannelMemberFilter): Promise<MemberSince[]>
+
+    /**
+     * The servers, not deleted, that both people are members of, in the
+     * order `viewerId` joined them, as their own list of servers is (D-109,
+     * D-243). Both the same person: all of theirs.
+     */
+    sharedServers(viewerId: string, otherId: string): Promise<SharedServer[]>
 }
 
 export const MEMBERSHIP = Symbol('MembershipPort')

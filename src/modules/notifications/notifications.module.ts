@@ -8,6 +8,7 @@ import { NOTIFICATION_REPOSITORY } from './domain'
 import {
     CleanUpNotificationsHandler,
     ForgetDeletedAccountItemsHandler,
+    FRIEND_ITEM_COMMAND_HANDLERS,
     INBOX_QUERY_HANDLERS,
     ITEM_COMMAND_HANDLERS,
     NOTIFIER,
@@ -25,8 +26,10 @@ import { NotificationsController } from './presentation'
  * The inbox (SRS 4.8): the only module that writes Notification. Other
  * modules put items in through NOTIFIER (D-185): messaging for mentions and
  * replies, tasks for task items (D-98), servers for a server handed over
- * and for moderation (REQ-SRV-05, REQ-ROLE-04); the messages items are
- * about it reads through MESSAGE_PREVIEWS, answered by messaging (D-198).
+ * and for moderation (REQ-SRV-05, REQ-ROLE-04), social for friend requests
+ * (D-111, D-242); the messages items are about it reads through
+ * MESSAGE_PREVIEWS, answered by messaging (D-198), and whom people blocked
+ * through BLOCK_LIST, answered by social.
  * Asks servers which servers someone is in (MEMBERSHIP), permissions which
  * channels they view (PERMISSION_CHECKER), users for pictures as addresses
  * (USER_DIRECTORY), and tells each person's tabs through realtime's
@@ -41,6 +44,7 @@ import { NotificationsController } from './presentation'
         ...ITEM_COMMAND_HANDLERS,
         ...TASK_ITEM_COMMAND_HANDLERS,
         ...SERVER_ITEM_COMMAND_HANDLERS,
+        ...FRIEND_ITEM_COMMAND_HANDLERS,
         ...READ_COMMAND_HANDLERS,
         CleanUpNotificationsHandler,
         ...INBOX_QUERY_HANDLERS,

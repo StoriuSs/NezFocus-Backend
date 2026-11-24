@@ -7,8 +7,9 @@ import type { ChosenPresence } from '@/modules/users/domain/user-settings.rules'
  * instead of auth reading the users table, this module publishes the few
  * operations auth needs, in terms of a small record rather than the domain
  * entity. The dependency runs one way: auth depends on this interface; nothing
- * here knows auth exists. servers uses it too, for people's pictures, and
- * realtime for the status one chose.
+ * here knows auth exists. servers uses it too, for people's pictures,
+ * realtime for the status one chose, and social to find a person by
+ * username (D-243).
  */
 export interface DirectoryUser {
     id: string
@@ -55,6 +56,13 @@ export interface UserDirectoryPort {
 
     /** An account by id, deleted or not — so a deleted one can be refused by name. */
     findById(id: string): Promise<DirectoryUser | null>
+
+    /**
+     * An account not deleted for good by its username, already normalised
+     * (normaliseUsername): for adding a friend by username (D-110, D-243).
+     * One waiting to be deleted is found too; the caller decides.
+     */
+    findByUsername(username: string): Promise<DirectoryUser | null>
 
     /**
      * A new account for an address its owner has just proved they read: the

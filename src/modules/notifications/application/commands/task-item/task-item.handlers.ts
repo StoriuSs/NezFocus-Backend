@@ -10,14 +10,15 @@ import { AddTaskItemsCommand, ForgetTaskItemsCommand } from './task-item.command
  * A task item for each person named (D-98, D-95, REQ-TASK-04), unread, with
  * the task's title and due date as they are now, which the item keeps. Never
  * for the one who acted (D-185): taking a task on oneself makes no item, a
- * creator who left their own task hears nothing. A reminder is written once
+ * creator who left their own task hears nothing; nor does anyone who
+ * blocked the one who acted (D-242). A reminder is written once
  * per mark and due date, so its job run again writes none twice. A task
  * deleted meanwhile gets none, and no one hears of them.
  */
 @CommandHandler(AddTaskItemsCommand)
 export class AddTaskItemsHandler extends Inbox implements ICommandHandler<AddTaskItemsCommand> {
     async execute({ draft, userIds }: AddTaskItemsCommand): Promise<void> {
-        let people = taskItemRecipients(draft.actorId, userIds)
+        let people = await this.notBlocking(draft.actorId, taskItemRecipients(draft.actorId, userIds))
         const { reminder, dueAt } = draft.facts
         if (draft.type === 'task_reminder' && reminder && dueAt && people.length > 0) {
             const reminded = new Set(await this.notifications.remindedAlready(draft.place, reminder, dueAt, people))

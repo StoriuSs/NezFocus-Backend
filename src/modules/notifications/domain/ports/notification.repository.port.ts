@@ -1,4 +1,5 @@
 import {
+    FriendItemType,
     HeldMessageItem,
     MentionReason,
     MessageItemsPlan,
@@ -32,6 +33,8 @@ export interface NotificationRecord {
     task: TaskItemFacts | null
     /** An owner or moderation item: the server and what was done, as when the item was made (spec 06 Q9). */
     server: ServerItemFacts | null
+    /** A friend request: the note sent with it, if any (REQ-SOCIAL-01). */
+    note: string | null
     readAt: Date | null
     createdAt: Date
 }
@@ -78,6 +81,8 @@ export interface ServerItemDraft {
 export interface InboxScope {
     serverIds: string[]
     channelIds: string[]
+    /** People the owner blocked: their items are hidden, back once unblocked (REQ-NOTIF-03, D-242). */
+    hiddenActorIds: string[]
 }
 
 /** An item taken off, and whether it was still unread (the badge drops by those). */
@@ -133,6 +138,21 @@ export interface NotificationRepositoryPort {
      * (D-187). None when the server or the person is gone for good meanwhile.
      */
     addServerItem(draft: ServerItemDraft, userId: string, at: Date, read: boolean): Promise<NotificationRecord | null>
+
+    /**
+     * Writes one friend item for the person, from `actorId`, unread; the
+     * note on a request. None when either account is gone for good meanwhile.
+     */
+    addFriendItem(
+        type: FriendItemType,
+        userId: string,
+        actorId: string,
+        note: string | null,
+        at: Date
+    ): Promise<NotificationRecord | null>
+
+    /** Takes off the request items between the two, whichever way it was sent (REQ-NOTIF-03). */
+    removeFriendRequests(userId: string, otherId: string): Promise<RemovedNotification[]>
 
     /** Takes off the items of messages of one channel (deleted, REQ-NOTIF-03). */
     removeForMessages(channelId: string, messageIds: string[]): Promise<RemovedNotification[]>

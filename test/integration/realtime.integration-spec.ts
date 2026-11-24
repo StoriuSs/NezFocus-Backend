@@ -313,6 +313,46 @@ describe('Realtime connection (integration)', () => {
             await forget('an', 'binh')
         })
 
+        /** Makes the two friends, each asking the other from a profile (D-237): no server between them. */
+        async function befriend(a: string, b: string) {
+            expect((await as(a, api().put(`/api/v1/me/relationships/${users[b].id}`))).status).toBe(200)
+            expect((await as(b, api().put(`/api/v1/me/relationships/${users[a].id}`))).body.data.type).toBe('friend')
+        }
+
+        it('tells a friend who shares no server when someone comes online (D-242)', async () => {
+            await befriend('an', 'binh')
+            try {
+                const binh = await connectAs('binh')
+                const online = hearsPresenceOf(binh, 'an')
+
+                await connect(await ticketFor('an'))
+
+                expect(await online).toBe('online')
+            } finally {
+                await prisma.relationship.deleteMany({
+                    where: { OR: [{ userLowId: users.an.id }, { userHighId: users.an.id }] }
+                })
+            }
+        })
+
+        it('tells both tabs of a new request, each as they see it (relationship.added, SRS 5.2)', async () => {
+            const binh = await connectAs('binh')
+            const heard = new Promise<{ type: string; user: { id: string } }>((resolve) =>
+                binh.once('relationship.added', (data: { relationship: { type: string; user: { id: string } } }) =>
+                    resolve(data.relationship)
+                )
+            )
+            try {
+                await as('an', api().put(`/api/v1/me/relationships/${users.binh.id}`))
+                expect(await heard).toMatchObject({ type: 'incoming', user: { id: users.an.id } })
+            } finally {
+                await prisma.relationship.deleteMany({
+                    where: { OR: [{ userLowId: users.an.id }, { userHighId: users.an.id }] }
+                })
+                await prisma.notification.deleteMany({ where: { actorId: users.an.id } })
+            }
+        })
+
         it('tells the people of its servers when someone comes online, and says it in ready', async () => {
             await serverWith('an', ['binh'])
             const binh = await connectAs('binh')

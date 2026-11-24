@@ -7,7 +7,7 @@ import type { ChosenPresence, UserDirectoryPort } from '@/modules/users'
 import { AccountDeletionRequestedEvent } from '@/modules/auth'
 import type { MembershipPort } from '@/modules/servers'
 import type { Presence } from '@/modules/realtime/domain'
-import type { EventPublisherPort, KeptPresence, PresenceStorePort } from '../../ports'
+import type { EventPublisherPort, FriendsPort, KeptPresence, PresenceStorePort } from '../../ports'
 import {
     ConnectPresenceCommand,
     DisconnectPresenceCommand,
@@ -108,13 +108,21 @@ export function world(chosen: ChosenPresence = 'online') {
             return choices.get(id) ?? 'online'
         }
     } as unknown as UserDirectoryPort
-    const deps = [store, publisher, membership, directory] as const
+    const friendList = { down: false, ids: ['binh'] }
+    const friends = {
+        friendIdsOf: async () => {
+            if (friendList.down) throw new Error('Postgres is down')
+            return friendList.ids
+        }
+    } as FriendsPort
+    const deps = [store, publisher, membership, directory, friends] as const
 
     let now = T0
     jest.spyOn(Date, 'now').mockImplementation(() => now)
     return {
         store,
         servers,
+        friendList,
         asked,
         sent,
         choices,

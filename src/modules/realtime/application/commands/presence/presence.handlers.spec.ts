@@ -4,7 +4,7 @@ import { world } from './presence-test-world.shared-spec'
 afterEach(() => jest.restoreAllMocks())
 
 describe('Connecting (REQ-AUTH-07)', () => {
-    it('shows the person online to their servers and to their own tabs, and answers what they now show', async () => {
+    it('shows the person online to their own tabs, their servers and their friends (D-242), and answers what they now show', async () => {
         const { connect, sent } = world()
 
         await expect(connect()).resolves.toBe('online')
@@ -12,7 +12,8 @@ describe('Connecting (REQ-AUTH-07)', () => {
         expect(sent).toEqual([
             { to: 'user:an', event: 'presence.updated', data: { userId: 'an', status: 'online' } },
             { to: 'server:s1', event: 'presence.updated', data: { userId: 'an', status: 'online' } },
-            { to: 'server:s2', event: 'presence.updated', data: { userId: 'an', status: 'online' } }
+            { to: 'server:s2', event: 'presence.updated', data: { userId: 'an', status: 'online' } },
+            { to: 'user:binh', event: 'presence.updated', data: { userId: 'an', status: 'online' } }
         ])
     })
 
@@ -163,6 +164,25 @@ describe('Every change to a person', () => {
         servers.down = false
         await sweep()
         expect(told()).toEqual(['online', 'offline'])
+    })
+
+    it('keeps someone the sweep could not tell their friends about, so the next sweep tells it (D-242)', async () => {
+        const { connect, disconnect, sweep, at, told, friendList, store, sent } = world()
+        await connect()
+        await disconnect()
+        at(SILENCE_MS + 1)
+
+        friendList.down = true
+        await sweep()
+        expect(store.people.has('an')).toBe(true)
+
+        friendList.down = false
+        await sweep()
+        expect(told()).toEqual(['online', 'offline'])
+        expect(sent.filter((each) => each.to === 'user:binh').map((each) => each.data)).toEqual([
+            { userId: 'an', status: 'online' },
+            { userId: 'an', status: 'offline' }
+        ])
     })
 })
 

@@ -115,3 +115,24 @@ describe('ForgetTaskItemsHandler (D-98, D-200)', () => {
         expect(world.eventBus.publish).not.toHaveBeenCalled()
     })
 })
+
+describe('AddTaskItemsHandler and blocks (D-185, D-242)', () => {
+    it('makes no task item for someone who blocked the one who acted', async () => {
+        const world = notificationWorld()
+        world.block('chi', 'an')
+
+        await new AddTaskItemsHandler(...world.deps).execute(
+            new AddTaskItemsCommand(
+                {
+                    type: 'task_assigned',
+                    place: { serverId: 'ot', channelId: 'hoi-dap', taskId: 't1' },
+                    actorId: 'an',
+                    facts: { title: 'Ôn chương 3', dueAt: null, reminder: null, unassignedBy: null }
+                },
+                ['binh', 'chi']
+            )
+        )
+
+        expect(world.rows.map((row) => row.userId)).toEqual(['binh'])
+    })
+})

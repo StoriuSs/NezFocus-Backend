@@ -15,6 +15,9 @@ export type NotificationType =
     | 'friend_accepted'
     | 'missed_call'
 
+/** The items of friend requests (D-111, D-242): a request to me, and my request accepted. */
+export type FriendItemType = 'friend_request' | 'friend_accepted'
+
 /** Why a message mentions someone, which the item's title says (spec 06 › Chữ): by name, a role, @everyone, @here. */
 export type MentionReason = 'user' | 'role' | 'everyone' | 'here'
 

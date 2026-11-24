@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { CommandBus } from '@nestjs/cqrs'
 import { TaskReminder, UnassignedBy } from '../../domain'
 import {
+    AddFriendItemCommand,
     AddServerItemCommand,
     AddTaskItemsCommand,
     ForgetTaskItemsCommand,
@@ -10,6 +11,7 @@ import {
     NotifierPort,
     ReadChannelItemsCommand,
     ReadRemovalItemsCommand,
+    RemoveFriendRequestItemsCommand,
     RemoveMessageItemsCommand,
     ServerNotice,
     SyncMessageItemsCommand,
@@ -123,5 +125,18 @@ export class CommandBusNotifier implements NotifierPort {
 
     async memberJoined(serverId: string, userId: string): Promise<void> {
         await this.commandBus.execute(new ReadRemovalItemsCommand(userId, serverId))
+    }
+
+    async friendRequested(fromId: string, toId: string, note: string | null): Promise<void> {
+        await this.commandBus.execute(new AddFriendItemCommand('friend_request', toId, fromId, note))
+    }
+
+    async friendAccepted(requesterId: string, accepterId: string): Promise<void> {
+        await this.commandBus.execute(new RemoveFriendRequestItemsCommand(requesterId, accepterId))
+        await this.commandBus.execute(new AddFriendItemCommand('friend_accepted', requesterId, accepterId, null))
+    }
+
+    async friendRequestClosed(userId: string, otherId: string): Promise<void> {
+        await this.commandBus.execute(new RemoveFriendRequestItemsCommand(userId, otherId))
     }
 }

@@ -95,6 +95,12 @@ const serverFactsOf = (data: Prisma.JsonValue): ServerItemFacts => {
     }
 }
 
+/** What a friend request keeps in `data`: its note, if any (REQ-SOCIAL-01). */
+// A type, not an interface: Prisma takes it as JSON only with an index signature.
+export type FriendItemData = { note?: string }
+
+export const friendDataOf = (note: string | null): FriendItemData => (note ? { note } : {})
+
 export const toNotificationRecord = ({ data, actor, ...row }: NotificationRow): NotificationRecord => {
     const person = actor && shownPerson(actor)
     const isMessage = row.type === 'mention' || row.type === 'reply'
@@ -104,6 +110,7 @@ export const toNotificationRecord = ({ data, actor, ...row }: NotificationRow): 
         ...(isMessage ? dataOf(data) : { reason: null, roleId: null }),
         task: row.taskId ? taskFactsOf(data) : null,
         server: isServer ? serverFactsOf(data) : null,
+        note: row.type === 'friend_request' ? (((data ?? {}) as FriendItemData).note ?? null) : null,
         actor: person && {
             id: person.id,
             username: person.username,

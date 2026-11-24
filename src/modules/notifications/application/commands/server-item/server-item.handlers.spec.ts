@@ -2,6 +2,8 @@ import { PresencePort } from '@/modules/realtime'
 import { ServerItemDraft } from '../../../domain'
 import { NotificationsCreatedEvent } from '../../events/notifications-created.event'
 import { notificationWorld } from '../../notification-test-world.shared-spec'
+import { ListNotificationsQuery } from '../../queries/inbox/inbox.queries'
+import { ListNotificationsHandler } from '../../queries/inbox/inbox.handlers'
 import { AddServerItemCommand } from './server-item.commands'
 import { AddServerItemHandler } from './server-item.handlers'
 
@@ -87,5 +89,20 @@ describe('AddServerItemHandler (REQ-SRV-05, REQ-ROLE-04, D-187, D-201)', () => {
         await handler.execute(new AddServerItemCommand(moderation('kick'), 'binh'))
         expect(world.rows).toEqual([])
         expect(world.eventBus.publish).not.toHaveBeenCalled()
+    })
+})
+
+describe('AddServerItemHandler and blocks (D-242, L2-d)', () => {
+    it('still tells one made Owner who blocked the old Owner: the item is about their own role, and it shows', async () => {
+        const { world, handler } = setUp()
+        world.block('binh', 'an')
+
+        await handler.execute(new AddServerItemCommand(handed, 'binh'))
+
+        expect(world.rows.map((row) => [row.userId, row.type])).toEqual([['binh', 'owner_transferred']])
+        const list = await new ListNotificationsHandler(...world.deps).execute(
+            new ListNotificationsQuery('binh', null, 50)
+        )
+        expect(list.items.map((item) => item.type)).toEqual(['owner_transferred'])
     })
 })

@@ -142,6 +142,13 @@ export const MESSAGES = {
         NOTIFICATIONS_READ: 'Notifications marked read'
     },
 
+    SOCIAL: {
+        RELATIONSHIPS_LISTED: 'Relationships fetched',
+        RELATIONSHIP_CHANGED: 'Relationship changed',
+        PERSON_FOUND: 'Person found',
+        PROFILE_FETCHED: 'Profile fetched'
+    },
+
     // Health messages
     HEALTH: {
         CHECK_SUCCESS: 'Health check successful'

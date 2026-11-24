@@ -50,6 +50,11 @@ export class UserDirectory implements UserDirectoryPort {
         return user ? toDirectoryUser(user) : null
     }
 
+    async findByUsername(username: string): Promise<DirectoryUser | null> {
+        const user = await this.users.findByUsername(username)
+        return user ? toDirectoryUser(user) : null
+    }
+
     async create(email: string, displayName: string | null): Promise<DirectoryUser | null> {
         // The provider's display name is the person's to set there: cut it
         // to the profile's rules (REQ-AUTH-10, D-139), or drop it.

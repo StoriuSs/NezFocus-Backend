@@ -255,7 +255,8 @@ has none), each folder named like the files in it; `messaging`, `tasks`
 (`task`, `assignee`; D-190) and `voice` (`connection`, `media-event`,
 `moderation`, `reconcile`, `room`; D-211) and `study` (`room-session`,
 `room-presence`, `session-control`, `session-timer`, `solo-session`, and
-the query area `study-stats`; D-226) too;
+the query area `study-stats`; D-226) and `social` (`relationship`,
+`block`, and the query areas `relationship`, `person`; D-243) too;
 `auth` and `users` keep one folder per use case. An area's handlers file has
 one spec beside it; when several specs are merged into it, each handler's
 helpers go inside its own `describe` (NezFocus D-157). Under `application/`
@@ -475,7 +476,10 @@ depends one way only, messaging on notifications. Voice answers servers'
 `ROOM_PEOPLE` (the people of each voice room in `GET /servers`, D-205) the
 same way, through `RoomPeopleModule` in `voice.module.ts`: voice on servers; and study
 answers servers' `ROOM_SESSIONS` (each voice room's study session, D-220)
-through `RoomSessionsModule` in `study.module.ts`. Servers and notifications
+through `RoomSessionsModule` in `study.module.ts`; social answers realtime's
+`FRIENDS` (whom presence also goes to) and notifications' `BLOCK_LIST` (whom
+people blocked) through `FriendsModule` and `BlockListModule` in
+`social.module.ts` (D-242): social on realtime and notifications. Servers and notifications
 import each other's `index.ts` (`NOTIFIER` one way, `MEMBERSHIP` the other),
 which D-185 accepted: neither index loads the other's Nest module, so no
 token is undefined when Nest reads `@Inject`. Ask the owner before adding another such pair.
@@ -581,7 +585,10 @@ or the caller lost access): throw the module's not-found error, a 404. That
 check is the only `if` such a controller holds. In servers (D-159): creating a
 server, changing it (`PATCH`), every channel-layout route and accepting an
 invite, all reading `ListMyServersQuery` (the e2e suite
-`servers-write-then-read` covers the 404).
+`servers-write-then-read` covers the 404). Social does the same for every
+change of a relationship or a block (D-237): it reads the one person with
+`GetRelationshipQuery`, the list's `ListMyRelationshipsQuery` for one
+person, both built by `relationshipViews` (`presentation/http/relationship-answer.ts`).
 
 **A second exception: commands that tell a channel a message (NezFocus
 D-169).** Sending and editing build the message anyway, to send

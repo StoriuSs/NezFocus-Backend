@@ -371,9 +371,15 @@ there (M5 L3, L4a).
 
 The social tables (M6) hold an account's friendships, blocks, conversations
 and calls. Like the study tables, their `onDelete: Cascade` on `User` never
-runs. What a deletion request ends there (its friendships and requests, a
-call in progress) and how a conversation shows the deleted account (D-182)
-come with M6 L2 to L4.
+runs. A deletion request ends no friendship (D-243): while the account waits,
+its friends, requests and blocks stay, so restoring it finds them all; others
+see it as deleted in their lists (D-182), and it can be unfriended or
+unblocked but not asked, accepted or blocked (`NOT_FOUND_ERROR`). Once it is
+deleted for good, `ForgetDeletedAccountHandler` (social) deletes its
+`Relationship` and `Block` rows, either way; every read leaves out an
+account deleted for good, so an event lost there shows nothing. A call in
+progress and how a conversation shows the deleted account come with M6 L3
+and L4.
 
 There is no generic `SoftDeletableRepository` base class: the filtering is
 explicit in `PrismaUserRepository`, where you can see it.

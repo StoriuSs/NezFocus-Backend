@@ -122,3 +122,26 @@ describe('ListNotificationsHandler (REQ-NOTIF-01, REQ-NOTIF-03)', () => {
         expect(world.previews.previewsOf).not.toHaveBeenCalled()
     })
 })
+
+describe('ListNotificationsHandler and blocks (REQ-NOTIF-03, D-242)', () => {
+    it('hides the items of someone I blocked, the unread count with them, and shows them again once unblocked', async () => {
+        const world = notificationWorld()
+        world.say('m1')
+        world.seed({
+            userId: 'binh',
+            messageId: 'm1',
+            actorId: 'chi',
+            actor: { id: 'chi', username: 'chi', displayName: 'CHI', avatarKey: null }
+        })
+        world.seed({ userId: 'binh', messageId: null, channelId: null, type: 'moderation', actorId: null, actor: null })
+        const list = () =>
+            new ListNotificationsHandler(...world.deps).execute(new ListNotificationsQuery('binh', null, 50))
+
+        world.block('binh', 'chi')
+        await expect(list()).resolves.toMatchObject({ items: [{ type: 'moderation' }], unreadCount: 1 })
+
+        // Unblocked: nothing was deleted, so the item is back.
+        ;(world.blocks.blockedBy as jest.Mock).mockResolvedValue([])
+        await expect(list()).resolves.toMatchObject({ unreadCount: 2 })
+    })
+})

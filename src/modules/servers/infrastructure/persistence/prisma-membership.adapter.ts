@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '@/shared/infrastructure/persistence/database/prisma.service'
-import { ChannelMemberFilter, MemberSince, Membership, MembershipPort } from '../../application/ports'
+import { ChannelMemberFilter, MemberSince, Membership, MembershipPort, SharedServer } from '../../application/ports'
 import { holdsOneOf, viewing } from './channel-viewers'
 
 /** MembershipPort, answered from the Member table (its index on userId). */
@@ -34,6 +34,16 @@ export class PrismaMembership implements MembershipPort {
                 ${roleIds ? Prisma.sql`AND ${holdsOneOf(roleIds)}` : Prisma.empty}
                 ${userIds ? Prisma.sql`AND m."userId" = ANY(${userIds}::text[])` : Prisma.empty}
         `
+    }
+
+    async sharedServers(viewerId: string, otherId: string): Promise<SharedServer[]> {
+        const rows = await this.prisma.member.findMany({
+            where: { userId: viewerId, server: { deletedAt: null, members: { some: { userId: otherId } } } },
+            // As GET /servers lists them (PrismaServerRepository).
+            orderBy: [{ joinedAt: 'asc' }, { serverId: 'asc' }],
+            select: { serverId: true, server: { select: { name: true } } }
+        })
+        return rows.map(({ serverId, server }) => ({ serverId, name: server.name }))
     }
 
     async membershipsOf(userId: string): Promise<Membership[]> {

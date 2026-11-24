@@ -28,8 +28,10 @@ const REASONS: MentionReason[] = ['user', 'role', 'everyone', 'here']
  * acted (`actor`, none on a reminder) and the task as it was then (`task`,
  * D-98). A server handed over: the old owner as `actor` and `server`; a
  * moderation item: `server` with what was done, never who (REQ-ROLE-04).
- * The client names the channel and server of other items from its list of
- * servers.
+ * A friend request: who asked as `actor` and their `note`, if any; a request
+ * accepted: who accepted as `actor` (D-111). Both belong to no server
+ * (D-242). The client names the channel and server of other items from its
+ * list of servers.
  */
 export class NotificationResponseDto {
     @Expose()
@@ -100,6 +102,12 @@ export class NotificationResponseDto {
     @ValidateNested()
     @Type(() => NotificationServerResponseDto)
     server: NotificationServerResponseDto | null
+
+    /** A friend request's note, at most 150 characters; null for every other item (REQ-SOCIAL-01). */
+    @Expose()
+    @IsOptional()
+    @IsString()
+    note: string | null
 
     /** Null while unread. */
     @Expose()

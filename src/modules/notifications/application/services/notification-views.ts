@@ -34,6 +34,8 @@ export interface NotificationView {
     task: TaskItemFacts | null
     /** The server and what was done, as when the item was made, for an owner or moderation item (spec 06 Q9). */
     server: ServerItemFacts | null
+    /** A friend request's note, if any. */
+    note: string | null
     readAt: Date | null
     createdAt: Date
 }

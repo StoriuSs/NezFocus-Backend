@@ -225,6 +225,15 @@ the `UPDATE` itself, so two tabs cannot both change the zone.
 
 The auth module's limits are all in [`src/modules/auth/application/rate-limits.ts`](../src/modules/auth/application/rate-limits.ts).
 
+The social module counts two (`src/modules/social/application/rate-limits.ts`,
+D-242): 50 friend requests a day of the sender's own time zone (the subject
+is `<userId>:<YYYY-MM-DD>`, so their midnight starts a new count; a refusal
+waits until that midnight, `reason: friend_requests`; a request that turns
+out not to be a new one is taken back; uncounted while Redis is down, as
+messages are) and 30 username lookups a minute, a request by username
+counting as one (`reason: user_lookup`;
+refused while Redis is down, since it stops walking the usernames).
+
 ## Sign-in Routes: Two Layers of Limits
 
 The routes under `/api/v1/auth/` have no `@Throttle` or `@SkipRateLimit`, so

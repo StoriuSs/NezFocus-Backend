@@ -16,8 +16,8 @@ abstract class ChangeItems extends Inbox {
 
 /**
  * A message sent or edited (REQ-NOTIF-01, D-188): one item for each person it
- * mentions or answers now, by the strongest reason, never its author; those
- * no longer mentioned lose theirs; a message older than 90 days gets no new
+ * mentions or answers now, by the strongest reason, never its author nor
+ * anyone who blocked them (D-242); those no longer mentioned lose theirs; a message older than 90 days gets no new
  * ones. Those who had read past it get theirs read (D-199). Run again for
  * the same message, it writes nothing twice. A message deleted while its
  * items were written loses them again here, or the badge would count items
@@ -27,11 +27,21 @@ abstract class ChangeItems extends Inbox {
 export class SyncMessageItemsHandler extends ChangeItems implements ICommandHandler<SyncMessageItemsCommand> {
     async execute({ notice }: SyncMessageItemsCommand): Promise<void> {
         const now = new Date()
-        const plan = planMessageItems(
+        const planned = planMessageItems(
             await this.notifications.heldForMessage(notice.channelId, notice.messageId),
             messageRecipients(notice.actorId, notice.sources),
             isKept(notice.sentAt, now)
         )
+        // Someone who blocked the author gets no new item (D-242); one they had
+        // stays, hidden while the block lasts (REQ-NOTIF-03): the plan is made
+        // with everyone, and only its new items are filtered.
+        const reached = new Set(
+            await this.notBlocking(
+                notice.actorId,
+                planned.add.map(({ userId }) => userId)
+            )
+        )
+        const plan = { ...planned, add: planned.add.filter(({ userId }) => reached.has(userId)) }
         if (plan.add.length === 0 && plan.remove.length === 0 && plan.change.length === 0) return
         const { added, removed } = await this.notifications.applyMessagePlan(
             notice,

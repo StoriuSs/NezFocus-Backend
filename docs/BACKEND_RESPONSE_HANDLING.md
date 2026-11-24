@@ -121,6 +121,7 @@ Some errors carry facts a client can act on, beside `details`, `path` and
 | --- | --- |
 | `422 AUTH_PASSWORD_REJECTED` | `rules`: each broken rule (`min_length`, `uppercase`, `matches_email`, ...), so a form can mark them one by one |
 | `429 RATE_LIMIT_EXCEEDED` (sign-in limits) | `reason`: `network`, `recent_email`, `emails`, `sign_ins`, `wrong_password` or `codes` |
+| `429 RATE_LIMIT_EXCEEDED` (friends, D-242) | `reason`: `friend_requests` (50 a day of the sender's time zone, `Retry-After` up to their midnight) or `user_lookup` (30 username lookups a minute) |
 | `429 RATE_LIMIT_EXCEEDED` (the time zone, `PATCH /users/me/settings`) | `reason`: `timezone`, and `changeable_at`: when the zone may change again (it changes once every 24 hours) |
 | `401 AUTH_TOKEN_REVOKED` | `reason`: why the session ended |
 | `401 AUTH_REFRESH_FAILED` | `reason`: why the session ended; with `account_deleted` while the account waits to be deleted, `deletes_at` |

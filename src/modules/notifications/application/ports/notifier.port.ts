@@ -41,7 +41,8 @@ export interface ModerationNotice {
  * the only way in, so the rules every item follows are in one place (never
  * for the one who acted, nothing in a DM). Defined and answered by this
  * module, given by the global NotifierModule, so a module this one reads
- * from (messaging, D-198) can call it without importing it. Each call
+ * from (messaging, D-198) can call it without importing it. No item for
+ * someone who blocked the one it is from (D-242). Each call
  * resolves once the items are written; the caller runs it after its own
  * write is committed.
  */
@@ -85,6 +86,18 @@ export interface NotifierPort {
 
     /** One joined a server (again): their kick and ban items of it not read yet are read (D-202). */
     memberJoined(serverId: string, userId: string): Promise<void>
+
+    /** `fromId` asked `toId` to be friends (REQ-SOCIAL-01): a `friend_request` item for them, with the note. */
+    friendRequested(fromId: string, toId: string, note: string | null): Promise<void>
+
+    /**
+     * `accepterId` accepted the request of `requesterId` (D-111): its item goes,
+     * and the one who asked gets a `friend_accepted` item.
+     */
+    friendAccepted(requesterId: string, accepterId: string): Promise<void>
+
+    /** A request between the two declined, cancelled or ended by a block (REQ-NOTIF-03): its item goes. */
+    friendRequestClosed(userId: string, otherId: string): Promise<void>
 }
 
 export const NOTIFIER = Symbol('NotifierPort')

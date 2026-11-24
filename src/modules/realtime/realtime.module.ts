@@ -39,7 +39,8 @@ import { RealtimeController, RealtimeGateway } from './presentation'
  * REDIS_CLIENT comes from the global CacheModule; PRINCIPAL from auth,
  * MEMBERSHIP, CHANNEL_DIRECTORY and the two change events from servers,
  * PERMISSION_CHECKER from permissions,
- * USER_DIRECTORY (the status one chose) from users.
+ * USER_DIRECTORY (the status one chose) from users; FRIENDS (whom presence
+ * also goes to, D-242) from social's global FriendsModule.
  */
 @Module({
     imports: [CqrsModule, AuthModule, ServersModule, PermissionsModule, UsersModule],
