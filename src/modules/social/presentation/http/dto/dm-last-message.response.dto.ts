@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { Expose, Type } from 'class-transformer'
-import { IsArray, IsDate, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { Expose, Transform, Type } from 'class-transformer'
+import { IsArray, IsDate, IsIn, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { DmMentionedUserResponseDto } from './dm-mentioned-user.response.dto'
 import { DmMessageFilesResponseDto } from './dm-message-files.response.dto'
 
@@ -23,6 +23,19 @@ export class DmLastMessageResponseDto {
     @IsOptional()
     @IsString()
     systemEvent: string | null
+
+    /**
+     * What a system message says, as the chat's message has it: a call
+     * `{ user_id, call_id, status, end_reason, video, duration_seconds }`
+     * (D-250); null on a regular one.
+     */
+    @Expose()
+    // As it is: an untyped object would otherwise come out empty, every key not @Expose()d.
+    @Transform(({ obj }: { obj: { systemData?: unknown } }) => obj.systemData ?? null, { toClassOnly: true })
+    @ApiProperty({ type: Object, nullable: true })
+    @IsOptional()
+    @IsObject()
+    systemData: Record<string, unknown> | null
 
     /** Who wrote it; null on a system message. */
     @Expose()

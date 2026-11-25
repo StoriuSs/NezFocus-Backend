@@ -11,6 +11,8 @@ export interface DmWorld {
     silenced?: string[]
     /** The DMs shown in each person's list (D-244); every one of theirs when left out. */
     shown?: Record<string, string[]>
+    /** Whom each person blocked (D-250); nobody when left out. */
+    blocked?: Record<string, string[]>
 }
 
 /**
@@ -18,7 +20,12 @@ export interface DmWorld {
  * the specs of a server's channels, which never reach it; with some for the
  * DM branch of each handler.
  */
-export function dms({ conversations = [], silenced = [], shown }: DmWorld = {}): jest.Mocked<DmAccessPort> {
+export function dms({
+    conversations = [],
+    silenced = [],
+    shown,
+    blocked = {}
+}: DmWorld = {}): jest.Mocked<DmAccessPort> {
     const found = (channelId: string): DmConversation | null => {
         const conversation = conversations.find((one) => one.channelId === channelId)
         return conversation ? { ...conversation, createdAt: DM_STARTED } : null
@@ -34,6 +41,7 @@ export function dms({ conversations = [], silenced = [], shown }: DmWorld = {}):
                 .filter((one) => one.userIds.includes(userId))
                 .filter((one) => !shown || (shown[userId] ?? []).includes(one.channelId))
                 .map((one) => ({ ...one, createdAt: DM_STARTED }))
-        )
+        ),
+        blockedBy: jest.fn(async (userId: string) => blocked[userId] ?? [])
     }
 }

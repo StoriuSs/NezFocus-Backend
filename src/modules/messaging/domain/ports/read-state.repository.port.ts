@@ -5,10 +5,11 @@ export interface ChannelReadState {
     lastReadId: string
     /**
      * Live messages after it not from them (sent by them, or a system message
-     * about them), system ones included, counted up to READ_COUNT_CAP (D-173).
+     * about them), system ones included, counted up to READ_COUNT_CAP (D-173);
+     * none written by someone they blocked (D-250).
      */
     unreadCount: number
-    /** Those of them about the person (D-39, D-164, D-172), counted up to READ_COUNT_CAP. */
+    /** Those of them about the person (D-39, D-164, D-172), counted up to READ_COUNT_CAP; none from someone they blocked (D-250). */
     mentionCount: number
 }
 
@@ -29,9 +30,10 @@ export interface ReadStateRepositoryPort {
 
     /**
      * The person's state in channels of one server, in the order given.
-     * `roleIds`: the roles they hold there, for @role mentions.
+     * `roleIds`: the roles they hold there, for @role mentions. `blockedIds`:
+     * whom they blocked, whose messages count neither way (D-250).
      */
-    states(userId: string, roleIds: string[], channels: ReadScope[]): Promise<ChannelReadState[]>
+    states(userId: string, roleIds: string[], channels: ReadScope[], blockedIds: string[]): Promise<ChannelReadState[]>
 
     /** Those of `userIds` who marked the channel read at `messageId` or past it, in no order (D-199). */
     readersPast(channelId: string, userIds: string[], messageId: string): Promise<string[]>

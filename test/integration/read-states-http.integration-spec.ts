@@ -272,6 +272,24 @@ describe('Read states (integration)', () => {
 
             expect(await stateOf('binh', channelId)).toMatchObject({ unread_count: 100, mention_count: 100 })
         })
+
+        it('does not count what someone the reader blocked writes, nor its mentions; marking read answers the same (D-250)', async () => {
+            const channelId = await newChannel('da-chan')
+            expect((await as('chi', api().put(`/api/v1/me/blocks/${users.an.id}`))).status).toBe(200)
+            try {
+                const first = await send('an', channelId, `<@${users.chi.id}> <@${users.binh.id}> mai họp nhé`)
+                await send('an', channelId, '@everyone nhắc lại')
+
+                expect(await stateOf('chi', channelId)).toMatchObject({ unread_count: 0, mention_count: 0 })
+                expect(await stateOf('binh', channelId)).toMatchObject({ unread_count: 2, mention_count: 2 })
+                const marked = await ack('chi', channelId, first.body.data.id)
+                expect(marked.body.data).toMatchObject({ unread_count: 0, mention_count: 0 })
+            } finally {
+                await as('chi', api().delete(`/api/v1/me/blocks/${users.an.id}`))
+            }
+            // Unblocked: their messages count again.
+            expect(await stateOf('chi', channelId)).toMatchObject({ unread_count: 1, mention_count: 1 })
+        })
     })
 
     describe('marking read (POST /channels/{id}/ack)', () => {

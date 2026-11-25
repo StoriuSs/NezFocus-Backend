@@ -32,9 +32,16 @@ export class PrismaReadStateRepository implements ReadStateRepositoryPort {
      * M2 L1); one message both ways counts once. `roleIds` may hold roles of
      * other servers: a message only mentions roles of its own. Messages from
      * the person (theirs, or a system message about them) are neither (D-172,
-     * D-173); deleted ones have no mention left and are not unread.
+     * D-173); deleted ones have no mention left and are not unread. Nor are
+     * those written by someone they blocked (`blockedIds`, D-250); a system
+     * message has no author, so it counts as before.
      */
-    async states(userId: string, roleIds: string[], channels: ReadScope[]): Promise<ChannelReadState[]> {
+    async states(
+        userId: string,
+        roleIds: string[],
+        channels: ReadScope[],
+        blockedIds: string[]
+    ): Promise<ChannelReadState[]> {
         if (channels.length === 0) return []
         const rows = await this.prisma.$queryRaw<ChannelReadState[]>`
             SELECT c."channelId", r."lastReadId",
@@ -43,11 +50,16 @@ export class PrismaReadStateRepository implements ReadStateRepositoryPort {
                     WHERE m."channelId" = c."channelId" AND m."id" > r."lastReadId"
                         AND m."deletedAt" IS NULL
                         AND COALESCE(m."authorId", m."systemData"->>'userId') IS DISTINCT FROM ${userId}
+                        AND (m."authorId" IS NULL OR m."authorId" <> ALL(${blockedIds}::text[]))
                     LIMIT ${READ_COUNT_CAP}
                 ) unread)::int AS "unreadCount",
                 (SELECT count(*) FROM (
                     (SELECT mm."messageId" FROM "MessageMention" mm
                     WHERE mm."userId" = ${userId} AND mm."channelId" = c."channelId" AND mm."messageId" > r."lastReadId"
+                        AND NOT EXISTS (
+                            SELECT 1 FROM "Message" b
+                            WHERE b."id" = mm."messageId" AND b."authorId" = ANY(${blockedIds}::text[])
+                        )
                     LIMIT ${READ_COUNT_CAP})
                     UNION
                     (SELECT m."id" FROM "Message" m
@@ -55,6 +67,7 @@ export class PrismaReadStateRepository implements ReadStateRepositoryPort {
                         AND (m."mentionEveryone" OR m."mentionHereUserIds" <> '{}' OR m."mentionRoleIds" <> '{}')
                         AND (m."mentionEveryone" OR ${userId} = ANY(m."mentionHereUserIds") OR m."mentionRoleIds" && ${roleIds}::text[])
                         AND m."authorId" IS DISTINCT FROM ${userId}
+                        AND (m."authorId" IS NULL OR m."authorId" <> ALL(${blockedIds}::text[]))
                     LIMIT ${READ_COUNT_CAP})
                     LIMIT ${READ_COUNT_CAP}
                 ) mentions)::int AS "mentionCount"

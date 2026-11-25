@@ -35,6 +35,7 @@ export class PrismaLastMessages implements LastMessagesPort {
             id: record.id,
             type: record.type,
             systemEvent: record.systemEvent,
+            systemData: record.systemData,
             authorId: record.author?.id ?? null,
             content: record.content,
             mentionUsers: record.mentionUsers.map(({ id, username, displayName }) => ({ id, username, displayName })),

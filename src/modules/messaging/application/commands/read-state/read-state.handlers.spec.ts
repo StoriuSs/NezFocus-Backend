@@ -21,7 +21,8 @@ const DM_WORLD = {
         { channelId: 'dm-an-binh', userIds: ['an', 'binh'] as [string, string] },
         { channelId: 'dm-an-chi', userIds: ['an', 'chi'] as [string, string] }
     ],
-    silenced: ['chi']
+    silenced: ['chi'],
+    blocked: { chi: ['khanh'] }
 }
 
 const server: AccessServer = {
@@ -97,15 +98,15 @@ function world() {
         ['m5', message('m5', 'phong-hoc')]
     ])
     const marks = new Map<string, string>()
-    const asked: { userId: string; roleIds: string[]; channels: ReadScope[] }[] = []
+    const asked: { userId: string; roleIds: string[]; channels: ReadScope[]; blockedIds: string[] }[] = []
     const readStates: ReadStateRepositoryPort = {
         readersPast: jest.fn(),
         markRead: jest.fn(async (userId: string, channelId: string, messageId: string) => {
             const key = `${userId}:${channelId}`
             if (!marks.has(key) || marks.get(key)! < messageId) marks.set(key, messageId)
         }),
-        states: jest.fn(async (userId: string, roleIds: string[], channels: ReadScope[]) => {
-            asked.push({ userId, roleIds, channels })
+        states: jest.fn(async (userId: string, roleIds: string[], channels: ReadScope[], blockedIds: string[]) => {
+            asked.push({ userId, roleIds, channels, blockedIds })
             return channels.map(({ channelId, floorId }) => {
                 const mark = marks.get(`${userId}:${channelId}`)
                 return { channelId, lastReadId: mark ?? floorId, unreadCount: 0, mentionCount: 0 }
@@ -222,7 +223,7 @@ describe('AckChannelHandler (REQ-MSG-09, D-46, D-173)', () => {
         expect(state).toMatchObject({ serverId: 'ot', channelId: 'phong-hoc', lastReadId: 'm5' })
     })
 
-    it('counts with the roles the person holds there and from when they joined (D-170)', async () => {
+    it('counts with the roles the person holds there, from when they joined (D-170), leaving out whom they blocked (D-250)', async () => {
         const { ack, asked } = world()
 
         await ack('chi', 'ban-quan-ly', 'm9')
@@ -231,7 +232,8 @@ describe('AckChannelHandler (REQ-MSG-09, D-46, D-173)', () => {
             {
                 userId: 'chi',
                 roleIds: ['quan-ly'],
-                channels: [{ channelId: 'ban-quan-ly', floorId: readFloor(JOINED) }]
+                channels: [{ channelId: 'ban-quan-ly', floorId: readFloor(JOINED) }],
+                blockedIds: ['khanh']
             }
         ])
     })
@@ -245,7 +247,12 @@ describe('Reading a DM (D-238, D-244)', () => {
 
         expect(state.serverId).toBeNull()
         expect(asked).toEqual([
-            { userId: 'chi', roleIds: [], channels: [{ channelId: 'dm-an-chi', floorId: readFloor(DM_STARTED) }] }
+            {
+                userId: 'chi',
+                roleIds: [],
+                channels: [{ channelId: 'dm-an-chi', floorId: readFloor(DM_STARTED) }],
+                blockedIds: ['khanh']
+            }
         ])
     })
 

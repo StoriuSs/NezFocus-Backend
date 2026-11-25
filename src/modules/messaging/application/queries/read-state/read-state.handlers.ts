@@ -13,7 +13,8 @@ import { ListReadStatesQuery } from './read-state.queries'
  * all of them, with every role the person holds: role ids are unique across
  * servers and a message only mentions roles of its own server. A server left
  * between listing and checking is skipped. Then each DM shown in their
- * list (D-244), from when it began, with no server.
+ * list (D-244), from when it began, with no server. What the people they
+ * blocked write counts neither way (D-250), asked of social with the DMs.
  */
 @QueryHandler(ListReadStatesQuery)
 export class ListReadStatesHandler implements IQueryHandler<ListReadStatesQuery> {
@@ -43,7 +44,7 @@ export class ListReadStatesHandler implements IQueryHandler<ListReadStatesQuery>
             serverOf.set(dm.channelId, null)
             channels.push({ channelId: dm.channelId, floorId: readFloor(dm.createdAt) })
         }
-        const states = await this.readStates.states(userId, roleIds, channels)
+        const states = await this.readStates.states(userId, roleIds, channels, await this.dms.blockedBy(userId))
         return states.map((state) => ({ serverId: serverOf.get(state.channelId) ?? null, ...state }))
     }
 }

@@ -11824,6 +11824,12 @@
             "nullable": true,
             "description": "What a system message says happened (`call_ended` from M6 L4); null on a regular one."
           },
+          "system_data": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "description": "What a system message says, as the chat's message has it: a call\n`{ user_id, call_id, status, end_reason, video, duration_seconds }`\n(D-250); null on a regular one."
+          },
           "author_id": {
             "type": "string",
             "nullable": true,
@@ -11853,6 +11859,7 @@
         "required": [
           "type",
           "system_event",
+          "system_data",
           "author_id",
           "id",
           "content",

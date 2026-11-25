@@ -486,7 +486,8 @@ answers servers' `ROOM_SESSIONS` (each voice room's study session, D-220)
 through `RoomSessionsModule` in `study.module.ts`; social answers realtime's
 `FRIENDS` (whom presence also goes to) and `DM_CHANNELS` (the DM rooms a
 socket joins), notifications' `BLOCK_LIST` (whom people blocked) and
-messaging's `DM_ACCESS` (a DM's two people, who may still write; D-238)
+messaging's `DM_ACCESS` (a DM's two people, who may still write, whom one
+blocked for the unread counts; D-238, D-250)
 and voice's `ACTIVE_CALLS` (a voice room's token ends one's call; D-246)
 and servers' `MEMBER_ACTIVITY` (the study activity line in the member list;
 D-247) through `FriendsModule`, `DmChannelsModule`, `BlockListModule`,

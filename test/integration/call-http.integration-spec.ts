@@ -274,6 +274,15 @@ describe('Calls (integration)', () => {
                 unknown
             >[]
             expect(own.find((state) => state.channel_id === dm)).toMatchObject({ unread_count: 0 })
+            // Its row says how the call went (C-30 DMRow, D-250).
+            const listed = (await as('binh', api().get('/api/v1/me/dms'))).body.data.dms as Record<string, unknown>[]
+            expect(listed.find((item) => item.id === dm)).toMatchObject({
+                last_message: {
+                    type: 'system',
+                    system_event: 'call_ended',
+                    system_data: expect.objectContaining({ user_id: users.an.id, call_id: made.id, video: false })
+                }
+            })
         })
     })
 

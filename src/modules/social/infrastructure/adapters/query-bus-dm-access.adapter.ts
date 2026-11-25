@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { QueryBus } from '@nestjs/cqrs'
 import { DmAccessPort, DmConversation } from '@/modules/messaging'
-import { CanMessageInDmQuery, GetDmConversationQuery, ListShownDmsQuery } from '../../application'
+import { CanMessageInDmQuery, GetDmConversationQuery, ListBlockedIdsQuery, ListShownDmsQuery } from '../../application'
 
 /**
  * Messaging's DM_ACCESS port, answered by this module (D-238): this module
@@ -23,5 +23,9 @@ export class QueryBusDmAccess implements DmAccessPort {
 
     shownOf(userId: string): Promise<DmConversation[]> {
         return this.queryBus.execute(new ListShownDmsQuery(userId))
+    }
+
+    blockedBy(userId: string): Promise<string[]> {
+        return this.queryBus.execute(new ListBlockedIdsQuery(userId))
     }
 }

@@ -714,8 +714,9 @@ whether a DM shows in one's list is `isShownDm` (never closed, or a message
 after the close mark, both on the app's clock, which stamps messages too). A DM's messages go
 through messaging's routes: messaging defines `DM_ACCESS`, which this module
 answers through `DmAccessModule` (its two people, whether one may still
-write, the DMs shown in a list for their unread), and gives this module
-`LAST_MESSAGES` for the list. Realtime defines `DM_CHANNELS` (the DM rooms a
+write, the DMs shown in a list for their unread, whom one blocked so their
+messages count neither way, D-250), and gives this module `LAST_MESSAGES`
+for the list (a system message with its `systemData`: a call's row). Realtime defines `DM_CHANNELS` (the DM rooms a
 socket joins when it connects), answered through `DmChannelsModule`, and
 gives `DM_ROOMS` (a new DM's two people into its room at once).
 

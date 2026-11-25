@@ -55,9 +55,16 @@ export class AckChannelHandler implements ICommandHandler<AckChannelCommand> {
         if (!joined) throw new ChannelNotFoundError(channelId)
 
         if (target) await this.readStates.markRead(userId, channelId, target)
-        const [state] = await readStatesIn(this.readStates, userId, channel.serverId, channel.member, joined, [
-            channelId
-        ])
+        const blocked = await this.dms.blockedBy(userId)
+        const [state] = await readStatesIn(
+            this.readStates,
+            userId,
+            channel.serverId,
+            channel.member,
+            joined,
+            [channelId],
+            blocked
+        )
         if (target) this.events.publish(new ReadStateUpdatedEvent(userId, state))
         return state
     }

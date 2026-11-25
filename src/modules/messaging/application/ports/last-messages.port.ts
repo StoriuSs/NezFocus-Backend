@@ -12,6 +12,8 @@ export interface LastMessage {
     type: 'regular' | 'system'
     /** What a system message says happened (D-168); null for a regular one. */
     systemEvent: string | null
+    /** What a system message says, as the chat has it (a call: who called, how it ended, D-250); null for a regular one. */
+    systemData: Record<string, unknown> | null
     /** Null for a system message. */
     authorId: string | null
     content: string

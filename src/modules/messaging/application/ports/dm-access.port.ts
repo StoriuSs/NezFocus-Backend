@@ -26,6 +26,8 @@ export interface DmAccessPort {
     canMessage(userId: string, channelId: string): Promise<boolean>
     /** The person's DMs shown in their list (D-244): never closed, or a message after they closed it. */
     shownOf(userId: string): Promise<DmConversation[]>
+    /** Whom the person blocked: what those people write is never unread nor about them (REQ-MSG-09, D-250). */
+    blockedBy(userId: string): Promise<string[]>
 }
 
 export const DM_ACCESS = Symbol('DmAccessPort')

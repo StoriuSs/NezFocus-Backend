@@ -311,6 +311,7 @@ export function socialWorld() {
             id: `m-${at.getTime()}`,
             type: 'regular',
             systemEvent: null,
+            systemData: null,
             authorId,
             content,
             mentionUsers: [],

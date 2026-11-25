@@ -32,7 +32,7 @@ export async function joinedAt(membership: MembershipPort, userId: string, serve
 /**
  * The person's state in these channels of one server, from when they joined
  * it, with the roles they hold there; or in a DM (`serverId` null, no
- * member), from when it began.
+ * member), from when it began. Whom they blocked counts neither way (D-250).
  */
 export async function readStatesIn(
     readStates: ReadStateRepositoryPort,
@@ -40,13 +40,15 @@ export async function readStatesIn(
     serverId: string | null,
     member: AccessMember | null,
     joined: Date,
-    channelIds: string[]
+    channelIds: string[],
+    blockedIds: string[]
 ): Promise<ReadStateView[]> {
     const floorId = readFloor(joined)
     const states = await readStates.states(
         userId,
         member?.roleIds ?? [],
-        channelIds.map((channelId) => ({ channelId, floorId }))
+        channelIds.map((channelId) => ({ channelId, floorId })),
+        blockedIds
     )
     return states.map((state) => ({ serverId, ...state }))
 }

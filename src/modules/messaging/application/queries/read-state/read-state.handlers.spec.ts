@@ -51,10 +51,10 @@ const JOINED_ND = new Date('2026-11-10T19:30:00Z')
 
 /** Bình is in ÔT and NĐ (a role there), and was in a third server, gone by the time it is checked. */
 function world(dmWorld: DmWorld = {}) {
-    const asked: { roleIds: string[]; channels: ReadScope[] }[] = []
+    const asked: { roleIds: string[]; channels: ReadScope[]; blockedIds: string[] }[] = []
     const readStates = {
-        states: jest.fn(async (_userId: string, roleIds: string[], channels: ReadScope[]) => {
-            asked.push({ roleIds, channels })
+        states: jest.fn(async (_userId: string, roleIds: string[], channels: ReadScope[], blockedIds: string[]) => {
+            asked.push({ roleIds, channels, blockedIds })
             return channels.map(({ channelId, floorId }) => ({
                 channelId,
                 lastReadId: floorId,
@@ -125,7 +125,8 @@ describe('ListReadStatesHandler (REQ-MSG-09, SRS 5.1)', () => {
                     { channelId: 'phong-hoc', floorId: readFloor(JOINED_OT) },
                     { channelId: 'tai-lieu', floorId: readFloor(JOINED_OT) },
                     { channelId: 'chung', floorId: readFloor(JOINED_ND) }
-                ]
+                ],
+                blockedIds: []
             }
         ])
     })
@@ -145,5 +146,13 @@ describe('ListReadStatesHandler (REQ-MSG-09, SRS 5.1)', () => {
         expect(states.at(-1)).toMatchObject({ serverId: null, channelId: 'dm-an-binh' })
         expect(states.map((state) => state.channelId)).not.toContain('dm-binh-chi')
         expect(asked[0]!.channels.at(-1)).toEqual({ channelId: 'dm-an-binh', floorId: readFloor(DM_STARTED) })
+    })
+
+    it('leaves out of the counts what the people they blocked write, asked of social (D-250)', async () => {
+        const { list, asked } = world({ blocked: { binh: ['khanh'], an: ['binh'] } })
+
+        await list()
+
+        expect(asked[0]!.blockedIds).toEqual(['khanh'])
     })
 })
