@@ -55,6 +55,14 @@ function orderBy(sort: MemberSort, order: SortOrder, presentIds: string[]): Pris
     }
 }
 
+/** The columns of a listed member (MemberRow), over `Member m`, `User u` and `Server s`. */
+const LISTED = Prisma.sql`m."userId", ${SHOWN_USERNAME} AS "username", ${SHOWN_NAME} AS "displayName",
+    ${shownSql('u', 'avatarUrl')} AS "avatarUrl", m."joinedAt",
+    m."timeoutUntil", m."timeoutReason",
+    (s."ownerId" = m."userId") AS "isOwner",
+    coalesce((SELECT array_agg(mr."roleId" ORDER BY mr."roleId") FROM "MemberRole" mr
+        WHERE mr."serverId" = m."serverId" AND mr."userId" = m."userId"), '{}') AS "roleIds"`
+
 @Injectable()
 export class PrismaMemberRepository implements MemberRepositoryPort {
     constructor(private readonly prisma: PrismaService) {}
@@ -102,12 +110,7 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
         `
         const [rows, counted] = await Promise.all([
             this.prisma.$queryRaw<MemberRow[]>`
-                SELECT m."userId", ${SHOWN_USERNAME} AS "username", ${SHOWN_NAME} AS "displayName",
-                    ${shownSql('u', 'avatarUrl')} AS "avatarUrl", m."joinedAt",
-                    m."timeoutUntil", m."timeoutReason",
-                    (s."ownerId" = m."userId") AS "isOwner",
-                    coalesce((SELECT array_agg(mr."roleId" ORDER BY mr."roleId") FROM "MemberRole" mr
-                        WHERE mr."serverId" = m."serverId" AND mr."userId" = m."userId"), '{}') AS "roleIds"
+                SELECT ${LISTED}
                 FROM "Member" m
                 JOIN "User" u ON u."id" = m."userId"
                 JOIN "Server" s ON s."id" = m."serverId"
@@ -123,6 +126,18 @@ export class PrismaMemberRepository implements MemberRepositoryPort {
             `
         ])
         return { items: rows, total: Number(counted[0]?.total ?? 0n) }
+    }
+
+    /** Through the Member primary key (serverId, userId). */
+    async findListed(serverId: string, userId: string): Promise<MemberListItem | null> {
+        const rows = await this.prisma.$queryRaw<MemberRow[]>`
+            SELECT ${LISTED}
+            FROM "Member" m
+            JOIN "User" u ON u."id" = m."userId"
+            JOIN "Server" s ON s."id" = m."serverId"
+            WHERE m."serverId" = ${serverId} AND m."userId" = ${userId} AND u."deletedAt" IS NULL
+        `
+        return rows[0] ?? null
     }
 
     async countAmong(serverId: string, userIds: string[]): Promise<number> {

@@ -3,13 +3,14 @@ import { UserDirectoryPort } from '@/modules/users'
 import { MemberActivityPort, PresenceReaderPort } from '../../ports'
 import {
     ChannelNotFoundError,
+    MemberNotFoundError,
     MemberRepositoryPort,
     MissingPermissionError,
     RoleRepositoryPort,
     ServerNotFoundError
 } from '../../../domain'
-import { ListMembersHandler, ListMentionableRolesHandler, ListRolesHandler } from './role.handlers'
-import { ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
+import { GetMemberHandler, ListMembersHandler, ListMentionableRolesHandler, ListRolesHandler } from './role.handlers'
+import { GetMemberQuery, ListMembersQuery, ListMentionableRolesQuery, ListRolesQuery } from './role.queries'
 
 const roles = [
     { id: 'e', name: '@everyone', permissions: EVERYONE_DEFAULT_PERMISSIONS, position: 0, isEveryone: true },
@@ -264,5 +265,59 @@ describe('ListMembersHandler (D-152)', () => {
             { userId: 'binh', activity: { room: null, solo: { status: 'paused', phase: 'focus', phaseEndsAt: null } } },
             { userId: 'dung', activity: null }
         ])
+    })
+})
+
+describe('GetMemberHandler (D-252)', () => {
+    const binh = {
+        userId: 'binh',
+        avatarUrl: 'avatars/binh.png',
+        timeoutUntil: new Date('2999-01-01T00:00:00Z'),
+        timeoutReason: 'Gửi tin liên tục'
+    }
+    const handlerFor = (viewer: ServerAccess | null, found: unknown = binh) => {
+        const members = { findListed: jest.fn().mockResolvedValue(found) }
+        const handler = new GetMemberHandler(
+            members as unknown as MemberRepositoryPort,
+            { access: jest.fn().mockResolvedValue(viewer) } as unknown as PermissionCheckerPort,
+            pictures,
+            presence,
+            activity
+        )
+        return { handler, members }
+    }
+
+    it('gives anyone in the server one member as the list does: picture address, presence, activity', async () => {
+        const { handler, members } = handlerFor(access('chi'))
+
+        await expect(handler.execute(new GetMemberQuery('chi', 'ot', 'binh'))).resolves.toEqual({
+            ...binh,
+            avatarUrl: 'https://files.example.test/avatars/binh.png',
+            timeoutReason: null,
+            status: 'idle',
+            activity: { room: null, solo: { status: 'paused', phase: 'focus', phaseEndsAt: null } }
+        })
+        expect(members.findListed).toHaveBeenCalledWith('ot', 'binh')
+    })
+
+    it('shows the timeout reason only to those who may time people out (D-154)', async () => {
+        const { handler } = handlerFor(access('an'))
+
+        await expect(handler.execute(new GetMemberQuery('an', 'ot', 'binh'))).resolves.toMatchObject({
+            timeoutReason: 'Gửi tin liên tục'
+        })
+    })
+
+    it('answers NOT_FOUND to anyone outside, without reading the member', async () => {
+        const { handler, members } = handlerFor(null)
+
+        await expect(handler.execute(new GetMemberQuery('x', 'ot', 'binh'))).rejects.toThrow(ServerNotFoundError)
+        expect(members.findListed).not.toHaveBeenCalled()
+    })
+
+    it('answers NOT_FOUND for someone no longer in the server (the popover then shows them as outside)', async () => {
+        const { handler } = handlerFor(access('chi'), null)
+
+        await expect(handler.execute(new GetMemberQuery('chi', 'ot', 'dung'))).rejects.toThrow(MemberNotFoundError)
     })
 })

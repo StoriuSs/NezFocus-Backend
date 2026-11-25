@@ -3221,6 +3221,62 @@
       }
     },
     "/api/v1/servers/{serverId}/members/{userId}": {
+      "get": {
+        "operationId": "RolesController_member_v1",
+        "parameters": [
+          {
+            "name": "serverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meta",
+                    "data"
+                  ],
+                  "properties": {
+                    "meta": {
+                      "$ref": "#/components/schemas/ApiResponseMetaDto"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MemberResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One member as the list shows them (D-252): the profile popover's roles\nand day joined. Anyone in the server; NOT_FOUND for someone no longer in it.",
+        "tags": [
+          "servers"
+        ]
+      },
       "delete": {
         "operationId": "ModerationController_kick_v1",
         "parameters": [

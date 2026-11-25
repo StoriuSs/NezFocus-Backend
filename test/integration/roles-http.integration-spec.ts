@@ -260,4 +260,28 @@ describe('Roles over HTTP (integration)', () => {
         expect((await members('chi', '?page=1e20')).status).toBe(422)
         expect(outcome(await members('phong', ''))).toEqual([404, 'NOT_FOUND_ERROR'])
     })
+
+    it('gives one member as the list does to anyone in the server, NOT_FOUND once they have left (D-252)', async () => {
+        const { serverId, leadId } = await studyServer()
+        const member = (who: Who, userId: string) => as(who, api().get(url(serverId, `/members/${userId}`)))
+
+        const an = await member('chi', users.an.id)
+        expect(an.status).toBe(200)
+        expect(an.body.data).toMatchObject({
+            user_id: users.an.id,
+            username: users.an.username,
+            display_name: 'An Nguyễn',
+            is_owner: true,
+            role_ids: [leadId],
+            timeout_until: null,
+            status: 'offline',
+            activity: null
+        })
+        expect(typeof an.body.data.joined_at).toBe('string')
+
+        expect((await as('binh', api().delete(url(serverId, '/members/me')))).status).toBe(200)
+        expect(outcome(await member('chi', users.binh.id))).toEqual([404, 'NOT_FOUND_ERROR'])
+        expect(outcome(await member('phong', users.an.id))).toEqual([404, 'NOT_FOUND_ERROR'])
+        expect((await member('chi', 'not-an-id')).status).toBe(422)
+    })
 })

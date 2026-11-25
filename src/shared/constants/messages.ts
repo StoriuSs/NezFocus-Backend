@@ -76,6 +76,7 @@ export const MESSAGES = {
         ROLE_GRANTED: 'Role given',
         ROLE_REVOKED: 'Role taken back',
         MEMBERS_LISTED: 'Members fetched',
+        MEMBER_FOUND: 'Member fetched',
         MEMBER_KICKED: 'Member kicked',
         MEMBER_TIMEOUT_CHANGED: 'Timeout changed',
         MEMBER_BANNED: 'Member banned',

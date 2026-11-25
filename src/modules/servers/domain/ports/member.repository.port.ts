@@ -67,6 +67,9 @@ export interface MemberRepositoryPort {
         presentIds: string[]
     ): Promise<{ items: MemberListItem[]; total: number }>
 
+    /** One member as `search` lists them; null when not in the server or their account is gone (D-252). */
+    findListed(serverId: string, userId: string): Promise<MemberListItem | null>
+
     /** How many of the server's members are among `userIds`: an invite's online count (S-SRV-03). */
     countAmong(serverId: string, userIds: string[]): Promise<number>
 }

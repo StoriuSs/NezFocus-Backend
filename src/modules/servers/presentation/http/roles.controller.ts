@@ -9,6 +9,7 @@ import { createPaginatedResponse, validateAndTransform } from '@/shared/utils'
 import {
     CreateRoleCommand,
     DeleteRoleCommand,
+    GetMemberQuery,
     GrantRoleCommand,
     ListedMember,
     ListMembersQuery,
@@ -26,10 +27,12 @@ import {
     GrantRoleRequestDto,
     MemberListQueryDto,
     MemberPageResponseDto,
+    MemberResponseDto,
     MentionableRoleListResponseDto,
     ReorderRolesRequestDto,
     RoleListResponseDto,
     ServerIdParamsDto,
+    ServerMemberParamsDto,
     ServerRoleMemberParamsDto,
     ServerRoleParamsDto,
     UpdateRoleRequestDto
@@ -200,5 +203,20 @@ export class RolesController {
             MESSAGES.SERVER.MEMBERS_LISTED,
             validateAndTransform(MemberPageResponseDto, createPaginatedResponse(items, page, limit, total))
         )
+    }
+
+    /**
+     * One member as the list shows them (D-252): the profile popover's roles
+     * and day joined. Anyone in the server; NOT_FOUND for someone no longer in it.
+     */
+    @Get('members/:userId')
+    @HttpCode(HttpStatus.OK)
+    @ApiEnvelopeResponse(MemberResponseDto)
+    async member(
+        @CurrentUser() user: AuthenticatedUser,
+        @Param() { serverId, userId }: ServerMemberParamsDto
+    ): Promise<ServiceResponse<MemberResponseDto>> {
+        const member: ListedMember = await this.queryBus.execute(new GetMemberQuery(user.id, serverId, userId))
+        return createResponse(MESSAGES.SERVER.MEMBER_FOUND, validateAndTransform(MemberResponseDto, member))
     }
 }

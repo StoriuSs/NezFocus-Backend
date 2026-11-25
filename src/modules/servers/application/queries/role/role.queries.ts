@@ -30,3 +30,12 @@ export class ListMembersQuery {
         public readonly channelId: string | null = null
     ) {}
 }
+
+/** One member as the list shows them, for anyone in the server: the profile popover's roles and day joined (D-252). */
+export class GetMemberQuery {
+    constructor(
+        public readonly userId: string,
+        public readonly serverId: string,
+        public readonly memberId: string
+    ) {}
+}
